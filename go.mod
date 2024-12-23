@@ -11,7 +11,7 @@ require (
 	github.com/praetorian-inc/fingerprintx v1.1.14
 	github.com/projectdiscovery/goflags v0.1.51
 	github.com/projectdiscovery/naabu/v2 v2.3.1
-	github.com/spf13/cobra v1.8.0
+	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/crypto v0.31.0
 )
