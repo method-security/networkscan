@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Method-Security/networkscan/generated/go/bruteforce"
+	"github.com/Method-Security/networkscan/generated/go/address/bruteforce"
 	modules "github.com/Method-Security/networkscan/internal/address/bruteforce/modules"
 )
 

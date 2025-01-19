@@ -11,14 +11,15 @@ import (
 	"strings"
 	"time"
 
-	networkscan "github.com/Method-Security/networkscan/generated/go"
+	generatedgo "github.com/Method-Security/networkscan/generated/go"
+	address "github.com/Method-Security/networkscan/generated/go/address"
 	"github.com/praetorian-inc/fingerprintx/pkg/plugins"
 	"github.com/praetorian-inc/fingerprintx/pkg/scan"
 )
 
 // RunBannerGrab performs a banner grab on the specified target
-func RunBannerGrab(ctx context.Context, timeout int, target string, port uint16) (*networkscan.BannerGrabReport, error) {
-	resources := networkscan.BannerGrabReport{Target: target}
+func RunBannerGrab(ctx context.Context, timeout int, target string, port uint16) (*address.BannerGrabReport, error) {
+	resources := address.BannerGrabReport{Target: target}
 	errors := []string{}
 
 	fxConfig := scan.Config{
@@ -33,7 +34,7 @@ func RunBannerGrab(ctx context.Context, timeout int, target string, port uint16)
 		return &resources, err
 	}
 
-	var bannerResults []*networkscan.BannerGrab
+	var bannerResults []*address.BannerGrab
 	for _, ip := range ips {
 		ipAddr, err := netip.ParseAddr(ip.String())
 		if err != nil {
@@ -57,7 +58,7 @@ func RunBannerGrab(ctx context.Context, timeout int, target string, port uint16)
 		}
 
 		metadata := metadataMap(result.Metadata())
-		bannerResult := networkscan.BannerGrab{
+		bannerResult := address.BannerGrab{
 			Host:        result.Host,
 			Ip:          result.IP,
 			Port:        result.Port,
@@ -140,18 +141,18 @@ func getIPs(target string) ([]net.IP, error) {
 	return ips, nil
 }
 
-func getTransportTypeEnum(transport string) networkscan.TransportType {
-	transportTypeEnum, err := networkscan.NewTransportTypeFromString(strings.ToUpper(transport))
+func getTransportTypeEnum(transport string) generatedgo.TransportType {
+	transportTypeEnum, err := generatedgo.NewTransportTypeFromString(strings.ToUpper(transport))
 	if err != nil {
-		transportTypeEnum, _ = networkscan.NewTransportTypeFromString("UNKNOWN")
+		transportTypeEnum, _ = generatedgo.NewTransportTypeFromString("UNKNOWN")
 	}
 	return transportTypeEnum
 }
 
-func getProtocolTypeEnum(protocol string) networkscan.ProtocolType {
-	serviceTypeEnum, err := networkscan.NewProtocolTypeFromString(strings.ToUpper(protocol))
+func getProtocolTypeEnum(protocol string) generatedgo.ProtocolType {
+	serviceTypeEnum, err := generatedgo.NewProtocolTypeFromString(strings.ToUpper(protocol))
 	if err != nil {
-		serviceTypeEnum, _ = networkscan.NewProtocolTypeFromString("UNKNOWN")
+		serviceTypeEnum, _ = generatedgo.NewProtocolTypeFromString("UNKNOWN")
 	}
 	return serviceTypeEnum
 }
@@ -181,7 +182,7 @@ func getContentTypeBanner(metadata map[string]string) *string {
 	return nil
 }
 
-func getSamesiteEnum(metadata map[string]string) *networkscan.SameSiteType {
+func getSamesiteEnum(metadata map[string]string) *generatedgo.SameSiteType {
 	val, ok := metadata["ResponseHeaders"]
 	if !ok {
 		return nil
@@ -190,7 +191,7 @@ func getSamesiteEnum(metadata map[string]string) *networkscan.SameSiteType {
 	responseHeadersMap := unmarshalMapString(val)
 	cookieData, ok := responseHeadersMap["Set-Cookie"]
 	if !ok || !strings.Contains(cookieData, "SameSite=") {
-		sameSiteTypeEnum, _ := networkscan.NewSameSiteTypeFromString("UNKNOWN")
+		sameSiteTypeEnum, _ := generatedgo.NewSameSiteTypeFromString("UNKNOWN")
 		return &sameSiteTypeEnum
 	}
 
@@ -198,9 +199,9 @@ func getSamesiteEnum(metadata map[string]string) *networkscan.SameSiteType {
 	sameSiteValueSub := cookieData[startIndex+len("SameSite="):]
 	sameSiteString := strings.Split(sameSiteValueSub, ";")[0]
 
-	sameSiteTypeEnum, err := networkscan.NewSameSiteTypeFromString(strings.ToUpper(sameSiteString))
+	sameSiteTypeEnum, err := generatedgo.NewSameSiteTypeFromString(strings.ToUpper(sameSiteString))
 	if err != nil {
-		sameSiteTypeEnum, _ = networkscan.NewSameSiteTypeFromString("UNKNOWN")
+		sameSiteTypeEnum, _ = generatedgo.NewSameSiteTypeFromString("UNKNOWN")
 	}
 
 	return &sameSiteTypeEnum

@@ -4,34 +4,15 @@ package port
 import (
 	"context"
 
+	port "github.com/Method-Security/networkscan/generated/go/port"
 	"github.com/projectdiscovery/goflags"
 	"github.com/projectdiscovery/naabu/v2/pkg/result"
 	"github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
-// Details represents a singular instance of a port that was scanned and found to be open on a target host.
-type Details struct {
-	Port     int    `json:"port" yaml:"port"`
-	Protocol string `json:"protocol" yaml:"protocol"`
-}
-
-// Host represents a singular instance of a host that was scanned and found to have open ports.
-type Host struct {
-	Host  string    `json:"host" yaml:"host"`
-	IP    string    `json:"ip" yaml:"ip"`
-	Ports []Details `json:"ports" yaml:"ports"`
-}
-
-// Report represents the final output of a port scan, including all hosts that were scanned and their open ports.
-// It includes all of the hosts that were scanned alongside any non-fatal errors that were encountered during the scan.
-type Report struct {
-	Hosts  []Host   `json:"hosts" yaml:"hosts"`
-	Errors []string `json:"errors" yaml:"errors"`
-}
-
-func getPortScan(ctx context.Context, target string, ports string, topports string, threads int, scantype string) ([]Host, error) {
+func getPortScan(ctx context.Context, target string, ports string, topports string, threads int, scantype string) ([]*port.HostScanDetails, error) {
 	output := result.HostResult{}
-	hosts := []Host{}
+	hosts := []*port.HostScanDetails{}
 	// These settings mimic naabu's default settings
 	portscanOpts := &runner.Options{
 		Silent:            false,
@@ -47,7 +28,7 @@ func getPortScan(ctx context.Context, target string, ports string, topports stri
 		InputReadTimeout:  180000000000, // This is their default
 		OnResult: func(hr *result.HostResult) {
 			output = *hr
-			hosts = append(hosts, parseResult(output))
+			hosts = append(hosts, parseResult(&output))
 		},
 	}
 
@@ -69,37 +50,39 @@ func getPortScan(ctx context.Context, target string, ports string, topports stri
 
 	portscan, err := runner.NewRunner(portscanOpts)
 	if err != nil {
-		return hosts, err
+		return nil, err
 	}
 
 	defer portscan.Close()
 	err = portscan.RunEnumeration(ctx)
 	if err != nil {
-		return hosts, err
+		return nil, err
 	}
 
 	return hosts, nil
 
 }
 
-func parseResult(result result.HostResult) Host {
-	ports := []Details{}
-	for _, port := range result.Ports {
-		ports = append(ports, Details{
-			Port:     port.Port,
-			Protocol: port.Protocol.String(),
+func parseResult(result *result.HostResult) *port.HostScanDetails {
+	ports := []*port.PortScanDetails{}
+	for _, p := range result.Ports {
+		ports = append(ports, &port.PortScanDetails{
+			Port:     p.Port,
+			Protocol: p.Protocol.String(),
 		})
 	}
-	return Host{
+	host := port.HostScanDetails{
 		Host:  result.Host,
-		IP:    result.IP,
+		Ip:    result.IP,
 		Ports: ports,
 	}
+	return &host
 }
 
 // RunPortScan takes a target host and a list of ports to scan and returns a report of all hosts that were scanned and
 // their open ports.
-func RunPortScan(ctx context.Context, target string, ports string, topport string, threads int, scantype string) (Report, error) {
+func RunPortScan(ctx context.Context, target string, ports string, topport string, threads int, scantype string) (*port.PortScanReport, error) {
+	resources := port.PortScanReport{}
 	errors := []string{}
 
 	portscanResult, err := getPortScan(ctx, target, ports, topport, threads, scantype)
@@ -107,8 +90,7 @@ func RunPortScan(ctx context.Context, target string, ports string, topport strin
 		errors = append(errors, err.Error())
 	}
 
-	return Report{
-		Hosts:  portscanResult,
-		Errors: errors,
-	}, nil
+	resources.Hosts = portscanResult
+	resources.Errors = errors
+	return &resources, nil
 }
