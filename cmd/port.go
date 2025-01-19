@@ -70,12 +70,10 @@ func (a *NetworkScan) InitPortCommand() {
 	portScanCmd.Flags().String("scantype", "syn", "Type of scan to perform (syn | connect)")
 	_ = portScanCmd.MarkFlagRequired("target")
 
-	portCmd.AddCommand(portScanCmd)
-
-	portHTTPCmd := &cobra.Command{
-		Use:   "http",
-		Short: "Gather and validate open ports by using http requests",
-		Long:  `Gather and validate open ports by using http requests`,
+	portScanValidateCmd := &cobra.Command{
+		Use:   "validate",
+		Short: "Scan for open ports on a target host and validate their status using http requests",
+		Long:  `Scan for open ports on a target host and validate their status using http requests`,
 		Run: func(cmd *cobra.Command, args []string) {
 			target, err := cmd.Flags().GetString("target")
 			if err != nil {
@@ -115,17 +113,17 @@ func (a *NetworkScan) InitPortCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			httpsRequest, err := cmd.Flags().GetBool("httpsRequest")
+			httpsRequest, err := cmd.Flags().GetBool("httpsrequest")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			tlsVerify, err := cmd.Flags().GetBool("tlsVerify")
+			tlsVerify, err := cmd.Flags().GetBool("tlsverify")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			report, err := port.RunPortHTTP(cmd.Context(), target, ports, topport, threads, scantype, timeout, httpsRequest, tlsVerify)
+			report, err := port.RunPortScanValidate(cmd.Context(), target, ports, topport, threads, scantype, timeout, httpsRequest, tlsVerify)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -134,16 +132,19 @@ func (a *NetworkScan) InitPortCommand() {
 		},
 	}
 
-	portHTTPCmd.Flags().String("target", "", "Target IP or FQDN to scan for ports")
-	portHTTPCmd.Flags().String("ports", "", "Port/Port Range to scan")
-	portHTTPCmd.Flags().String("topports", "", "Top Ports to scan (full | 100 |1000)")
-	portHTTPCmd.Flags().Int("threads", 25, "Number of threads to use for scanning")
-	portHTTPCmd.Flags().String("scantype", "syn", "Type of scan to perform (syn | connect)")
-	portHTTPCmd.Flags().Int("timeout", 5, "Timeout limit for each handshake in seconds")
-	portHTTPCmd.Flags().Bool("httpsRequest", true, "Only scan https ports")
-	portHTTPCmd.Flags().Bool("tlsVerify", true, "Verify TLS certificates")
+	portScanValidateCmd.Flags().String("target", "", "Target IP or FQDN to scan for ports")
+	portScanValidateCmd.Flags().String("ports", "", "Port/Port Range to scan")
+	portScanValidateCmd.Flags().String("topports", "", "Top Ports to scan (full | 100 |1000)")
+	portScanValidateCmd.Flags().Int("threads", 25, "Number of threads to use for scanning")
+	portScanValidateCmd.Flags().String("scantype", "syn", "Type of scan to perform (syn | connect)")
+	portScanValidateCmd.Flags().Int("timeout", 5, "Timeout limit for each handshake in seconds")
+	portScanValidateCmd.Flags().Bool("httpsrequest", true, "Only scan https ports")
+	portScanValidateCmd.Flags().Bool("tlsverify", true, "Verify TLS certificates")
 	_ = portScanCmd.MarkFlagRequired("target")
 
-	portCmd.AddCommand(portHTTPCmd)
+	portScanCmd.AddCommand(portScanValidateCmd)
+
+	portCmd.AddCommand(portScanCmd)
+
 	a.RootCmd.AddCommand(portCmd)
 }

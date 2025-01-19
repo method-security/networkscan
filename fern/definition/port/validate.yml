@@ -8,17 +8,18 @@ types:
       responseCode: optional<integer>
       responseBody: optional<string>
       error: optional<string>
-  PortHttpDetails:
+  PortValidateDetails:
     properties:
       port: integer
       IpRequest: optional<HttpRequest>
       HostRequest: optional<HttpRequest>
-  HostHttpDetails:
+  HostValidateDetails:
     properties:
       host: string
       ip: string
-      portDetails: optional<list<PortHttpDetails>>
-  PortHttpReport:
+      portDetails: optional<list<PortValidateDetails>>
+  PortScanValidateReport:
     properties:
-      hosts: optional<list<HostHttpDetails>>
+      hosts: optional<list<HostValidateDetails>>
       errors: optional<list<string>>
+

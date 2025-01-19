@@ -13,24 +13,24 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/port"
 )
 
-func RunPortHTTP(ctx context.Context, target string, ports string, topport string, threads int, scantype string, timeout int, httpsRequest bool, tlsVerify bool) (*port.PortHttpReport, error) {
-	resources := port.PortHttpReport{}
+func RunPortScanValidate(ctx context.Context, target string, ports string, topport string, threads int, scantype string, timeout int, httpsRequest bool, tlsVerify bool) (*port.PortScanValidateReport, error) {
+	resources := port.PortScanValidateReport{}
 	errors := []string{}
 
 	portscanResult, err := RunPortScan(ctx, target, ports, topport, threads, scantype)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
-	hostDetails := []*port.HostHttpDetails{}
+	hostDetails := []*port.HostValidateDetails{}
 	for _, host := range portscanResult.Hosts {
-		hostDetail := &port.HostHttpDetails{
+		hostDetail := &port.HostValidateDetails{
 			Host: host.Host,
 			Ip:   host.Ip,
 		}
-		ports := []*port.PortHttpDetails{}
+		ports := []*port.PortValidateDetails{}
 		for _, p := range host.Ports {
 			// Create portHttpDetail
-			portDetails := &port.PortHttpDetails{Port: p.Port}
+			portDetails := &port.PortValidateDetails{Port: p.Port}
 
 			// IP request
 			ipRequest := sendHTTPRequest(host.Ip, p.Port, timeout, httpsRequest, tlsVerify)
@@ -52,8 +52,8 @@ func RunPortHTTP(ctx context.Context, target string, ports string, topport strin
 	return &resources, nil
 }
 
-func sendHTTPRequest(host string, targetPort int, timeout int, httpsRequest bool, tlsVerify bool) *port.HttpRequest {
-	address := fmt.Sprintf("%s:%d", host, targetPort)
+func sendHTTPRequest(target string, targetPort int, timeout int, httpsRequest bool, tlsVerify bool) *port.HttpRequest {
+	address := fmt.Sprintf("%s:%d", target, targetPort)
 
 	// Create a custom HTTP client
 	client := &http.Client{
