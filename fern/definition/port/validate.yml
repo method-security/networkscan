@@ -1,0 +1,25 @@
+imports:
+  bannergrab: ../address/bannergrab.yml
+types:
+  HttpRequest:
+    properties:
+      url: string
+      method: string
+      responseCode: optional<integer>
+      responseBody: optional<string>
+      error: optional<string>
+  PortValidateDetails:
+    properties:
+      port: integer
+      IpRequest: optional<HttpRequest>
+      HostRequest: optional<HttpRequest>
+  HostValidateDetails:
+    properties:
+      host: string
+      ip: string
+      portDetails: optional<list<PortValidateDetails>>
+  PortScanValidateReport:
+    properties:
+      hosts: optional<list<HostValidateDetails>>
+      errors: optional<list<string>>
+

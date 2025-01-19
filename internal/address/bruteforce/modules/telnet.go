@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Method-Security/networkscan/generated/go/bruteforce"
+	"github.com/Method-Security/networkscan/generated/go/address/bruteforce"
 )
 
 type TelnetLibrary struct{}

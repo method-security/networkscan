@@ -3,7 +3,7 @@ package cmd
 import (
 	"errors"
 
-	bruteforcefern "github.com/Method-Security/networkscan/generated/go/bruteforce"
+	bruteforcefern "github.com/Method-Security/networkscan/generated/go/address/bruteforce"
 	"github.com/Method-Security/networkscan/internal/address"
 	bruteforce "github.com/Method-Security/networkscan/internal/address/bruteforce"
 	"github.com/Method-Security/networkscan/utils"
