@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 
+	portFern "github.com/Method-Security/networkscan/generated/go/port"
 	"github.com/Method-Security/networkscan/internal/port"
 	"github.com/spf13/cobra"
 )
@@ -113,17 +114,14 @@ func (a *NetworkScan) InitPortCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			httpsRequest, err := cmd.Flags().GetBool("httpsrequest")
+			skipTLSVerify, err := cmd.Flags().GetBool("skiptlsverify")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			tlsVerify, err := cmd.Flags().GetBool("tlsverify")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			report, err := port.RunPortScanValidate(cmd.Context(), target, ports, topport, threads, scantype, timeout, httpsRequest, tlsVerify)
+			config := scanValidateConfig(target, ports, topport, threads, scantype, timeout, skipTLSVerify)
+
+			report, err := port.RunPortScanValidate(cmd.Context(), config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -138,8 +136,7 @@ func (a *NetworkScan) InitPortCommand() {
 	portScanValidateCmd.Flags().Int("threads", 25, "Number of threads to use for scanning")
 	portScanValidateCmd.Flags().String("scantype", "syn", "Type of scan to perform (syn | connect)")
 	portScanValidateCmd.Flags().Int("timeout", 5, "Timeout limit for each handshake in seconds")
-	portScanValidateCmd.Flags().Bool("httpsrequest", true, "Only scan https ports")
-	portScanValidateCmd.Flags().Bool("tlsverify", true, "Verify TLS certificates")
+	portScanValidateCmd.Flags().Bool("skiptlsverify", false, "Skip TLS verification")
 	_ = portScanCmd.MarkFlagRequired("target")
 
 	portScanCmd.AddCommand(portScanValidateCmd)
@@ -147,4 +144,16 @@ func (a *NetworkScan) InitPortCommand() {
 	portCmd.AddCommand(portScanCmd)
 
 	a.RootCmd.AddCommand(portCmd)
+}
+
+func scanValidateConfig(target string, ports string, topport string, threads int, scantype string, timeout int, skipTLSVerify bool) *portFern.PortScanValidateConfig {
+	return &portFern.PortScanValidateConfig{
+		Target:        target,
+		Ports:         &ports,
+		Topports:      &topport,
+		Threads:       threads,
+		Scantype:      portFern.ScanType(scantype),
+		Timeout:       timeout,
+		SkipTlsVerify: skipTLSVerify,
+	}
 }

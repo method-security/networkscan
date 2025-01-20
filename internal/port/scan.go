@@ -4,15 +4,15 @@ package port
 import (
 	"context"
 
-	port "github.com/Method-Security/networkscan/generated/go/port"
+	portFern "github.com/Method-Security/networkscan/generated/go/port"
 	"github.com/projectdiscovery/goflags"
 	"github.com/projectdiscovery/naabu/v2/pkg/result"
 	"github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
-func getPortScan(ctx context.Context, target string, ports string, topports string, threads int, scantype string) ([]*port.HostScanDetails, error) {
+func getPortScan(ctx context.Context, target string, ports string, topports string, threads int, scantype string) ([]*portFern.HostScanDetails, error) {
 	output := result.HostResult{}
-	hosts := []*port.HostScanDetails{}
+	hosts := []*portFern.HostScanDetails{}
 	// These settings mimic naabu's default settings
 	portscanOpts := &runner.Options{
 		Silent:            false,
@@ -63,15 +63,15 @@ func getPortScan(ctx context.Context, target string, ports string, topports stri
 
 }
 
-func parseResult(result *result.HostResult) *port.HostScanDetails {
-	ports := []*port.PortScanDetails{}
+func parseResult(result *result.HostResult) *portFern.HostScanDetails {
+	ports := []*portFern.PortScanDetails{}
 	for _, p := range result.Ports {
-		ports = append(ports, &port.PortScanDetails{
+		ports = append(ports, &portFern.PortScanDetails{
 			Port:     p.Port,
 			Protocol: p.Protocol.String(),
 		})
 	}
-	host := port.HostScanDetails{
+	host := portFern.HostScanDetails{
 		Host:  result.Host,
 		Ip:    result.IP,
 		Ports: ports,
@@ -81,8 +81,8 @@ func parseResult(result *result.HostResult) *port.HostScanDetails {
 
 // RunPortScan takes a target host and a list of ports to scan and returns a report of all hosts that were scanned and
 // their open ports.
-func RunPortScan(ctx context.Context, target string, ports string, topport string, threads int, scantype string) (*port.PortScanReport, error) {
-	resources := port.PortScanReport{}
+func RunPortScan(ctx context.Context, target string, ports string, topport string, threads int, scantype string) (*portFern.PortScanReport, error) {
+	resources := portFern.PortScanReport{}
 	errors := []string{}
 
 	portscanResult, err := getPortScan(ctx, target, ports, topport, threads, scantype)
