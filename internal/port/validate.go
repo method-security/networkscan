@@ -5,39 +5,41 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
-	"github.com/Method-Security/networkscan/generated/go/port"
+	portFern "github.com/Method-Security/networkscan/generated/go/port"
 )
 
-func RunPortScanValidate(ctx context.Context, target string, ports string, topport string, threads int, scantype string, timeout int, httpsRequest bool, tlsVerify bool) (*port.PortScanValidateReport, error) {
-	resources := port.PortScanValidateReport{}
+func RunPortScanValidate(ctx context.Context, config *portFern.PortScanValidateConfig) (*portFern.PortScanValidateReport, error) {
+	resources := portFern.PortScanValidateReport{
+		Config: config,
+	}
 	errors := []string{}
 
-	portscanResult, err := RunPortScan(ctx, target, ports, topport, threads, scantype)
+	portscanResult, err := RunPortScan(ctx, config.Target, *config.Ports, *config.Topports, config.Threads, strings.ToLower(string(config.Scantype)))
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
-	hostDetails := []*port.HostValidateDetails{}
+	hostDetails := []*portFern.HostValidateDetails{}
 	for _, host := range portscanResult.Hosts {
-		hostDetail := &port.HostValidateDetails{
+		hostDetail := &portFern.HostValidateDetails{
 			Host: host.Host,
 			Ip:   host.Ip,
 		}
-		ports := []*port.PortValidateDetails{}
+		ports := []*portFern.PortValidateDetails{}
 		for _, p := range host.Ports {
 			// Create portHttpDetail
-			portDetails := &port.PortValidateDetails{Port: p.Port}
+			portDetails := &portFern.PortValidateDetails{Port: p.Port}
 
 			// IP request
-			ipRequest := sendHTTPRequest(host.Ip, p.Port, timeout, httpsRequest, tlsVerify)
+			ipRequest := sendHTTPRequest(host.Ip, p.Port, config.Timeout, config.SkipTlsVerify)
 			portDetails.IpRequest = ipRequest
 
 			// Host request
-			hostRequest := sendHTTPRequest(host.Host, p.Port, timeout, httpsRequest, tlsVerify)
+			hostRequest := sendHTTPRequest(host.Host, p.Port, config.Timeout, config.SkipTlsVerify)
 			portDetails.HostRequest = hostRequest
 
 			// Add to portHttpDetails
@@ -52,61 +54,68 @@ func RunPortScanValidate(ctx context.Context, target string, ports string, toppo
 	return &resources, nil
 }
 
-func sendHTTPRequest(target string, targetPort int, timeout int, httpsRequest bool, tlsVerify bool) *port.HttpRequest {
+func sendHTTPRequest(target string, targetPort int, timeout int, skipTLSVerify bool) *portFern.HttpRequest {
 	address := fmt.Sprintf("%s:%d", target, targetPort)
 
 	// Create a custom HTTP client
 	client := &http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: !tlsVerify},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: skipTLSVerify},
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return net.DialTimeout(network, address, time.Duration(timeout)*time.Second)
 			},
 		},
 	}
 
-	// Send an HTTP or HTTPS GET request
-	var url string
-	if httpsRequest {
-		url = fmt.Sprintf("https://%s", address)
-	} else {
-		url = fmt.Sprintf("http://%s", address)
-	}
+	// Attempt HTTPS first if httpsRequest is true, fallback to HTTP on specific error
+	url := fmt.Sprintf("https://%s", address)
 
-	// Initialize request
-	request := &port.HttpRequest{
+	// Initialize request structure
+	request := &portFern.HttpRequest{
 		Url:    url,
 		Method: "GET",
 	}
 
 	resp, err := client.Get(url)
 	if err != nil {
-		log.Printf("Error connecting to %s: %v\n", address, err)
 		errString := err.Error()
-		request.Error = &errString
-		return request
+
+		// Check for specific HTTPS error and retry with HTTP
+		if strings.Contains(errString, "http: server gave HTTP response to HTTPS client") {
+			url = fmt.Sprintf("http://%s", address)
+			resp, err = client.Get(url)
+			if err != nil {
+				request.Error = &errString
+				return request
+			}
+		} else {
+			request.Error = &errString
+			return request
+		}
 	}
 
-	// Read and display the response body
+	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		errString := err.Error()
 		request.Error = &errString
 		return request
 	}
-	bodyString := string(body)
 
 	// Close the response body
 	err = resp.Body.Close()
 	if err != nil {
-		log.Printf("Error closing response body: %v\n", err)
 		errString := err.Error()
 		request.Error = &errString
 		return request
 	}
 
+	// Populate request with response details
+	bodyString := string(body)
+	request.Url = url
 	request.ResponseBody = &bodyString
 	request.ResponseCode = &resp.StatusCode
+
 	return request
 }

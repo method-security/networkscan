@@ -223,9 +223,57 @@ func (h *HttpRequest) String() string {
 	return fmt.Sprintf("%#v", h)
 }
 
+type PortScanValidateConfig struct {
+	Target        string   `json:"target" url:"target"`
+	Ports         *string  `json:"ports,omitempty" url:"ports,omitempty"`
+	Topports      *string  `json:"topports,omitempty" url:"topports,omitempty"`
+	Threads       int      `json:"threads" url:"threads"`
+	Scantype      ScanType `json:"scantype" url:"scantype"`
+	Timeout       int      `json:"timeout" url:"timeout"`
+	SkipTlsVerify bool     `json:"skipTLSVerify" url:"skipTLSVerify"`
+
+	extraProperties map[string]interface{}
+	_rawJSON        json.RawMessage
+}
+
+func (p *PortScanValidateConfig) GetExtraProperties() map[string]interface{} {
+	return p.extraProperties
+}
+
+func (p *PortScanValidateConfig) UnmarshalJSON(data []byte) error {
+	type unmarshaler PortScanValidateConfig
+	var value unmarshaler
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*p = PortScanValidateConfig(value)
+
+	extraProperties, err := core.ExtractExtraProperties(data, *p)
+	if err != nil {
+		return err
+	}
+	p.extraProperties = extraProperties
+
+	p._rawJSON = json.RawMessage(data)
+	return nil
+}
+
+func (p *PortScanValidateConfig) String() string {
+	if len(p._rawJSON) > 0 {
+		if value, err := core.StringifyJSON(p._rawJSON); err == nil {
+			return value
+		}
+	}
+	if value, err := core.StringifyJSON(p); err == nil {
+		return value
+	}
+	return fmt.Sprintf("%#v", p)
+}
+
 type PortScanValidateReport struct {
-	Hosts  []*HostValidateDetails `json:"hosts,omitempty" url:"hosts,omitempty"`
-	Errors []string               `json:"errors,omitempty" url:"errors,omitempty"`
+	Hosts  []*HostValidateDetails  `json:"hosts,omitempty" url:"hosts,omitempty"`
+	Config *PortScanValidateConfig `json:"config,omitempty" url:"config,omitempty"`
+	Errors []string                `json:"errors,omitempty" url:"errors,omitempty"`
 
 	extraProperties map[string]interface{}
 	_rawJSON        json.RawMessage
@@ -306,4 +354,26 @@ func (p *PortValidateDetails) String() string {
 		return value
 	}
 	return fmt.Sprintf("%#v", p)
+}
+
+type ScanType string
+
+const (
+	ScanTypeSyn     ScanType = "SYN"
+	ScanTypeConnect ScanType = "CONNECT"
+)
+
+func NewScanTypeFromString(s string) (ScanType, error) {
+	switch s {
+	case "SYN":
+		return ScanTypeSyn, nil
+	case "CONNECT":
+		return ScanTypeConnect, nil
+	}
+	var t ScanType
+	return "", fmt.Errorf("%s is not a valid %T", s, t)
+}
+
+func (s ScanType) Ptr() *ScanType {
+	return &s
 }
