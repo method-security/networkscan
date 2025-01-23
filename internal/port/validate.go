@@ -5,15 +5,18 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	portFern "github.com/Method-Security/networkscan/generated/go/port"
 )
 
 func RunPortScanValidate(ctx context.Context, config *portFern.PortScanValidateConfig) (*portFern.PortScanValidateReport, error) {
+
 	resources := portFern.PortScanValidateReport{
 		Config: config,
 	}
@@ -23,31 +26,79 @@ func RunPortScanValidate(ctx context.Context, config *portFern.PortScanValidateC
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
+
 	hostDetails := []*portFern.HostValidateDetails{}
+	var mu sync.Mutex // For safely appending to slices
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, config.Threads) // Semaphore to limit concurrency
+
+	hostChan := make(chan *portFern.HostValidateDetails)
+	errorChan := make(chan string)
+
+	// Worker goroutines to process hosts
 	for _, host := range portscanResult.Hosts {
-		hostDetail := &portFern.HostValidateDetails{
-			Host: host.Host,
-			Ip:   host.Ip,
-		}
-		ports := []*portFern.PortValidateDetails{}
-		for _, p := range host.Ports {
-			// Create portHttpDetail
-			portDetails := &portFern.PortValidateDetails{Port: p.Port}
+		host := host // Capture variable for goroutine
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
-			// IP request
-			ipRequest := sendHTTPRequest(host.Ip, p.Port, config.Timeout, config.SkipTlsVerify)
-			portDetails.IpRequest = ipRequest
+			// Acquire semaphore
+			sem <- struct{}{}
+			defer func() { <-sem }() // Release semaphore
 
-			// Host request
-			hostRequest := sendHTTPRequest(host.Host, p.Port, config.Timeout, config.SkipTlsVerify)
-			portDetails.HostRequest = hostRequest
+			hostDetail := &portFern.HostValidateDetails{
+				Host: host.Host,
+				Ip:   host.Ip,
+			}
+			ports := []*portFern.PortValidateDetails{}
+			var portWG sync.WaitGroup
 
-			// Add to portHttpDetails
-			ports = append(ports, portDetails)
-		}
-		hostDetail.PortDetails = ports
+			for _, p := range host.Ports {
+				p := p // Capture variable for goroutine
+				portWG.Add(1)
+				go func() {
+					defer portWG.Done()
+					log.Println("Sending requests to", host.Host, "on port", p.Port)
+
+					portDetails := &portFern.PortValidateDetails{Port: p.Port}
+
+					// IP request
+					ipRequest := sendHTTPRequest(host.Ip, p.Port, config.Timeout, config.SkipTlsVerify)
+					portDetails.IpRequest = ipRequest
+
+					// Host request
+					hostRequest := sendHTTPRequest(host.Host, p.Port, config.Timeout, config.SkipTlsVerify)
+					portDetails.HostRequest = hostRequest
+
+					// Append port details safely
+					mu.Lock()
+					ports = append(ports, portDetails)
+					mu.Unlock()
+				}()
+			}
+			portWG.Wait()
+			hostDetail.PortDetails = ports
+
+			// Send the completed host details to the channel
+			hostChan <- hostDetail
+		}()
+	}
+
+	// Goroutine to collect results from hostChan
+	go func() {
+		wg.Wait()
+		close(hostChan)
+		close(errorChan)
+	}()
+
+	// Collect results from channels
+	for hostDetail := range hostChan {
 		hostDetails = append(hostDetails, hostDetail)
 	}
+	for errMsg := range errorChan {
+		errors = append(errors, errMsg)
+	}
+
 	resources.Hosts = hostDetails
 	resources.Errors = errors
 
@@ -68,10 +119,7 @@ func sendHTTPRequest(target string, targetPort int, timeout int, skipTLSVerify b
 		},
 	}
 
-	// Attempt HTTPS first if httpsRequest is true, fallback to HTTP on specific error
 	url := fmt.Sprintf("https://%s", address)
-
-	// Initialize request structure
 	request := &portFern.HttpRequest{
 		Url:    url,
 		Method: "GET",
@@ -81,7 +129,7 @@ func sendHTTPRequest(target string, targetPort int, timeout int, skipTLSVerify b
 	if err != nil {
 		errString := err.Error()
 
-		// Check for specific HTTPS error and retry with HTTP
+		// Retry with HTTP if specific error occurs
 		if strings.Contains(errString, "http: server gave HTTP response to HTTPS client") {
 			url = fmt.Sprintf("http://%s", address)
 			resp, err = client.Get(url)
@@ -95,7 +143,6 @@ func sendHTTPRequest(target string, targetPort int, timeout int, skipTLSVerify b
 		}
 	}
 
-	// Read the response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		errString := err.Error()
@@ -103,7 +150,6 @@ func sendHTTPRequest(target string, targetPort int, timeout int, skipTLSVerify b
 		return request
 	}
 
-	// Close the response body
 	err = resp.Body.Close()
 	if err != nil {
 		errString := err.Error()
@@ -111,7 +157,6 @@ func sendHTTPRequest(target string, targetPort int, timeout int, skipTLSVerify b
 		return request
 	}
 
-	// Populate request with response details
 	bodyString := string(body)
 	request.Url = url
 	request.ResponseBody = &bodyString
