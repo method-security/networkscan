@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 
+	addressfern "github.com/Method-Security/networkscan/generated/go/address"
 	bruteforcefern "github.com/Method-Security/networkscan/generated/go/address/bruteforce"
 	"github.com/Method-Security/networkscan/internal/address"
 	bruteforce "github.com/Method-Security/networkscan/internal/address/bruteforce"
@@ -179,6 +180,44 @@ func (a *NetworkScan) InitAddressCommand() {
 
 	addressCmd.AddCommand(bruteForceCmd)
 
+	tlsCmd := &cobra.Command{
+		Use:   "tls",
+		Short: "Check TLS details of a network address socket",
+		Long:  `Check TLS details of a network address socket`,
+		Run: func(cmd *cobra.Command, args []string) {
+			defer a.OutputSignal.PanicHandler(cmd.Context())
+
+			targets, err := cmd.Flags().GetStringSlice("targets")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			timeout, err := cmd.Flags().GetInt("timeout")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			insecure, err := cmd.Flags().GetBool("insecure")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			config := LoadTLSConfig(targets, timeout, insecure)
+			report, err := address.GetTLSInfo(cmd.Context(), targets, config)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			a.OutputSignal.Content = report
+		},
+	}
+
+	tlsCmd.Flags().StringSlice("targets", []string{}, "Address of target")
+	tlsCmd.Flags().Int("timeout", 30, "Timeout limit for each handshake in seconds")
+	tlsCmd.Flags().Bool("insecure", false, "Skip TLS verification")
+
+	addressCmd.AddCommand(tlsCmd)
+
 	a.RootCmd.AddCommand(addressCmd)
 }
 
@@ -204,4 +243,12 @@ func LoadBruteForceConfig(module bruteforcefern.ModuleType, targets []string, us
 		return nil, errors.New("retries cannot be negative")
 	}
 	return config, nil
+}
+
+func LoadTLSConfig(targets []string, timeout int, insecure bool) addressfern.AddressTlsConfig {
+	config := addressfern.AddressTlsConfig{
+		Timeout:            timeout,
+		InsecureSkipVerify: insecure,
+	}
+	return config
 }
