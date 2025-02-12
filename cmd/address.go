@@ -182,8 +182,8 @@ func (a *NetworkScan) InitAddressCommand() {
 
 	tlsCmd := &cobra.Command{
 		Use:   "tls",
-		Short: "Check TLS details of a network address socket",
-		Long:  `Check TLS details of a network address socket`,
+		Short: "Grab TLS Config and Certificate of a network address socket",
+		Long:  `Grab TLS Config and Certificate of a network address socket`,
 		Run: func(cmd *cobra.Command, args []string) {
 			defer a.OutputSignal.PanicHandler(cmd.Context())
 

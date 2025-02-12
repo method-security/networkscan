@@ -1,10 +1,21 @@
 # Address
 
-## Bannergrab
+The `networkscan address` command is used to discover and interact with network addresses.
+
+## Usage
+
+```bash
+networkscan address [command] [flags]
+```
+
+## Commands
+
+
+### Bannergrab
 
 The `networkscan address bannergrab` grabs and analyzes the banner on a socket network address.
 
-### Usage
+#### Usage
 
 To grab the banner from a network address
 
@@ -12,7 +23,7 @@ To grab the banner from a network address
 networkscan address bannergrab --target scanme.sh --port 22
 ```
 
-### Help
+#### Help
 
 ```bash
 networkscan address bannergrab -h
@@ -35,11 +46,11 @@ Global Flags:
   -v, --verbose              Verbose output
 ```
 
-## Bruteforce
+### Bruteforce
 
-The `networkscan address brutefroce` runs a brute force attack
+The `networkscan address bruteforce` runs a brute force attack
 
-### Usage
+#### Usage
 
 Execute a Bruteforce attack against an application
 
@@ -47,8 +58,7 @@ Execute a Bruteforce attack against an application
 networkscan address bruteforce  --targets 192.168.0.0:22 --module ssh
 ```
 
-### Help
-
+#### Help
 
 ```bash
 networkscan address bruteforce -h
@@ -78,3 +88,37 @@ Global Flags:
   -q, --quiet                Suppress output
   -v, --verbose              Verbose output
 ```
+
+### TLS
+
+The `networkscan address tls` checks the TLS details of a network address socket.
+
+#### Usage
+
+Grab the TLS Config and Certificate of a network address socket
+
+```bash
+networkscan address tls --targets example.com:443
+``` 
+
+#### Help
+
+```bash
+Grab TLS details of a network address socket
+
+Usage:
+  networkscan address tls [flags]
+
+Flags:
+  -h, --help              help for tls
+      --insecure          Skip TLS verification (Default: false)
+      --targets strings   Address of target
+      --timeout int       Timeout limit for each handshake in seconds (default 30)
+
+Global Flags:
+  -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
+  -f, --output-file string   Path to output file. If blank, will output to STDOUT
+  -q, --quiet                Suppress output
+  -v, --verbose              Verbose output
+
+  ```
