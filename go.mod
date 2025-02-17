@@ -11,7 +11,7 @@ require (
 	github.com/praetorian-inc/fingerprintx v1.1.14
 	github.com/projectdiscovery/goflags v0.1.51
 	github.com/projectdiscovery/naabu/v2 v2.3.1
-	github.com/spf13/cobra v1.8.0
+	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/crypto v0.31.0
 )
@@ -105,7 +105,7 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/shirou/gopsutil/v3 v3.23.7 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/tidwall/btree v1.6.0 // indirect
 	github.com/tidwall/buntdb v1.3.0 // indirect
