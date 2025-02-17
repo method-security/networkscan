@@ -18,6 +18,7 @@ nav:
         - Host: docs/host.md
         - OS: docs/os.md
         - Address: docs/address.md
+        - SSH: docs/ssh.md
   - Contributing:
       - How to contribute: community/community.md
       - Development:
