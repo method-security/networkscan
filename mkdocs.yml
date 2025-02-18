@@ -20,6 +20,7 @@ nav:
         - Address: docs/address.md
         - SSH: docs/ssh.md
         - FTP: docs/ftp.md
+        - SMTP: docs/smtp.md
   - Contributing:
       - How to contribute: community/community.md
       - Development:
