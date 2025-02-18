@@ -21,20 +21,18 @@ var authCommands = map[string]smtpfern.AuthCommand{
 	"NTLM":     smtpfern.AuthCommandNtlm,
 }
 
-// RunSMTPEnumerate performs SMTP enumeration on the provided targets
-func RunSMTPEnumerate(ctx context.Context, targets []string, timeout int, targetDomain string) (smtpfern.SmtpEnumerateReport, error) {
-	log.Printf("[INFO] Starting SMTP enumeration for %d targets with a timeout of %ds", len(targets), timeout)
+func RunSMTPEnumerate(ctx context.Context, targets []string, connectionTimeout int, targetDomain string) (smtpfern.SmtpEnumerateReport, error) {
+	log.Printf("[INFO] Starting SMTP enumeration for %d targets with a timeout of %ds", len(targets), connectionTimeout)
 	report := smtpfern.SmtpEnumerateReport{Targets: targets}
 	errors := []string{}
 
 	details := []*smtpfern.SmtpEnumerateDetails{}
 	for i, target := range targets {
-		// Set a new clock for each target
-		targetCtx, targetCancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+		targetCtx, targetCancel := context.WithTimeout(ctx, time.Duration(connectionTimeout)*time.Second)
 		defer targetCancel()
 
 		log.Printf("[INFO] [%d/%d] Processing target: %s", i+1, len(targets), target)
-		detail, err := enumerateTarget(targetCtx, target, timeout, targetDomain)
+		detail, err := enumerateTarget(targetCtx, target, connectionTimeout, targetDomain)
 		if err != nil {
 			if targetCtx.Err() == context.DeadlineExceeded {
 				log.Printf("[ERROR] Parameter timeout while enumerating %s", target)
@@ -48,7 +46,6 @@ func RunSMTPEnumerate(ctx context.Context, targets []string, timeout int, target
 		details = append(details, &detail)
 		log.Printf("[INFO] Successfully enumerated target %s", target)
 
-		// Check if the context for the current target has been canceled
 		if targetCtx.Err() != nil {
 			continue
 		}
@@ -66,19 +63,48 @@ func enumerateTarget(ctx context.Context, target string, timeout int, targetDoma
 		Target: target,
 	}
 
-	// Create connection with timeout
-	log.Printf("[INFO] Connecting to %s with a timeout of %ds", target, timeout)
-	dialer := net.Dialer{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
-
-	conn, err := dialer.DialContext(ctx, "tcp", target)
+	// Parse host and port
+	_, port, err := net.SplitHostPort(target)
 	if err != nil {
 		canConnect := false
 		detail.CanConnect = &canConnect
-		log.Printf("[ERROR] Failed to connect to %s: %v", target, err)
-		return detail, fmt.Errorf("connection failed: %v", err)
+		return detail, fmt.Errorf("invalid target format: %v", err)
 	}
+
+	var conn net.Conn
+	tlsConfig := &tls.Config{
+		ServerName:         targetDomain,
+		InsecureSkipVerify: true,
+	}
+
+	// For port 465, use TLS directly
+	if port == "465" {
+		dialer := &net.Dialer{
+			Timeout: time.Duration(timeout) * time.Second,
+		}
+		conn, err = tls.DialWithDialer(dialer, "tcp", target, tlsConfig)
+		if err != nil {
+			canConnect := false
+			detail.CanConnect = &canConnect
+			return detail, fmt.Errorf("TLS connection failed: %v", err)
+		}
+		forceTls := true
+		detail.ForceTls = &forceTls
+		tlsSupported := true
+		detail.TlsSupported = &tlsSupported
+	} else {
+		// For other ports, use regular TCP connection first
+		dialer := net.Dialer{
+			Timeout: time.Duration(timeout) * time.Second,
+		}
+		conn, err = dialer.DialContext(ctx, "tcp", target)
+		if err != nil {
+			canConnect := false
+			detail.CanConnect = &canConnect
+			return detail, fmt.Errorf("connection failed: %v", err)
+		}
+	}
+
 	defer conn.Close()
 	canConnect := true
 	detail.CanConnect = &canConnect
@@ -93,29 +119,27 @@ func enumerateTarget(ctx context.Context, target string, timeout int, targetDoma
 	}
 	log.Printf("[INFO] SMTP client created for %s", target)
 
-	// Check TLS support
-	tlssupported := false
-	detail.TlsSupported = &tlssupported
-	log.Printf("[INFO] Checking TLS support for %s", target)
-	if ok, _ := c.Extension("STARTTLS"); ok {
-		tlssupported = true
-		log.Printf("[INFO] TLS supported on %s", target)
+	// Check TLS support for non-465 ports
+	if port != "465" {
+		tlsSupported := false
+		detail.TlsSupported = &tlsSupported
+		log.Printf("[INFO] Checking TLS support for %s", target)
+		if ok, _ := c.Extension("STARTTLS"); ok {
+			tlsSupported = true
+			log.Printf("[INFO] TLS supported on %s", target)
 
-		// Try to start TLS
-		log.Printf("[INFO] Starting TLS session for %s", target)
-		config := &tls.Config{
-			ServerName:         targetDomain,
-			InsecureSkipVerify: true,
-		}
-		if err := c.StartTLS(config); err == nil {
-			forceTls := true
-			detail.ForceTls = &forceTls
-			log.Printf("[INFO] TLS session established with %s", target)
+			// Try to start TLS
+			log.Printf("[INFO] Starting TLS session for %s", target)
+			if err := c.StartTLS(tlsConfig); err == nil {
+				forceTls := true
+				detail.ForceTls = &forceTls
+				log.Printf("[INFO] TLS session established with %s", target)
+			} else {
+				log.Printf("[ERROR] Failed to start TLS session for %s: %v", target, err)
+			}
 		} else {
-			log.Printf("[ERROR] Failed to start TLS session for %s: %v", target, err)
+			log.Printf("[INFO] TLS not supported on %s", target)
 		}
-	} else {
-		log.Printf("[INFO] TLS not supported on %s", target)
 	}
 
 	// Check authentication methods

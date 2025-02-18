@@ -1,0 +1,20 @@
+types:
+  DatabaseType:
+    enum:
+      - MYSQL
+      - POSTGRESQL
+      - MSSQL
+      - ORACLE
+  DatabaseEnumerateDetails:
+    properties:
+      Target: string
+      Banner: optional<string>
+      Connected: optional<boolean>
+      ExposedData: optional<list<string>>
+      Error: optional<string>
+  DatabaseEnumerateReport:
+    properties:
+      targets: list<string>
+      databaseType: DatabaseType
+      databaseDetails: optional<list<DatabaseEnumerateDetails>>
+      errors: optional<list<string>>
