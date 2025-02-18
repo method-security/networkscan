@@ -1,0 +1,15 @@
+types:
+  FTPEnumerateDetails:
+    properties:
+      target: string
+      SuccessfulConnection: optional<boolean>
+      Banner: optional<string>
+      TLSImplemented: optional<boolean>
+      TLSForced: optional<boolean>
+      AllowsAnonymousLogin: optional<boolean>
+      Error: optional<string>
+  FTPEnumerateReport:
+    properties:
+      targets: list<string>
+      ftpDetails: optional<list<FTPEnumerateDetails>>
+      errors: optional<list<string>>

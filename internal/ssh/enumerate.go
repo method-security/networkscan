@@ -91,7 +91,9 @@ func RunSSHEnumerate(ctx context.Context, targets []string, connectionTimeout in
 	errors := []string{}
 
 	details := []*sshFern.SshEnumerateDetails{}
-	for _, target := range targets {
+	for i, target := range targets {
+		log.Printf("[INFO] [%d/%d] Processing target: %s", i+1, len(targets), target)
+
 		// Set a new clock for each target
 		targetCtx, targetCancel := context.WithTimeout(ctx, time.Duration(connectionTimeout)*time.Second)
 		defer targetCancel()
