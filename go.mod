@@ -5,6 +5,7 @@ go 1.22.5
 require (
 	github.com/Method-Security/pkg v0.0.3
 	github.com/Ullaakut/nmap/v3 v3.0.3
+	github.com/go-sql-driver/mysql v1.9.0
 	github.com/google/uuid v1.3.1
 	github.com/palantir/pkg/datetime v1.1.0
 	github.com/palantir/witchcraft-go-logging v1.57.0
@@ -18,6 +19,7 @@ require (
 
 require (
 	aead.dev/minisign v0.2.0 // indirect
+	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/Mzack9999/gcache v0.0.0-20230410081825-519e28eab057 // indirect
 	github.com/Mzack9999/go-http-digest-auth-client v0.6.1-0.20220414142836-eb8883508809 // indirect

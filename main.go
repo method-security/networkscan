@@ -21,6 +21,7 @@ func main() {
 	networkscan.InitSSHCommand()
 	networkscan.InitFTPCommand()
 	networkscan.InitSMTPCommand()
+	networkscan.InitDatabaseCommand()
 
 	if err := networkscan.RootCmd.Execute(); err != nil {
 		os.Exit(1)
