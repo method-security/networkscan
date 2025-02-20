@@ -24,13 +24,13 @@ func (a *NetworkScan) InitSSHCommand() {
 				return
 			}
 
-			connectionTimeout, err := cmd.Flags().GetInt("connectiontimeout")
+			timeout, err := cmd.Flags().GetInt("timeout")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
 
-			report, err := ssh.RunSSHEnumerate(cmd.Context(), targets, connectionTimeout)
+			report, err := ssh.RunSSHEnumerate(cmd.Context(), targets, timeout)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -40,7 +40,7 @@ func (a *NetworkScan) InitSSHCommand() {
 	}
 
 	sshEnumerateCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
-	sshEnumerateCmd.Flags().Int("connectiontimeout", 30, "Timeout for each SSH connection in seconds")
+	sshEnumerateCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
 	_ = sshEnumerateCmd.MarkFlagRequired("targets")
 
 	sshCmd.AddCommand(sshEnumerateCmd)

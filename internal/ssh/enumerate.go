@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -86,56 +87,134 @@ var (
 	}
 )
 
-func RunSSHEnumerate(ctx context.Context, targets []string, connectionTimeout int) (sshFern.SshEnumerateReport, error) {
+// RunSSHEnumerate Overview:
+// 1. Connect to the target
+//   a. Exit if connection isnt established
+// 2. Check if service supports SSH + Grab the SSH version
+//   a. Exit if no version is returned (assume SSH is not implemented)
+// 3. Grab the SSH algorithms from returned data
+//   a. Key Exchange Algorithms
+//   b. Host Key Algorithms
+//   c. Ciphers
+//   d. MACs
+// 4. Check if password authentication is supported via x/crypto/ssh library
+//   a. Send a simple command with test:test username and password
+//   b. Analyse errors to check if password authentication is supported
+// 5. Return the details
+//   a. Version
+//   b. Key Exchange Algorithms
+//   c. Host Key Algorithms
+//   d. Ciphers
+//   e. MACs
+//   f. Auth Methods (Public Key, Password)
+
+func RunSSHEnumerate(ctx context.Context, targets []string, timeout int) (sshFern.SshEnumerateReport, error) {
+	log.Printf("[INFO] Starting SSH enumeration for %d targets with a timeout of %ds", len(targets), timeout)
 	resource := sshFern.SshEnumerateReport{Targets: targets}
-	errors := []string{}
 
-	details := []*sshFern.SshEnumerateDetails{}
+	// Create channels for collecting results and errors
+	detailsChan := make(chan *sshFern.SshEnumerateDetails, len(targets))
+	errorsChan := make(chan string, len(targets))
+	var wg sync.WaitGroup
+
+	// Process each target concurrently
 	for i, target := range targets {
-		log.Printf("[INFO] [%d/%d] Processing target: %s", i+1, len(targets), target)
+		wg.Add(1)
+		go func(i int, target string) {
+			defer wg.Done()
 
-		// Set a new clock for each target
-		targetCtx, targetCancel := context.WithTimeout(ctx, time.Duration(connectionTimeout)*time.Second)
-		defer targetCancel()
+			// Create a context with timeout for each target
+			targetCtx, targetCancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+			defer targetCancel()
 
-		detail, err := enumerateTarget(targetCtx, target, connectionTimeout)
-		if err != nil {
-			if targetCtx.Err() == context.DeadlineExceeded {
-				fmt.Printf("[ERROR] Parameter timeout while enumerating %s\n", target)
-				errors = append(errors, fmt.Sprintf("Parameter timeout while enumerating %s", target))
-			} else {
-				fmt.Printf("[ERROR] Error enumerating %s: %v\n", target, err)
-				errors = append(errors, err...)
+			// Start enumeration in a separate goroutine
+			resultChan := make(chan struct {
+				detail *sshFern.SshEnumerateDetails
+				errs   []string
+			}, 1)
+
+			go func() {
+				detail, errs := enumerateTarget(targetCtx, target)
+				resultChan <- struct {
+					detail *sshFern.SshEnumerateDetails
+					errs   []string
+				}{detail, errs}
+			}()
+
+			// Wait for either completion or timeout
+			select {
+			case <-targetCtx.Done():
+				if targetCtx.Err() == context.DeadlineExceeded {
+					errMsg := fmt.Sprintf("Parameter timeout (%ds) while enumerating %s", timeout, target)
+					errorsChan <- errMsg
+					log.Printf("[ERROR] %s", errMsg)
+				}
+			case result := <-resultChan:
+				// Always add details if we have them
+				if result.detail != nil {
+					detailsChan <- result.detail
+					log.Printf("[INFO] Collected enumeration details for target %s", target)
+				}
+
+				// Only add errors if the slice is not empty
+				if len(result.errs) > 0 {
+					for _, err := range result.errs {
+						errorsChan <- err
+						log.Printf("[ERROR] Error while enumerating target: %s", err)
+					}
+				} else {
+					log.Printf("[INFO] Successfully enumerated target %s", target)
+				}
 			}
-		}
-		if detail != nil {
-			details = append(details, detail)
-		}
+		}(i, target)
 	}
 
+	// Create a goroutine to close channels after all workers are done
+	go func() {
+		wg.Wait()
+		close(detailsChan)
+		close(errorsChan)
+	}()
+
+	// Collect results
+	var details []*sshFern.SshEnumerateDetails
+	var errors []string
+
+	// Read from channels until they're closed
+	for detail := range detailsChan {
+		details = append(details, detail)
+	}
+	for err := range errorsChan {
+		errors = append(errors, err)
+	}
+
+	log.Printf("[INFO] Enumeration complete. Processed %d targets with %d errors", len(targets), len(errors))
 	resource.SshDetails = details
 	resource.Errors = errors
 	return resource, nil
 }
 
 // enumerateTarget connects to the target and extracts SSH details.
-func enumerateTarget(ctx context.Context, target string, timeout int) (*sshFern.SshEnumerateDetails, []string) {
+func enumerateTarget(ctx context.Context, target string) (*sshFern.SshEnumerateDetails, []string) {
 	var details sshFern.SshEnumerateDetails
 	details.Target = target
 	errors := []string{}
 
 	// Create dialer with context
 	// Use lower level package to gather a complete set of data across a range of SSH instances
-	dialer := net.Dialer{Timeout: time.Duration(timeout) * time.Second}
+	dialer := net.Dialer{}
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		errors = append(errors, err.Error())
+		return &details, errors
 	}
 
 	// Get SSH Banner
+	// If no banner assume SSH is not implemented
 	version, versionASCII, err := getSSHVersion(conn)
-	if err != nil {
+	if err != nil || version == nil {
 		errors = append(errors, err.Error())
+		return &details, errors
 	}
 	details.Version = version
 
@@ -143,24 +222,25 @@ func enumerateTarget(ctx context.Context, target string, timeout int) (*sshFern.
 	rawASCII, err := getSSHAlgorithms(conn)
 	if err != nil {
 		errors = append(errors, err.Error())
-	} else {
-		fullASCII := rawASCII
-		if versionASCII != nil {
-			fullASCII = *versionASCII + fullASCII
-		}
-		details.RawAscii = &fullASCII
-		details.KeyExchangeAlgos = extractAlgorithms(fullASCII, commonKeyExchangeAlgos)
-		details.HostKeyAlgos = extractAlgorithms(fullASCII, commonHostKeyAlgos)
-		details.Ciphers = extractAlgorithms(fullASCII, commonCiphers)
-		details.Macs = extractAlgorithms(fullASCII, commonMACs)
-		if len(details.HostKeyAlgos) >= 0 {
-			details.AuthMethods = []sshFern.AuthMethod{sshFern.AuthMethodPublickey}
-		}
+		return &details, errors
+	}
+
+	fullASCII := rawASCII
+	if versionASCII != nil {
+		fullASCII = *versionASCII + fullASCII
+	}
+	details.RawAscii = &fullASCII
+	details.KeyExchangeAlgos = extractAlgorithms(fullASCII, commonKeyExchangeAlgos)
+	details.HostKeyAlgos = extractAlgorithms(fullASCII, commonHostKeyAlgos)
+	details.Ciphers = extractAlgorithms(fullASCII, commonCiphers)
+	details.Macs = extractAlgorithms(fullASCII, commonMACs)
+	if len(details.HostKeyAlgos) >= 0 {
+		details.AuthMethods = []sshFern.AuthMethod{sshFern.AuthMethodPublickey}
 	}
 
 	// Check if password authentication is supported
 	// Use x/crypto/ssh library to check if password authentication is supported
-	passwordSupported, err := passwordAuthSupported(target, timeout)
+	passwordSupported, err := passwordAuthSupported(target)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
@@ -261,7 +341,7 @@ func extractAlgorithms[T any](rawData string, knownAlgos map[string]T) []T {
 }
 
 // passwordAuthSupported performs a password fallback check on the target.
-func passwordAuthSupported(target string, timeout int) (*bool, error) {
+func passwordAuthSupported(target string) (*bool, error) {
 	log.Printf("[INFO] Starting passwordAuthSupported check for target: %s", target)
 
 	// SSH client configuration
@@ -269,7 +349,6 @@ func passwordAuthSupported(target string, timeout int) (*bool, error) {
 		User:            "test",
 		Auth:            []ssh.AuthMethod{ssh.Password("test")},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         time.Duration(timeout) * time.Second,
 	}
 
 	// Attempt to dial the target

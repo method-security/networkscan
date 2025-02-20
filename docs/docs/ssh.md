@@ -34,9 +34,9 @@ Usage:
   networkscan ssh enumerate [flags]
 
 Flags:
-      --connectiontimeout int   Timeout for SSH connection in seconds (default 30)
-  -h, --help                    help for enumerate
-      --targets strings         Target IP Socket or FQDN Socket to enumerate
+  -h, --help              help for enumerate
+      --targets strings   Target IP Socket or FQDN Socket to enumerate
+      --timeout int       Total time allowed for enumeration of each target in seconds (default 30)
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
