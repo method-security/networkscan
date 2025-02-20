@@ -24,13 +24,13 @@ func (a *NetworkScan) InitFTPCommand() {
 				return
 			}
 
-			connectionTimeout, err := cmd.Flags().GetInt("connectiontimeout")
+			timeout, err := cmd.Flags().GetInt("timeout")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
 
-			report, err := ftp.RunFTPEnumerate(cmd.Context(), targets, connectionTimeout)
+			report, err := ftp.RunFTPEnumerate(cmd.Context(), targets, timeout)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -40,7 +40,7 @@ func (a *NetworkScan) InitFTPCommand() {
 	}
 
 	ftpEnumerateCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
-	ftpEnumerateCmd.Flags().Int("connectiontimeout", 30, "Timeout for FTP connection in seconds")
+	ftpEnumerateCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
 	_ = ftpEnumerateCmd.MarkFlagRequired("targets")
 
 	ftpCmd.AddCommand(ftpEnumerateCmd)

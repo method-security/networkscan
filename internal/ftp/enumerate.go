@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	ftpFern "github.com/Method-Security/networkscan/generated/go/ftp"
@@ -13,73 +14,152 @@ import (
 
 var bufferSize = 2048
 
-func RunFTPEnumerate(ctx context.Context, targets []string, connectionTimeout int) (ftpFern.FtpEnumerateReport, error) {
-	// Initialize the report
+// RunFTPEnumerate Overview:
+//  1. Connect to the target
+//     a. Exit if connection isnt established
+//  2. Grab the FTP banner
+//     a. Exit if no banner is returned (assume FTP is not implemented)
+//     b. Else set successful connection to true
+//  3. Check if TLS is implemented
+//     a. Send a 'FEAT' command
+//     b. Check if the response contains TLS, SSL or RFC 2228 or 4217
+//  4. Check if TLS is forced
+//     a. Send a 'AUTH TLS' command
+//     b. Check if the response contains 234 which indicates TLS forced
+//  5. Check if anonymous login is supported with retry on broken pipe errors
+//     (This happens when the connection has been open for too long or too many invalid commands have been sent
+//     The connection is closed by the server)
+//     a. Send a 'USER anonymous' command
+//     b. Check if the response contains 331 which indicates anonymous login supported
+//     c. Send a 'PASS anonymous' command
+//     d. Check if the response contains 230 which indicates anonymous login successful
+//  6. Return the details
+//     a. Banner
+//     b. Successful Connection
+//     c. TLS Implemented
+//     d. TLS Forced
+//     e. Allows Anonymous Login
+
+func RunFTPEnumerate(ctx context.Context, targets []string, timeout int) (ftpFern.FtpEnumerateReport, error) {
+	log.Printf("[INFO] Starting FTP enumeration for %d targets with a timeout of %ds", len(targets), timeout)
 	report := ftpFern.FtpEnumerateReport{Targets: targets}
-	errors := []string{}
 
-	details := []*ftpFern.FtpEnumerateDetails{}
-	for _, target := range targets {
-		// Set a new clock for each target
-		targetCtx, targetCancel := context.WithTimeout(ctx, time.Duration(connectionTimeout)*time.Second)
-		defer targetCancel()
+	// Create channels for collecting results and errors
+	detailsChan := make(chan *ftpFern.FtpEnumerateDetails, len(targets))
+	errorsChan := make(chan string, len(targets))
+	var wg sync.WaitGroup
 
-		detail, errs := enumerateTarget(targetCtx, target, connectionTimeout)
-		if len(errs) > 0 {
-			for _, err := range errs {
+	// Process each target concurrently
+	for i, target := range targets {
+		wg.Add(1)
+		go func(i int, target string) {
+			defer wg.Done()
+
+			// Create a context with timeout for each target
+			targetCtx, targetCancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+			defer targetCancel()
+
+			// Start enumeration in a separate goroutine
+			resultChan := make(chan struct {
+				detail *ftpFern.FtpEnumerateDetails
+				errs   []string
+			}, 1)
+
+			go func() {
+				detail, errs := enumerateTarget(targetCtx, target)
+				resultChan <- struct {
+					detail *ftpFern.FtpEnumerateDetails
+					errs   []string
+				}{detail, errs}
+			}()
+
+			// Wait for either completion or timeout
+			select {
+			case <-targetCtx.Done():
 				if targetCtx.Err() == context.DeadlineExceeded {
-					log.Printf("[ERROR] Parameter timeout while enumerating %s\n", target)
-					errors = append(errors, fmt.Sprintf("Parameter timeout while enumerating %s", target))
+					errMsg := fmt.Sprintf("parameter timeout (%ds) while enumerating %s", timeout, target)
+					errorsChan <- errMsg
+					log.Printf("[ERROR] %s", errMsg)
+				}
+			case result := <-resultChan:
+				// Always add details if we have them
+				if result.detail != nil {
+					detailsChan <- result.detail
+					log.Printf("[INFO] Collected enumeration details for target %s", target)
+				}
+
+				// Only add errors if the slice is not empty
+				if len(result.errs) > 0 {
+					for _, err := range result.errs {
+						errorsChan <- err
+						log.Printf("[ERROR] Error while enumerating target: %s", err)
+					}
 				} else {
-					log.Printf("[ERROR] Error enumerating %s: %v\n", target, err)
-					errors = append(errors, err)
+					log.Printf("[INFO] Successfully enumerated target %s", target)
 				}
 			}
-		}
-		if detail != nil {
-			details = append(details, detail)
-		}
+		}(i, target)
 	}
 
+	// Create a goroutine to close channels after all workers are done
+	go func() {
+		wg.Wait()
+		close(detailsChan)
+		close(errorsChan)
+	}()
+
+	// Collect results
+	var details []*ftpFern.FtpEnumerateDetails
+	var errors []string
+
+	// Read from channels until they're closed
+	for detail := range detailsChan {
+		details = append(details, detail)
+	}
+	for err := range errorsChan {
+		errors = append(errors, err)
+	}
+
+	log.Printf("[INFO] Enumeration complete. Processed %d targets with %d errors", len(targets), len(errors))
 	report.FtpDetails = details
 	report.Errors = errors
 	return report, nil
 }
 
-func enumerateTarget(ctx context.Context, target string, timeout int) (*ftpFern.FtpEnumerateDetails, []string) {
+func enumerateTarget(ctx context.Context, target string) (*ftpFern.FtpEnumerateDetails, []string) {
 	var details ftpFern.FtpEnumerateDetails
 	details.Target = target
 	errors := []string{}
 	log.Printf("[INFO] Enumerating target: %s", target)
 
-	conn, err := attemptConnection(ctx, target, timeout)
+	// Attempt to connect to the target
+	conn, err := attemptConnection(ctx, target)
 	if err != nil {
 		log.Printf("[ERROR] Failed to connect to %s: %v", target, err)
 		errors = append(errors, fmt.Sprintf("Failed to connect to %s: %v", target, err))
 		return &details, errors
 	}
 
+	// Grab the FTP banner
 	bannerStr, err := grabBanner(conn)
 	if err != nil {
-		errors = append(errors, fmt.Sprintf("Error reading banner from %s: %v", target, err))
-	}
-	if bannerStr == "" {
-		errors = append(errors, fmt.Sprintf("No banner received from %s", target))
+		errors = append(errors, fmt.Sprintf("error reading banner from %s: %v", target, err))
 		return &details, errors
 	}
 	details.Banner = &bannerStr
+	successFulConnection := true
+	details.SuccessfulConnection = &successFulConnection
 
-	// Check TLS and anonymous login
+	// Check TLS implemented
 	if err := checkTLSImplemented(conn, &details); err != nil {
-		errors = append(errors, fmt.Sprintf("Error checking if TLS is implemented for %s: %v", target, err))
+		errors = append(errors, fmt.Sprintf("error checking if TLS is implemented for %s: %v", target, err))
 	}
-
 	if details.TlsImplemented != nil && !*details.TlsImplemented {
-		details.TlsForced = new(bool)
-		*details.TlsForced = false
+		tlsForced := false
+		details.TlsForced = &tlsForced
 	}
 
-	//Only check TLS forced if TLS is implemented
+	// Check TLS forced (Only check if TLS is implemented)
 	if details.TlsForced == nil {
 		errs := checkTLSForced(conn, &details)
 		if len(errs) > 0 {
@@ -87,18 +167,10 @@ func enumerateTarget(ctx context.Context, target string, timeout int) (*ftpFern.
 		}
 	}
 
-	errs := checkAnonymousLoginWithRetry(ctx, target, conn, &details, timeout)
+	// Check if anonymous login is supported
+	errs := checkAnonymousLoginWithRetry(ctx, target, conn, &details)
 	if len(errs) > 0 {
 		errors = append(errors, errs...)
-	}
-
-	if isSuccessfulConnection(conn, bannerStr) {
-		success := true
-		details.SuccessfulConnection = &success
-		log.Printf("[INFO] Success: Valid FTP connection for %s", target)
-	} else {
-		log.Printf("[WARNING] Unexpected greeting from %s", target)
-		errors = append(errors, fmt.Sprintf("Unexpected greeting from %s: %s", target, strings.TrimSpace(bannerStr)))
 	}
 
 	err = conn.Close()
@@ -110,8 +182,8 @@ func enumerateTarget(ctx context.Context, target string, timeout int) (*ftpFern.
 }
 
 // Function to attempt connection with retry on timeout or broken pipe errors
-func attemptConnection(ctx context.Context, target string, timeout int) (net.Conn, error) {
-	dialer := net.Dialer{Timeout: time.Duration(timeout) * time.Second}
+func attemptConnection(ctx context.Context, target string) (net.Conn, error) {
+	dialer := net.Dialer{}
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		log.Printf("[ERROR] Initial connection failed: %v", err)
@@ -124,39 +196,6 @@ func attemptConnection(ctx context.Context, target string, timeout int) (net.Con
 	return conn, err
 }
 
-// Function to check if the connection is successful by sending HELP
-func isSuccessfulConnection(conn net.Conn, banner string) bool {
-	// First check for the banner to ensure it's a valid FTP greeting
-	if strings.HasPrefix(banner, "220") {
-		return true
-	}
-
-	// Send the HELP command to check if the server responds
-	_, err := conn.Write([]byte("HELP\r\n"))
-	if err != nil {
-		log.Printf("[ERROR] Failed to send HELP command: %v", err)
-		return false
-	}
-
-	// Prepare to read the response from the server
-	response := make([]byte, bufferSize)
-	n, err := conn.Read(response)
-	if err != nil {
-		log.Printf("[ERROR] failed reading HELP response: %v", err)
-		return false
-	}
-
-	// If we got a response, return true (indicating successful connection)
-	if n > 0 {
-		log.Printf("[INFO] HELP response received")
-		return true
-	}
-
-	// If no response, return false
-	log.Printf("[WARNING] No response to HELP command.")
-	return false
-}
-
 // Function to grab the FTP banner
 func grabBanner(conn net.Conn) (string, error) {
 	var bannerStr string
@@ -166,25 +205,27 @@ func grabBanner(conn net.Conn) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("error reading initial banner: %v", err)
 		}
+		// Safely append raw bytes without assuming ASCII encoding
 		bannerStr += string(response[:n])
-		log.Printf("[INFO] Reading banner, current content: %s", bannerStr) // Log intermediate results
+
+		log.Printf("[INFO] Reading banner, current content (partial): %x", response[:n]) // Log as hex to handle non-ASCII characters
 
 		if strings.Contains(bannerStr, "220") {
 			break
 		}
 	}
-	log.Printf("[INFO] Initial banner: %s", strings.TrimSpace(bannerStr))
+	log.Printf("[INFO] Final banner: %s", strings.TrimSpace(bannerStr))
 	return bannerStr, nil
 }
 
 // Function to check for anonymous login with retry on failure
-func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.Conn, details *ftpFern.FtpEnumerateDetails, timeout int) []string {
+func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.Conn, details *ftpFern.FtpEnumerateDetails) []string {
 	errors := []string{}
 	if err := checkAnonymousLogin(conn, details); err != nil {
 		log.Printf("[WARNING] Error checking anonymous login, retrying...")
 
 		// Reconnect and retry
-		conn, err = attemptConnection(ctx, target, timeout)
+		conn, err = attemptConnection(ctx, target)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("failed to reconnect: %v", err))
 			return errors
@@ -276,7 +317,7 @@ func checkTLSImplemented(conn net.Conn, details *ftpFern.FtpEnumerateDetails) er
 
 	var featResponse string
 	response := make([]byte, bufferSize)
-	timeout := time.After(10 * time.Second) // Ensure timeout is set correctly
+	timeout := time.After(5 * time.Second)
 
 readLoop: // Label for the outer loop
 	for {

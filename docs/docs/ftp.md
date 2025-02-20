@@ -36,11 +36,11 @@ Usage:
 Flags:
   -h, --help              help for enumerate
       --targets strings   Target IP Socket or FQDN Socket to enumerate
-      --timeout int       Timeout for FTP connection in seconds (default 30)
+      --timeout int       Total time allowed for enumeration of each target in seconds (default 30)
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
   -f, --output-file string   Path to output file. If blank, will output to STDOUT
   -q, --quiet                Suppress output
-  -v, --verbose 
+  -v, --verbose              Verbose output
 ```
