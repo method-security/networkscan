@@ -5,6 +5,7 @@ types:
     enum:
       - ssh
       - telnet
+      - ftp
   CredentialPair:
     properties:
       username: string
@@ -40,8 +41,8 @@ types:
   AttemptInfo:
     properties:
       request: RequestUnion
-      response: ResponseUnion
-      result: ResultInfo
+      response: optional<ResponseUnion>
+      result: optional<ResultInfo>
       timestamp: datetime
   BruteForceAttempt:
     properties:

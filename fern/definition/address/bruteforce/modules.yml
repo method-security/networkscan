@@ -1,8 +1,8 @@
 types:
   GeneralRequestInfo:
     properties:
-      username: string
-      password: string
+      username: optional<string>
+      password: optional<string>
       host: string
       port: integer
   GeneralResponseInfo:

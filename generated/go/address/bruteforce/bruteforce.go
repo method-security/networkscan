@@ -5,8 +5,9 @@ package bruteforce
 import (
 	json "encoding/json"
 	fmt "fmt"
-	internal "github.com/Method-Security/networkscan/generated/go/internal"
 	time "time"
+
+	internal "github.com/Method-Security/networkscan/generated/go/internal"
 )
 
 type AttemptInfo struct {
@@ -390,6 +391,7 @@ type ModuleType string
 const (
 	ModuleTypeSsh    ModuleType = "ssh"
 	ModuleTypeTelnet ModuleType = "telnet"
+	ModuleTypeFtp    ModuleType = "ftp"
 )
 
 func NewModuleTypeFromString(s string) (ModuleType, error) {
@@ -398,6 +400,8 @@ func NewModuleTypeFromString(s string) (ModuleType, error) {
 		return ModuleTypeSsh, nil
 	case "telnet":
 		return ModuleTypeTelnet, nil
+	case "ftp":
+		return ModuleTypeFtp, nil
 	}
 	var t ModuleType
 	return "", fmt.Errorf("%s is not a valid %T", s, t)
@@ -739,4 +743,89 @@ func (s *StatisticsInfo) String() string {
 		return value
 	}
 	return fmt.Sprintf("%#v", s)
+}
+
+type GeneralRequestInfo struct {
+	Username *string `json:"username,omitempty" url:"username,omitempty"`
+	Password *string `json:"password,omitempty" url:"password,omitempty"`
+	Host     string  `json:"host" url:"host"`
+	Port     int     `json:"port" url:"port"`
+
+	extraProperties map[string]interface{}
+	_rawJSON        json.RawMessage
+}
+
+func (g *GeneralRequestInfo) GetExtraProperties() map[string]interface{} {
+	return g.extraProperties
+}
+
+func (g *GeneralRequestInfo) UnmarshalJSON(data []byte) error {
+	type unmarshaler GeneralRequestInfo
+	var value unmarshaler
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*g = GeneralRequestInfo(value)
+
+	extraProperties, err := core.ExtractExtraProperties(data, *g)
+	if err != nil {
+		return err
+	}
+	g.extraProperties = extraProperties
+
+	g._rawJSON = json.RawMessage(data)
+	return nil
+}
+
+func (g *GeneralRequestInfo) String() string {
+	if len(g._rawJSON) > 0 {
+		if value, err := core.StringifyJSON(g._rawJSON); err == nil {
+			return value
+		}
+	}
+	if value, err := core.StringifyJSON(g); err == nil {
+		return value
+	}
+	return fmt.Sprintf("%#v", g)
+}
+
+type GeneralResponseInfo struct {
+	Message string `json:"message" url:"message"`
+
+	extraProperties map[string]interface{}
+	_rawJSON        json.RawMessage
+}
+
+func (g *GeneralResponseInfo) GetExtraProperties() map[string]interface{} {
+	return g.extraProperties
+}
+
+func (g *GeneralResponseInfo) UnmarshalJSON(data []byte) error {
+	type unmarshaler GeneralResponseInfo
+	var value unmarshaler
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*g = GeneralResponseInfo(value)
+
+	extraProperties, err := core.ExtractExtraProperties(data, *g)
+	if err != nil {
+		return err
+	}
+	g.extraProperties = extraProperties
+
+	g._rawJSON = json.RawMessage(data)
+	return nil
+}
+
+func (g *GeneralResponseInfo) String() string {
+	if len(g._rawJSON) > 0 {
+		if value, err := core.StringifyJSON(g._rawJSON); err == nil {
+			return value
+		}
+	}
+	if value, err := core.StringifyJSON(g); err == nil {
+		return value
+	}
+	return fmt.Sprintf("%#v", g)
 }

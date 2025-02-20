@@ -50,8 +50,8 @@ func (SSHLib *SSHLibrary) BruteForce(host string, port int, credPair *bruteforce
 	}
 
 	request := bruteforce.GeneralRequestInfo{
-		Username: username,
-		Password: password,
+		Username: &username,
+		Password: &password,
 		Host:     host,
 		Port:     port,
 	}

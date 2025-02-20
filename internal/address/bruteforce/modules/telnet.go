@@ -32,8 +32,8 @@ func (TelnetLib *TelnetLibrary) BruteForce(host string, port int, credPair *brut
 	}
 
 	request := bruteforce.GeneralRequestInfo{
-		Username: username,
-		Password: password,
+		Username: &username,
+		Password: &password,
 		Host:     host,
 		Port:     port,
 	}

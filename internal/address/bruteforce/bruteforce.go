@@ -43,12 +43,14 @@ func (be *BruteforceEngine) Run(ctx context.Context, target string, credPair *br
 			errors = append(errors, errs...)
 			attempts = append(attempts, attempt)
 
-			if attempt.Result.Login {
-				successful = true
-				break
-			}
-			if config.Sleep > 0 {
-				time.Sleep(time.Duration(config.Sleep) * time.Millisecond)
+			if attempt.Result != nil {
+				if attempt.Result.Login {
+					successful = true
+					break
+				}
+				if attempt.Result.Ratelimit {
+					time.Sleep(time.Duration(config.Sleep) * time.Millisecond)
+				}
 			}
 		}
 	}
@@ -63,7 +65,7 @@ func (be *BruteforceEngine) gatherAttemptStatistics(attempts []*bruteforce.Attem
 	}
 
 	for _, attempt := range attempts {
-		if attempt.Result.Login {
+		if attempt.Result != nil && attempt.Result.Login {
 			stats.NumSuccessful++
 		}
 	}
@@ -85,6 +87,10 @@ func BruteForceAttack(ctx context.Context, config *bruteforce.BruteForceRunConfi
 	case "telnet":
 		engine = &BruteforceEngine{
 			Library: &modules.TelnetLibrary{},
+		}
+	case "ftp":
+		engine = &BruteforceEngine{
+			Library: &modules.FTPLibrary{},
 		}
 	default:
 		return &resources, fmt.Errorf("unsupported module: %s", config.Module)
