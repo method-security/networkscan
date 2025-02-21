@@ -14,13 +14,14 @@ nav:
   - Docs:
       - Overview: docs/index.md
       - Capabilities:
-        - Port: docs/port.md
+        - Address: docs/address.md
+        - Database: docs/database.md
+        - FTP: docs/ftp.md
         - Host: docs/host.md
         - OS: docs/os.md
-        - Address: docs/address.md
-        - SSH: docs/ssh.md
-        - FTP: docs/ftp.md
+        - Port: docs/port.md
         - SMTP: docs/smtp.md
+        - SSH: docs/ssh.md
   - Contributing:
       - How to contribute: community/community.md
       - Development:

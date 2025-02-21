@@ -12,6 +12,7 @@ type DatabaseEnumerateDetails struct {
 	Target           string   `json:"Target" url:"Target"`
 	Banner           *string  `json:"Banner,omitempty" url:"Banner,omitempty"`
 	Connected        *bool    `json:"Connected,omitempty" url:"Connected,omitempty"`
+	Fingerprinted    *bool    `json:"Fingerprinted,omitempty" url:"Fingerprinted,omitempty"`
 	PasswordRequired *bool    `json:"PasswordRequired,omitempty" url:"PasswordRequired,omitempty"`
 	ExposedData      []string `json:"ExposedData,omitempty" url:"ExposedData,omitempty"`
 	Error            *string  `json:"Error,omitempty" url:"Error,omitempty"`

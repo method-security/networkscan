@@ -10,6 +10,7 @@ types:
       Target: string
       Banner: optional<string>
       Connected: optional<boolean>
+      Fingerprinted: optional<boolean>
       PasswordRequired: optional<boolean>
       ExposedData: optional<list<string>>
       Error: optional<string>

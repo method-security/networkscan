@@ -30,13 +30,13 @@ func (a *NetworkScan) InitDatabaseCommand() {
 				return
 			}
 
-			connectionTimeout, err := cmd.Flags().GetInt("connectiontimeout")
+			timeout, err := cmd.Flags().GetInt("timeout")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
 
-			report, err := mysql.RunMySQLEnumerate(cmd.Context(), targets, connectionTimeout)
+			report, err := mysql.RunMySQLEnumerate(cmd.Context(), targets, timeout)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -46,7 +46,7 @@ func (a *NetworkScan) InitDatabaseCommand() {
 	}
 
 	mysqlEnumerateCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
-	mysqlEnumerateCmd.Flags().Int("connectiontimeout", 30, "Timeout for Database connection in seconds")
+	mysqlEnumerateCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
 	_ = mysqlEnumerateCmd.MarkFlagRequired("targets")
 
 	mysqlCmd.AddCommand(mysqlEnumerateCmd)
