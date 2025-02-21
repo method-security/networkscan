@@ -92,6 +92,10 @@ func BruteForceAttack(ctx context.Context, config *bruteforce.BruteForceRunConfi
 		engine = &BruteforceEngine{
 			Library: &modules.FTPLibrary{},
 		}
+	case "smtp":
+		engine = &BruteforceEngine{
+			Library: &modules.SMTPLibrary{},
+		}
 	default:
 		return &resources, fmt.Errorf("unsupported module: %s", config.Module)
 	}

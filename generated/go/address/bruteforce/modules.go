@@ -9,25 +9,25 @@ import (
 )
 
 type GeneralRequestInfo struct {
-	Username string `json:"username" url:"username"`
-	Password string `json:"password" url:"password"`
-	Host     string `json:"host" url:"host"`
-	Port     int    `json:"port" url:"port"`
+	Username *string `json:"username,omitempty" url:"username,omitempty"`
+	Password *string `json:"password,omitempty" url:"password,omitempty"`
+	Host     string  `json:"host" url:"host"`
+	Port     int     `json:"port" url:"port"`
 
 	extraProperties map[string]interface{}
 	rawJSON         json.RawMessage
 }
 
-func (g *GeneralRequestInfo) GetUsername() string {
+func (g *GeneralRequestInfo) GetUsername() *string {
 	if g == nil {
-		return ""
+		return nil
 	}
 	return g.Username
 }
 
-func (g *GeneralRequestInfo) GetPassword() string {
+func (g *GeneralRequestInfo) GetPassword() *string {
 	if g == nil {
-		return ""
+		return nil
 	}
 	return g.Password
 }
