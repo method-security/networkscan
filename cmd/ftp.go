@@ -1,7 +1,8 @@
 package cmd
 
 import (
-	"github.com/Method-Security/networkscan/internal/ftp"
+	utilsFern "github.com/Method-Security/networkscan/generated/go/utils"
+	utils "github.com/Method-Security/networkscan/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +31,7 @@ func (a *NetworkScan) InitFTPCommand() {
 				return
 			}
 
-			report, err := ftp.RunFTPEnumerate(cmd.Context(), targets, timeout)
+			report, err := utils.RunNetworkApplicationEnumerate(cmd.Context(), targets, utilsFern.NetworkApplicationFtp, timeout)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return

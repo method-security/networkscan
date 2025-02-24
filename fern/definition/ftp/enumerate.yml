@@ -8,8 +8,3 @@ types:
       TLSForced: optional<boolean>
       AllowsAnonymousLogin: optional<boolean>
       Error: optional<string>
-  FTPEnumerateReport:
-    properties:
-      targets: list<string>
-      ftpDetails: optional<list<FTPEnumerateDetails>>
-      errors: optional<list<string>>
