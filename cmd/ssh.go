@@ -1,7 +1,8 @@
 package cmd
 
 import (
-	ssh "github.com/Method-Security/networkscan/internal/ssh"
+	utilsFern "github.com/Method-Security/networkscan/generated/go/utils"
+	utils "github.com/Method-Security/networkscan/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +31,7 @@ func (a *NetworkScan) InitSSHCommand() {
 				return
 			}
 
-			report, err := ssh.RunSSHEnumerate(cmd.Context(), targets, timeout)
+			report, err := utils.RunNetworkApplicationEnumerate(cmd.Context(), targets, utilsFern.NetworkApplicationSsh, timeout)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return

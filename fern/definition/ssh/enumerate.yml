@@ -79,8 +79,3 @@ types:
       ciphers: optional<list<CipherAlgorithm>>
       macs: optional<list<MACAlgorithm>>
       rawASCII: optional<string>
-  SSHEnumerateReport:
-    properties:
-      targets: list<string>
-      sshDetails: optional<list<SSHEnumerateDetails>>
-      errors: optional<list<string>>
