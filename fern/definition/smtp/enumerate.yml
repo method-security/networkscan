@@ -15,8 +15,3 @@ types:
       ForceTLS: optional<boolean>
       AuthCommands: optional<list<AuthCommand>>
       AllowsUnauthenticatedEmail: optional<boolean>
-  SMTPEnumerateReport:
-    properties:
-      targets: list<string>
-      smtpDetails: optional<list<SMTPEnumerateDetails>>
-      errors: optional<list<string>>

@@ -5,16 +5,19 @@ package utils
 import (
 	json "encoding/json"
 	fmt "fmt"
+
 	ftp "github.com/Method-Security/networkscan/generated/go/ftp"
 	internal "github.com/Method-Security/networkscan/generated/go/internal"
+	smtp "github.com/Method-Security/networkscan/generated/go/smtp"
 	ssh "github.com/Method-Security/networkscan/generated/go/ssh"
 )
 
 type NetworkApplication string
 
 const (
-	NetworkApplicationSsh NetworkApplication = "SSH"
-	NetworkApplicationFtp NetworkApplication = "FTP"
+	NetworkApplicationSsh  NetworkApplication = "SSH"
+	NetworkApplicationFtp  NetworkApplication = "FTP"
+	NetworkApplicationSmtp NetworkApplication = "SMTP"
 )
 
 func NewNetworkApplicationFromString(s string) (NetworkApplication, error) {
@@ -23,6 +26,8 @@ func NewNetworkApplicationFromString(s string) (NetworkApplication, error) {
 		return NetworkApplicationSsh, nil
 	case "FTP":
 		return NetworkApplicationFtp, nil
+	case "SMTP":
+		return NetworkApplicationSmtp, nil
 	}
 	var t NetworkApplication
 	return "", fmt.Errorf("%s is not a valid %T", s, t)
@@ -33,9 +38,10 @@ func (n NetworkApplication) Ptr() *NetworkApplication {
 }
 
 type NetworkApplicationEnumerateDetails struct {
-	Type                string
-	SshEnumerateDetails *ssh.SshEnumerateDetails
-	FtpEnumerateDetails *ftp.FtpEnumerateDetails
+	Type                 string
+	SshEnumerateDetails  *ssh.SshEnumerateDetails
+	FtpEnumerateDetails  *ftp.FtpEnumerateDetails
+	SmtpEnumerateDetails *smtp.SmtpEnumerateDetails
 }
 
 func NewNetworkApplicationEnumerateDetailsFromSshEnumerateDetails(value *ssh.SshEnumerateDetails) *NetworkApplicationEnumerateDetails {
@@ -67,6 +73,10 @@ func (n *NetworkApplicationEnumerateDetails) GetFtpEnumerateDetails() *ftp.FtpEn
 	return n.FtpEnumerateDetails
 }
 
+func NewNetworkApplicationEnumerateDetailsFromSmtpEnumerateDetails(value *smtp.SmtpEnumerateDetails) *NetworkApplicationEnumerateDetails {
+	return &NetworkApplicationEnumerateDetails{Type: "SMTPEnumerateDetails", SmtpEnumerateDetails: value}
+}
+
 func (n *NetworkApplicationEnumerateDetails) UnmarshalJSON(data []byte) error {
 	var unmarshaler struct {
 		Type string `json:"type"`
@@ -91,6 +101,12 @@ func (n *NetworkApplicationEnumerateDetails) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		n.FtpEnumerateDetails = value
+	case "SMTPEnumerateDetails":
+		value := new(smtp.SmtpEnumerateDetails)
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		n.SmtpEnumerateDetails = value
 	}
 	return nil
 }
@@ -106,12 +122,15 @@ func (n NetworkApplicationEnumerateDetails) MarshalJSON() ([]byte, error) {
 		return internal.MarshalJSONWithExtraProperty(n.SshEnumerateDetails, "type", "SSHEnumerateDetails")
 	case "FTPEnumerateDetails":
 		return internal.MarshalJSONWithExtraProperty(n.FtpEnumerateDetails, "type", "FTPEnumerateDetails")
+	case "SMTPEnumerateDetails":
+		return core.MarshalJSONWithExtraProperty(n.SmtpEnumerateDetails, "type", "SMTPEnumerateDetails")
 	}
 }
 
 type NetworkApplicationEnumerateDetailsVisitor interface {
 	VisitSshEnumerateDetails(*ssh.SshEnumerateDetails) error
 	VisitFtpEnumerateDetails(*ftp.FtpEnumerateDetails) error
+	VisitSmtpEnumerateDetails(*smtp.SmtpEnumerateDetails) error
 }
 
 func (n *NetworkApplicationEnumerateDetails) Accept(visitor NetworkApplicationEnumerateDetailsVisitor) error {
@@ -122,7 +141,43 @@ func (n *NetworkApplicationEnumerateDetails) Accept(visitor NetworkApplicationEn
 		return visitor.VisitSshEnumerateDetails(n.SshEnumerateDetails)
 	case "FTPEnumerateDetails":
 		return visitor.VisitFtpEnumerateDetails(n.FtpEnumerateDetails)
+	case "SMTPEnumerateDetails":
+		return visitor.VisitSmtpEnumerateDetails(n.SmtpEnumerateDetails)
 	}
+}
+
+func (n *NetworkApplicationEnumerateDetails) validate() error {
+	if n == nil {
+		return fmt.Errorf("type %T is nil", n)
+	}
+	var fields []string
+	if n.SshEnumerateDetails != nil {
+		fields = append(fields, "SSHEnumerateDetails")
+	}
+	if n.FtpEnumerateDetails != nil {
+		fields = append(fields, "FTPEnumerateDetails")
+	}
+	if len(fields) == 0 {
+		if n.Type != "" {
+			return fmt.Errorf("type %T defines a discriminant set to %q but the field is not set", n, n.Type)
+		}
+		return fmt.Errorf("type %T is empty", n)
+	}
+	if len(fields) > 1 {
+		return fmt.Errorf("type %T defines values for %s, but only one value is allowed", n, fields)
+	}
+	if n.Type != "" {
+		field := fields[0]
+		if n.Type != field {
+			return fmt.Errorf(
+				"type %T defines a discriminant set to %q, but it does not match the %T field; either remove or update the discriminant to match",
+				n,
+				n.Type,
+				n,
+			)
+		}
+	}
+	return nil
 }
 
 func (n *NetworkApplicationEnumerateDetails) validate() error {
