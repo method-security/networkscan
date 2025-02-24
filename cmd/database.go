@@ -1,7 +1,8 @@
 package cmd
 
 import (
-	mysql "github.com/Method-Security/networkscan/internal/database/mysql"
+	utilsFern "github.com/Method-Security/networkscan/generated/go/utils"
+	"github.com/Method-Security/networkscan/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -36,7 +37,7 @@ func (a *NetworkScan) InitDatabaseCommand() {
 				return
 			}
 
-			report, err := mysql.RunMySQLEnumerate(cmd.Context(), targets, timeout)
+			report, err := utils.RunNetworkApplicationEnumerate(cmd.Context(), targets, utilsFern.NetworkApplicationMysql, timeout)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return

@@ -6,6 +6,7 @@ import (
 	json "encoding/json"
 	fmt "fmt"
 	core "github.com/Method-Security/networkscan/generated/go/core"
+	database "github.com/Method-Security/networkscan/generated/go/database"
 	ftp "github.com/Method-Security/networkscan/generated/go/ftp"
 	smtp "github.com/Method-Security/networkscan/generated/go/smtp"
 	ssh "github.com/Method-Security/networkscan/generated/go/ssh"
@@ -14,9 +15,10 @@ import (
 type NetworkApplication string
 
 const (
-	NetworkApplicationSsh  NetworkApplication = "SSH"
-	NetworkApplicationFtp  NetworkApplication = "FTP"
-	NetworkApplicationSmtp NetworkApplication = "SMTP"
+	NetworkApplicationSsh   NetworkApplication = "SSH"
+	NetworkApplicationFtp   NetworkApplication = "FTP"
+	NetworkApplicationSmtp  NetworkApplication = "SMTP"
+	NetworkApplicationMysql NetworkApplication = "MYSQL"
 )
 
 func NewNetworkApplicationFromString(s string) (NetworkApplication, error) {
@@ -27,6 +29,8 @@ func NewNetworkApplicationFromString(s string) (NetworkApplication, error) {
 		return NetworkApplicationFtp, nil
 	case "SMTP":
 		return NetworkApplicationSmtp, nil
+	case "MYSQL":
+		return NetworkApplicationMysql, nil
 	}
 	var t NetworkApplication
 	return "", fmt.Errorf("%s is not a valid %T", s, t)
@@ -37,10 +41,11 @@ func (n NetworkApplication) Ptr() *NetworkApplication {
 }
 
 type NetworkApplicationEnumerateDetails struct {
-	Type                 string
-	SshEnumerateDetails  *ssh.SshEnumerateDetails
-	FtpEnumerateDetails  *ftp.FtpEnumerateDetails
-	SmtpEnumerateDetails *smtp.SmtpEnumerateDetails
+	Type                     string
+	SshEnumerateDetails      *ssh.SshEnumerateDetails
+	FtpEnumerateDetails      *ftp.FtpEnumerateDetails
+	SmtpEnumerateDetails     *smtp.SmtpEnumerateDetails
+	DatabaseEnumerateDetails *database.DatabaseEnumerateDetails
 }
 
 func NewNetworkApplicationEnumerateDetailsFromSshEnumerateDetails(value *ssh.SshEnumerateDetails) *NetworkApplicationEnumerateDetails {
@@ -53,6 +58,10 @@ func NewNetworkApplicationEnumerateDetailsFromFtpEnumerateDetails(value *ftp.Ftp
 
 func NewNetworkApplicationEnumerateDetailsFromSmtpEnumerateDetails(value *smtp.SmtpEnumerateDetails) *NetworkApplicationEnumerateDetails {
 	return &NetworkApplicationEnumerateDetails{Type: "SMTPEnumerateDetails", SmtpEnumerateDetails: value}
+}
+
+func NewNetworkApplicationEnumerateDetailsFromDatabaseEnumerateDetails(value *database.DatabaseEnumerateDetails) *NetworkApplicationEnumerateDetails {
+	return &NetworkApplicationEnumerateDetails{Type: "DatabaseEnumerateDetails", DatabaseEnumerateDetails: value}
 }
 
 func (n *NetworkApplicationEnumerateDetails) UnmarshalJSON(data []byte) error {
@@ -85,6 +94,12 @@ func (n *NetworkApplicationEnumerateDetails) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		n.SmtpEnumerateDetails = value
+	case "DatabaseEnumerateDetails":
+		value := new(database.DatabaseEnumerateDetails)
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		n.DatabaseEnumerateDetails = value
 	}
 	return nil
 }
@@ -99,6 +114,8 @@ func (n NetworkApplicationEnumerateDetails) MarshalJSON() ([]byte, error) {
 		return core.MarshalJSONWithExtraProperty(n.FtpEnumerateDetails, "type", "FTPEnumerateDetails")
 	case "SMTPEnumerateDetails":
 		return core.MarshalJSONWithExtraProperty(n.SmtpEnumerateDetails, "type", "SMTPEnumerateDetails")
+	case "DatabaseEnumerateDetails":
+		return core.MarshalJSONWithExtraProperty(n.DatabaseEnumerateDetails, "type", "DatabaseEnumerateDetails")
 	}
 }
 
@@ -106,6 +123,7 @@ type NetworkApplicationEnumerateDetailsVisitor interface {
 	VisitSshEnumerateDetails(*ssh.SshEnumerateDetails) error
 	VisitFtpEnumerateDetails(*ftp.FtpEnumerateDetails) error
 	VisitSmtpEnumerateDetails(*smtp.SmtpEnumerateDetails) error
+	VisitDatabaseEnumerateDetails(*database.DatabaseEnumerateDetails) error
 }
 
 func (n *NetworkApplicationEnumerateDetails) Accept(visitor NetworkApplicationEnumerateDetailsVisitor) error {
@@ -118,6 +136,8 @@ func (n *NetworkApplicationEnumerateDetails) Accept(visitor NetworkApplicationEn
 		return visitor.VisitFtpEnumerateDetails(n.FtpEnumerateDetails)
 	case "SMTPEnumerateDetails":
 		return visitor.VisitSmtpEnumerateDetails(n.SmtpEnumerateDetails)
+	case "DatabaseEnumerateDetails":
+		return visitor.VisitDatabaseEnumerateDetails(n.DatabaseEnumerateDetails)
 	}
 }
 

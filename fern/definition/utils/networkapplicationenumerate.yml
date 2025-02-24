@@ -2,18 +2,20 @@ imports:
   ssh: ../ssh/enumerate.yml
   ftp: ../ftp/enumerate.yml
   smtp: ../smtp/enumerate.yml
-
+  database: ../database/enumerate.yml
 types:
   NetworkApplication:
     enum:
       - SSH
       - FTP
       - SMTP
+      - MYSQL
   NetworkApplicationEnumerateDetails:
     union:
       SSHEnumerateDetails: ssh.SSHEnumerateDetails
       FTPEnumerateDetails: ftp.FTPEnumerateDetails
       SMTPEnumerateDetails: smtp.SMTPEnumerateDetails
+      DatabaseEnumerateDetails: database.DatabaseEnumerateDetails
   NetworkApplicationEnumerateReport:
     properties:
       targets: list<string>

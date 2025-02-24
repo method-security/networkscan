@@ -9,13 +9,14 @@ import (
 )
 
 type DatabaseEnumerateDetails struct {
-	Target           string   `json:"Target" url:"Target"`
-	Banner           *string  `json:"Banner,omitempty" url:"Banner,omitempty"`
-	Connected        *bool    `json:"Connected,omitempty" url:"Connected,omitempty"`
-	Fingerprinted    *bool    `json:"Fingerprinted,omitempty" url:"Fingerprinted,omitempty"`
-	PasswordRequired *bool    `json:"PasswordRequired,omitempty" url:"PasswordRequired,omitempty"`
-	ExposedData      []string `json:"ExposedData,omitempty" url:"ExposedData,omitempty"`
-	Error            *string  `json:"Error,omitempty" url:"Error,omitempty"`
+	Target           string       `json:"Target" url:"Target"`
+	DatabaseType     DatabaseType `json:"DatabaseType" url:"DatabaseType"`
+	Banner           *string      `json:"Banner,omitempty" url:"Banner,omitempty"`
+	Connected        *bool        `json:"Connected,omitempty" url:"Connected,omitempty"`
+	Fingerprinted    *bool        `json:"Fingerprinted,omitempty" url:"Fingerprinted,omitempty"`
+	PasswordRequired *bool        `json:"PasswordRequired,omitempty" url:"PasswordRequired,omitempty"`
+	ExposedData      []string     `json:"ExposedData,omitempty" url:"ExposedData,omitempty"`
+	Error            *string      `json:"Error,omitempty" url:"Error,omitempty"`
 
 	extraProperties map[string]interface{}
 	_rawJSON        json.RawMessage
@@ -44,50 +45,6 @@ func (d *DatabaseEnumerateDetails) UnmarshalJSON(data []byte) error {
 }
 
 func (d *DatabaseEnumerateDetails) String() string {
-	if len(d._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(d._rawJSON); err == nil {
-			return value
-		}
-	}
-	if value, err := core.StringifyJSON(d); err == nil {
-		return value
-	}
-	return fmt.Sprintf("%#v", d)
-}
-
-type DatabaseEnumerateReport struct {
-	Targets         []string                    `json:"targets,omitempty" url:"targets,omitempty"`
-	DatabaseType    DatabaseType                `json:"databaseType" url:"databaseType"`
-	DatabaseDetails []*DatabaseEnumerateDetails `json:"databaseDetails,omitempty" url:"databaseDetails,omitempty"`
-	Errors          []string                    `json:"errors,omitempty" url:"errors,omitempty"`
-
-	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
-}
-
-func (d *DatabaseEnumerateReport) GetExtraProperties() map[string]interface{} {
-	return d.extraProperties
-}
-
-func (d *DatabaseEnumerateReport) UnmarshalJSON(data []byte) error {
-	type unmarshaler DatabaseEnumerateReport
-	var value unmarshaler
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	*d = DatabaseEnumerateReport(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *d)
-	if err != nil {
-		return err
-	}
-	d.extraProperties = extraProperties
-
-	d._rawJSON = json.RawMessage(data)
-	return nil
-}
-
-func (d *DatabaseEnumerateReport) String() string {
 	if len(d._rawJSON) > 0 {
 		if value, err := core.StringifyJSON(d._rawJSON); err == nil {
 			return value
