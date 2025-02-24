@@ -7,14 +7,16 @@ import (
 	fmt "fmt"
 	core "github.com/Method-Security/networkscan/generated/go/core"
 	ftp "github.com/Method-Security/networkscan/generated/go/ftp"
+	smtp "github.com/Method-Security/networkscan/generated/go/smtp"
 	ssh "github.com/Method-Security/networkscan/generated/go/ssh"
 )
 
 type NetworkApplication string
 
 const (
-	NetworkApplicationSsh NetworkApplication = "SSH"
-	NetworkApplicationFtp NetworkApplication = "FTP"
+	NetworkApplicationSsh  NetworkApplication = "SSH"
+	NetworkApplicationFtp  NetworkApplication = "FTP"
+	NetworkApplicationSmtp NetworkApplication = "SMTP"
 )
 
 func NewNetworkApplicationFromString(s string) (NetworkApplication, error) {
@@ -23,6 +25,8 @@ func NewNetworkApplicationFromString(s string) (NetworkApplication, error) {
 		return NetworkApplicationSsh, nil
 	case "FTP":
 		return NetworkApplicationFtp, nil
+	case "SMTP":
+		return NetworkApplicationSmtp, nil
 	}
 	var t NetworkApplication
 	return "", fmt.Errorf("%s is not a valid %T", s, t)
@@ -33,9 +37,10 @@ func (n NetworkApplication) Ptr() *NetworkApplication {
 }
 
 type NetworkApplicationEnumerateDetails struct {
-	Type                string
-	SshEnumerateDetails *ssh.SshEnumerateDetails
-	FtpEnumerateDetails *ftp.FtpEnumerateDetails
+	Type                 string
+	SshEnumerateDetails  *ssh.SshEnumerateDetails
+	FtpEnumerateDetails  *ftp.FtpEnumerateDetails
+	SmtpEnumerateDetails *smtp.SmtpEnumerateDetails
 }
 
 func NewNetworkApplicationEnumerateDetailsFromSshEnumerateDetails(value *ssh.SshEnumerateDetails) *NetworkApplicationEnumerateDetails {
@@ -44,6 +49,10 @@ func NewNetworkApplicationEnumerateDetailsFromSshEnumerateDetails(value *ssh.Ssh
 
 func NewNetworkApplicationEnumerateDetailsFromFtpEnumerateDetails(value *ftp.FtpEnumerateDetails) *NetworkApplicationEnumerateDetails {
 	return &NetworkApplicationEnumerateDetails{Type: "FTPEnumerateDetails", FtpEnumerateDetails: value}
+}
+
+func NewNetworkApplicationEnumerateDetailsFromSmtpEnumerateDetails(value *smtp.SmtpEnumerateDetails) *NetworkApplicationEnumerateDetails {
+	return &NetworkApplicationEnumerateDetails{Type: "SMTPEnumerateDetails", SmtpEnumerateDetails: value}
 }
 
 func (n *NetworkApplicationEnumerateDetails) UnmarshalJSON(data []byte) error {
@@ -70,6 +79,12 @@ func (n *NetworkApplicationEnumerateDetails) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		n.FtpEnumerateDetails = value
+	case "SMTPEnumerateDetails":
+		value := new(smtp.SmtpEnumerateDetails)
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		n.SmtpEnumerateDetails = value
 	}
 	return nil
 }
@@ -82,12 +97,15 @@ func (n NetworkApplicationEnumerateDetails) MarshalJSON() ([]byte, error) {
 		return core.MarshalJSONWithExtraProperty(n.SshEnumerateDetails, "type", "SSHEnumerateDetails")
 	case "FTPEnumerateDetails":
 		return core.MarshalJSONWithExtraProperty(n.FtpEnumerateDetails, "type", "FTPEnumerateDetails")
+	case "SMTPEnumerateDetails":
+		return core.MarshalJSONWithExtraProperty(n.SmtpEnumerateDetails, "type", "SMTPEnumerateDetails")
 	}
 }
 
 type NetworkApplicationEnumerateDetailsVisitor interface {
 	VisitSshEnumerateDetails(*ssh.SshEnumerateDetails) error
 	VisitFtpEnumerateDetails(*ftp.FtpEnumerateDetails) error
+	VisitSmtpEnumerateDetails(*smtp.SmtpEnumerateDetails) error
 }
 
 func (n *NetworkApplicationEnumerateDetails) Accept(visitor NetworkApplicationEnumerateDetailsVisitor) error {
@@ -98,6 +116,8 @@ func (n *NetworkApplicationEnumerateDetails) Accept(visitor NetworkApplicationEn
 		return visitor.VisitSshEnumerateDetails(n.SshEnumerateDetails)
 	case "FTPEnumerateDetails":
 		return visitor.VisitFtpEnumerateDetails(n.FtpEnumerateDetails)
+	case "SMTPEnumerateDetails":
+		return visitor.VisitSmtpEnumerateDetails(n.SmtpEnumerateDetails)
 	}
 }
 
