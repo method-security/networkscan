@@ -8,8 +8,8 @@ import (
 	utilsFern "github.com/Method-Security/networkscan/generated/go/utils"
 )
 
-// LibraryEnumerate implements NetworkApplicationLibrary for SSH enumeration.
-type LibraryEnumerate struct{}
+// LibraryEnumerateSSH implements NetworkApplicationLibrary for SSH enumeration.
+type LibraryEnumerateSSH struct{}
 
 // EnumerateTarget Overview:
 // 1. Connect to the target
@@ -32,7 +32,7 @@ type LibraryEnumerate struct{}
 //   e. MACs
 //   f. Auth Methods (Public Key, Password)
 
-func (s *LibraryEnumerate) EnumerateTarget(ctx context.Context, target string) (*utilsFern.NetworkApplicationEnumerateDetails, []string) {
+func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string) (*utilsFern.NetworkApplicationEnumerateDetails, []string) {
 	var details ssh.SshEnumerateDetails
 	details.Target = target
 	errors := []string{}

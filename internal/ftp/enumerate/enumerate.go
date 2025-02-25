@@ -37,11 +37,11 @@ var bufferSize = 2048
 //     d. TLS Forced
 //     e. Allows Anonymous Login
 
-// LibraryEnumerate implements NetworkApplicationLibrary for FTP enumeration.
-type LibraryEnumerate struct{}
+// LibraryEnumerateFTP implements NetworkApplicationLibrary for FTP enumeration.
+type LibraryEnumerateFTP struct{}
 
 // EnumerateTarget connects to the target and extracts FTP details.
-func (f *LibraryEnumerate) EnumerateTarget(ctx context.Context, target string) (*utilsFern.NetworkApplicationEnumerateDetails, []string) {
+func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string) (*utilsFern.NetworkApplicationEnumerateDetails, []string) {
 	var details ftp.FtpEnumerateDetails
 	details.Target = target
 	errors := []string{}
