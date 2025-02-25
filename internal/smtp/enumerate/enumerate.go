@@ -13,8 +13,8 @@ import (
 	utilsFern "github.com/Method-Security/networkscan/generated/go/utils"
 )
 
-// LibraryEnumerate implements NetworkApplicationLibrary for SMTP enumeration.
-type LibraryEnumerate struct{}
+// LibraryEnumerateSMTP implements NetworkApplicationLibrary for SMTP enumeration.
+type LibraryEnumerateSMTP struct{}
 
 // EnumerateTarget Overview
 //  1. Try to connect to service
@@ -26,7 +26,7 @@ type LibraryEnumerate struct{}
 //     a. Parse data returned from 'AUTH' command
 //  4. Test unauthenticated email
 //     a. If unauthenticated email is not allowed, set AllowsUnauthenticatedEmail to false
-func (s *LibraryEnumerate) EnumerateTarget(ctx context.Context, target string) (*utilsFern.NetworkApplicationEnumerateDetails, []string) {
+func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target string) (*utilsFern.NetworkApplicationEnumerateDetails, []string) {
 	log.Printf("[INFO] Starting enumeration for target: %s", target)
 	detail := smtp.SmtpEnumerateDetails{
 		Target: target,
