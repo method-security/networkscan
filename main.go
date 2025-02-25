@@ -18,6 +18,7 @@ func main() {
 	networkscan.InitHostCommand()
 	networkscan.InitOSCommand()
 	networkscan.InitAddressCommand()
+	networkscan.InitSSHCommand()
 
 	if err := networkscan.RootCmd.Execute(); err != nil {
 		os.Exit(1)

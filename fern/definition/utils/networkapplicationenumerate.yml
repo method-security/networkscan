@@ -1,0 +1,14 @@
+imports:
+  ssh: ../ssh/enumerate.yml
+types:
+  NetworkApplication:
+    enum:
+      - SSH
+  NetworkApplicationEnumerateDetails:
+    union:
+      SSHEnumerateDetails: ssh.SSHEnumerateDetails
+  NetworkApplicationEnumerateReport:
+    properties:
+      targets: list<string>
+      details: optional<list<NetworkApplicationEnumerateDetails>>
+      errors: optional<list<string>>
