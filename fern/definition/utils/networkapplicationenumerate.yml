@@ -1,12 +1,15 @@
 imports:
   ssh: ../ssh/enumerate.yml
+  ftp: ../ftp/enumerate.yml
 types:
   NetworkApplication:
     enum:
       - SSH
+      - FTP
   NetworkApplicationEnumerateDetails:
     union:
       SSHEnumerateDetails: ssh.SSHEnumerateDetails
+      FTPEnumerateDetails: ftp.FTPEnumerateDetails
   NetworkApplicationEnumerateReport:
     properties:
       targets: list<string>

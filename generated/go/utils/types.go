@@ -6,6 +6,7 @@ import (
 	json "encoding/json"
 	fmt "fmt"
 	core "github.com/Method-Security/networkscan/generated/go/core"
+	ftp "github.com/Method-Security/networkscan/generated/go/ftp"
 	ssh "github.com/Method-Security/networkscan/generated/go/ssh"
 )
 
@@ -13,12 +14,15 @@ type NetworkApplication string
 
 const (
 	NetworkApplicationSsh NetworkApplication = "SSH"
+	NetworkApplicationFtp NetworkApplication = "FTP"
 )
 
 func NewNetworkApplicationFromString(s string) (NetworkApplication, error) {
 	switch s {
 	case "SSH":
 		return NetworkApplicationSsh, nil
+	case "FTP":
+		return NetworkApplicationFtp, nil
 	}
 	var t NetworkApplication
 	return "", fmt.Errorf("%s is not a valid %T", s, t)
@@ -31,10 +35,15 @@ func (n NetworkApplication) Ptr() *NetworkApplication {
 type NetworkApplicationEnumerateDetails struct {
 	Type                string
 	SshEnumerateDetails *ssh.SshEnumerateDetails
+	FtpEnumerateDetails *ftp.FtpEnumerateDetails
 }
 
 func NewNetworkApplicationEnumerateDetailsFromSshEnumerateDetails(value *ssh.SshEnumerateDetails) *NetworkApplicationEnumerateDetails {
 	return &NetworkApplicationEnumerateDetails{Type: "SSHEnumerateDetails", SshEnumerateDetails: value}
+}
+
+func NewNetworkApplicationEnumerateDetailsFromFtpEnumerateDetails(value *ftp.FtpEnumerateDetails) *NetworkApplicationEnumerateDetails {
+	return &NetworkApplicationEnumerateDetails{Type: "FTPEnumerateDetails", FtpEnumerateDetails: value}
 }
 
 func (n *NetworkApplicationEnumerateDetails) UnmarshalJSON(data []byte) error {
@@ -55,6 +64,12 @@ func (n *NetworkApplicationEnumerateDetails) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		n.SshEnumerateDetails = value
+	case "FTPEnumerateDetails":
+		value := new(ftp.FtpEnumerateDetails)
+		if err := json.Unmarshal(data, &value); err != nil {
+			return err
+		}
+		n.FtpEnumerateDetails = value
 	}
 	return nil
 }
@@ -65,11 +80,14 @@ func (n NetworkApplicationEnumerateDetails) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("invalid type %s in %T", n.Type, n)
 	case "SSHEnumerateDetails":
 		return core.MarshalJSONWithExtraProperty(n.SshEnumerateDetails, "type", "SSHEnumerateDetails")
+	case "FTPEnumerateDetails":
+		return core.MarshalJSONWithExtraProperty(n.FtpEnumerateDetails, "type", "FTPEnumerateDetails")
 	}
 }
 
 type NetworkApplicationEnumerateDetailsVisitor interface {
 	VisitSshEnumerateDetails(*ssh.SshEnumerateDetails) error
+	VisitFtpEnumerateDetails(*ftp.FtpEnumerateDetails) error
 }
 
 func (n *NetworkApplicationEnumerateDetails) Accept(visitor NetworkApplicationEnumerateDetailsVisitor) error {
@@ -78,6 +96,8 @@ func (n *NetworkApplicationEnumerateDetails) Accept(visitor NetworkApplicationEn
 		return fmt.Errorf("invalid type %s in %T", n.Type, n)
 	case "SSHEnumerateDetails":
 		return visitor.VisitSshEnumerateDetails(n.SshEnumerateDetails)
+	case "FTPEnumerateDetails":
+		return visitor.VisitFtpEnumerateDetails(n.FtpEnumerateDetails)
 	}
 }
 
