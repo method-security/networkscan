@@ -5,7 +5,7 @@ package smtp
 import (
 	json "encoding/json"
 	fmt "fmt"
-	core "github.com/Method-Security/networkscan/generated/go/core"
+	internal "github.com/Method-Security/networkscan/generated/go/internal"
 )
 
 type AuthCommand string
@@ -51,7 +51,49 @@ type SmtpEnumerateDetails struct {
 	AllowsUnauthenticatedEmail *bool         `json:"AllowsUnauthenticatedEmail,omitempty" url:"AllowsUnauthenticatedEmail,omitempty"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (s *SmtpEnumerateDetails) GetTarget() string {
+	if s == nil {
+		return ""
+	}
+	return s.Target
+}
+
+func (s *SmtpEnumerateDetails) GetCanConnect() *bool {
+	if s == nil {
+		return nil
+	}
+	return s.CanConnect
+}
+
+func (s *SmtpEnumerateDetails) GetTlsSupported() *bool {
+	if s == nil {
+		return nil
+	}
+	return s.TlsSupported
+}
+
+func (s *SmtpEnumerateDetails) GetForceTls() *bool {
+	if s == nil {
+		return nil
+	}
+	return s.ForceTls
+}
+
+func (s *SmtpEnumerateDetails) GetAuthCommands() []AuthCommand {
+	if s == nil {
+		return nil
+	}
+	return s.AuthCommands
+}
+
+func (s *SmtpEnumerateDetails) GetAllowsUnauthenticatedEmail() *bool {
+	if s == nil {
+		return nil
+	}
+	return s.AllowsUnauthenticatedEmail
 }
 
 func (s *SmtpEnumerateDetails) GetExtraProperties() map[string]interface{} {
@@ -65,24 +107,22 @@ func (s *SmtpEnumerateDetails) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*s = SmtpEnumerateDetails(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *s)
+	extraProperties, err := internal.ExtractExtraProperties(data, *s)
 	if err != nil {
 		return err
 	}
 	s.extraProperties = extraProperties
-
-	s._rawJSON = json.RawMessage(data)
+	s.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (s *SmtpEnumerateDetails) String() string {
-	if len(s._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(s._rawJSON); err == nil {
+	if len(s.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(s.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(s); err == nil {
+	if value, err := internal.StringifyJSON(s); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", s)

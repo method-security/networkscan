@@ -5,7 +5,6 @@ package utils
 import (
 	json "encoding/json"
 	fmt "fmt"
-
 	ftp "github.com/Method-Security/networkscan/generated/go/ftp"
 	internal "github.com/Method-Security/networkscan/generated/go/internal"
 	smtp "github.com/Method-Security/networkscan/generated/go/smtp"
@@ -52,6 +51,10 @@ func NewNetworkApplicationEnumerateDetailsFromFtpEnumerateDetails(value *ftp.Ftp
 	return &NetworkApplicationEnumerateDetails{Type: "FTPEnumerateDetails", FtpEnumerateDetails: value}
 }
 
+func NewNetworkApplicationEnumerateDetailsFromSmtpEnumerateDetails(value *smtp.SmtpEnumerateDetails) *NetworkApplicationEnumerateDetails {
+	return &NetworkApplicationEnumerateDetails{Type: "SMTPEnumerateDetails", SmtpEnumerateDetails: value}
+}
+
 func (n *NetworkApplicationEnumerateDetails) GetType() string {
 	if n == nil {
 		return ""
@@ -73,8 +76,11 @@ func (n *NetworkApplicationEnumerateDetails) GetFtpEnumerateDetails() *ftp.FtpEn
 	return n.FtpEnumerateDetails
 }
 
-func NewNetworkApplicationEnumerateDetailsFromSmtpEnumerateDetails(value *smtp.SmtpEnumerateDetails) *NetworkApplicationEnumerateDetails {
-	return &NetworkApplicationEnumerateDetails{Type: "SMTPEnumerateDetails", SmtpEnumerateDetails: value}
+func (n *NetworkApplicationEnumerateDetails) GetSmtpEnumerateDetails() *smtp.SmtpEnumerateDetails {
+	if n == nil {
+		return nil
+	}
+	return n.SmtpEnumerateDetails
 }
 
 func (n *NetworkApplicationEnumerateDetails) UnmarshalJSON(data []byte) error {
@@ -123,7 +129,7 @@ func (n NetworkApplicationEnumerateDetails) MarshalJSON() ([]byte, error) {
 	case "FTPEnumerateDetails":
 		return internal.MarshalJSONWithExtraProperty(n.FtpEnumerateDetails, "type", "FTPEnumerateDetails")
 	case "SMTPEnumerateDetails":
-		return core.MarshalJSONWithExtraProperty(n.SmtpEnumerateDetails, "type", "SMTPEnumerateDetails")
+		return internal.MarshalJSONWithExtraProperty(n.SmtpEnumerateDetails, "type", "SMTPEnumerateDetails")
 	}
 }
 
@@ -157,39 +163,8 @@ func (n *NetworkApplicationEnumerateDetails) validate() error {
 	if n.FtpEnumerateDetails != nil {
 		fields = append(fields, "FTPEnumerateDetails")
 	}
-	if len(fields) == 0 {
-		if n.Type != "" {
-			return fmt.Errorf("type %T defines a discriminant set to %q but the field is not set", n, n.Type)
-		}
-		return fmt.Errorf("type %T is empty", n)
-	}
-	if len(fields) > 1 {
-		return fmt.Errorf("type %T defines values for %s, but only one value is allowed", n, fields)
-	}
-	if n.Type != "" {
-		field := fields[0]
-		if n.Type != field {
-			return fmt.Errorf(
-				"type %T defines a discriminant set to %q, but it does not match the %T field; either remove or update the discriminant to match",
-				n,
-				n.Type,
-				n,
-			)
-		}
-	}
-	return nil
-}
-
-func (n *NetworkApplicationEnumerateDetails) validate() error {
-	if n == nil {
-		return fmt.Errorf("type %T is nil", n)
-	}
-	var fields []string
-	if n.SshEnumerateDetails != nil {
-		fields = append(fields, "SSHEnumerateDetails")
-	}
-	if n.FtpEnumerateDetails != nil {
-		fields = append(fields, "FTPEnumerateDetails")
+	if n.SmtpEnumerateDetails != nil {
+		fields = append(fields, "SMTPEnumerateDetails")
 	}
 	if len(fields) == 0 {
 		if n.Type != "" {

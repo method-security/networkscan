@@ -112,7 +112,7 @@ func getEngine(application utilsFern.NetworkApplication) (NetworkApplicationEngi
 	case utilsFern.NetworkApplicationFtp:
 		return NetworkApplicationEngine{Library: &ftp.LibraryEnumerateFTP{}}, nil
 	case utilsFern.NetworkApplicationSmtp:
-		return NetworkApplicationEngine{Library: &smtp.LibraryEnumerate{}}, nil
+		return NetworkApplicationEngine{Library: &smtp.LibraryEnumerateSMTP{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", application)
 	}
