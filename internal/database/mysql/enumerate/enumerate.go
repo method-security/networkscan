@@ -12,8 +12,8 @@ import (
 	_ "github.com/go-sql-driver/mysql" // MySQL driver
 )
 
-// LibraryEnumerate implements NetworkApplicationLibrary for MySQL enumeration.
-type LibraryEnumerate struct{}
+// LibraryEnumerateMySQL implements NetworkApplicationLibrary for MySQL enumeration.
+type LibraryEnumerateMySQL struct{}
 
 // EnumerateTarget Overview:
 //  1. Connect to the target
@@ -36,7 +36,8 @@ type LibraryEnumerate struct{}
 //     h. Server Plugins
 //     i. Databases
 //     j. Server Timezone
-func (d *LibraryEnumerate) EnumerateTarget(ctx context.Context, target string) (*utilsFern.NetworkApplicationEnumerateDetails, []string) {
+
+func (d *LibraryEnumerateMySQL) EnumerateTarget(ctx context.Context, target string) (*utilsFern.NetworkApplicationEnumerateDetails, []string) {
 	detail := database.DatabaseEnumerateDetails{
 		Target:       target,
 		DatabaseType: database.DatabaseTypeMysql,

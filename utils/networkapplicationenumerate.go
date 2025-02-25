@@ -115,7 +115,7 @@ func getEngine(application utilsFern.NetworkApplication) (NetworkApplicationEngi
 	case utilsFern.NetworkApplicationSmtp:
 		return NetworkApplicationEngine{Library: &smtp.LibraryEnumerateSMTP{}}, nil
 	case utilsFern.NetworkApplicationMysql:
-		return NetworkApplicationEngine{Library: &mysql.LibraryEnumerate{}}, nil
+		return NetworkApplicationEngine{Library: &mysql.LibraryEnumerateMySQL{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", application)
 	}
