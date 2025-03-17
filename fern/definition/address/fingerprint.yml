@@ -1,0 +1,41 @@
+imports:
+  common: ../common.yml
+types:
+  RemoteAccessModule:
+    enum:
+      - CITRIX_GATEWAY
+      - MICROSOFT_RDP
+      - VMWARE_HORIZON
+  AddressFingerprintResourceModule:
+    union:
+      RemoteAccessModule: RemoteAccessModule
+  AddressFingerprintResourceType:
+    enum:
+      - DATABASE
+      - REMOTEACCESS
+  AddressFingerprintConfig:
+    properties:
+      targets: list<string>
+      resourceType: AddressFingerprintResourceType
+      modules: list<AddressFingerprintResourceModule>
+      timeout: integer
+      successfulOnly: boolean
+      insecureSkipVerify: boolean
+  AddressFingerprintAttemptInfo:
+    properties:
+      module: AddressFingerprintResourceModule
+      host: string
+      port: integer
+      connectedSuccessfully: optional<boolean>
+      protocol: optional<string>
+      connectionData: optional<string>
+      finding: boolean
+  AddressFingerprintTargetInfo:
+    properties:
+      target: string
+      attempts: list<AddressFingerprintAttemptInfo>
+  AddressFingerprintReport:
+    properties:
+      targets: list<AddressFingerprintTargetInfo>
+      config: AddressFingerprintConfig
+      errors: list<string>
