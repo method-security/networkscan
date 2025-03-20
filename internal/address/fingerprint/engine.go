@@ -3,6 +3,10 @@ package fingerprint
 import (
 	"context"
 	"fmt"
+	"log"
+	"net"
+	"strconv"
+	"time"
 
 	addressfern "github.com/Method-Security/networkscan/generated/go/address"
 	remoteaccess "github.com/Method-Security/networkscan/internal/address/fingerprint/modules/remoteaccess"
@@ -11,7 +15,7 @@ import (
 type Module interface {
 	StandardPorts() []int
 	Name() *addressfern.AddressFingerprintResourceModule
-	ModuleRun(ctx context.Context, target string, timeout int) ([]*addressfern.AddressFingerprintAttemptInfo, []string)
+	TryProtocols(address string, timeout time.Duration) addressfern.TryProtocols
 	AnalyzeResponse(connectionData string) bool
 }
 
@@ -26,9 +30,9 @@ func NewEngine(config *addressfern.AddressFingerprintConfig) *Engine {
 		Config: config,
 		Modules: map[addressfern.AddressFingerprintResourceType]map[addressfern.AddressFingerprintResourceModule]Module{
 			addressfern.AddressFingerprintResourceTypeRemoteaccess: {
-				*addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleCitrixGateway): &remoteaccess.CitrixGatewayLibrary{},
-				*addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleMicrosoftRdp):  &remoteaccess.RDPLibrary{},
-				*addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleVmwareHorizon): &remoteaccess.VMwareHorizonLibrary{},
+				*addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleCitrixgateway): &remoteaccess.CitrixGatewayLibrary{},
+				*addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleWindowsrdp):    &remoteaccess.WindowsRDPLibrary{},
+				*addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleVmwarehorizon): &remoteaccess.VMwareHorizonLibrary{},
 			},
 		},
 	}
@@ -62,7 +66,65 @@ func (e *Engine) GetModules() ([]Module, error) {
 }
 
 func (e *Engine) Run(ctx context.Context, target string) ([]*addressfern.AddressFingerprintAttemptInfo, []string) {
-	return e.Library.ModuleRun(ctx, target, e.Config.Timeout)
+	var (
+		attempts []*addressfern.AddressFingerprintAttemptInfo
+		errors   []string
+		portList []int
+	)
+
+	// Get standard ports for the current module
+	ports := e.Library.StandardPorts()
+
+	log.Printf("[INFO] Running detection on %s", target)
+
+	host, port, err := net.SplitHostPort(target)
+	if err != nil {
+		host = target
+		portList = ports
+	} else if portInt, convErr := strconv.Atoi(port); convErr == nil {
+		portList = []int{portInt}
+	} else {
+		errors = append(errors, fmt.Sprintf("Error converting port from string to int: %s", convErr))
+	}
+
+	for _, port := range portList {
+		attempt := &addressfern.AddressFingerprintAttemptInfo{
+			Module:  e.Library.Name(),
+			Host:    host,
+			Port:    port,
+			Finding: false,
+		}
+
+		targetAddress := net.JoinHostPort(host, strconv.Itoa(port))
+		log.Printf("[INFO] Attempting to connect to %s", targetAddress)
+
+		// Use RDP protocol detection
+		tryProtocolsFunction := e.Library.TryProtocols(targetAddress, time.Duration(e.Config.Timeout)*time.Second)
+		if len(tryProtocolsFunction.Errors) > 0 {
+			errors = append(errors, tryProtocolsFunction.Errors...)
+		}
+
+		attempt.ConnectedSuccessfully = &tryProtocolsFunction.ConnectionAttempt
+		if tryProtocolsFunction.ConnectionAttempt {
+			connectionDataString := *tryProtocolsFunction.ConnectionData
+			// Set attempt details
+			attempt.Protocol = &tryProtocolsFunction.Protocol
+			log.Printf("[INFO] Successfully connected to %s", targetAddress)
+			if tryProtocolsFunction.ConnectionData != nil {
+				// Analyze response
+				if e.Library.AnalyzeResponse(connectionDataString) {
+					attempt.Finding = true
+					log.Printf("[INFO] %s service detected on %s", *e.Library.Name(), targetAddress)
+				} else {
+					log.Printf("[INFO] Connected but %s service not detected on %s", *e.Library.Name(), targetAddress)
+				}
+			} else {
+				log.Printf("[INFO] Failed to connect to %s", targetAddress)
+			}
+		}
+		attempts = append(attempts, attempt)
+	}
+	return attempts, errors
 }
 
 func (e *Engine) RunAddressFingerprint(ctx context.Context) (*addressfern.AddressFingerprintReport, error) {

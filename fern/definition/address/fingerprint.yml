@@ -1,11 +1,17 @@
 imports:
   common: ../common.yml
 types:
+  TryProtocols:
+    properties:
+      ConnectionAttempt: boolean
+      Protocol: string
+      ConnectionData: optional<string>
+      Errors: list<string>
   RemoteAccessModule:
     enum:
-      - CITRIX_GATEWAY
-      - MICROSOFT_RDP
-      - VMWARE_HORIZON
+      - CITRIXGATEWAY
+      - WINDOWSRDP
+      - VMWAREHORIZON
   AddressFingerprintResourceModule:
     union:
       RemoteAccessModule: RemoteAccessModule

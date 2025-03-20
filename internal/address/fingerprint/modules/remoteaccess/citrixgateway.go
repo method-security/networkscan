@@ -1,170 +1,202 @@
 package remoteaccess
 
 import (
-	"context"
+	"bytes"
 	"fmt"
 	"log"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 
 	addressfern "github.com/Method-Security/networkscan/generated/go/address"
 )
 
+var bufferSize = 4096
+
 type CitrixGatewayLibrary struct{}
 
 func (c *CitrixGatewayLibrary) Name() *addressfern.AddressFingerprintResourceModule {
-	return addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleCitrixGateway)
+	return addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleCitrixgateway)
 }
 
 func (c *CitrixGatewayLibrary) StandardPorts() []int {
 	return []int{1494, 2598, 443, 8443}
 }
 
-func (c *CitrixGatewayLibrary) ModuleRun(ctx context.Context, target string, timeout int) ([]*addressfern.AddressFingerprintAttemptInfo, []string) {
-	var (
-		attempts []*addressfern.AddressFingerprintAttemptInfo
-		errors   []string
-		portList []int
-	)
+func (c *CitrixGatewayLibrary) TryProtocols(address string, timeout time.Duration) addressfern.TryProtocols {
+	protocol := "ICA"
+	errs := []string{}
 
-	// Get standard ports for the current module
-	ports := c.StandardPorts()
-
-	log.Printf("[INFO] Running port scan on %s for %s", target, c.Name())
-
-	host, port, err := net.SplitHostPort(target)
-	if err != nil {
-		host = target
-		portList = ports
-	} else if portInt, convErr := strconv.Atoi(port); convErr == nil {
-		portList = []int{portInt}
-	} else {
-		errors = append(errors, fmt.Sprintf("Error converting port from string to int: %s", convErr))
+	tryProtocolsFunction := addressfern.TryProtocols{
+		ConnectionAttempt: false,
+		Protocol:          protocol,
 	}
 
-	for _, port := range portList {
-		attempt := &addressfern.AddressFingerprintAttemptInfo{
-			Module:  c.Name(),
-			Host:    host,
-			Port:    port,
-			Finding: false,
-		}
-
-		targetAddress := net.JoinHostPort(host, strconv.Itoa(port))
-		log.Printf("[INFO] Attempting to connect to %s:%d for %s", host, port, c.Name())
-
-		// Try ICA protocol
-		connectionSuccessful, responseData, protocol, errString := CheckICAProtocol(targetAddress, time.Duration(timeout)*time.Second)
-		if errString != nil {
-			log.Printf("[INFO] ICA protocol check failed: %s", *errString)
-			// Try CGP protocol if ICA fails
-			connectionSuccessful, responseData, protocol, errString = CheckCGPProtocol(targetAddress, time.Duration(timeout)*time.Second)
-			if errString != nil {
-				log.Printf("[INFO] CGP protocol check failed: %s", *errString)
-				errors = append(errors, *errString)
-				continue
-			}
-		}
-
-		connectionDataString := ""
-		if responseData != nil {
-			connectionDataString = string(responseData)
-			attempt.ConnectionData = &connectionDataString
-			log.Printf("[INFO] Response data received (%d bytes)", len(responseData))
-		}
-
-		if connectionSuccessful {
-			attempt.ConnectedSuccessfully = &connectionSuccessful
-			attempt.Protocol = protocol
-			log.Printf("[INFO] Successfully connected to %s:%d", host, port)
-			if c.AnalyzeResponse(connectionDataString) {
-				attempt.Finding = true
-				log.Printf("[INFO] %s service fingerprint detected on %s:%d", c.Name(), host, port)
-			}
-		} else {
-			log.Printf("[INFO] Failed to connect to %s:%d", host, port)
-		}
-		attempts = append(attempts, attempt)
+	// Check ICA protocol (with first packet variation)
+	successICA, dataICA, errICA := CheckICAProtocol(address, timeout)
+	if len(errICA) > 0 {
+		errs = append(errs, errICA...)
 	}
-	return attempts, errors
+	if successICA && (dataICA != nil) {
+		tryProtocolsFunction.ConnectionAttempt = true
+		tryProtocolsFunction.ConnectionData = dataICA
+		tryProtocolsFunction.Errors = errs
+	}
+
+	// Check alternative ICA protocol (with more fields)
+	successICA2, dataICA2, errICA2 := AnotherCheckICAProtocol(address, timeout)
+	if len(errICA2) > 0 {
+		errs = append(errs, errICA2...)
+	}
+	if successICA2 && (dataICA2 != nil) {
+		tryProtocolsFunction.ConnectionAttempt = true
+		tryProtocolsFunction.ConnectionData = dataICA2
+		tryProtocolsFunction.Errors = errs
+	}
+
+	tryProtocolsFunction.Errors = errs
+	return tryProtocolsFunction
 }
 
-// CheckICAProtocol tests for Citrix ICA protocol
-func CheckICAProtocol(address string, timeout time.Duration) (bool, []byte, *string, *string) {
+// CheckICAProtocol tests for Citrix ICA protocol with first packet variation
+func CheckICAProtocol(address string, timeout time.Duration) (bool, *string, []string) {
+	errs := []string{}
+
+	// Create dialer with appropriate timeout
 	dialer := net.Dialer{Timeout: timeout}
 	conn, err := dialer.Dial("tcp", address)
 	if err != nil {
 		errStr := fmt.Sprintf("Error connecting for ICA check: %s", err)
-		return false, nil, nil, &errStr
+		errs = append(errs, errStr)
+		return false, nil, errs
 	}
-	defer conn.Close()
 
-	// Set read/write timeouts
-	conn.SetDeadline(time.Now().Add(timeout))
+	// Set write timeout
+	err = conn.SetWriteDeadline(time.Now().Add(timeout))
+	if err != nil {
+		errStr := fmt.Sprintf("Error setting write deadline: %s", err)
+		errs = append(errs, errStr)
+		return false, nil, errs
+	}
 
-	// Send ICA client packet
-	// Client initialization packet for ICA
-	icaInitPacket := []byte{
-		0x7f, 0x7f, 0x49, 0x43, 0x41, // ICA signature
+	// Standard ICA client packet
+	icaInitPacket1 := []byte{
+		0x7f, 0x7f, 0x49, 0x43, 0x41, // ICA signature "..ICA"
 		0x00, 0x01, 0x00, 0x00, 0x01, // Version info
 		0x00, 0x00, 0x00, // Additional fields
 	}
 
-	_, err = conn.Write(icaInitPacket)
+	// Try sending the first probe
+	_, err = conn.Write(icaInitPacket1)
 	if err != nil {
 		errStr := fmt.Sprintf("Error sending ICA probe: %s", err)
-		return false, nil, nil, &errStr
+		errs = append(errs, errStr)
+		return false, nil, errs
 	}
 
-	// Read response
-	buffer := make([]byte, 4096)
+	// Set read timeout
+	err = conn.SetReadDeadline(time.Now().Add(timeout))
+	if err != nil {
+		errStr := fmt.Sprintf("Error setting read deadline: %s", err)
+		errs = append(errs, errStr)
+		return false, nil, errs
+	}
+
+	// Read response from first probe
+	buffer := make([]byte, bufferSize)
 	n, err := conn.Read(buffer)
+
+	// If we got a successful read, return the data
+	if err == nil && n > 0 {
+		responseData := string(buffer[:n])
+		return true, &responseData, errs
+	}
+
 	if err != nil {
 		errStr := fmt.Sprintf("Error reading ICA response: %s", err)
-		return false, nil, nil, &errStr
+		errs = append(errs, errStr)
+		return false, nil, errs
 	}
 
-	protocol := "ICA"
-	return true, buffer[:n], &protocol, nil
+	err = conn.Close()
+	if err != nil {
+		errStr := fmt.Sprintf("Error closing connection: %s", err)
+		errs = append(errs, errStr)
+	}
+
+	// We connected but got no useful data
+	return true, nil, errs
 }
 
-// CheckCGPProtocol tests for Citrix CGP protocol
-func CheckCGPProtocol(address string, timeout time.Duration) (bool, []byte, *string, *string) {
+// AnotherCheckICAProtocol tests for Citrix ICA protocol with second packet variation
+func AnotherCheckICAProtocol(address string, timeout time.Duration) (bool, *string, []string) {
+	errs := []string{}
+
+	// Create dialer with appropriate timeout
 	dialer := net.Dialer{Timeout: timeout}
 	conn, err := dialer.Dial("tcp", address)
 	if err != nil {
-		errStr := fmt.Sprintf("Error connecting for CGP check: %s", err)
-		return false, nil, nil, &errStr
-	}
-	defer conn.Close()
-
-	// Set read/write timeouts
-	conn.SetDeadline(time.Now().Add(timeout))
-
-	// CGP client initialization packet
-	cgpInitPacket := []byte{
-		0x43, 0x47, 0x50, 0x2f, 0x31, // "CGP/1"
-		0x2e, 0x30, 0x20, 0x30, 0x31, // ".0 01"
+		errStr := fmt.Sprintf("Error connecting for second ICA probe: %s", err)
+		errs = append(errs, errStr)
+		return false, nil, errs
 	}
 
-	_, err = conn.Write(cgpInitPacket)
+	// Set write timeout
+	err = conn.SetWriteDeadline(time.Now().Add(timeout))
 	if err != nil {
-		errStr := fmt.Sprintf("Error sending CGP probe: %s", err)
-		return false, nil, nil, &errStr
+		errStr := fmt.Sprintf("Error setting write deadline: %s", err)
+		errs = append(errs, errStr)
+		return false, nil, errs
 	}
 
-	// Read response
-	buffer := make([]byte, 1024)
+	// Alternative ICA client packet (with more fields)
+	icaInitPacket2 := []byte{
+		0x7f, 0x7f, 0x49, 0x43, 0x41, // ICA signature "..ICA"
+		0x01, 0x00, 0x02, 0x00, 0x01, // Different version info
+		0x00, 0x00, 0x00, 0x00, 0x00, // More fields
+		0x00, 0x00, // Extra bytes sometimes needed
+	}
+
+	// Send the second probe
+	_, err = conn.Write(icaInitPacket2)
+	if err != nil {
+		errStr := fmt.Sprintf("Error sending alternative ICA probe: %s", err)
+		errs = append(errs, errStr)
+		return false, nil, errs
+	}
+
+	// Set read timeout
+	err = conn.SetReadDeadline(time.Now().Add(timeout))
+	if err != nil {
+		errStr := fmt.Sprintf("Error setting read deadline: %s", err)
+		errs = append(errs, errStr)
+		return false, nil, errs
+	}
+
+	// Read response from second probe
+	buffer := make([]byte, bufferSize)
 	n, err := conn.Read(buffer)
-	if err != nil {
-		errStr := fmt.Sprintf("Error reading CGP response: %s", err)
-		return false, nil, nil, &errStr
+
+	// If we got data from second probe
+	if err == nil && n > 0 {
+		responseData := string(buffer[:n])
+		return true, &responseData, errs
 	}
 
-	protocol := "CGP"
-	return true, buffer[:n], &protocol, nil
+	if err != nil {
+		errStr := fmt.Sprintf("Error reading from second ICA probe: %s", err)
+		errs = append(errs, errStr)
+		return false, nil, errs
+	}
+
+	err = conn.Close()
+	if err != nil {
+		errStr := fmt.Sprintf("Error closing connection: %s", err)
+		errs = append(errs, errStr)
+	}
+
+	// We connected but got no useful data
+	return true, nil, errs
 }
 
 func (c *CitrixGatewayLibrary) AnalyzeResponse(data string) bool {
@@ -172,33 +204,29 @@ func (c *CitrixGatewayLibrary) AnalyzeResponse(data string) bool {
 		return false
 	}
 
-	// Detect ICA protocol handshake
-	if strings.Contains(data, "\x03\x00") || strings.Contains(data, "\x05\x00") {
-		log.Printf("[INFO] Citrix ICA protocol handshake detected")
-		return true
-	}
+	raw := []byte(data)
 
 	// Binary protocol signatures
-	binaryPatterns := []string{
-		"\x7F\x7F\x43\x47\x50", // Citrix CGP
-		"\x45\x44\x49",         // Citrix EDI
-		"\x01\x30\x01\x01",     // Citrix protocol version
-		"\x01\x30\x01\x02",     // Citrix protocol version
-		"\xC0\x01\x09\x01",     // Citrix binary protocol
+	binaryPatterns := [][]byte{
+		{0x01, 0x30, 0x01, 0x01},
+		{0x01, 0x30, 0x01, 0x02},
+		{0xC0, 0x01, 0x09, 0x01},
+		{0x7F, 0x7F, 0x43},
 	}
+
 	for _, pattern := range binaryPatterns {
-		if strings.Contains(data, pattern) {
-			log.Printf("[INFO] Citrix binary protocol signature detected")
+		if bytes.Contains(raw, pattern) {
+			log.Printf("[INFO] Citrix binary protocol signature detected: %x", pattern)
 			return true
 		}
 	}
 
 	// Text-based markers
-	textMarkers := []string{"citrix", "ica", "cgp", "nsc_"}
-	dataLower := strings.ToLower(data)
+	textMarkers := []string{"citrix", "ica", "ctx_"}
+	dataLower := strings.ToLower(string(raw)) // safe now
 	for _, marker := range textMarkers {
 		if strings.Contains(dataLower, marker) {
-			log.Printf("[INFO] Citrix text marker detected")
+			log.Printf("[INFO] Citrix text marker detected: %s", marker)
 			return true
 		}
 	}

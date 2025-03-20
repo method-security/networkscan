@@ -431,19 +431,19 @@ func (a *AddressFingerprintTargetInfo) String() string {
 type RemoteAccessModule string
 
 const (
-	RemoteAccessModuleCitrixGateway RemoteAccessModule = "CITRIX_GATEWAY"
-	RemoteAccessModuleMicrosoftRdp  RemoteAccessModule = "MICROSOFT_RDP"
-	RemoteAccessModuleVmwareHorizon RemoteAccessModule = "VMWARE_HORIZON"
+	RemoteAccessModuleCitrixgateway RemoteAccessModule = "CITRIXGATEWAY"
+	RemoteAccessModuleWindowsrdp    RemoteAccessModule = "WINDOWSRDP"
+	RemoteAccessModuleVmwarehorizon RemoteAccessModule = "VMWAREHORIZON"
 )
 
 func NewRemoteAccessModuleFromString(s string) (RemoteAccessModule, error) {
 	switch s {
-	case "CITRIX_GATEWAY":
-		return RemoteAccessModuleCitrixGateway, nil
-	case "MICROSOFT_RDP":
-		return RemoteAccessModuleMicrosoftRdp, nil
-	case "VMWARE_HORIZON":
-		return RemoteAccessModuleVmwareHorizon, nil
+	case "CITRIXGATEWAY":
+		return RemoteAccessModuleCitrixgateway, nil
+	case "WINDOWSRDP":
+		return RemoteAccessModuleWindowsrdp, nil
+	case "VMWAREHORIZON":
+		return RemoteAccessModuleVmwarehorizon, nil
 	}
 	var t RemoteAccessModule
 	return "", fmt.Errorf("%s is not a valid %T", s, t)
@@ -451,6 +451,50 @@ func NewRemoteAccessModuleFromString(s string) (RemoteAccessModule, error) {
 
 func (r RemoteAccessModule) Ptr() *RemoteAccessModule {
 	return &r
+}
+
+type TryProtocols struct {
+	ConnectionAttempt bool     `json:"ConnectionAttempt" url:"ConnectionAttempt"`
+	Protocol          string   `json:"Protocol" url:"Protocol"`
+	ConnectionData    *string  `json:"ConnectionData,omitempty" url:"ConnectionData,omitempty"`
+	Errors            []string `json:"Errors,omitempty" url:"Errors,omitempty"`
+
+	extraProperties map[string]interface{}
+	_rawJSON        json.RawMessage
+}
+
+func (t *TryProtocols) GetExtraProperties() map[string]interface{} {
+	return t.extraProperties
+}
+
+func (t *TryProtocols) UnmarshalJSON(data []byte) error {
+	type unmarshaler TryProtocols
+	var value unmarshaler
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*t = TryProtocols(value)
+
+	extraProperties, err := core.ExtractExtraProperties(data, *t)
+	if err != nil {
+		return err
+	}
+	t.extraProperties = extraProperties
+
+	t._rawJSON = json.RawMessage(data)
+	return nil
+}
+
+func (t *TryProtocols) String() string {
+	if len(t._rawJSON) > 0 {
+		if value, err := core.StringifyJSON(t._rawJSON); err == nil {
+			return value
+		}
+	}
+	if value, err := core.StringifyJSON(t); err == nil {
+		return value
+	}
+	return fmt.Sprintf("%#v", t)
 }
 
 type AddressTlsConfig struct {
