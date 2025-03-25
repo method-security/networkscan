@@ -12,6 +12,8 @@ import (
 	addressfern "github.com/Method-Security/networkscan/generated/go/address"
 )
 
+var bufferSize = 4096
+
 type WindowsRDPLibrary struct{}
 
 func (r *WindowsRDPLibrary) StandardPorts() []int {
@@ -24,8 +26,7 @@ func (r *WindowsRDPLibrary) Name() *addressfern.AddressFingerprintResourceModule
 
 func (r *WindowsRDPLibrary) TryProtocols(address string, timeout time.Duration) addressfern.TryProtocols {
 	tryProtocolsFunction := addressfern.TryProtocols{
-		ConnectionAttempt: false,
-		Protocol:          "RDP",
+		Protocol: "RDP",
 	}
 	errs := []string{}
 
@@ -33,9 +34,10 @@ func (r *WindowsRDPLibrary) TryProtocols(address string, timeout time.Duration) 
 	successRDP, dataRDP, errRDP := CheckRDPProtocol(address, timeout)
 	if len(errRDP) > 0 {
 		errs = append(errs, fmt.Sprintf("error checking RDP protocol: %s", errRDP))
+		tryProtocolsFunction.Errors = errs
+		return tryProtocolsFunction
 	}
 	if successRDP && (dataRDP != nil) {
-		tryProtocolsFunction.ConnectionAttempt = true
 		tryProtocolsFunction.ConnectionData = dataRDP
 		tryProtocolsFunction.Errors = errRDP
 	}
@@ -185,7 +187,7 @@ func (r *WindowsRDPLibrary) AnalyzeResponse(data string) bool {
 		"mstscax",
 		"rdclientax",
 	}
-	dataLower := strings.ToLower(string(raw)) // Safe to convert after binary checks
+	dataLower := strings.ToLower(data)
 	for _, marker := range textMarkers {
 		if strings.Contains(dataLower, marker) {
 			log.Printf("[INFO] RDP text marker detected: %s", marker)

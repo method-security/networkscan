@@ -30,9 +30,7 @@ func NewEngine(config *addressfern.AddressFingerprintConfig) *Engine {
 		Config: config,
 		Modules: map[addressfern.AddressFingerprintResourceType]map[addressfern.AddressFingerprintResourceModule]Module{
 			addressfern.AddressFingerprintResourceTypeRemoteaccess: {
-				*addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleCitrixgateway): &remoteaccess.CitrixGatewayLibrary{},
-				*addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleWindowsrdp):    &remoteaccess.WindowsRDPLibrary{},
-				*addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleVmwarehorizon): &remoteaccess.VMwareHorizonLibrary{},
+				*addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleWindowsrdp): &remoteaccess.WindowsRDPLibrary{},
 			},
 		},
 	}
@@ -104,24 +102,22 @@ func (e *Engine) Run(ctx context.Context, target string) ([]*addressfern.Address
 			errors = append(errors, tryProtocolsFunction.Errors...)
 		}
 
-		attempt.ConnectedSuccessfully = &tryProtocolsFunction.ConnectionAttempt
-		if tryProtocolsFunction.ConnectionAttempt {
-			connectionDataString := *tryProtocolsFunction.ConnectionData
-			// Set attempt details
-			attempt.Protocol = &tryProtocolsFunction.Protocol
-			log.Printf("[INFO] Successfully connected to %s", targetAddress)
-			if tryProtocolsFunction.ConnectionData != nil {
-				// Analyze response
-				if e.Library.AnalyzeResponse(connectionDataString) {
-					attempt.Finding = true
-					log.Printf("[INFO] %s service detected on %s", *e.Library.Name(), targetAddress)
-				} else {
-					log.Printf("[INFO] Connected but %s service not detected on %s", *e.Library.Name(), targetAddress)
-				}
+		// Set attempt details
+		attempt.Protocol = &tryProtocolsFunction.Protocol
+
+		// if connection data is not nil, analyze the response
+		if tryProtocolsFunction.ConnectionData != nil {
+			// Analyze response
+			if e.Library.AnalyzeResponse(*tryProtocolsFunction.ConnectionData) {
+				attempt.Finding = true
+				log.Printf("[INFO] %s service detected on %s", *e.Library.Name(), targetAddress)
 			} else {
-				log.Printf("[INFO] Failed to connect to %s", targetAddress)
+				log.Printf("[INFO] Connected but %s service not detected on %s", *e.Library.Name(), targetAddress)
 			}
+		} else {
+			log.Printf("[INFO] Failed to connect to %s", targetAddress)
 		}
+
 		attempts = append(attempts, attempt)
 	}
 	return attempts, errors

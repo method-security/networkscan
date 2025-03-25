@@ -167,13 +167,12 @@ func (c *CookieInfo) String() string {
 }
 
 type AddressFingerprintAttemptInfo struct {
-	Module                *AddressFingerprintResourceModule `json:"module,omitempty" url:"module,omitempty"`
-	Host                  string                            `json:"host" url:"host"`
-	Port                  int                               `json:"port" url:"port"`
-	ConnectedSuccessfully *bool                             `json:"connectedSuccessfully,omitempty" url:"connectedSuccessfully,omitempty"`
-	Protocol              *string                           `json:"protocol,omitempty" url:"protocol,omitempty"`
-	ConnectionData        *string                           `json:"connectionData,omitempty" url:"connectionData,omitempty"`
-	Finding               bool                              `json:"finding" url:"finding"`
+	Module         *AddressFingerprintResourceModule `json:"module,omitempty" url:"module,omitempty"`
+	Host           string                            `json:"host" url:"host"`
+	Port           int                               `json:"port" url:"port"`
+	Protocol       *string                           `json:"protocol,omitempty" url:"protocol,omitempty"`
+	ConnectionData *string                           `json:"connectionData,omitempty" url:"connectionData,omitempty"`
+	Finding        bool                              `json:"finding" url:"finding"`
 
 	extraProperties map[string]interface{}
 	_rawJSON        json.RawMessage
@@ -431,19 +430,13 @@ func (a *AddressFingerprintTargetInfo) String() string {
 type RemoteAccessModule string
 
 const (
-	RemoteAccessModuleCitrixgateway RemoteAccessModule = "CITRIXGATEWAY"
-	RemoteAccessModuleWindowsrdp    RemoteAccessModule = "WINDOWSRDP"
-	RemoteAccessModuleVmwarehorizon RemoteAccessModule = "VMWAREHORIZON"
+	RemoteAccessModuleWindowsrdp RemoteAccessModule = "WINDOWSRDP"
 )
 
 func NewRemoteAccessModuleFromString(s string) (RemoteAccessModule, error) {
 	switch s {
-	case "CITRIXGATEWAY":
-		return RemoteAccessModuleCitrixgateway, nil
 	case "WINDOWSRDP":
 		return RemoteAccessModuleWindowsrdp, nil
-	case "VMWAREHORIZON":
-		return RemoteAccessModuleVmwarehorizon, nil
 	}
 	var t RemoteAccessModule
 	return "", fmt.Errorf("%s is not a valid %T", s, t)
@@ -454,10 +447,9 @@ func (r RemoteAccessModule) Ptr() *RemoteAccessModule {
 }
 
 type TryProtocols struct {
-	ConnectionAttempt bool     `json:"ConnectionAttempt" url:"ConnectionAttempt"`
-	Protocol          string   `json:"Protocol" url:"Protocol"`
-	ConnectionData    *string  `json:"ConnectionData,omitempty" url:"ConnectionData,omitempty"`
-	Errors            []string `json:"Errors,omitempty" url:"Errors,omitempty"`
+	Protocol       string   `json:"Protocol" url:"Protocol"`
+	ConnectionData *string  `json:"ConnectionData,omitempty" url:"ConnectionData,omitempty"`
+	Errors         []string `json:"Errors,omitempty" url:"Errors,omitempty"`
 
 	extraProperties map[string]interface{}
 	_rawJSON        json.RawMessage

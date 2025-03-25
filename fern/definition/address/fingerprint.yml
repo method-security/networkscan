@@ -3,15 +3,12 @@ imports:
 types:
   TryProtocols:
     properties:
-      ConnectionAttempt: boolean
       Protocol: string
       ConnectionData: optional<string>
       Errors: list<string>
   RemoteAccessModule:
     enum:
-      - CITRIXGATEWAY
       - WINDOWSRDP
-      - VMWAREHORIZON
   AddressFingerprintResourceModule:
     union:
       RemoteAccessModule: RemoteAccessModule
@@ -32,7 +29,6 @@ types:
       module: AddressFingerprintResourceModule
       host: string
       port: integer
-      connectedSuccessfully: optional<boolean>
       protocol: optional<string>
       connectionData: optional<string>
       finding: boolean
