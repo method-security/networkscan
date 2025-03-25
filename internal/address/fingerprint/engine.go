@@ -9,7 +9,7 @@ import (
 	"time"
 
 	addressfern "github.com/Method-Security/networkscan/generated/go/address"
-	database "github.com/Method-Security/networkscan/internal/address/fingerprint/modules/database"
+	"github.com/Method-Security/networkscan/internal/address/fingerprint/modules/database"
 	remoteaccess "github.com/Method-Security/networkscan/internal/address/fingerprint/modules/remoteaccess"
 )
 

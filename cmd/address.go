@@ -8,6 +8,7 @@ import (
 	bruteforcefern "github.com/Method-Security/networkscan/generated/go/address/bruteforce"
 	"github.com/Method-Security/networkscan/internal/address"
 	bruteforce "github.com/Method-Security/networkscan/internal/address/bruteforce"
+	"github.com/Method-Security/networkscan/internal/address/fingerprint"
 	"github.com/Method-Security/networkscan/utils"
 	"github.com/spf13/cobra"
 )
@@ -56,6 +57,7 @@ func (a *NetworkScan) InitAddressCommand() {
 	bannerGrabCmd.Flags().String("target", "", "Target address (e.g., 192.168.1.1 or example.com)")
 	bannerGrabCmd.Flags().Uint16("port", 0, "Address Port (e.g., 443)")
 	bannerGrabCmd.Flags().Int("timeout", 5, "Timeout limit for each handshake in seconds")
+
 	_ = bannerGrabCmd.MarkFlagRequired("target")
 	_ = bannerGrabCmd.MarkFlagRequired("port")
 
@@ -219,6 +221,83 @@ func (a *NetworkScan) InitAddressCommand() {
 
 	addressCmd.AddCommand(tlsCmd)
 
+	fingerprintCmd := &cobra.Command{
+		Use:   "fingerprint",
+		Short: "Fingerprint a network address",
+		Long:  `Fingerprint a network address`,
+		Run: func(cmd *cobra.Command, args []string) {
+			defer a.OutputSignal.PanicHandler(cmd.Context())
+
+			// Targets
+			targets, err := cmd.Flags().GetStringSlice("targets")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			// Config
+			resourceType, err := cmd.Flags().GetString("resourcetype")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			resourceTypeEnum, err := validateAddressFingerprintResourceType(resourceType)
+			if err != nil {
+				a.OutputSignal.AddError(errors.New("input resourcetype is invalid"))
+				return
+			}
+
+			modules, err := cmd.Flags().GetStringSlice("modules")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			modulesEnum, err := validateAddressFingerprintResourseModuleSelection(*resourceTypeEnum, modules)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			insecure, err := cmd.Flags().GetBool("insecure")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			successfulOnly, err := cmd.Flags().GetBool("successfulonly")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			timeout, err := cmd.Flags().GetInt("timeout")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			config := LoadFingerprintConfig(targets, *resourceTypeEnum, modulesEnum, insecure, successfulOnly, timeout)
+
+			engine := fingerprint.NewEngine(&config)
+
+			report, err := engine.RunAddressFingerprint(cmd.Context())
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			a.OutputSignal.Content = report
+		},
+	}
+
+	fingerprintCmd.Flags().StringSlice("targets", []string{}, "Address of target")
+	fingerprintCmd.Flags().String("resourcetype", "", "Resource type to fingerprint")
+	fingerprintCmd.Flags().StringSlice("modules", []string{}, "Modules to use for fingerprinting")
+	fingerprintCmd.Flags().Int("timeout", 30, "Timeout limit for each handshake in seconds")
+	fingerprintCmd.Flags().Bool("successfulonly", false, "Only show successful attempts")
+	fingerprintCmd.Flags().Bool("insecure", false, "Skip TLS verification")
+
+	addressCmd.AddCommand(fingerprintCmd)
+
 	a.RootCmd.AddCommand(addressCmd)
 }
 
@@ -267,11 +346,19 @@ func validateAddressFingerprintResourseModuleSelection(resourceType addressfern.
 	if len(modules) == 0 {
 		return nil, nil
 	}
-	if resourceType == addressfern.AddressFingerprintResourceTypeRemoteaccess {
+	if resourceType == addressfern.AddressFingerprintResourceTypeDatabase {
+		for _, module := range modules {
+			moduleName, err := addressfern.NewDatabaseModuleFromString(strings.ToUpper(module))
+			if err != nil {
+				return nil, err
+			}
+			moduleEnum := addressfern.NewAddressFingerprintResourceModuleFromDatabaseModule(moduleName)
+			moduleEnums = append(moduleEnums, moduleEnum)
+		}
+	} else if resourceType == addressfern.AddressFingerprintResourceTypeRemoteaccess {
 		for _, module := range modules {
 			moduleName, err := addressfern.NewRemoteAccessModuleFromString(strings.ToUpper(module))
 			if err != nil {
-				s
 				return nil, err
 			}
 			moduleEnum := addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(moduleName)
