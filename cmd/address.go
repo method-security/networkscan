@@ -380,3 +380,42 @@ func LoadFingerprintConfig(targets []string, resourceType addressfern.AddressFin
 	}
 	return config
 }
+
+func validateAddressFingerprintResourceType(resourceType string) (*addressfern.AddressFingerprintResourceType, error) {
+	resourceTypeEnum, err := addressfern.NewAddressFingerprintResourceTypeFromString(strings.ToUpper(resourceType))
+	if err != nil {
+		return nil, err
+	}
+	return &resourceTypeEnum, nil
+}
+
+func validateAddressFingerprintResourseModuleSelection(resourceType addressfern.AddressFingerprintResourceType, modules []string) ([]*addressfern.AddressFingerprintResourceModule, error) {
+	moduleEnums := []*addressfern.AddressFingerprintResourceModule{}
+	if len(modules) == 0 {
+		return nil, nil
+	}
+	if resourceType == addressfern.AddressFingerprintResourceTypeRemoteaccess {
+		for _, module := range modules {
+			moduleName, err := addressfern.NewRemoteAccessModuleFromString(strings.ToUpper(module))
+			if err != nil {
+				return nil, err
+			}
+			moduleEnum := addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(moduleName)
+			moduleEnums = append(moduleEnums, moduleEnum)
+		}
+	}
+
+	return moduleEnums, nil
+}
+
+func LoadFingerprintConfig(targets []string, resourceType addressfern.AddressFingerprintResourceType, modules []*addressfern.AddressFingerprintResourceModule, insecure bool, successfulOnly bool, timeout int) addressfern.AddressFingerprintConfig {
+	config := addressfern.AddressFingerprintConfig{
+		Targets:            targets,
+		ResourceType:       resourceType,
+		Modules:            modules,
+		InsecureSkipVerify: insecure,
+		SuccessfulOnly:     successfulOnly,
+		Timeout:            timeout,
+	}
+	return config
+}
