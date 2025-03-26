@@ -6,9 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-mysql-org/go-mysql/client"
-
 	addressfern "github.com/Method-Security/networkscan/generated/go/address"
+	"github.com/go-mysql-org/go-mysql/client"
 )
 
 type MySQLLibrary struct{}
@@ -60,21 +59,32 @@ func grabMySQLHandshake(address string, _ time.Duration) (*string, error) {
 
 // AnalyzeResponse checks if the response contains MySQL keywords in error or banner messages
 func (c *MySQLLibrary) AnalyzeResponse(data string) bool {
+	if data == "" {
+		return false
+	}
+
 	data = strings.ToLower(data)
 	log.Printf("[INFO] Analyzing MySQL response: %s", data)
-	for _, keyword := range []string{
+
+	mysqlPatterns := []string{
 		"mysql",
 		"mariadb",
-		"percona",
-		"access denied",
-		"password",
-		"version",
-		"error 1045",
-	} {
-		if strings.Contains(data, keyword) {
-			log.Printf("[INFO] MySQL keyword found: %s", keyword)
+		"error 1045", // Access denied
+		"error 1044", // Access denied for database
+		"error 2002", // Connection refused
+		"error 2003", // Can't connect
+		"error 2005", // Unknown MySQL server host
+		"error 2006", // MySQL server has gone away
+		"error 2013", // Lost connection during query
+	}
+
+	// Check string patterns
+	for _, pattern := range mysqlPatterns {
+		if strings.Contains(data, pattern) {
+			log.Printf("[INFO] MySQL pattern matched: %s", pattern)
 			return true
 		}
 	}
+
 	return false
 }

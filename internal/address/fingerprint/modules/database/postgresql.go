@@ -70,8 +70,6 @@ func (c *PostgreSQLLibrary) AnalyzeResponse(data string) bool {
 	keywords := []string{
 		"postgresql",
 		"psql",
-		"password",
-		"authentication failed",
 		"pg_hba.conf",
 		"sqlstate",
 	}
