@@ -6,11 +6,16 @@ types:
       Protocol: string
       ConnectionData: optional<string>
       Errors: list<string>
+  DatabaseModule:
+    enum:
+      - MYSQL
+      - POSTGRESQL
   RemoteAccessModule:
     enum:
       - WINDOWSRDP
   AddressFingerprintResourceModule:
     union:
+      DatabaseModule: DatabaseModule
       RemoteAccessModule: RemoteAccessModule
   AddressFingerprintResourceType:
     enum:
@@ -40,4 +45,4 @@ types:
     properties:
       targets: list<AddressFingerprintTargetInfo>
       config: AddressFingerprintConfig
-      errors: list<string>
+      errors: optional<list<string>>

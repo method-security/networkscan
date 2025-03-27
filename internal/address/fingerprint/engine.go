@@ -9,6 +9,7 @@ import (
 	"time"
 
 	addressfern "github.com/Method-Security/networkscan/generated/go/address"
+	"github.com/Method-Security/networkscan/internal/address/fingerprint/modules/database"
 	remoteaccess "github.com/Method-Security/networkscan/internal/address/fingerprint/modules/remoteaccess"
 )
 
@@ -29,6 +30,10 @@ func NewEngine(config *addressfern.AddressFingerprintConfig) *Engine {
 	return &Engine{
 		Config: config,
 		Modules: map[addressfern.AddressFingerprintResourceType]map[addressfern.AddressFingerprintResourceModule]Module{
+			addressfern.AddressFingerprintResourceTypeDatabase: {
+				*addressfern.NewAddressFingerprintResourceModuleFromDatabaseModule(addressfern.DatabaseModuleMysql):      &database.MySQLLibrary{},
+				*addressfern.NewAddressFingerprintResourceModuleFromDatabaseModule(addressfern.DatabaseModulePostgresql): &database.PostgreSQLLibrary{},
+			},
 			addressfern.AddressFingerprintResourceTypeRemoteaccess: {
 				*addressfern.NewAddressFingerprintResourceModuleFromRemoteAccessModule(addressfern.RemoteAccessModuleWindowsrdp): &remoteaccess.WindowsRDPLibrary{},
 			},
@@ -54,6 +59,8 @@ func (e *Engine) GetModules() ([]Module, error) {
 	}
 
 	switch e.Config.ResourceType {
+	case addressfern.AddressFingerprintResourceTypeDatabase:
+		appendModules(e.Modules[addressfern.AddressFingerprintResourceTypeDatabase])
 	case addressfern.AddressFingerprintResourceTypeRemoteaccess:
 		appendModules(e.Modules[addressfern.AddressFingerprintResourceTypeRemoteaccess])
 	default:
@@ -111,11 +118,9 @@ func (e *Engine) Run(ctx context.Context, target string) ([]*addressfern.Address
 			if e.Library.AnalyzeResponse(*tryProtocolsFunction.ConnectionData) {
 				attempt.Finding = true
 				log.Printf("[INFO] %s service detected on %s", *e.Library.Name(), targetAddress)
-			} else {
-				log.Printf("[INFO] Connected but %s service not detected on %s", *e.Library.Name(), targetAddress)
 			}
 		} else {
-			log.Printf("[INFO] Failed to connect to %s", targetAddress)
+			log.Printf("[INFO] Failed to get connection data from %s", targetAddress)
 		}
 
 		attempts = append(attempts, attempt)

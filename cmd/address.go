@@ -346,7 +346,16 @@ func validateAddressFingerprintResourseModuleSelection(resourceType addressfern.
 	if len(modules) == 0 {
 		return nil, nil
 	}
-	if resourceType == addressfern.AddressFingerprintResourceTypeRemoteaccess {
+	if resourceType == addressfern.AddressFingerprintResourceTypeDatabase {
+		for _, module := range modules {
+			moduleName, err := addressfern.NewDatabaseModuleFromString(strings.ToUpper(module))
+			if err != nil {
+				return nil, err
+			}
+			moduleEnum := addressfern.NewAddressFingerprintResourceModuleFromDatabaseModule(moduleName)
+			moduleEnums = append(moduleEnums, moduleEnum)
+		}
+	} else if resourceType == addressfern.AddressFingerprintResourceTypeRemoteaccess {
 		for _, module := range modules {
 			moduleName, err := addressfern.NewRemoteAccessModuleFromString(strings.ToUpper(module))
 			if err != nil {

@@ -303,7 +303,12 @@ func (a *AddressFingerprintReport) String() string {
 
 type AddressFingerprintResourceModule struct {
 	Type               string
+	DatabaseModule     DatabaseModule
 	RemoteAccessModule RemoteAccessModule
+}
+
+func NewAddressFingerprintResourceModuleFromDatabaseModule(value DatabaseModule) *AddressFingerprintResourceModule {
+	return &AddressFingerprintResourceModule{Type: "DatabaseModule", DatabaseModule: value}
 }
 
 func NewAddressFingerprintResourceModuleFromRemoteAccessModule(value RemoteAccessModule) *AddressFingerprintResourceModule {
@@ -322,6 +327,14 @@ func (a *AddressFingerprintResourceModule) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("%T did not include discriminant type", a)
 	}
 	switch unmarshaler.Type {
+	case "DatabaseModule":
+		var valueUnmarshaler struct {
+			DatabaseModule DatabaseModule `json:"value"`
+		}
+		if err := json.Unmarshal(data, &valueUnmarshaler); err != nil {
+			return err
+		}
+		a.DatabaseModule = valueUnmarshaler.DatabaseModule
 	case "RemoteAccessModule":
 		var valueUnmarshaler struct {
 			RemoteAccessModule RemoteAccessModule `json:"value"`
@@ -338,6 +351,15 @@ func (a AddressFingerprintResourceModule) MarshalJSON() ([]byte, error) {
 	switch a.Type {
 	default:
 		return nil, fmt.Errorf("invalid type %s in %T", a.Type, a)
+	case "DatabaseModule":
+		var marshaler = struct {
+			Type           string         `json:"type"`
+			DatabaseModule DatabaseModule `json:"value"`
+		}{
+			Type:           "DatabaseModule",
+			DatabaseModule: a.DatabaseModule,
+		}
+		return json.Marshal(marshaler)
 	case "RemoteAccessModule":
 		var marshaler = struct {
 			Type               string             `json:"type"`
@@ -351,6 +373,7 @@ func (a AddressFingerprintResourceModule) MarshalJSON() ([]byte, error) {
 }
 
 type AddressFingerprintResourceModuleVisitor interface {
+	VisitDatabaseModule(DatabaseModule) error
 	VisitRemoteAccessModule(RemoteAccessModule) error
 }
 
@@ -358,6 +381,8 @@ func (a *AddressFingerprintResourceModule) Accept(visitor AddressFingerprintReso
 	switch a.Type {
 	default:
 		return fmt.Errorf("invalid type %s in %T", a.Type, a)
+	case "DatabaseModule":
+		return visitor.VisitDatabaseModule(a.DatabaseModule)
 	case "RemoteAccessModule":
 		return visitor.VisitRemoteAccessModule(a.RemoteAccessModule)
 	}
@@ -425,6 +450,28 @@ func (a *AddressFingerprintTargetInfo) String() string {
 		return value
 	}
 	return fmt.Sprintf("%#v", a)
+}
+
+type DatabaseModule string
+
+const (
+	DatabaseModuleMysql      DatabaseModule = "MYSQL"
+	DatabaseModulePostgresql DatabaseModule = "POSTGRESQL"
+)
+
+func NewDatabaseModuleFromString(s string) (DatabaseModule, error) {
+	switch s {
+	case "MYSQL":
+		return DatabaseModuleMysql, nil
+	case "POSTGRESQL":
+		return DatabaseModulePostgresql, nil
+	}
+	var t DatabaseModule
+	return "", fmt.Errorf("%s is not a valid %T", s, t)
+}
+
+func (d DatabaseModule) Ptr() *DatabaseModule {
+	return &d
 }
 
 type RemoteAccessModule string
