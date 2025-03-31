@@ -148,26 +148,16 @@ func (r *WindowsRDPLibrary) AnalyzeResponse(data string) bool {
 
 	raw := []byte(data)
 
-	// Check for TPKT header (version 3)
-	if bytes.Contains(raw, []byte{0x03, 0x00}) {
-		log.Printf("[INFO] RDP TPKT header detected")
-		return true
-	}
-
 	// Common RDP signature: TPKT header with sequence indicator
-	if len(raw) >= 11 && raw[0] == 0x03 && raw[1] == 0x00 && raw[4] == 0xd0 {
-		log.Printf("[INFO] RDP TPKT header with Connection Confirm detected")
+	if len(raw) >= 2 && raw[0] == 0x03 && raw[1] == 0x00 {
+		log.Printf("[INFO] RDP TPKT header detected")
 		return true
 	}
 
 	// Binary protocol signatures with improved patterns
 	binaryPatterns := [][]byte{
-		{0x30, 0x37, 0xa0, 0x03}, // CredSSP
-		{0x02, 0xf0, 0x80},       // RDP Negotiation Response
-		{0x03, 0x00, 0x00},       // TPKT Header (alt check)
-		{0x30, 0x00},             // ASN.1 sequence
-		{0x0e, 0xd0},             // X.224 Connection Confirm
-		{0x02, 0x0f},             // RDP Security Exchange PDU
+		{0x02, 0xf0, 0x80}, // RDP Negotiation Response
+		{0x02, 0x0f},       // RDP Security Exchange PDU
 	}
 	for _, pattern := range binaryPatterns {
 		if bytes.Contains(raw, pattern) {
