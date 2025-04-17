@@ -5,7 +5,7 @@ package ssh
 import (
 	json "encoding/json"
 	fmt "fmt"
-	core "github.com/Method-Security/networkscan/generated/go/core"
+	internal "github.com/Method-Security/networkscan/generated/go/internal"
 )
 
 type AuthMethod string
@@ -279,7 +279,63 @@ type SshEnumerateDetails struct {
 	RawAscii         *string                `json:"rawASCII,omitempty" url:"rawASCII,omitempty"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (s *SshEnumerateDetails) GetTarget() string {
+	if s == nil {
+		return ""
+	}
+	return s.Target
+}
+
+func (s *SshEnumerateDetails) GetVersion() *string {
+	if s == nil {
+		return nil
+	}
+	return s.Version
+}
+
+func (s *SshEnumerateDetails) GetAuthMethods() []AuthMethod {
+	if s == nil {
+		return nil
+	}
+	return s.AuthMethods
+}
+
+func (s *SshEnumerateDetails) GetKeyExchangeAlgos() []KeyExchangeAlgorithm {
+	if s == nil {
+		return nil
+	}
+	return s.KeyExchangeAlgos
+}
+
+func (s *SshEnumerateDetails) GetHostKeyAlgos() []HostKeyAlgorithm {
+	if s == nil {
+		return nil
+	}
+	return s.HostKeyAlgos
+}
+
+func (s *SshEnumerateDetails) GetCiphers() []CipherAlgorithm {
+	if s == nil {
+		return nil
+	}
+	return s.Ciphers
+}
+
+func (s *SshEnumerateDetails) GetMacs() []MacAlgorithm {
+	if s == nil {
+		return nil
+	}
+	return s.Macs
+}
+
+func (s *SshEnumerateDetails) GetRawAscii() *string {
+	if s == nil {
+		return nil
+	}
+	return s.RawAscii
 }
 
 func (s *SshEnumerateDetails) GetExtraProperties() map[string]interface{} {
@@ -293,24 +349,22 @@ func (s *SshEnumerateDetails) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*s = SshEnumerateDetails(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *s)
+	extraProperties, err := internal.ExtractExtraProperties(data, *s)
 	if err != nil {
 		return err
 	}
 	s.extraProperties = extraProperties
-
-	s._rawJSON = json.RawMessage(data)
+	s.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (s *SshEnumerateDetails) String() string {
-	if len(s._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(s._rawJSON); err == nil {
+	if len(s.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(s.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(s); err == nil {
+	if value, err := internal.StringifyJSON(s); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", s)

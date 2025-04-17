@@ -5,8 +5,8 @@ package utils
 import (
 	json "encoding/json"
 	fmt "fmt"
-	core "github.com/Method-Security/networkscan/generated/go/core"
 	ftp "github.com/Method-Security/networkscan/generated/go/ftp"
+	internal "github.com/Method-Security/networkscan/generated/go/internal"
 	ssh "github.com/Method-Security/networkscan/generated/go/ssh"
 )
 
@@ -46,6 +46,27 @@ func NewNetworkApplicationEnumerateDetailsFromFtpEnumerateDetails(value *ftp.Ftp
 	return &NetworkApplicationEnumerateDetails{Type: "FTPEnumerateDetails", FtpEnumerateDetails: value}
 }
 
+func (n *NetworkApplicationEnumerateDetails) GetType() string {
+	if n == nil {
+		return ""
+	}
+	return n.Type
+}
+
+func (n *NetworkApplicationEnumerateDetails) GetSshEnumerateDetails() *ssh.SshEnumerateDetails {
+	if n == nil {
+		return nil
+	}
+	return n.SshEnumerateDetails
+}
+
+func (n *NetworkApplicationEnumerateDetails) GetFtpEnumerateDetails() *ftp.FtpEnumerateDetails {
+	if n == nil {
+		return nil
+	}
+	return n.FtpEnumerateDetails
+}
+
 func (n *NetworkApplicationEnumerateDetails) UnmarshalJSON(data []byte) error {
 	var unmarshaler struct {
 		Type string `json:"type"`
@@ -75,13 +96,16 @@ func (n *NetworkApplicationEnumerateDetails) UnmarshalJSON(data []byte) error {
 }
 
 func (n NetworkApplicationEnumerateDetails) MarshalJSON() ([]byte, error) {
+	if err := n.validate(); err != nil {
+		return nil, err
+	}
 	switch n.Type {
 	default:
 		return nil, fmt.Errorf("invalid type %s in %T", n.Type, n)
 	case "SSHEnumerateDetails":
-		return core.MarshalJSONWithExtraProperty(n.SshEnumerateDetails, "type", "SSHEnumerateDetails")
+		return internal.MarshalJSONWithExtraProperty(n.SshEnumerateDetails, "type", "SSHEnumerateDetails")
 	case "FTPEnumerateDetails":
-		return core.MarshalJSONWithExtraProperty(n.FtpEnumerateDetails, "type", "FTPEnumerateDetails")
+		return internal.MarshalJSONWithExtraProperty(n.FtpEnumerateDetails, "type", "FTPEnumerateDetails")
 	}
 }
 
@@ -101,13 +125,68 @@ func (n *NetworkApplicationEnumerateDetails) Accept(visitor NetworkApplicationEn
 	}
 }
 
+func (n *NetworkApplicationEnumerateDetails) validate() error {
+	if n == nil {
+		return fmt.Errorf("type %T is nil", n)
+	}
+	var fields []string
+	if n.SshEnumerateDetails != nil {
+		fields = append(fields, "SSHEnumerateDetails")
+	}
+	if n.FtpEnumerateDetails != nil {
+		fields = append(fields, "FTPEnumerateDetails")
+	}
+	if len(fields) == 0 {
+		if n.Type != "" {
+			return fmt.Errorf("type %T defines a discriminant set to %q but the field is not set", n, n.Type)
+		}
+		return fmt.Errorf("type %T is empty", n)
+	}
+	if len(fields) > 1 {
+		return fmt.Errorf("type %T defines values for %s, but only one value is allowed", n, fields)
+	}
+	if n.Type != "" {
+		field := fields[0]
+		if n.Type != field {
+			return fmt.Errorf(
+				"type %T defines a discriminant set to %q, but it does not match the %T field; either remove or update the discriminant to match",
+				n,
+				n.Type,
+				n,
+			)
+		}
+	}
+	return nil
+}
+
 type NetworkApplicationEnumerateReport struct {
 	Targets []string                              `json:"targets,omitempty" url:"targets,omitempty"`
 	Details []*NetworkApplicationEnumerateDetails `json:"details,omitempty" url:"details,omitempty"`
 	Errors  []string                              `json:"errors,omitempty" url:"errors,omitempty"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (n *NetworkApplicationEnumerateReport) GetTargets() []string {
+	if n == nil {
+		return nil
+	}
+	return n.Targets
+}
+
+func (n *NetworkApplicationEnumerateReport) GetDetails() []*NetworkApplicationEnumerateDetails {
+	if n == nil {
+		return nil
+	}
+	return n.Details
+}
+
+func (n *NetworkApplicationEnumerateReport) GetErrors() []string {
+	if n == nil {
+		return nil
+	}
+	return n.Errors
 }
 
 func (n *NetworkApplicationEnumerateReport) GetExtraProperties() map[string]interface{} {
@@ -121,24 +200,22 @@ func (n *NetworkApplicationEnumerateReport) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*n = NetworkApplicationEnumerateReport(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *n)
+	extraProperties, err := internal.ExtractExtraProperties(data, *n)
 	if err != nil {
 		return err
 	}
 	n.extraProperties = extraProperties
-
-	n._rawJSON = json.RawMessage(data)
+	n.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (n *NetworkApplicationEnumerateReport) String() string {
-	if len(n._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(n._rawJSON); err == nil {
+	if len(n.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(n.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(n); err == nil {
+	if value, err := internal.StringifyJSON(n); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", n)
