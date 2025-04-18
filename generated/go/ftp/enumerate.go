@@ -5,7 +5,7 @@ package ftp
 import (
 	json "encoding/json"
 	fmt "fmt"
-	core "github.com/Method-Security/networkscan/generated/go/core"
+	internal "github.com/Method-Security/networkscan/generated/go/internal"
 )
 
 type FtpEnumerateDetails struct {
@@ -18,7 +18,56 @@ type FtpEnumerateDetails struct {
 	Error                *string `json:"Error,omitempty" url:"Error,omitempty"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (f *FtpEnumerateDetails) GetTarget() string {
+	if f == nil {
+		return ""
+	}
+	return f.Target
+}
+
+func (f *FtpEnumerateDetails) GetSuccessfulConnection() *bool {
+	if f == nil {
+		return nil
+	}
+	return f.SuccessfulConnection
+}
+
+func (f *FtpEnumerateDetails) GetBanner() *string {
+	if f == nil {
+		return nil
+	}
+	return f.Banner
+}
+
+func (f *FtpEnumerateDetails) GetTlsImplemented() *bool {
+	if f == nil {
+		return nil
+	}
+	return f.TlsImplemented
+}
+
+func (f *FtpEnumerateDetails) GetTlsForced() *bool {
+	if f == nil {
+		return nil
+	}
+	return f.TlsForced
+}
+
+func (f *FtpEnumerateDetails) GetAllowsAnonymousLogin() *bool {
+	if f == nil {
+		return nil
+	}
+	return f.AllowsAnonymousLogin
+}
+
+func (f *FtpEnumerateDetails) GetError() *string {
+	if f == nil {
+		return nil
+	}
+	return f.Error
 }
 
 func (f *FtpEnumerateDetails) GetExtraProperties() map[string]interface{} {
@@ -32,24 +81,22 @@ func (f *FtpEnumerateDetails) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*f = FtpEnumerateDetails(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *f)
+	extraProperties, err := internal.ExtractExtraProperties(data, *f)
 	if err != nil {
 		return err
 	}
 	f.extraProperties = extraProperties
-
-	f._rawJSON = json.RawMessage(data)
+	f.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (f *FtpEnumerateDetails) String() string {
-	if len(f._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(f._rawJSON); err == nil {
+	if len(f.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(f.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(f); err == nil {
+	if value, err := internal.StringifyJSON(f); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", f)

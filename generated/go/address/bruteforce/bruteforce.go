@@ -5,7 +5,7 @@ package bruteforce
 import (
 	json "encoding/json"
 	fmt "fmt"
-	core "github.com/Method-Security/networkscan/generated/go/core"
+	internal "github.com/Method-Security/networkscan/generated/go/internal"
 	time "time"
 )
 
@@ -16,7 +16,35 @@ type AttemptInfo struct {
 	Timestamp time.Time      `json:"timestamp" url:"timestamp"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (a *AttemptInfo) GetRequest() *RequestUnion {
+	if a == nil {
+		return nil
+	}
+	return a.Request
+}
+
+func (a *AttemptInfo) GetResponse() *ResponseUnion {
+	if a == nil {
+		return nil
+	}
+	return a.Response
+}
+
+func (a *AttemptInfo) GetResult() *ResultInfo {
+	if a == nil {
+		return nil
+	}
+	return a.Result
+}
+
+func (a *AttemptInfo) GetTimestamp() time.Time {
+	if a == nil {
+		return time.Time{}
+	}
+	return a.Timestamp
 }
 
 func (a *AttemptInfo) GetExtraProperties() map[string]interface{} {
@@ -27,7 +55,7 @@ func (a *AttemptInfo) UnmarshalJSON(data []byte) error {
 	type embed AttemptInfo
 	var unmarshaler = struct {
 		embed
-		Timestamp *core.DateTime `json:"timestamp"`
+		Timestamp *internal.DateTime `json:"timestamp"`
 	}{
 		embed: embed(*a),
 	}
@@ -36,14 +64,12 @@ func (a *AttemptInfo) UnmarshalJSON(data []byte) error {
 	}
 	*a = AttemptInfo(unmarshaler.embed)
 	a.Timestamp = unmarshaler.Timestamp.Time()
-
-	extraProperties, err := core.ExtractExtraProperties(data, *a)
+	extraProperties, err := internal.ExtractExtraProperties(data, *a)
 	if err != nil {
 		return err
 	}
 	a.extraProperties = extraProperties
-
-	a._rawJSON = json.RawMessage(data)
+	a.rawJSON = json.RawMessage(data)
 	return nil
 }
 
@@ -51,21 +77,21 @@ func (a *AttemptInfo) MarshalJSON() ([]byte, error) {
 	type embed AttemptInfo
 	var marshaler = struct {
 		embed
-		Timestamp *core.DateTime `json:"timestamp"`
+		Timestamp *internal.DateTime `json:"timestamp"`
 	}{
 		embed:     embed(*a),
-		Timestamp: core.NewDateTime(a.Timestamp),
+		Timestamp: internal.NewDateTime(a.Timestamp),
 	}
 	return json.Marshal(marshaler)
 }
 
 func (a *AttemptInfo) String() string {
-	if len(a._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(a._rawJSON); err == nil {
+	if len(a.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(a.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(a); err == nil {
+	if value, err := internal.StringifyJSON(a); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", a)
@@ -77,7 +103,28 @@ type BruteForceAttempt struct {
 	Attempts   []*AttemptInfo  `json:"attempts,omitempty" url:"attempts,omitempty"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (b *BruteForceAttempt) GetTarget() string {
+	if b == nil {
+		return ""
+	}
+	return b.Target
+}
+
+func (b *BruteForceAttempt) GetStatistics() *StatisticsInfo {
+	if b == nil {
+		return nil
+	}
+	return b.Statistics
+}
+
+func (b *BruteForceAttempt) GetAttempts() []*AttemptInfo {
+	if b == nil {
+		return nil
+	}
+	return b.Attempts
 }
 
 func (b *BruteForceAttempt) GetExtraProperties() map[string]interface{} {
@@ -91,24 +138,22 @@ func (b *BruteForceAttempt) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*b = BruteForceAttempt(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *b)
+	extraProperties, err := internal.ExtractExtraProperties(data, *b)
 	if err != nil {
 		return err
 	}
 	b.extraProperties = extraProperties
-
-	b._rawJSON = json.RawMessage(data)
+	b.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (b *BruteForceAttempt) String() string {
-	if len(b._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(b._rawJSON); err == nil {
+	if len(b.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(b.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(b); err == nil {
+	if value, err := internal.StringifyJSON(b); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", b)
@@ -120,7 +165,28 @@ type BruteForceReport struct {
 	Errors             []string             `json:"errors,omitempty" url:"errors,omitempty"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (b *BruteForceReport) GetModule() ModuleType {
+	if b == nil {
+		return ""
+	}
+	return b.Module
+}
+
+func (b *BruteForceReport) GetBruteForceAttempts() []*BruteForceAttempt {
+	if b == nil {
+		return nil
+	}
+	return b.BruteForceAttempts
+}
+
+func (b *BruteForceReport) GetErrors() []string {
+	if b == nil {
+		return nil
+	}
+	return b.Errors
 }
 
 func (b *BruteForceReport) GetExtraProperties() map[string]interface{} {
@@ -134,24 +200,22 @@ func (b *BruteForceReport) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*b = BruteForceReport(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *b)
+	extraProperties, err := internal.ExtractExtraProperties(data, *b)
 	if err != nil {
 		return err
 	}
 	b.extraProperties = extraProperties
-
-	b._rawJSON = json.RawMessage(data)
+	b.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (b *BruteForceReport) String() string {
-	if len(b._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(b._rawJSON); err == nil {
+	if len(b.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(b.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(b); err == nil {
+	if value, err := internal.StringifyJSON(b); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", b)
@@ -169,7 +233,70 @@ type BruteForceRunConfig struct {
 	StopFirstSuccess bool       `json:"stopFirstSuccess" url:"stopFirstSuccess"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (b *BruteForceRunConfig) GetModule() ModuleType {
+	if b == nil {
+		return ""
+	}
+	return b.Module
+}
+
+func (b *BruteForceRunConfig) GetTargets() []string {
+	if b == nil {
+		return nil
+	}
+	return b.Targets
+}
+
+func (b *BruteForceRunConfig) GetUsernames() []string {
+	if b == nil {
+		return nil
+	}
+	return b.Usernames
+}
+
+func (b *BruteForceRunConfig) GetPasswords() []string {
+	if b == nil {
+		return nil
+	}
+	return b.Passwords
+}
+
+func (b *BruteForceRunConfig) GetTimeout() int {
+	if b == nil {
+		return 0
+	}
+	return b.Timeout
+}
+
+func (b *BruteForceRunConfig) GetSleep() int {
+	if b == nil {
+		return 0
+	}
+	return b.Sleep
+}
+
+func (b *BruteForceRunConfig) GetRetries() int {
+	if b == nil {
+		return 0
+	}
+	return b.Retries
+}
+
+func (b *BruteForceRunConfig) GetSuccessfulOnly() bool {
+	if b == nil {
+		return false
+	}
+	return b.SuccessfulOnly
+}
+
+func (b *BruteForceRunConfig) GetStopFirstSuccess() bool {
+	if b == nil {
+		return false
+	}
+	return b.StopFirstSuccess
 }
 
 func (b *BruteForceRunConfig) GetExtraProperties() map[string]interface{} {
@@ -183,24 +310,22 @@ func (b *BruteForceRunConfig) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*b = BruteForceRunConfig(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *b)
+	extraProperties, err := internal.ExtractExtraProperties(data, *b)
 	if err != nil {
 		return err
 	}
 	b.extraProperties = extraProperties
-
-	b._rawJSON = json.RawMessage(data)
+	b.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (b *BruteForceRunConfig) String() string {
-	if len(b._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(b._rawJSON); err == nil {
+	if len(b.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(b.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(b); err == nil {
+	if value, err := internal.StringifyJSON(b); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", b)
@@ -211,7 +336,21 @@ type CredentialPair struct {
 	Password string `json:"password" url:"password"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (c *CredentialPair) GetUsername() string {
+	if c == nil {
+		return ""
+	}
+	return c.Username
+}
+
+func (c *CredentialPair) GetPassword() string {
+	if c == nil {
+		return ""
+	}
+	return c.Password
 }
 
 func (c *CredentialPair) GetExtraProperties() map[string]interface{} {
@@ -225,24 +364,22 @@ func (c *CredentialPair) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*c = CredentialPair(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *c)
+	extraProperties, err := internal.ExtractExtraProperties(data, *c)
 	if err != nil {
 		return err
 	}
 	c.extraProperties = extraProperties
-
-	c._rawJSON = json.RawMessage(data)
+	c.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (c *CredentialPair) String() string {
-	if len(c._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(c._rawJSON); err == nil {
+	if len(c.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(c.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(c); err == nil {
+	if value, err := internal.StringifyJSON(c); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", c)
@@ -279,6 +416,20 @@ func NewRequestUnionFromGeneralRequest(value *GeneralRequestInfo) *RequestUnion 
 	return &RequestUnion{Type: "generalRequest", GeneralRequest: value}
 }
 
+func (r *RequestUnion) GetType() string {
+	if r == nil {
+		return ""
+	}
+	return r.Type
+}
+
+func (r *RequestUnion) GetGeneralRequest() *GeneralRequestInfo {
+	if r == nil {
+		return nil
+	}
+	return r.GeneralRequest
+}
+
 func (r *RequestUnion) UnmarshalJSON(data []byte) error {
 	var unmarshaler struct {
 		Type string `json:"type"`
@@ -302,11 +453,14 @@ func (r *RequestUnion) UnmarshalJSON(data []byte) error {
 }
 
 func (r RequestUnion) MarshalJSON() ([]byte, error) {
+	if err := r.validate(); err != nil {
+		return nil, err
+	}
 	switch r.Type {
 	default:
 		return nil, fmt.Errorf("invalid type %s in %T", r.Type, r)
 	case "generalRequest":
-		return core.MarshalJSONWithExtraProperty(r.GeneralRequest, "type", "generalRequest")
+		return internal.MarshalJSONWithExtraProperty(r.GeneralRequest, "type", "generalRequest")
 	}
 }
 
@@ -323,6 +477,37 @@ func (r *RequestUnion) Accept(visitor RequestUnionVisitor) error {
 	}
 }
 
+func (r *RequestUnion) validate() error {
+	if r == nil {
+		return fmt.Errorf("type %T is nil", r)
+	}
+	var fields []string
+	if r.GeneralRequest != nil {
+		fields = append(fields, "generalRequest")
+	}
+	if len(fields) == 0 {
+		if r.Type != "" {
+			return fmt.Errorf("type %T defines a discriminant set to %q but the field is not set", r, r.Type)
+		}
+		return fmt.Errorf("type %T is empty", r)
+	}
+	if len(fields) > 1 {
+		return fmt.Errorf("type %T defines values for %s, but only one value is allowed", r, fields)
+	}
+	if r.Type != "" {
+		field := fields[0]
+		if r.Type != field {
+			return fmt.Errorf(
+				"type %T defines a discriminant set to %q, but it does not match the %T field; either remove or update the discriminant to match",
+				r,
+				r.Type,
+				r,
+			)
+		}
+	}
+	return nil
+}
+
 type ResponseUnion struct {
 	Type            string
 	GeneralResponse *GeneralResponseInfo
@@ -330,6 +515,20 @@ type ResponseUnion struct {
 
 func NewResponseUnionFromGeneralResponse(value *GeneralResponseInfo) *ResponseUnion {
 	return &ResponseUnion{Type: "generalResponse", GeneralResponse: value}
+}
+
+func (r *ResponseUnion) GetType() string {
+	if r == nil {
+		return ""
+	}
+	return r.Type
+}
+
+func (r *ResponseUnion) GetGeneralResponse() *GeneralResponseInfo {
+	if r == nil {
+		return nil
+	}
+	return r.GeneralResponse
 }
 
 func (r *ResponseUnion) UnmarshalJSON(data []byte) error {
@@ -355,11 +554,14 @@ func (r *ResponseUnion) UnmarshalJSON(data []byte) error {
 }
 
 func (r ResponseUnion) MarshalJSON() ([]byte, error) {
+	if err := r.validate(); err != nil {
+		return nil, err
+	}
 	switch r.Type {
 	default:
 		return nil, fmt.Errorf("invalid type %s in %T", r.Type, r)
 	case "generalResponse":
-		return core.MarshalJSONWithExtraProperty(r.GeneralResponse, "type", "generalResponse")
+		return internal.MarshalJSONWithExtraProperty(r.GeneralResponse, "type", "generalResponse")
 	}
 }
 
@@ -376,12 +578,57 @@ func (r *ResponseUnion) Accept(visitor ResponseUnionVisitor) error {
 	}
 }
 
+func (r *ResponseUnion) validate() error {
+	if r == nil {
+		return fmt.Errorf("type %T is nil", r)
+	}
+	var fields []string
+	if r.GeneralResponse != nil {
+		fields = append(fields, "generalResponse")
+	}
+	if len(fields) == 0 {
+		if r.Type != "" {
+			return fmt.Errorf("type %T defines a discriminant set to %q but the field is not set", r, r.Type)
+		}
+		return fmt.Errorf("type %T is empty", r)
+	}
+	if len(fields) > 1 {
+		return fmt.Errorf("type %T defines values for %s, but only one value is allowed", r, fields)
+	}
+	if r.Type != "" {
+		field := fields[0]
+		if r.Type != field {
+			return fmt.Errorf(
+				"type %T defines a discriminant set to %q, but it does not match the %T field; either remove or update the discriminant to match",
+				r,
+				r.Type,
+				r,
+			)
+		}
+	}
+	return nil
+}
+
 type ResultInfo struct {
 	Login     bool `json:"login" url:"login"`
 	Ratelimit bool `json:"ratelimit" url:"ratelimit"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (r *ResultInfo) GetLogin() bool {
+	if r == nil {
+		return false
+	}
+	return r.Login
+}
+
+func (r *ResultInfo) GetRatelimit() bool {
+	if r == nil {
+		return false
+	}
+	return r.Ratelimit
 }
 
 func (r *ResultInfo) GetExtraProperties() map[string]interface{} {
@@ -395,24 +642,22 @@ func (r *ResultInfo) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*r = ResultInfo(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *r)
+	extraProperties, err := internal.ExtractExtraProperties(data, *r)
 	if err != nil {
 		return err
 	}
 	r.extraProperties = extraProperties
-
-	r._rawJSON = json.RawMessage(data)
+	r.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (r *ResultInfo) String() string {
-	if len(r._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(r._rawJSON); err == nil {
+	if len(r.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(r.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(r); err == nil {
+	if value, err := internal.StringifyJSON(r); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", r)
@@ -426,7 +671,42 @@ type StatisticsInfo struct {
 	RunConfig     *BruteForceRunConfig `json:"runConfig,omitempty" url:"runConfig,omitempty"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (s *StatisticsInfo) GetNumUsernames() int {
+	if s == nil {
+		return 0
+	}
+	return s.NumUsernames
+}
+
+func (s *StatisticsInfo) GetNumPasswords() int {
+	if s == nil {
+		return 0
+	}
+	return s.NumPasswords
+}
+
+func (s *StatisticsInfo) GetNumSuccessful() int {
+	if s == nil {
+		return 0
+	}
+	return s.NumSuccessful
+}
+
+func (s *StatisticsInfo) GetNumFailed() int {
+	if s == nil {
+		return 0
+	}
+	return s.NumFailed
+}
+
+func (s *StatisticsInfo) GetRunConfig() *BruteForceRunConfig {
+	if s == nil {
+		return nil
+	}
+	return s.RunConfig
 }
 
 func (s *StatisticsInfo) GetExtraProperties() map[string]interface{} {
@@ -440,110 +720,23 @@ func (s *StatisticsInfo) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*s = StatisticsInfo(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *s)
+	extraProperties, err := internal.ExtractExtraProperties(data, *s)
 	if err != nil {
 		return err
 	}
 	s.extraProperties = extraProperties
-
-	s._rawJSON = json.RawMessage(data)
+	s.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (s *StatisticsInfo) String() string {
-	if len(s._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(s._rawJSON); err == nil {
+	if len(s.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(s.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(s); err == nil {
+	if value, err := internal.StringifyJSON(s); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", s)
-}
-
-type GeneralRequestInfo struct {
-	Username string `json:"username" url:"username"`
-	Password string `json:"password" url:"password"`
-	Host     string `json:"host" url:"host"`
-	Port     int    `json:"port" url:"port"`
-
-	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
-}
-
-func (g *GeneralRequestInfo) GetExtraProperties() map[string]interface{} {
-	return g.extraProperties
-}
-
-func (g *GeneralRequestInfo) UnmarshalJSON(data []byte) error {
-	type unmarshaler GeneralRequestInfo
-	var value unmarshaler
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	*g = GeneralRequestInfo(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *g)
-	if err != nil {
-		return err
-	}
-	g.extraProperties = extraProperties
-
-	g._rawJSON = json.RawMessage(data)
-	return nil
-}
-
-func (g *GeneralRequestInfo) String() string {
-	if len(g._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(g._rawJSON); err == nil {
-			return value
-		}
-	}
-	if value, err := core.StringifyJSON(g); err == nil {
-		return value
-	}
-	return fmt.Sprintf("%#v", g)
-}
-
-type GeneralResponseInfo struct {
-	Message string `json:"message" url:"message"`
-
-	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
-}
-
-func (g *GeneralResponseInfo) GetExtraProperties() map[string]interface{} {
-	return g.extraProperties
-}
-
-func (g *GeneralResponseInfo) UnmarshalJSON(data []byte) error {
-	type unmarshaler GeneralResponseInfo
-	var value unmarshaler
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	*g = GeneralResponseInfo(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *g)
-	if err != nil {
-		return err
-	}
-	g.extraProperties = extraProperties
-
-	g._rawJSON = json.RawMessage(data)
-	return nil
-}
-
-func (g *GeneralResponseInfo) String() string {
-	if len(g._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(g._rawJSON); err == nil {
-			return value
-		}
-	}
-	if value, err := core.StringifyJSON(g); err == nil {
-		return value
-	}
-	return fmt.Sprintf("%#v", g)
 }

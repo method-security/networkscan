@@ -5,135 +5,8 @@ package port
 import (
 	json "encoding/json"
 	fmt "fmt"
-	core "github.com/Method-Security/networkscan/generated/go/core"
+	internal "github.com/Method-Security/networkscan/generated/go/internal"
 )
-
-type HostScanDetails struct {
-	Host  string             `json:"host" url:"host"`
-	Ip    string             `json:"ip" url:"ip"`
-	Ports []*PortScanDetails `json:"ports,omitempty" url:"ports,omitempty"`
-
-	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
-}
-
-func (h *HostScanDetails) GetExtraProperties() map[string]interface{} {
-	return h.extraProperties
-}
-
-func (h *HostScanDetails) UnmarshalJSON(data []byte) error {
-	type unmarshaler HostScanDetails
-	var value unmarshaler
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	*h = HostScanDetails(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *h)
-	if err != nil {
-		return err
-	}
-	h.extraProperties = extraProperties
-
-	h._rawJSON = json.RawMessage(data)
-	return nil
-}
-
-func (h *HostScanDetails) String() string {
-	if len(h._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(h._rawJSON); err == nil {
-			return value
-		}
-	}
-	if value, err := core.StringifyJSON(h); err == nil {
-		return value
-	}
-	return fmt.Sprintf("%#v", h)
-}
-
-type PortScanDetails struct {
-	Port     int    `json:"port" url:"port"`
-	Protocol string `json:"protocol" url:"protocol"`
-
-	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
-}
-
-func (p *PortScanDetails) GetExtraProperties() map[string]interface{} {
-	return p.extraProperties
-}
-
-func (p *PortScanDetails) UnmarshalJSON(data []byte) error {
-	type unmarshaler PortScanDetails
-	var value unmarshaler
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	*p = PortScanDetails(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *p)
-	if err != nil {
-		return err
-	}
-	p.extraProperties = extraProperties
-
-	p._rawJSON = json.RawMessage(data)
-	return nil
-}
-
-func (p *PortScanDetails) String() string {
-	if len(p._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(p._rawJSON); err == nil {
-			return value
-		}
-	}
-	if value, err := core.StringifyJSON(p); err == nil {
-		return value
-	}
-	return fmt.Sprintf("%#v", p)
-}
-
-type PortScanReport struct {
-	Hosts  []*HostScanDetails `json:"hosts,omitempty" url:"hosts,omitempty"`
-	Errors []string           `json:"errors,omitempty" url:"errors,omitempty"`
-
-	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
-}
-
-func (p *PortScanReport) GetExtraProperties() map[string]interface{} {
-	return p.extraProperties
-}
-
-func (p *PortScanReport) UnmarshalJSON(data []byte) error {
-	type unmarshaler PortScanReport
-	var value unmarshaler
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	*p = PortScanReport(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *p)
-	if err != nil {
-		return err
-	}
-	p.extraProperties = extraProperties
-
-	p._rawJSON = json.RawMessage(data)
-	return nil
-}
-
-func (p *PortScanReport) String() string {
-	if len(p._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(p._rawJSON); err == nil {
-			return value
-		}
-	}
-	if value, err := core.StringifyJSON(p); err == nil {
-		return value
-	}
-	return fmt.Sprintf("%#v", p)
-}
 
 type HostValidateDetails struct {
 	Host        string                 `json:"host" url:"host"`
@@ -141,7 +14,28 @@ type HostValidateDetails struct {
 	PortDetails []*PortValidateDetails `json:"portDetails,omitempty" url:"portDetails,omitempty"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (h *HostValidateDetails) GetHost() string {
+	if h == nil {
+		return ""
+	}
+	return h.Host
+}
+
+func (h *HostValidateDetails) GetIp() string {
+	if h == nil {
+		return ""
+	}
+	return h.Ip
+}
+
+func (h *HostValidateDetails) GetPortDetails() []*PortValidateDetails {
+	if h == nil {
+		return nil
+	}
+	return h.PortDetails
 }
 
 func (h *HostValidateDetails) GetExtraProperties() map[string]interface{} {
@@ -155,24 +49,22 @@ func (h *HostValidateDetails) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*h = HostValidateDetails(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *h)
+	extraProperties, err := internal.ExtractExtraProperties(data, *h)
 	if err != nil {
 		return err
 	}
 	h.extraProperties = extraProperties
-
-	h._rawJSON = json.RawMessage(data)
+	h.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (h *HostValidateDetails) String() string {
-	if len(h._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(h._rawJSON); err == nil {
+	if len(h.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(h.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(h); err == nil {
+	if value, err := internal.StringifyJSON(h); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", h)
@@ -186,7 +78,42 @@ type HttpRequest struct {
 	Error        *string `json:"error,omitempty" url:"error,omitempty"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (h *HttpRequest) GetUrl() string {
+	if h == nil {
+		return ""
+	}
+	return h.Url
+}
+
+func (h *HttpRequest) GetMethod() string {
+	if h == nil {
+		return ""
+	}
+	return h.Method
+}
+
+func (h *HttpRequest) GetResponseCode() *int {
+	if h == nil {
+		return nil
+	}
+	return h.ResponseCode
+}
+
+func (h *HttpRequest) GetResponseBody() *string {
+	if h == nil {
+		return nil
+	}
+	return h.ResponseBody
+}
+
+func (h *HttpRequest) GetError() *string {
+	if h == nil {
+		return nil
+	}
+	return h.Error
 }
 
 func (h *HttpRequest) GetExtraProperties() map[string]interface{} {
@@ -200,24 +127,22 @@ func (h *HttpRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*h = HttpRequest(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *h)
+	extraProperties, err := internal.ExtractExtraProperties(data, *h)
 	if err != nil {
 		return err
 	}
 	h.extraProperties = extraProperties
-
-	h._rawJSON = json.RawMessage(data)
+	h.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (h *HttpRequest) String() string {
-	if len(h._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(h._rawJSON); err == nil {
+	if len(h.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(h.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(h); err == nil {
+	if value, err := internal.StringifyJSON(h); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", h)
@@ -233,7 +158,56 @@ type PortScanValidateConfig struct {
 	SkipTlsVerify bool     `json:"skipTLSVerify" url:"skipTLSVerify"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (p *PortScanValidateConfig) GetTarget() string {
+	if p == nil {
+		return ""
+	}
+	return p.Target
+}
+
+func (p *PortScanValidateConfig) GetPorts() *string {
+	if p == nil {
+		return nil
+	}
+	return p.Ports
+}
+
+func (p *PortScanValidateConfig) GetTopports() *string {
+	if p == nil {
+		return nil
+	}
+	return p.Topports
+}
+
+func (p *PortScanValidateConfig) GetThreads() int {
+	if p == nil {
+		return 0
+	}
+	return p.Threads
+}
+
+func (p *PortScanValidateConfig) GetScantype() ScanType {
+	if p == nil {
+		return ""
+	}
+	return p.Scantype
+}
+
+func (p *PortScanValidateConfig) GetTimeout() int {
+	if p == nil {
+		return 0
+	}
+	return p.Timeout
+}
+
+func (p *PortScanValidateConfig) GetSkipTlsVerify() bool {
+	if p == nil {
+		return false
+	}
+	return p.SkipTlsVerify
 }
 
 func (p *PortScanValidateConfig) GetExtraProperties() map[string]interface{} {
@@ -247,24 +221,22 @@ func (p *PortScanValidateConfig) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*p = PortScanValidateConfig(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *p)
+	extraProperties, err := internal.ExtractExtraProperties(data, *p)
 	if err != nil {
 		return err
 	}
 	p.extraProperties = extraProperties
-
-	p._rawJSON = json.RawMessage(data)
+	p.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (p *PortScanValidateConfig) String() string {
-	if len(p._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(p._rawJSON); err == nil {
+	if len(p.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(p.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(p); err == nil {
+	if value, err := internal.StringifyJSON(p); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", p)
@@ -276,7 +248,28 @@ type PortScanValidateReport struct {
 	Errors []string                `json:"errors,omitempty" url:"errors,omitempty"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (p *PortScanValidateReport) GetHosts() []*HostValidateDetails {
+	if p == nil {
+		return nil
+	}
+	return p.Hosts
+}
+
+func (p *PortScanValidateReport) GetConfig() *PortScanValidateConfig {
+	if p == nil {
+		return nil
+	}
+	return p.Config
+}
+
+func (p *PortScanValidateReport) GetErrors() []string {
+	if p == nil {
+		return nil
+	}
+	return p.Errors
 }
 
 func (p *PortScanValidateReport) GetExtraProperties() map[string]interface{} {
@@ -290,24 +283,22 @@ func (p *PortScanValidateReport) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*p = PortScanValidateReport(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *p)
+	extraProperties, err := internal.ExtractExtraProperties(data, *p)
 	if err != nil {
 		return err
 	}
 	p.extraProperties = extraProperties
-
-	p._rawJSON = json.RawMessage(data)
+	p.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (p *PortScanValidateReport) String() string {
-	if len(p._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(p._rawJSON); err == nil {
+	if len(p.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(p.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(p); err == nil {
+	if value, err := internal.StringifyJSON(p); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", p)
@@ -319,7 +310,28 @@ type PortValidateDetails struct {
 	HostRequest *HttpRequest `json:"HostRequest,omitempty" url:"HostRequest,omitempty"`
 
 	extraProperties map[string]interface{}
-	_rawJSON        json.RawMessage
+	rawJSON         json.RawMessage
+}
+
+func (p *PortValidateDetails) GetPort() int {
+	if p == nil {
+		return 0
+	}
+	return p.Port
+}
+
+func (p *PortValidateDetails) GetIpRequest() *HttpRequest {
+	if p == nil {
+		return nil
+	}
+	return p.IpRequest
+}
+
+func (p *PortValidateDetails) GetHostRequest() *HttpRequest {
+	if p == nil {
+		return nil
+	}
+	return p.HostRequest
 }
 
 func (p *PortValidateDetails) GetExtraProperties() map[string]interface{} {
@@ -333,24 +345,22 @@ func (p *PortValidateDetails) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*p = PortValidateDetails(value)
-
-	extraProperties, err := core.ExtractExtraProperties(data, *p)
+	extraProperties, err := internal.ExtractExtraProperties(data, *p)
 	if err != nil {
 		return err
 	}
 	p.extraProperties = extraProperties
-
-	p._rawJSON = json.RawMessage(data)
+	p.rawJSON = json.RawMessage(data)
 	return nil
 }
 
 func (p *PortValidateDetails) String() string {
-	if len(p._rawJSON) > 0 {
-		if value, err := core.StringifyJSON(p._rawJSON); err == nil {
+	if len(p.rawJSON) > 0 {
+		if value, err := internal.StringifyJSON(p.rawJSON); err == nil {
 			return value
 		}
 	}
-	if value, err := core.StringifyJSON(p); err == nil {
+	if value, err := internal.StringifyJSON(p); err == nil {
 		return value
 	}
 	return fmt.Sprintf("%#v", p)

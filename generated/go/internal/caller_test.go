@@ -1,4 +1,4 @@
-package core
+package internal
 
 import (
 	"bytes"
@@ -9,9 +9,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"testing"
 
+	"github.com/Method-Security/networkscan/generated/go/core"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,11 +23,14 @@ type TestCase struct {
 	description string
 
 	// Server-side assertions.
+	givePathSuffix         string
 	giveMethod             string
 	giveResponseIsOptional bool
 	giveHeader             http.Header
 	giveErrorDecoder       ErrorDecoder
 	giveRequest            *Request
+	giveQueryParams        url.Values
+	giveBodyProperties     map[string]interface{}
 
 	// Client-side assertions.
 	wantResponse *Response
@@ -39,12 +44,14 @@ type Request struct {
 
 // Response a simple response body.
 type Response struct {
-	Id string `json:"id"`
+	Id                  string                 `json:"id"`
+	ExtraBodyProperties map[string]interface{} `json:"extraBodyProperties,omitempty"`
+	QueryParameters     url.Values             `json:"queryParameters,omitempty"`
 }
 
 // NotFoundError represents a 404.
 type NotFoundError struct {
-	*APIError
+	*core.APIError
 
 	Message string `json:"message"`
 }
@@ -65,6 +72,23 @@ func TestCall(t *testing.T) {
 			},
 		},
 		{
+			description:    "GET success with query",
+			givePathSuffix: "?limit=1",
+			giveMethod:     http.MethodGet,
+			giveHeader: http.Header{
+				"X-API-Status": []string{"success"},
+			},
+			giveRequest: &Request{
+				Id: "123",
+			},
+			wantResponse: &Response{
+				Id: "123",
+				QueryParameters: url.Values{
+					"limit": []string{"1"},
+				},
+			},
+		},
+		{
 			description: "GET not found",
 			giveMethod:  http.MethodGet,
 			giveHeader: http.Header{
@@ -75,7 +99,7 @@ func TestCall(t *testing.T) {
 			},
 			giveErrorDecoder: newTestErrorDecoder(t),
 			wantError: &NotFoundError{
-				APIError: NewAPIError(
+				APIError: core.NewAPIError(
 					http.StatusNotFound,
 					errors.New(`{"message":"ID \"404\" not found"}`),
 				),
@@ -88,7 +112,7 @@ func TestCall(t *testing.T) {
 				"X-API-Status": []string{"fail"},
 			},
 			giveRequest: nil,
-			wantError: NewAPIError(
+			wantError: core.NewAPIError(
 				http.StatusBadRequest,
 				errors.New("invalid request"),
 			),
@@ -113,10 +137,66 @@ func TestCall(t *testing.T) {
 			giveRequest: &Request{
 				Id: strconv.Itoa(http.StatusInternalServerError),
 			},
-			wantError: NewAPIError(
+			wantError: core.NewAPIError(
 				http.StatusInternalServerError,
 				errors.New("failed to process request"),
 			),
+		},
+		{
+			description: "POST extra properties",
+			giveMethod:  http.MethodPost,
+			giveHeader: http.Header{
+				"X-API-Status": []string{"success"},
+			},
+			giveRequest: new(Request),
+			giveBodyProperties: map[string]interface{}{
+				"key": "value",
+			},
+			wantResponse: &Response{
+				ExtraBodyProperties: map[string]interface{}{
+					"key": "value",
+				},
+			},
+		},
+		{
+			description: "GET extra query parameters",
+			giveMethod:  http.MethodGet,
+			giveHeader: http.Header{
+				"X-API-Status": []string{"success"},
+			},
+			giveQueryParams: url.Values{
+				"extra": []string{"true"},
+			},
+			giveRequest: &Request{
+				Id: "123",
+			},
+			wantResponse: &Response{
+				Id: "123",
+				QueryParameters: url.Values{
+					"extra": []string{"true"},
+				},
+			},
+		},
+		{
+			description:    "GET merge extra query parameters",
+			givePathSuffix: "?limit=1",
+			giveMethod:     http.MethodGet,
+			giveHeader: http.Header{
+				"X-API-Status": []string{"success"},
+			},
+			giveRequest: &Request{
+				Id: "123",
+			},
+			giveQueryParams: url.Values{
+				"extra": []string{"true"},
+			},
+			wantResponse: &Response{
+				Id: "123",
+				QueryParameters: url.Values{
+					"limit": []string{"1"},
+					"extra": []string{"true"},
+				},
+			},
 		},
 	}
 	for _, test := range tests {
@@ -134,9 +214,11 @@ func TestCall(t *testing.T) {
 			err := caller.Call(
 				context.Background(),
 				&CallParams{
-					URL:                server.URL,
+					URL:                server.URL + test.givePathSuffix,
 					Method:             test.giveMethod,
 					Headers:            test.giveHeader,
+					BodyProperties:     test.giveBodyProperties,
+					QueryParameters:    test.giveQueryParams,
 					Request:            test.giveRequest,
 					Response:           &response,
 					ResponseIsOptional: test.giveResponseIsOptional,
@@ -243,7 +325,7 @@ func newTestServer(t *testing.T, tc *TestCase) *httptest.Server {
 				switch request.Id {
 				case strconv.Itoa(http.StatusNotFound):
 					notFoundError := &NotFoundError{
-						APIError: &APIError{
+						APIError: &core.APIError{
 							StatusCode: http.StatusNotFound,
 						},
 						Message: fmt.Sprintf("ID %q not found", request.Id),
@@ -268,8 +350,14 @@ func newTestServer(t *testing.T, tc *TestCase) *httptest.Server {
 					return
 				}
 
+				extraBodyProperties := make(map[string]interface{})
+				require.NoError(t, json.Unmarshal(bytes, &extraBodyProperties))
+				delete(extraBodyProperties, "id")
+
 				response := &Response{
-					Id: request.Id,
+					Id:                  request.Id,
+					ExtraBodyProperties: extraBodyProperties,
+					QueryParameters:     r.URL.Query(),
 				}
 				bytes, err = json.Marshal(response)
 				require.NoError(t, err)
@@ -288,7 +376,7 @@ func newTestErrorDecoder(t *testing.T) func(int, io.Reader) error {
 		require.NoError(t, err)
 
 		var (
-			apiError = NewAPIError(statusCode, errors.New(string(raw)))
+			apiError = core.NewAPIError(statusCode, errors.New(string(raw)))
 			decoder  = json.NewDecoder(bytes.NewReader(raw))
 		)
 		if statusCode == http.StatusNotFound {
