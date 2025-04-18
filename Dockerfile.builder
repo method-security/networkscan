@@ -1,5 +1,5 @@
 # Dockerfile used for the compilation of the statically compiled networkscan binary
-FROM golang:1.22.5-alpine3.20 as base
+FROM golang:1.24.2-alpine3.20 as base
 ARG GORELEASER_VERSION="v2.0.1"
 ARG CLI_NAME="networkscan"
 ARG TARGETARCH

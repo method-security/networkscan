@@ -1,9 +1,11 @@
 module github.com/Method-Security/networkscan
 
-go 1.22.5
+go 1.24
+
+toolchain go1.24.2
 
 require (
-	github.com/Method-Security/pkg v0.0.3
+	github.com/Method-Security/pkg v0.0.6
 	github.com/Ullaakut/nmap/v3 v3.0.3
 	github.com/go-mysql-org/go-mysql v1.11.0
 	github.com/google/uuid v1.3.1
