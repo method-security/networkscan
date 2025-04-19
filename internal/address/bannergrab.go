@@ -12,14 +12,14 @@ import (
 	"time"
 
 	generatedgo "github.com/Method-Security/networkscan/generated/go"
-	address "github.com/Method-Security/networkscan/generated/go/address"
+	addressfern "github.com/Method-Security/networkscan/generated/go/address"
 	"github.com/praetorian-inc/fingerprintx/pkg/plugins"
 	"github.com/praetorian-inc/fingerprintx/pkg/scan"
 )
 
 // RunBannerGrab performs a banner grab on the specified target
-func RunBannerGrab(ctx context.Context, timeout int, target string, port uint16) (*address.BannerGrabReport, error) {
-	resources := address.BannerGrabReport{Target: target}
+func RunBannerGrab(ctx context.Context, timeout int, target string, port uint16) (*addressfern.BannerGrabReport, error) {
+	resources := addressfern.BannerGrabReport{Target: target}
 	errors := []string{}
 
 	fxConfig := scan.Config{
@@ -34,7 +34,7 @@ func RunBannerGrab(ctx context.Context, timeout int, target string, port uint16)
 		return &resources, err
 	}
 
-	var bannerResults []*address.BannerGrab
+	var bannerResults []*addressfern.BannerGrab
 	for _, ip := range ips {
 		ipAddr, err := netip.ParseAddr(ip.String())
 		if err != nil {
@@ -58,7 +58,7 @@ func RunBannerGrab(ctx context.Context, timeout int, target string, port uint16)
 		}
 
 		metadata := metadataMap(result.Metadata())
-		bannerResult := address.BannerGrab{
+		bannerResult := addressfern.BannerGrab{
 			Host:        result.Host,
 			Ip:          result.IP,
 			Port:        result.Port,

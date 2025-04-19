@@ -1,0 +1,48 @@
+imports:
+  common: ../common.yml
+types:
+  TryProtocols:
+    properties:
+      Protocol: string
+      ConnectionData: optional<string>
+      Errors: list<string>
+  DatabaseModule:
+    enum:
+      - MYSQL
+      - POSTGRESQL
+  RemoteAccessModule:
+    enum:
+      - WINDOWSRDP
+  AddressFingerprintResourceModule:
+    union:
+      DatabaseModule: DatabaseModule
+      RemoteAccessModule: RemoteAccessModule
+  AddressFingerprintResourceType:
+    enum:
+      - DATABASE
+      - REMOTEACCESS
+  AddressFingerprintConfig:
+    properties:
+      targets: list<string>
+      resourceType: AddressFingerprintResourceType
+      modules: list<AddressFingerprintResourceModule>
+      timeout: integer
+      successfulOnly: boolean
+      insecureSkipVerify: boolean
+  AddressFingerprintAttemptInfo:
+    properties:
+      module: AddressFingerprintResourceModule
+      host: string
+      port: integer
+      protocol: optional<string>
+      connectionData: optional<string>
+      finding: boolean
+  AddressFingerprintTargetInfo:
+    properties:
+      target: string
+      attempts: list<AddressFingerprintAttemptInfo>
+  AddressFingerprintReport:
+    properties:
+      targets: list<AddressFingerprintTargetInfo>
+      config: AddressFingerprintConfig
+      errors: optional<list<string>>

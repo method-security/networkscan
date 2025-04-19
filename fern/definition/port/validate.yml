@@ -1,6 +1,19 @@
 imports:
   bannergrab: ../address/bannergrab.yml
 types:
+  ScanType:
+    enum:
+      - SYN
+      - CONNECT
+  PortScanValidateConfig:
+    properties:
+      target: string
+      ports: optional<string>
+      topports: optional<string>
+      threads: integer
+      scantype: ScanType
+      timeout: integer
+      skipTLSVerify: boolean
   HttpRequest:
     properties:
       url: string
@@ -21,5 +34,6 @@ types:
   PortScanValidateReport:
     properties:
       hosts: optional<list<HostValidateDetails>>
+      config: PortScanValidateConfig
       errors: optional<list<string>>
 

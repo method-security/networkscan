@@ -1,0 +1,81 @@
+types:
+  AuthMethod:
+    enum:
+      - PASSWORD
+      - PUBLICKEY
+  HostKeyAlgorithm:
+    enum:
+      - SSHDSS
+      - SSHRSA
+      - RSASHA2256
+      - RSASHA2512
+      - ECDSASHA2NISTP256
+      - ECDSASHA2NISTP384
+      - ECDSASHA2NISTP521
+      - SSHED25519
+      - ECDSASHA2NISTP224
+      - ED25519SHA256
+  KeyExchangeAlgorithm:
+    enum:
+      - SNTRUP761X25519SHA512OPENSSH
+      - CURVE25519SHA256
+      - CURVE25519SHA256LIBSSH
+      - ECDHSHA2NISTP256
+      - ECDHSHA2NISTP384
+      - ECDHSHA2NISTP521
+      - ECDHSHA2NISTP224
+      - DIFFIEHELLMANGROUPEXCHANGESHA256
+      - DIFFIEHELLMANGROUPEXCHANGESHA512
+      - DIFFIEHELLMANGROUP16SHA512
+      - DIFFIEHELLMANGROUP18SHA512
+      - DIFFIEHELLMANGROUP14SHA256
+      - DIFFIEHELLMANGROUP14SHA512
+      - DIFFIEHELLMANGROUP1SHA1
+      - DIFFIEHELLMANGROUP1SHA256
+      - KEXSTRICTSV00OPENSSH
+      - X25519SHA256LIBSSH
+      - X448SHA512OPENSSH
+      - CURVE25519SHA512OPENSSH
+  CipherAlgorithm:
+    enum:
+      - CHACHA20POLY1305OPENSSH
+      - AES128CTR
+      - AES192CTR
+      - AES256CTR
+      - AES128GCMOPENSSH
+      - AES256GCMOPENSSH
+      - AES128CBC
+      - AES192CBC
+      - AES256CBC
+      - THREEDESCBC
+      - BLOWFISHCBC
+      - AES128CBCOPENSSL
+      - AES128GCM
+      - AES256GCM
+  MACAlgorithm:
+    enum:
+      - UMAC1
+      - UMAC64ETMOPENSSH
+      - UMAC128ETMOPENSSH
+      - HMACSHA2256ETMOPENSSH
+      - HMACSHA2512ETMOPENSSH
+      - HMACSHA1ETMOPENSSH
+      - UMAC64OPENSSH
+      - UMAC128OPENSSH
+      - HMACSHA2256
+      - HMACSHA2512
+      - HMACSHA1
+      - HMACMD5
+      - HMACRIPEMD160
+      - HMACSHA3256
+      - HMACSHA3512
+  SSHEnumerateDetails:
+    properties:
+      target: string
+      version: optional<string>
+      authMethods: optional<list<AuthMethod>>
+      keyExchangeAlgos: optional<list<KeyExchangeAlgorithm>>
+      hostKeyAlgos: optional<list<HostKeyAlgorithm>>
+      ciphers: optional<list<CipherAlgorithm>>
+      macs: optional<list<MACAlgorithm>>
+      rawASCII: optional<string>
