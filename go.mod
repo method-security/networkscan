@@ -1,7 +1,6 @@
 module github.com/Method-Security/networkscan
 
 go 1.24
-
 toolchain go1.24.2
 
 require (
@@ -11,12 +10,12 @@ require (
 	github.com/google/uuid v1.3.1
 	github.com/jackc/pgx/v5 v5.7.4
 	github.com/palantir/pkg/datetime v1.1.0
-	github.com/palantir/witchcraft-go-logging v1.57.0
+	github.com/palantir/witchcraft-go-logging v1.60.0
 	github.com/praetorian-inc/fingerprintx v1.1.14
 	github.com/projectdiscovery/goflags v0.1.51
 	github.com/projectdiscovery/naabu/v2 v2.3.1
 	github.com/spf13/cobra v1.9.1
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	golang.org/x/crypto v0.31.0
 )
 
@@ -79,9 +78,10 @@ require (
 	github.com/palantir/pkg/safelong v1.1.0 // indirect
 	github.com/palantir/pkg/safeyaml v1.1.0 // indirect
 	github.com/palantir/pkg/transform v1.1.0 // indirect
-	github.com/palantir/witchcraft-go-error v1.38.0 // indirect
-	github.com/palantir/witchcraft-go-params v1.35.0 // indirect
-	github.com/palantir/witchcraft-go-tracing v1.37.0 // indirect
+	github.com/palantir/pkg/uuid v1.2.0 // indirect
+	github.com/palantir/witchcraft-go-error v1.41.0 // indirect
+	github.com/palantir/witchcraft-go-params v1.38.0 // indirect
+	github.com/palantir/witchcraft-go-tracing v1.40.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.2 // indirect
 	github.com/pingcap/errors v0.11.5-0.20240311024730-e056997136bb // indirect
 	github.com/pingcap/log v1.1.1-0.20230317032135-a0d097d16e22 // indirect
