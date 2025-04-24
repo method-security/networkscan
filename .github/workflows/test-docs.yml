@@ -1,9 +1,7 @@
 name: 📙 Test docs
 on:
-  pull_request:
-    paths:
-      - "docs/**"
-      - "mkdocs.yml"
+  workflow_call:
+
 jobs:
   build-documents:
     name: Test Documentation Build

@@ -1,0 +1,51 @@
+name: 🔄 Generate Fern Code
+
+on:
+  workflow_call:
+
+permissions:
+  contents: write
+
+jobs:
+  generate_fern_go:
+    name: Generate Fern Go Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+
+      - name: Install Fern
+        run: npm install -g fern-api
+
+      - name: Generate Fern Go
+        run: fern generate --group local
+        env:
+          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and Push Changes
+        run: |
+          git add -f generated/
+          
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            echo "Changes detected. Committing and pushing..."
+            git commit -m "chore: auto-generate Fern code"
+
+            echo "Pulling latest before pushing..."
+            git pull --rebase origin ${{ github.head_ref || github.ref_name }}
+
+            echo "Pushing updated code..."
+            git push origin HEAD:${{ github.head_ref || github.ref_name }}
+          fi
