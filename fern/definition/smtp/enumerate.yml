@@ -1,0 +1,17 @@
+types:
+  AuthCommand:
+    enum:
+      - XOAUTH2
+      - PLAIN
+      - LOGIN
+      - CRAMMD5
+      - NTLM
+      - GSSAPI
+  SMTPEnumerateDetails:
+    properties:
+      target: string
+      CanConnect: optional<boolean>
+      TLSSupported: optional<boolean>
+      ForceTLS: optional<boolean>
+      AuthCommands: optional<list<AuthCommand>>
+      AllowsUnauthenticatedEmail: optional<boolean>

@@ -9,6 +9,7 @@ import (
 
 	utilsFern "github.com/Method-Security/networkscan/generated/go/utils"
 	ftp "github.com/Method-Security/networkscan/internal/ftp/enumerate"
+	smtp "github.com/Method-Security/networkscan/internal/smtp/enumerate"
 	ssh "github.com/Method-Security/networkscan/internal/ssh/enumerate"
 )
 
@@ -110,6 +111,8 @@ func getEngine(application utilsFern.NetworkApplication) (NetworkApplicationEngi
 		return NetworkApplicationEngine{Library: &ssh.LibraryEnumerateSSH{}}, nil
 	case utilsFern.NetworkApplicationFtp:
 		return NetworkApplicationEngine{Library: &ftp.LibraryEnumerateFTP{}}, nil
+	case utilsFern.NetworkApplicationSmtp:
+		return NetworkApplicationEngine{Library: &smtp.LibraryEnumerateSMTP{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", application)
 	}
