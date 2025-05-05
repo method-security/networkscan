@@ -7,9 +7,6 @@ concurrency:
   group: ${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 jobs:
   build:
     name: 🔨 Reusable Go Build
@@ -18,3 +15,7 @@ jobs:
       goreleaser_config: goreleaser.yml
       goreleaser_options: "--clean --snapshot"
     secrets: inherit
+    permissions:
+      id-token: write # For cosign
+      packages: write # For GHCR
+      contents: read # Not required for public repositories, but for clarity

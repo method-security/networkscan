@@ -16,15 +16,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Download Fern Generated Code (Go)
+        uses: actions/download-artifact@v4
+        with:
+          name: fern-generated-code
+          path: generated/
+
       - name: Install Dependencies
         run: sudo apt-get update && sudo apt-get install -y libpcap-dev
-
-      - name: Generate Fern Go Code
-        run: |
-          npm install -g fern-api
-          fern generate --group local
-        env:
-          FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
 
       - name: Godel Verify
         run: ./godelw verify

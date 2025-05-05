@@ -28,8 +28,8 @@ jobs:
 
   test-build:
     name: 🔨 Test Build
-    needs: code-gen
     uses: ./.github/workflows/test-build.yml
+    needs: code-gen
     secrets: inherit
 
   test-docs:
@@ -39,17 +39,14 @@ jobs:
 
   verify:
     name: 🙏🏻 Verify
-    needs: code-gen
     uses: ./.github/workflows/verify.yml
+    needs: code-gen
     secrets: inherit
-
-
 
   check:
     name: ✅ Check
     if: always()
     needs:
-      - code-gen
       - codeql
       - test-build
       - test-docs

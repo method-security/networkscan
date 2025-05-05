@@ -45,7 +45,5 @@ go.work.sum
 .DS_Store
 
 # Ignore contents of generated, but not the folder itself
-/generated/*
-!.gitkeep
-
+generated/*
 
