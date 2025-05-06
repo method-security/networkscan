@@ -37,6 +37,11 @@ jobs:
     uses: ./.github/workflows/test-docs.yml
     secrets: inherit
 
+  test-publish:
+    name: 🎉 Test Publish
+    uses: ./.github/workflows/test-publish.yml
+    secrets: inherit
+
   verify:
     name: 🙏🏻 Verify
     uses: ./.github/workflows/verify.yml
@@ -50,6 +55,7 @@ jobs:
       - codeql
       - test-build
       - test-docs
+      - test-publish
       - verify
 
     runs-on: ubuntu-latest
