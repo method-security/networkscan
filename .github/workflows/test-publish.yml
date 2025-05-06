@@ -1,9 +1,7 @@
-name: 🔨 Publish Test
+name: 🎉 Publish Test
 
 on:
-  push:
-    branches:
-      - develop
+  workflow_call:
 
 permissions:
   contents: write
