@@ -5,26 +5,14 @@ import (
 	"context"
 	"fmt"
 
+	hostfern "github.com/Method-Security/networkscan/generated/go/host"
 	"github.com/projectdiscovery/goflags"
 	"github.com/projectdiscovery/naabu/v2/pkg/result"
 	"github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
-// Details represents a singular instance of a host that was scanned
-type Details struct {
-	Host string `json:"host" yaml:"host"`
-	IP   string `json:"ip" yaml:"ip"`
-}
-
-// Report represents the final output of a hostdiscover scan, including all hosts that were scanned.
-// It includes all of the hosts that were scanned alongside any non-fatal errors that were encountered during the scan.
-type Report struct {
-	Hosts  []Details `json:"hosts" yaml:"hosts"`
-	Errors []string  `json:"errors" yaml:"errors"`
-}
-
-func getHostDiscover(ctx context.Context, target string, scantype string) ([]Details, error) {
-	hostDetails := []Details{}
+func getHostDiscover(ctx context.Context, target string, scantype string) ([]*hostfern.HostDiscoverDetails, error) {
+	hostDetails := []*hostfern.HostDiscoverDetails{}
 	hostDiscoverOpts := &runner.Options{
 		Silent:            true,
 		JSON:              true,
@@ -78,15 +66,15 @@ func getHostDiscover(ctx context.Context, target string, scantype string) ([]Det
 
 }
 
-func parseResult(result result.HostResult) Details {
-	return Details{
+func parseResult(result result.HostResult) *hostfern.HostDiscoverDetails {
+	return &hostfern.HostDiscoverDetails{
 		Host: result.Host,
-		IP:   result.IP,
+		Ip:   result.IP,
 	}
 }
 
 // RunHostDiscover takes a target host (which can be a CIDR) and a scantype and returns a report of all hosts that were discovered
-func RunHostDiscover(ctx context.Context, target string, scantype string) (Report, error) {
+func RunHostDiscover(ctx context.Context, target string, scantype string) (hostfern.HostDiscoverReport, error) {
 	errors := []string{}
 
 	hostDiscoverResult, err := getHostDiscover(ctx, target, scantype)
@@ -94,7 +82,7 @@ func RunHostDiscover(ctx context.Context, target string, scantype string) (Repor
 		errors = append(errors, err.Error())
 	}
 
-	return Report{
+	return hostfern.HostDiscoverReport{
 		Hosts:  hostDiscoverResult,
 		Errors: errors,
 	}, nil
