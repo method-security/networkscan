@@ -61,7 +61,7 @@ func GetTLSInfo(ctx context.Context, addresses []string, config serviceFern.Serv
 		serviceDetails = append(serviceDetails, &serviceDetail)
 	}
 
-	resources.AddressDetails = serviceDetails
+	resources.ServiceDetails = serviceDetails
 	resources.Errors = errors
 
 	return resources, nil

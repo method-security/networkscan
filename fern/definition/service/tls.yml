@@ -74,6 +74,6 @@ types:
       tlsDetail: optional<TlsDetail>
   ServiceTlsReport:
     properties:
-      addressDetails: optional<list<ServiceTlsDetail>>
+      serviceDetails: optional<list<ServiceTlsDetail>>
       errors: optional<list<string>>
       config: ServiceTlsConfig
