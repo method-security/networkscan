@@ -90,7 +90,7 @@ func Attack(ctx context.Context, config *bruteforce.BruteForceRunConfig) (*brute
 		return &resources, fmt.Errorf("unsupported module: %s", config.Module)
 	}
 
-	var bruteForceResults []*bruteforce.Attempt
+	var bruteForceResults []*bruteforce.BruteForceAttempt
 	for _, target := range config.Targets {
 		var attempts []*bruteforce.AttemptInfo
 
@@ -133,7 +133,7 @@ func Attack(ctx context.Context, config *bruteforce.BruteForceRunConfig) (*brute
 			attempts = successfulAttempts
 		}
 
-		bruteForceResult := bruteforce.Attempt{
+		bruteForceResult := bruteforce.BruteForceAttempt{
 			Target:     target,
 			Attempts:   attempts,
 			Statistics: stats,
@@ -142,7 +142,7 @@ func Attack(ctx context.Context, config *bruteforce.BruteForceRunConfig) (*brute
 	}
 
 	resources.Module = config.Module
-	resources.Attempts = bruteForceResults
+	resources.BruteForceAttempts = bruteForceResults
 	resources.Errors = errors
 	return &resources, nil
 }
