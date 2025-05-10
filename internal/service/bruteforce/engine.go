@@ -11,24 +11,24 @@ import (
 	modules "github.com/Method-Security/networkscan/internal/service/bruteforce/modules"
 )
 
-type BruteforceLibrary interface {
+type Library interface {
 	BruteForce(host string, port int, credPair *bruteforce.CredentialPair, config *bruteforce.BruteForceRunConfig) (*bruteforce.AttemptInfo, []string)
 	AnalyzeResponse(response *bruteforce.ResponseUnion) *bruteforce.ResultInfo
 	StandardPorts() []int
 }
 
-type BruteforceEngine struct {
-	Library BruteforceLibrary
+type Engine struct {
+	Library Library
 }
 
-func (be *BruteforceEngine) Run(ctx context.Context, target string, credPair *bruteforce.CredentialPair, config *bruteforce.BruteForceRunConfig) ([]*bruteforce.AttemptInfo, bool, []string) {
+func (e *Engine) Run(ctx context.Context, target string, credPair *bruteforce.CredentialPair, config *bruteforce.BruteForceRunConfig) ([]*bruteforce.AttemptInfo, bool, []string) {
 	var (
 		attempts   []*bruteforce.AttemptInfo
 		successful bool
 		errors     []string
 	)
 
-	host, ports, err := getHostAndPorts(target, be.Library.StandardPorts())
+	host, ports, err := getHostAndPorts(target, e.Library.StandardPorts())
 	if err != nil {
 		return attempts, successful, append(errors, err.Error())
 	}
@@ -38,7 +38,7 @@ func (be *BruteforceEngine) Run(ctx context.Context, target string, credPair *br
 			var attempt *bruteforce.AttemptInfo
 			var errs []string
 
-			attempt, errs = be.Library.BruteForce(host, port, credPair, config)
+			attempt, errs = e.Library.BruteForce(host, port, credPair, config)
 
 			errors = append(errors, errs...)
 			attempts = append(attempts, attempt)
@@ -56,7 +56,7 @@ func (be *BruteforceEngine) Run(ctx context.Context, target string, credPair *br
 	return attempts, successful, errors
 }
 
-func (be *BruteforceEngine) gatherAttemptStatistics(attempts []*bruteforce.AttemptInfo, config *bruteforce.BruteForceRunConfig) *bruteforce.StatisticsInfo {
+func (e *Engine) gatherAttemptStatistics(attempts []*bruteforce.AttemptInfo, config *bruteforce.BruteForceRunConfig) *bruteforce.StatisticsInfo {
 	stats := &bruteforce.StatisticsInfo{
 		NumUsernames: len(config.Usernames),
 		NumPasswords: len(config.Passwords),
@@ -72,25 +72,25 @@ func (be *BruteforceEngine) gatherAttemptStatistics(attempts []*bruteforce.Attem
 	return stats
 }
 
-func BruteForceAttack(ctx context.Context, config *bruteforce.BruteForceRunConfig) (*bruteforce.BruteForceReport, error) {
+func Attack(ctx context.Context, config *bruteforce.BruteForceRunConfig) (*bruteforce.BruteForceReport, error) {
 	resources := bruteforce.BruteForceReport{}
 	errors := []string{}
 
-	var engine *BruteforceEngine
+	var engine *Engine
 	switch config.Module {
 	case "ssh":
-		engine = &BruteforceEngine{
+		engine = &Engine{
 			Library: &modules.SSHLibrary{},
 		}
 	case "telnet":
-		engine = &BruteforceEngine{
+		engine = &Engine{
 			Library: &modules.TelnetLibrary{},
 		}
 	default:
 		return &resources, fmt.Errorf("unsupported module: %s", config.Module)
 	}
 
-	var bruteForceResults []*bruteforce.BruteForceAttempt
+	var bruteForceResults []*bruteforce.Attempt
 	for _, target := range config.Targets {
 		var attempts []*bruteforce.AttemptInfo
 
@@ -133,7 +133,7 @@ func BruteForceAttack(ctx context.Context, config *bruteforce.BruteForceRunConfi
 			attempts = successfulAttempts
 		}
 
-		bruteForceResult := bruteforce.BruteForceAttempt{
+		bruteForceResult := bruteforce.Attempt{
 			Target:     target,
 			Attempts:   attempts,
 			Statistics: stats,
@@ -142,7 +142,7 @@ func BruteForceAttack(ctx context.Context, config *bruteforce.BruteForceRunConfi
 	}
 
 	resources.Module = config.Module
-	resources.BruteForceAttempts = bruteForceResults
+	resources.Attempts = bruteForceResults
 	resources.Errors = errors
 	return &resources, nil
 }

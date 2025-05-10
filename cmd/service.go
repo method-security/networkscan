@@ -3,7 +3,7 @@ package cmd
 import (
 	"errors"
 
-	servicefern "github.com/Method-Security/networkscan/generated/go/service"
+	serviceFern "github.com/Method-Security/networkscan/generated/go/service"
 	bruteforcefern "github.com/Method-Security/networkscan/generated/go/service/bruteforce"
 	enumerateFern "github.com/Method-Security/networkscan/generated/go/service/enumerate"
 	service "github.com/Method-Security/networkscan/internal/service"
@@ -157,7 +157,7 @@ func (a *NetworkScan) InitServiceCommand() {
 			}
 
 			// Generate Report
-			report, err := bruteforce.BruteForceAttack(cmd.Context(), bruteForceConfig)
+			report, err := bruteforce.Attack(cmd.Context(), bruteForceConfig)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -348,8 +348,8 @@ func LoadBruteForceConfig(module bruteforcefern.ModuleType, targets []string, us
 	return config, nil
 }
 
-func LoadTLSConfig(targets []string, timeout int, insecure bool) servicefern.ServiceTlsConfig {
-	config := servicefern.ServiceTlsConfig{
+func LoadTLSConfig(targets []string, timeout int, insecure bool) serviceFern.ServiceTlsConfig {
+	config := serviceFern.ServiceTlsConfig{
 		Timeout:            timeout,
 		InsecureSkipVerify: insecure,
 	}
