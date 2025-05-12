@@ -14,13 +14,9 @@ func main() {
 
 	networkscan := cmd.NewNetworkScan(version)
 	networkscan.InitRootCommand()
-	networkscan.InitPortCommand()
 	networkscan.InitHostCommand()
-	networkscan.InitOSCommand()
-	networkscan.InitAddressCommand()
-	networkscan.InitSSHCommand()
-	networkscan.InitFTPCommand()
-	networkscan.InitSMTPCommand()
+	networkscan.InitPortCommand()
+	networkscan.InitServiceCommand()
 
 	if err := networkscan.RootCmd.Execute(); err != nil {
 		os.Exit(1)

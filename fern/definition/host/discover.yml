@@ -1,0 +1,10 @@
+types:
+  HostDiscoverDetails:
+    properties:
+      IP: string
+      Host: string
+
+  HostDiscoverReport:
+    properties:
+      Hosts: list<HostDiscoverDetails>
+      Errors: list<string>

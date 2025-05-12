@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"os/exec"
 
 	"github.com/Method-Security/networkscan/internal/host"
 	"github.com/projectdiscovery/naabu/v2/pkg/privileges"
@@ -51,6 +52,45 @@ func (a *NetworkScan) InitHostCommand() {
 	hostDiscoverCmd.Flags().String("scantype", "", "Scan type for host discovery (tcpsyn | tcpack | icmpecho | icmptimestamp | arp | icmpaddressmask)")
 	_ = hostDiscoverCmd.MarkFlagRequired("target")
 	hostCmd.AddCommand(hostDiscoverCmd)
+
+	fingerprintCmd := &cobra.Command{
+		Use:   "fingerprint",
+		Short: "Fingerprint the operating system on a target host",
+		Long:  `Fingerprint the operating system on a target host`,
+		Run: func(cmd *cobra.Command, args []string) {
+			// host fingerprint can only be run as a sudoer or privileged user
+			if !privileges.IsPrivileged {
+				a.OutputSignal.AddError(errors.New("host fingerprint can only be run as a privileged user"))
+				return
+			}
+
+			// Check if nmap is installed and in the system path
+			_, err := exec.LookPath("nmap")
+			if err != nil {
+				a.OutputSignal.AddError(errors.New("nmap is not installed or is not in the system path"))
+				return
+			}
+
+			target, err := cmd.Flags().GetString("target")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			if target == "" {
+				a.OutputSignal.AddError(errors.New("target is required"))
+				return
+			}
+			report, err := host.RunHostFingerprint(cmd.Context(), target)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			a.OutputSignal.Content = report
+		},
+	}
+	fingerprintCmd.Flags().String("target", "", "Target IP or FQDN to detect")
+	_ = fingerprintCmd.MarkFlagRequired("target")
+	hostCmd.AddCommand(fingerprintCmd)
 
 	a.RootCmd.AddCommand(hostCmd)
 }
