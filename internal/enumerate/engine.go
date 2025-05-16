@@ -21,7 +21,7 @@ type NetworkApplicationEngine struct {
 	Library NetworkApplicationLibrary
 }
 
-func RunNetworkApplicationEnumerate(ctx context.Context, targets []string, networkApplication enumerateFern.NetworkApplication, timeout int) (enumerateFern.NetworkApplicationEnumerateReport, error) {
+func RunNetworkApplicationEnumerate(ctx context.Context, targets []string, networkApplication enumerateFern.NetworkApplicationType, timeout int) (enumerateFern.NetworkApplicationEnumerateReport, error) {
 	log.Printf("[INFO] Starting enumeration for %d targets with a timeout of %ds", len(targets), timeout)
 	resource := enumerateFern.NetworkApplicationEnumerateReport{Targets: targets}
 
@@ -105,13 +105,13 @@ func RunNetworkApplicationEnumerate(ctx context.Context, targets []string, netwo
 }
 
 // Factory function to create the appropriate engine
-func getEngine(application enumerateFern.NetworkApplication) (NetworkApplicationEngine, error) {
+func getEngine(application enumerateFern.NetworkApplicationType) (NetworkApplicationEngine, error) {
 	switch application {
-	case enumerateFern.NetworkApplicationSsh:
+	case enumerateFern.NetworkApplicationTypeSsh:
 		return NetworkApplicationEngine{Library: &ssh.LibraryEnumerateSSH{}}, nil
-	case enumerateFern.NetworkApplicationFtp:
+	case enumerateFern.NetworkApplicationTypeFtp:
 		return NetworkApplicationEngine{Library: &ftp.LibraryEnumerateFTP{}}, nil
-	case enumerateFern.NetworkApplicationSmtp:
+	case enumerateFern.NetworkApplicationTypeSmtp:
 		return NetworkApplicationEngine{Library: &smtp.LibraryEnumerateSMTP{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", application)

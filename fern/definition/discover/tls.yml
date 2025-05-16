@@ -2,48 +2,48 @@ types:
   # ENUMs
   TlsVersion:
     enum:
-      - SSL10
-      - SSL20
-      - SSL30
-      - TLS10
-      - TLS11
-      - TLS12
-      - TLS13
+      - SSL_1_0
+      - SSL_2_0
+      - SSL_3_0
+      - TLS_1_0
+      - TLS_1_1
+      - TLS_1_2
+      - TLS_1_3
       - UNKNOWN
   SignatureAlgorithm:
     enum:
-      - MD2RSA
-      - MD5RSA
-      - MD5ECDSA
-      - SHA1RSA
-      - SHA256RSA
-      - SHA384RSA
-      - SHA512RSA
-      - DSASHA1
-      - DSASHA256
-      - ECDSASHA1
-      - ECDSASHA256
-      - ECDSASHA384
-      - ECDSASHA512
-      - SHA256RSAPSS
-      - SHA384RSAPSS
-      - SHA512RSAPSS
-      - Ed25519
+      - MD2_RSA
+      - MD5_RSA
+      - MD5_ECDSA
+      - SHA1_RSA
+      - SHA256_RSA
+      - SHA384_RSA
+      - SHA512_RSA
+      - DSA_SHA1
+      - DSA_SHA256
+      - ECDSA_SHA1
+      - ECDSA_SHA256
+      - ECDSA_SHA384
+      - ECDSA_SHA512
+      - SHA256_RSA_PSS
+      - SHA384_RSA_PSS
+      - SHA512_RSA_PSS
+      - ED25519
   PublicKeyAlgorithm:
     enum:
       - DES
-      - DH1024
-      - DH512
-      - DH768
+      - DH_1024
+      - DH_512
+      - DH_768
       - DSA
-      - DSA1024
+      - DSA_1024
       - ECDSA
-      - ECDSASHA1
-      - ECDHSHA1
-      - Ed25519
+      - ECDSA_SHA1
+      - ECDH_SHA1
+      - ED25519
       - RC4
       - RSA
-      - RSA1024
+      - RSA_1024
       - UNKNOWN
   Certificate:
     properties:
@@ -58,22 +58,22 @@ types:
       signatureAlgorithm: optional<SignatureAlgorithm>
       publicKeyAlgorithm: optional<PublicKeyAlgorithm>
   # Config
-  ServiceTlsConfig:
+  DiscoverTlsConfig:
     properties:
       timeout: integer
       insecureSkipVerify: boolean
   # Data
-  TlsDetail:
+  DiscoverTlsDetails:
     properties:
       version: optional<TlsVersion>
       cipherSuite: optional<string>
       certificates: optional<list<Certificate>>
-  ServiceTlsDetail:
+  DiscoverTlsSummary:
     properties:
       address: string
-      tlsDetail: optional<TlsDetail>
-  ServiceTlsReport:
+      tlsDetails: optional<DiscoverTlsDetails>
+  DiscoverTlsReport:
     properties:
-      serviceDetails: optional<list<ServiceTlsDetail>>
+      details: optional<list<DiscoverTlsSummary>>
       errors: optional<list<string>>
-      config: ServiceTlsConfig
+      config: DiscoverTlsConfig

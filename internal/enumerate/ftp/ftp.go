@@ -42,7 +42,7 @@ type LibraryEnumerateFTP struct{}
 
 // EnumerateTarget connects to the target and extracts FTP details.
 func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.NetworkApplicationEnumerateDetails, []string) {
-	var details ftpFern.FtpEnumerateDetails
+	var details ftpFern.EnumerateFtpDetails
 	details.Target = target
 	errors := []string{}
 	log.Printf("[INFO] Enumerating target: %s", target)
@@ -52,14 +52,14 @@ func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string
 	if err != nil {
 		log.Printf("[ERROR] Failed to connect to %s: %v", target, err)
 		errors = append(errors, fmt.Sprintf("Failed to connect to %s: %v", target, err))
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromFtpEnumerateDetails(&details), errors
+		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateFtpDetails(&details), errors
 	}
 
 	// Grab the FTP banner
 	bannerStr, err := grabBanner(conn)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("error reading banner from %s: %v", target, err))
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromFtpEnumerateDetails(&details), errors
+		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateFtpDetails(&details), errors
 	}
 	details.Banner = &bannerStr
 	successFulConnection := true
@@ -93,5 +93,5 @@ func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string
 		errors = append(errors, fmt.Sprintf("failed to close connection: %v", err))
 	}
 
-	return enumerateFern.NewNetworkApplicationEnumerateDetailsFromFtpEnumerateDetails(&details), errors
+	return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateFtpDetails(&details), errors
 }

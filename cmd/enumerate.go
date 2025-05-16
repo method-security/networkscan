@@ -9,15 +9,15 @@ import (
 func (a *NetworkScan) InitEnumerateCommand() {
 	enumerateCmd := &cobra.Command{
 		Use:   "enumerate",
-		Short: "Enumerate data about network services",
-		Long:  `Enumerate data about network services`,
+		Short: "Enumerate information about network services",
+		Long:  `Enumerate information about network services`,
 	}
 
 	// FTP enumerate
-	ftpEnumerateCmd := &cobra.Command{
+	enumerateFtpCmd := &cobra.Command{
 		Use:   "ftp",
-		Short: "Enumerate data about FTP on a target host",
-		Long:  `Enumerate data about FTP on a target host`,
+		Short: "Enumerate information about FTP on a target host",
+		Long:  `Enumerate information about FTP on a target host`,
 		Run: func(cmd *cobra.Command, args []string) {
 			targets, err := cmd.Flags().GetStringSlice("targets")
 			if err != nil {
@@ -31,7 +31,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				return
 			}
 
-			report, err := enumerate.RunNetworkApplicationEnumerate(cmd.Context(), targets, enumerateFern.NetworkApplicationFtp, timeout)
+			report, err := enumerate.RunNetworkApplicationEnumerate(cmd.Context(), targets, enumerateFern.NetworkApplicationTypeFtp, timeout)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -39,12 +39,13 @@ func (a *NetworkScan) InitEnumerateCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	ftpEnumerateCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
-	ftpEnumerateCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
-	_ = ftpEnumerateCmd.MarkFlagRequired("targets")
+	enumerateFtpCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
+	enumerateFtpCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
+	_ = enumerateFtpCmd.MarkFlagRequired("targets")
+	enumerateCmd.AddCommand(enumerateFtpCmd)
 
 	// SMTP enumerate
-	smtpEnumerateCmd := &cobra.Command{
+	enumerateSmtpCmd := &cobra.Command{
 		Use:   "smtp",
 		Short: "Enumerate data about SMTP on a target host",
 		Long:  `Enumerate data about SMTP on a target host`,
@@ -61,7 +62,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				return
 			}
 
-			report, err := enumerate.RunNetworkApplicationEnumerate(cmd.Context(), targets, enumerateFern.NetworkApplicationSmtp, timeout)
+			report, err := enumerate.RunNetworkApplicationEnumerate(cmd.Context(), targets, enumerateFern.NetworkApplicationTypeSmtp, timeout)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -69,12 +70,13 @@ func (a *NetworkScan) InitEnumerateCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	smtpEnumerateCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
-	smtpEnumerateCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
-	_ = smtpEnumerateCmd.MarkFlagRequired("targets")
+	enumerateSmtpCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
+	enumerateSmtpCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
+	_ = enumerateSmtpCmd.MarkFlagRequired("targets")
+	enumerateCmd.AddCommand(enumerateSmtpCmd)
 
 	// SSH enumerate
-	sshEnumerateCmd := &cobra.Command{
+	enumerateSshCmd := &cobra.Command{
 		Use:   "ssh",
 		Short: "Enumerate data about SSH on a target host",
 		Long:  `Enumerate data about SSH on a target host`,
@@ -91,7 +93,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				return
 			}
 
-			report, err := enumerate.RunNetworkApplicationEnumerate(cmd.Context(), targets, enumerateFern.NetworkApplicationSsh, timeout)
+			report, err := enumerate.RunNetworkApplicationEnumerate(cmd.Context(), targets, enumerateFern.NetworkApplicationTypeSsh, timeout)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -99,13 +101,10 @@ func (a *NetworkScan) InitEnumerateCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	sshEnumerateCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
-	sshEnumerateCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
-	_ = sshEnumerateCmd.MarkFlagRequired("targets")
-
-	enumerateCmd.AddCommand(ftpEnumerateCmd)
-	enumerateCmd.AddCommand(smtpEnumerateCmd)
-	enumerateCmd.AddCommand(sshEnumerateCmd)
+	enumerateSshCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
+	enumerateSshCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
+	_ = enumerateSshCmd.MarkFlagRequired("targets")
+	enumerateCmd.AddCommand(enumerateSshCmd)
 
 	a.RootCmd.AddCommand(enumerateCmd)
 }

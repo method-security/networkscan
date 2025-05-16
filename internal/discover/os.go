@@ -13,6 +13,21 @@ type Report struct {
 	Errors []string `json:"errors" yaml:"errors"`
 }
 
+// RunHostFingerprint takes a target host and returns a report of all hosts and OS that were detected
+func RunOsFingerprint(ctx context.Context, target string) (Report, error) {
+	errors := []string{}
+
+	hostFingerprintResult, err := getFingerprint(ctx, target)
+	if err != nil {
+		errors = append(errors, err.Error())
+	}
+
+	return Report{
+		Run:    hostFingerprintResult,
+		Errors: errors,
+	}, nil
+}
+
 func getFingerprint(ctx context.Context, target string) (nmap.Run, error) {
 	scanner, err := nmap.NewScanner(
 		ctx,
@@ -33,19 +48,4 @@ func getFingerprint(ctx context.Context, target string) (nmap.Run, error) {
 
 	return *result, nil
 
-}
-
-// RunHostFingerprint takes a target host and returns a report of all hosts and OS that were detected
-func RunHostFingerprint(ctx context.Context, target string) (Report, error) {
-	errors := []string{}
-
-	hostFingerprintResult, err := getFingerprint(ctx, target)
-	if err != nil {
-		errors = append(errors, err.Error())
-	}
-
-	return Report{
-		Run:    hostFingerprintResult,
-		Errors: errors,
-	}, nil
 }

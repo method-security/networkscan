@@ -69,7 +69,7 @@ types:
       - HMACRIPEMD160
       - HMACSHA3256
       - HMACSHA3512
-  SSHEnumerateDetails:
+  EnumerateSshDetails:
     properties:
       target: string
       version: optional<string>

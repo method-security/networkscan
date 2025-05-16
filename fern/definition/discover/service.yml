@@ -1,7 +1,7 @@
 imports:
   common: ../common/common.yml
 types:
-  ServiceFingerprint:
+  DiscoverServiceDetails:
     properties:
       host: string
       ip: string
@@ -11,8 +11,8 @@ types:
       transport: common.TransportType
       protocol: common.ProtocolType
       metadata: optional<map<string, string>>
-  ServiceFingerprintReport:
+  DiscoverServiceReport:
     properties:
       target: string
-      serviceFingerprints: optional<list<ServiceFingerprint>>
+      services: optional<list<DiscoverServiceDetails>>
       errors: optional<list<string>>

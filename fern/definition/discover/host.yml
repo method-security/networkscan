@@ -1,10 +1,10 @@
 types:
-  HostDiscoverDetails:
+  DiscoverHostDetails:
     properties:
-      IP: string
-      Host: string
+      ip: string
+      host: string
 
-  HostDiscoverReport:
+  DiscoverHostReport:
     properties:
-      Hosts: list<HostDiscoverDetails>
-      Errors: list<string>
+      hosts: list<DiscoverHostDetails>
+      errors: list<string>

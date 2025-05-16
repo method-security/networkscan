@@ -16,9 +16,9 @@ import (
 	"github.com/praetorian-inc/fingerprintx/pkg/scan"
 )
 
-// RunServiceFingerprint performs a banner grab on the specified target
-func RunServiceFingerprint(ctx context.Context, timeout int, target string, port uint16) (*discoverFern.ServiceFingerprintReport, error) {
-	resources := discoverFern.ServiceFingerprintReport{Target: target}
+// RunServiceFingerprint performs a service fingerprint on the specified target
+func RunServiceFingerprint(ctx context.Context, timeout int, target string, port int) (*discoverFern.DiscoverServiceReport, error) {
+	resources := discoverFern.DiscoverServiceReport{Target: target}
 	errors := []string{}
 
 	fxConfig := scan.Config{
@@ -33,7 +33,7 @@ func RunServiceFingerprint(ctx context.Context, timeout int, target string, port
 		return &resources, err
 	}
 
-	var fingerprintResults []*discoverFern.ServiceFingerprint
+	var fingerprintResults []*discoverFern.DiscoverServiceDetails
 	for _, ip := range ips {
 		ipAddr, err := netip.ParseAddr(ip.String())
 		if err != nil {
@@ -41,7 +41,7 @@ func RunServiceFingerprint(ctx context.Context, timeout int, target string, port
 		}
 
 		fxTarget := plugins.Target{
-			Address: netip.AddrPortFrom(ipAddr, port),
+			Address: netip.AddrPortFrom(ipAddr, uint16(port)),
 			Host:    target,
 		}
 
@@ -57,7 +57,7 @@ func RunServiceFingerprint(ctx context.Context, timeout int, target string, port
 		}
 
 		metadata := metadataMap(result.Metadata())
-		fingerprintResult := discoverFern.ServiceFingerprint{
+		fingerprintResult := discoverFern.DiscoverServiceDetails{
 			Host:      result.Host,
 			Ip:        result.IP,
 			Port:      result.Port,
@@ -70,7 +70,7 @@ func RunServiceFingerprint(ctx context.Context, timeout int, target string, port
 		fingerprintResults = append(fingerprintResults, &fingerprintResult)
 	}
 
-	resources.ServiceFingerprints = fingerprintResults
+	resources.Services = fingerprintResults
 	resources.Errors = errors
 	return &resources, nil
 }

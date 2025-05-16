@@ -28,7 +28,7 @@ type LibraryEnumerateSMTP struct{}
 //     a. If unauthenticated email is not allowed, set AllowsUnauthenticatedEmail to false
 func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.NetworkApplicationEnumerateDetails, []string) {
 	log.Printf("[INFO] Starting enumeration for target: %s", target)
-	detail := smtpFern.SmtpEnumerateDetails{
+	detail := smtpFern.EnumerateSmtpDetails{
 		Target: target,
 	}
 	errors := []string{}
@@ -37,7 +37,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	hostname, _, err := net.SplitHostPort(target)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("invalid target format: %v", err))
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromSmtpEnumerateDetails(&detail), errors
+		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateSmtpDetails(&detail), errors
 	}
 	config := &tls.Config{
 		ServerName:         hostname,
@@ -60,7 +60,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 			canConnect := false
 			detail.CanConnect = &canConnect
 			errors = append(errors, fmt.Sprintf("both TCP and TLS connections failed: %v", err))
-			return enumerateFern.NewNetworkApplicationEnumerateDetailsFromSmtpEnumerateDetails(&detail), errors
+			return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateSmtpDetails(&detail), errors
 		}
 		log.Printf("[DEBUG] TLS connection successful")
 		TLSSupported := true
@@ -77,7 +77,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	client, err := netsmtp.NewClient(conn, hostname)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("SMTP client creation failed: %v", err))
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromSmtpEnumerateDetails(&detail), errors
+		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateSmtpDetails(&detail), errors
 	}
 
 	// Try STARTTLS if TLS connection established above
@@ -118,5 +118,5 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 		errors = append(errors, fmt.Sprintf("failed to close connection: %v", err))
 	}
 
-	return enumerateFern.NewNetworkApplicationEnumerateDetailsFromSmtpEnumerateDetails(&detail), errors
+	return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateSmtpDetails(&detail), errors
 }

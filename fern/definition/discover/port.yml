@@ -1,14 +1,14 @@
 types:
-  PortScanDetails:
+  DiscoverPortDetails:
     properties:
       port: integer
       protocol: string
-  HostScanDetails:
+  DiscoverSocketDetails:
     properties:
       host: string
       ip: string
-      ports: optional<list<PortScanDetails>>
-  PortScanReport:
+      ports: optional<list<DiscoverPortDetails>>
+  DiscoverPortReport:
     properties:
-      hosts: optional<list<HostScanDetails>>
+      hosts: optional<list<DiscoverSocketDetails>>
       errors: optional<list<string>>

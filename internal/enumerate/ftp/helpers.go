@@ -49,7 +49,7 @@ func grabBanner(conn net.Conn) (string, error) {
 }
 
 // Function to check for anonymous login with retry on failure
-func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.Conn, details *ftpFern.FtpEnumerateDetails) []string {
+func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.Conn, details *ftpFern.EnumerateFtpDetails) []string {
 	errors := []string{}
 	if err := checkAnonymousLogin(conn, details); err != nil {
 		log.Printf("[WARNING] Error checking anonymous login, retrying...")
@@ -76,7 +76,7 @@ func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.C
 }
 
 // Function to check for anonymous login
-func checkAnonymousLogin(conn net.Conn, details *ftpFern.FtpEnumerateDetails) error {
+func checkAnonymousLogin(conn net.Conn, details *ftpFern.EnumerateFtpDetails) error {
 	log.Printf("[INFO] Checking for anonymous login...")
 
 	// Send the USER anonymous command
@@ -138,7 +138,7 @@ func checkAnonymousLogin(conn net.Conn, details *ftpFern.FtpEnumerateDetails) er
 }
 
 // Function to check if TLS is implemented (supported) using the FEAT command
-func checkTLSImplemented(conn net.Conn, details *ftpFern.FtpEnumerateDetails) error {
+func checkTLSImplemented(conn net.Conn, details *ftpFern.EnumerateFtpDetails) error {
 	log.Printf("[INFO] Sending FEAT command to check if TLS is implemented...")
 	_, err := conn.Write([]byte("FEAT\r\n"))
 	if err != nil {
@@ -196,7 +196,7 @@ readLoop: // Label for the outer loop
 }
 
 // Function to check if TLS is forced (i.e., required by the server)
-func checkTLSForced(conn net.Conn, details *ftpFern.FtpEnumerateDetails) []string {
+func checkTLSForced(conn net.Conn, details *ftpFern.EnumerateFtpDetails) []string {
 	log.Printf("[INFO] Sending TLS commands to check if TLS is forced...")
 	errors := []string{}
 	_, err := conn.Write([]byte("AUTH TLS\r\n"))

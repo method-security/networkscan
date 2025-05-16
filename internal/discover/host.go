@@ -1,4 +1,3 @@
-// Package discover provides the data structures and logic necessary for discovering hosts on a network.
 package discover
 
 import (
@@ -11,8 +10,23 @@ import (
 	"github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
-func getHostDiscover(ctx context.Context, target string, scantype string) ([]*discoverFern.HostDiscoverDetails, error) {
-	hostDetails := []*discoverFern.HostDiscoverDetails{}
+// RunHostDiscover takes a target host (which can be a CIDR) and a scantype and returns a report of all hosts that were discovered
+func RunHostDiscovery(ctx context.Context, target string, scantype string) (discoverFern.DiscoverHostReport, error) {
+	errors := []string{}
+
+	hostDiscoverResult, err := getHostDiscover(ctx, target, scantype)
+	if err != nil {
+		errors = append(errors, err.Error())
+	}
+
+	return discoverFern.DiscoverHostReport{
+		Hosts:  hostDiscoverResult,
+		Errors: errors,
+	}, nil
+}
+
+func getHostDiscover(ctx context.Context, target string, scantype string) ([]*discoverFern.DiscoverHostDetails, error) {
+	hostDetails := []*discoverFern.DiscoverHostDetails{}
 	hostDiscoverOpts := &runner.Options{
 		Silent:            true,
 		JSON:              true,
@@ -66,24 +80,9 @@ func getHostDiscover(ctx context.Context, target string, scantype string) ([]*di
 
 }
 
-func parseHostDiscoverResult(result result.HostResult) *discoverFern.HostDiscoverDetails {
-	return &discoverFern.HostDiscoverDetails{
+func parseHostDiscoverResult(result result.HostResult) *discoverFern.DiscoverHostDetails {
+	return &discoverFern.DiscoverHostDetails{
 		Host: result.Host,
 		Ip:   result.IP,
 	}
-}
-
-// RunHostDiscover takes a target host (which can be a CIDR) and a scantype and returns a report of all hosts that were discovered
-func RunHostDiscover(ctx context.Context, target string, scantype string) (discoverFern.HostDiscoverReport, error) {
-	errors := []string{}
-
-	hostDiscoverResult, err := getHostDiscover(ctx, target, scantype)
-	if err != nil {
-		errors = append(errors, err.Error())
-	}
-
-	return discoverFern.HostDiscoverReport{
-		Hosts:  hostDiscoverResult,
-		Errors: errors,
-	}, nil
 }

@@ -13,11 +13,11 @@ import (
 )
 
 // GetTLSInfo retrieves TLS details for a given address
-func GetTLSInfo(ctx context.Context, addresses []string, config discoverFern.ServiceTlsConfig) (discoverFern.ServiceTlsReport, error) {
-	resources := discoverFern.ServiceTlsReport{Config: &config}
+func GetTLSInfo(ctx context.Context, addresses []string, config discoverFern.DiscoverTlsConfig) (discoverFern.DiscoverTlsReport, error) {
+	resources := discoverFern.DiscoverTlsReport{Config: &config}
 	errors := []string{}
 
-	serviceDetails := []*discoverFern.ServiceTlsDetail{}
+	serviceDetails := []*discoverFern.DiscoverTlsSummary{}
 	for _, targetAddress := range addresses {
 		// Define timeout for the TLS connection
 		dialer := &net.Dialer{
@@ -54,14 +54,14 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverFern.Ser
 		}
 
 		// Construct AddressTlsReport
-		serviceDetail := discoverFern.ServiceTlsDetail{
-			Address:   targetAddress,
-			TlsDetail: tlsInfo,
+		serviceDetail := discoverFern.DiscoverTlsSummary{
+			Address:    targetAddress,
+			TlsDetails: tlsInfo,
 		}
 		serviceDetails = append(serviceDetails, &serviceDetail)
 	}
 
-	resources.ServiceDetails = serviceDetails
+	resources.Details = serviceDetails
 	resources.Errors = errors
 
 	return resources, nil
@@ -84,8 +84,8 @@ func tlsVersionToString(version uint16) discoverFern.TlsVersion {
 }
 
 // Convert TLS connection state to TLSInfo
-func convertToTLSInfo(state *tls.ConnectionState) *discoverFern.TlsDetail {
-	tlsInfo := &discoverFern.TlsDetail{
+func convertToTLSInfo(state *tls.ConnectionState) *discoverFern.DiscoverTlsDetails {
+	tlsInfo := &discoverFern.DiscoverTlsDetails{
 		Certificates: []*discoverFern.Certificate{},
 	}
 

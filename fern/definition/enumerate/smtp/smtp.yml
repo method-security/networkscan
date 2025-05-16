@@ -7,11 +7,11 @@ types:
       - CRAMMD5
       - NTLM
       - GSSAPI
-  SMTPEnumerateDetails:
+  EnumerateSmtpDetails:
     properties:
       target: string
-      CanConnect: optional<boolean>
-      TLSSupported: optional<boolean>
-      ForceTLS: optional<boolean>
-      AuthCommands: optional<list<AuthCommand>>
-      AllowsUnauthenticatedEmail: optional<boolean>
+      canConnect: optional<boolean>
+      tlsSupported: optional<boolean>
+      forceTLS: optional<boolean>
+      authCommands: optional<list<AuthCommand>>
+      allowsUnauthenticatedEmail: optional<boolean>
