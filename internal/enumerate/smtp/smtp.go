@@ -9,8 +9,8 @@ import (
 	netsmtp "net/smtp"
 	"strings"
 
-	enumerateFern "github.com/Method-Security/networkscan/generated/go/service/enumerate"
-	smtp "github.com/Method-Security/networkscan/generated/go/service/enumerate/smtp"
+	enumerateFern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	smtpFern "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
 )
 
 // LibraryEnumerateSMTP implements NetworkApplicationLibrary for SMTP enumeration.
@@ -28,7 +28,7 @@ type LibraryEnumerateSMTP struct{}
 //     a. If unauthenticated email is not allowed, set AllowsUnauthenticatedEmail to false
 func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.NetworkApplicationEnumerateDetails, []string) {
 	log.Printf("[INFO] Starting enumeration for target: %s", target)
-	detail := smtp.SmtpEnumerateDetails{
+	detail := smtpFern.SmtpEnumerateDetails{
 		Target: target,
 	}
 	errors := []string{}

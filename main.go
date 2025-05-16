@@ -14,9 +14,9 @@ func main() {
 
 	networkscan := cmd.NewNetworkScan(version)
 	networkscan.InitRootCommand()
-	networkscan.InitHostCommand()
-	networkscan.InitPortCommand()
-	networkscan.InitServiceCommand()
+	networkscan.InitDiscoverCommand()
+	networkscan.InitEnumerateCommand()
+	networkscan.InitPentestCommand()
 
 	if err := networkscan.RootCmd.Execute(); err != nil {
 		os.Exit(1)

@@ -1,5 +1,5 @@
 // Package host provides the data structures and logic necessary for interacting with hosts on a network.
-package host
+package discover
 
 import (
 	"context"

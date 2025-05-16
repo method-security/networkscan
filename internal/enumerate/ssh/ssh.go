@@ -4,8 +4,8 @@ import (
 	"context"
 	"net"
 
-	enumerateFern "github.com/Method-Security/networkscan/generated/go/service/enumerate"
-	ssh "github.com/Method-Security/networkscan/generated/go/service/enumerate/ssh"
+	enumerateFern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	sshFern "github.com/Method-Security/networkscan/generated/go/enumerate/ssh"
 )
 
 // LibraryEnumerateSSH implements NetworkApplicationLibrary for SSH enumeration.
@@ -33,7 +33,7 @@ type LibraryEnumerateSSH struct{}
 //   f. Auth Methods (Public Key, Password)
 
 func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.NetworkApplicationEnumerateDetails, []string) {
-	var details ssh.SshEnumerateDetails
+	var details sshFern.SshEnumerateDetails
 	details.Target = target
 	errors := []string{}
 
@@ -70,7 +70,7 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	details.Ciphers = extractAlgorithms(fullASCII, commonCiphers)
 	details.Macs = extractAlgorithms(fullASCII, commonMACs)
 	if len(details.HostKeyAlgos) >= 0 {
-		details.AuthMethods = []ssh.AuthMethod{ssh.AuthMethodPublickey}
+		details.AuthMethods = []sshFern.AuthMethod{sshFern.AuthMethodPublickey}
 	}
 
 	// Check if password authentication is supported
@@ -79,7 +79,7 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 		errors = append(errors, err.Error())
 	}
 	if passwordSupported != nil && *passwordSupported {
-		details.AuthMethods = append(details.AuthMethods, ssh.AuthMethodPassword)
+		details.AuthMethods = append(details.AuthMethods, sshFern.AuthMethodPassword)
 	}
 
 	err = conn.Close()

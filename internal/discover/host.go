@@ -1,18 +1,18 @@
-// Package host provides the data structures and logic necessary for interacting with hosts on a network.
-package host
+// Package discover provides the data structures and logic necessary for discovering hosts on a network.
+package discover
 
 import (
 	"context"
 	"fmt"
 
-	hostfern "github.com/Method-Security/networkscan/generated/go/host"
+	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/projectdiscovery/goflags"
 	"github.com/projectdiscovery/naabu/v2/pkg/result"
 	"github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
-func getHostDiscover(ctx context.Context, target string, scantype string) ([]*hostfern.HostDiscoverDetails, error) {
-	hostDetails := []*hostfern.HostDiscoverDetails{}
+func getHostDiscover(ctx context.Context, target string, scantype string) ([]*discoverFern.HostDiscoverDetails, error) {
+	hostDetails := []*discoverFern.HostDiscoverDetails{}
 	hostDiscoverOpts := &runner.Options{
 		Silent:            true,
 		JSON:              true,
@@ -30,7 +30,7 @@ func getHostDiscover(ctx context.Context, target string, scantype string) ([]*ho
 		InputReadTimeout:  3,
 		ScanType:          "s",
 		OnResult: func(hr *result.HostResult) {
-			hostDetails = append(hostDetails, parseResult(*hr))
+			hostDetails = append(hostDetails, parseHostDiscoverResult(*hr))
 		},
 	}
 
@@ -66,15 +66,15 @@ func getHostDiscover(ctx context.Context, target string, scantype string) ([]*ho
 
 }
 
-func parseResult(result result.HostResult) *hostfern.HostDiscoverDetails {
-	return &hostfern.HostDiscoverDetails{
+func parseHostDiscoverResult(result result.HostResult) *discoverFern.HostDiscoverDetails {
+	return &discoverFern.HostDiscoverDetails{
 		Host: result.Host,
 		Ip:   result.IP,
 	}
 }
 
 // RunHostDiscover takes a target host (which can be a CIDR) and a scantype and returns a report of all hosts that were discovered
-func RunHostDiscover(ctx context.Context, target string, scantype string) (hostfern.HostDiscoverReport, error) {
+func RunHostDiscover(ctx context.Context, target string, scantype string) (discoverFern.HostDiscoverReport, error) {
 	errors := []string{}
 
 	hostDiscoverResult, err := getHostDiscover(ctx, target, scantype)
@@ -82,7 +82,7 @@ func RunHostDiscover(ctx context.Context, target string, scantype string) (hostf
 		errors = append(errors, err.Error())
 	}
 
-	return hostfern.HostDiscoverReport{
+	return discoverFern.HostDiscoverReport{
 		Hosts:  hostDiscoverResult,
 		Errors: errors,
 	}, nil

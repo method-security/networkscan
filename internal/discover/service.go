@@ -1,4 +1,4 @@
-package service
+package discover
 
 import (
 	"context"
@@ -10,14 +10,15 @@ import (
 	"strings"
 	"time"
 
-	serviceFern "github.com/Method-Security/networkscan/generated/go/service"
+	commonFern "github.com/Method-Security/networkscan/generated/go/common"
+	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/praetorian-inc/fingerprintx/pkg/plugins"
 	"github.com/praetorian-inc/fingerprintx/pkg/scan"
 )
 
 // RunServiceFingerprint performs a banner grab on the specified target
-func RunServiceFingerprint(ctx context.Context, timeout int, target string, port uint16) (*serviceFern.ServiceFingerprintReport, error) {
-	resources := serviceFern.ServiceFingerprintReport{Target: target}
+func RunServiceFingerprint(ctx context.Context, timeout int, target string, port uint16) (*discoverFern.ServiceFingerprintReport, error) {
+	resources := discoverFern.ServiceFingerprintReport{Target: target}
 	errors := []string{}
 
 	fxConfig := scan.Config{
@@ -32,7 +33,7 @@ func RunServiceFingerprint(ctx context.Context, timeout int, target string, port
 		return &resources, err
 	}
 
-	var fingerprintResults []*serviceFern.ServiceFingerprint
+	var fingerprintResults []*discoverFern.ServiceFingerprint
 	for _, ip := range ips {
 		ipAddr, err := netip.ParseAddr(ip.String())
 		if err != nil {
@@ -56,7 +57,7 @@ func RunServiceFingerprint(ctx context.Context, timeout int, target string, port
 		}
 
 		metadata := metadataMap(result.Metadata())
-		fingerprintResult := serviceFern.ServiceFingerprint{
+		fingerprintResult := discoverFern.ServiceFingerprint{
 			Host:      result.Host,
 			Ip:        result.IP,
 			Port:      result.Port,
@@ -123,18 +124,18 @@ func getIPs(target string) ([]net.IP, error) {
 	return ips, nil
 }
 
-func getTransportTypeEnum(transport string) serviceFern.TransportType {
-	transportTypeEnum, err := serviceFern.NewTransportTypeFromString(strings.ToUpper(transport))
+func getTransportTypeEnum(transport string) commonFern.TransportType {
+	transportTypeEnum, err := commonFern.NewTransportTypeFromString(strings.ToUpper(transport))
 	if err != nil {
-		transportTypeEnum, _ = serviceFern.NewTransportTypeFromString("UNKNOWN")
+		transportTypeEnum, _ = commonFern.NewTransportTypeFromString("UNKNOWN")
 	}
 	return transportTypeEnum
 }
 
-func getProtocolTypeEnum(protocol string) serviceFern.ProtocolType {
-	serviceTypeEnum, err := serviceFern.NewProtocolTypeFromString(strings.ToUpper(protocol))
+func getProtocolTypeEnum(protocol string) commonFern.ProtocolType {
+	protocolTypeEnum, err := commonFern.NewProtocolTypeFromString(strings.ToUpper(protocol))
 	if err != nil {
-		serviceTypeEnum, _ = serviceFern.NewProtocolTypeFromString("UNKNOWN")
+		protocolTypeEnum, _ = commonFern.NewProtocolTypeFromString("UNKNOWN")
 	}
-	return serviceTypeEnum
+	return protocolTypeEnum
 }

@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	enumerateFern "github.com/Method-Security/networkscan/generated/go/service/enumerate"
-	ftp "github.com/Method-Security/networkscan/internal/service/enumerate/ftp"
-	smtp "github.com/Method-Security/networkscan/internal/service/enumerate/smtp"
-	ssh "github.com/Method-Security/networkscan/internal/service/enumerate/ssh"
+	enumerateFern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	ftp "github.com/Method-Security/networkscan/internal/enumerate/ftp"
+	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
+	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
 )
 
 type NetworkApplicationLibrary interface {
