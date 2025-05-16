@@ -9,7 +9,7 @@ import (
 	netsmtp "net/smtp"
 	"strings"
 
-	smtpFern "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
+	smtp "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
 )
 
 func tryTCPConnection(ctx context.Context, target string) (net.Conn, error) {
@@ -26,8 +26,8 @@ func tryTLSConnection(target string, hostname string) (net.Conn, error) {
 	return tls.DialWithDialer(&dialer, "tcp", target, tlsConfig)
 }
 
-func parseAuthMethods(methods []string) []smtpFern.AuthCommand {
-	var result []smtpFern.AuthCommand
+func parseAuthMethods(methods []string) []smtp.AuthCommand {
+	var result []smtp.AuthCommand
 	for _, method := range methods {
 		if auth, ok := authCommands[strings.ToUpper(method)]; ok {
 			result = append(result, auth)

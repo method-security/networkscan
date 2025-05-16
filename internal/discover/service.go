@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	commonFern "github.com/Method-Security/networkscan/generated/go/common"
+	common "github.com/Method-Security/networkscan/generated/go/common"
 	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/praetorian-inc/fingerprintx/pkg/plugins"
 	"github.com/praetorian-inc/fingerprintx/pkg/scan"
@@ -124,18 +124,18 @@ func getIPs(target string) ([]net.IP, error) {
 	return ips, nil
 }
 
-func getTransportTypeEnum(transport string) commonFern.TransportType {
-	transportTypeEnum, err := commonFern.NewTransportTypeFromString(strings.ToUpper(transport))
+func getTransportTypeEnum(transport string) common.TransportType {
+	transportTypeEnum, err := common.NewTransportTypeFromString(strings.ToUpper(transport))
 	if err != nil {
-		transportTypeEnum, _ = commonFern.NewTransportTypeFromString("UNKNOWN")
+		transportTypeEnum, _ = common.NewTransportTypeFromString("UNKNOWN")
 	}
 	return transportTypeEnum
 }
 
-func getProtocolTypeEnum(protocol string) commonFern.ProtocolType {
-	protocolTypeEnum, err := commonFern.NewProtocolTypeFromString(strings.ToUpper(protocol))
+func getProtocolTypeEnum(protocol string) common.ProtocolType {
+	protocolTypeEnum, err := common.NewProtocolTypeFromString(strings.ToUpper(protocol))
 	if err != nil {
-		protocolTypeEnum, _ = commonFern.NewProtocolTypeFromString("UNKNOWN")
+		protocolTypeEnum, _ = common.NewProtocolTypeFromString("UNKNOWN")
 	}
 	return protocolTypeEnum
 }

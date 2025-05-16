@@ -1,4 +1,3 @@
-// Package port provides the data structures and logic necessary for interacting with ports on a network.
 package discover
 
 import (

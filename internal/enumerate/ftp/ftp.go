@@ -6,7 +6,7 @@ import (
 	"log"
 
 	enumerateFern "github.com/Method-Security/networkscan/generated/go/enumerate"
-	ftpFern "github.com/Method-Security/networkscan/generated/go/enumerate/ftp"
+	ftp "github.com/Method-Security/networkscan/generated/go/enumerate/ftp"
 )
 
 var bufferSize = 2048
@@ -42,7 +42,7 @@ type LibraryEnumerateFTP struct{}
 
 // EnumerateTarget connects to the target and extracts FTP details.
 func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.NetworkApplicationEnumerateDetails, []string) {
-	var details ftpFern.EnumerateFtpDetails
+	var details ftp.EnumerateFtpDetails
 	details.Target = target
 	errors := []string{}
 	log.Printf("[INFO] Enumerating target: %s", target)

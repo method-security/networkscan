@@ -165,7 +165,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	_ = discoverServiceCmd.MarkFlagRequired("port")
 	discoverCmd.AddCommand(discoverServiceCmd)
 
-	discoverTlsCmd := &cobra.Command{
+	discoverTLSCmd := &cobra.Command{
 		Use:   "tls",
 		Short: "Discover TLS Config and Certificate of a network address socket",
 		Long:  `Discover TLS Config and Certificate of a network address socket`,
@@ -193,10 +193,10 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	discoverTlsCmd.Flags().StringSlice("targets", []string{}, "Address of target")
-	discoverTlsCmd.Flags().Int("timeout", 30, "Timeout limit for each handshake in seconds")
-	discoverTlsCmd.Flags().Bool("insecure", false, "Skip TLS verification")
-	discoverCmd.AddCommand(discoverTlsCmd)
+	discoverTLSCmd.Flags().StringSlice("targets", []string{}, "Address of target")
+	discoverTLSCmd.Flags().Int("timeout", 30, "Timeout limit for each handshake in seconds")
+	discoverTLSCmd.Flags().Bool("insecure", false, "Skip TLS verification")
+	discoverCmd.AddCommand(discoverTLSCmd)
 
 	a.RootCmd.AddCommand(discoverCmd)
 }

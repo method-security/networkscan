@@ -45,7 +45,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 	enumerateCmd.AddCommand(enumerateFtpCmd)
 
 	// SMTP enumerate
-	enumerateSmtpCmd := &cobra.Command{
+	enumerateSMTPCmd := &cobra.Command{
 		Use:   "smtp",
 		Short: "Enumerate data about SMTP on a target host",
 		Long:  `Enumerate data about SMTP on a target host`,
@@ -70,13 +70,13 @@ func (a *NetworkScan) InitEnumerateCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	enumerateSmtpCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
-	enumerateSmtpCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
-	_ = enumerateSmtpCmd.MarkFlagRequired("targets")
-	enumerateCmd.AddCommand(enumerateSmtpCmd)
+	enumerateSMTPCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
+	enumerateSMTPCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
+	_ = enumerateSMTPCmd.MarkFlagRequired("targets")
+	enumerateCmd.AddCommand(enumerateSMTPCmd)
 
 	// SSH enumerate
-	enumerateSshCmd := &cobra.Command{
+	enumerateSSHCmd := &cobra.Command{
 		Use:   "ssh",
 		Short: "Enumerate data about SSH on a target host",
 		Long:  `Enumerate data about SSH on a target host`,
@@ -101,10 +101,10 @@ func (a *NetworkScan) InitEnumerateCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	enumerateSshCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
-	enumerateSshCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
-	_ = enumerateSshCmd.MarkFlagRequired("targets")
-	enumerateCmd.AddCommand(enumerateSshCmd)
+	enumerateSSHCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
+	enumerateSSHCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
+	_ = enumerateSSHCmd.MarkFlagRequired("targets")
+	enumerateCmd.AddCommand(enumerateSSHCmd)
 
 	a.RootCmd.AddCommand(enumerateCmd)
 }

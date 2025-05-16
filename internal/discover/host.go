@@ -10,7 +10,7 @@ import (
 	"github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
-// RunHostDiscover takes a target host (which can be a CIDR) and a scantype and returns a report of all hosts that were discovered
+// RunHostDiscovery takes a target host (which can be a CIDR) and a scantype and returns a report of all hosts that were discovered
 func RunHostDiscovery(ctx context.Context, target string, scantype string) (discoverFern.DiscoverHostReport, error) {
 	errors := []string{}
 

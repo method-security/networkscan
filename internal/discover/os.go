@@ -1,4 +1,3 @@
-// Package host provides the data structures and logic necessary for interacting with hosts on a network.
 package discover
 
 import (
@@ -13,7 +12,7 @@ type Report struct {
 	Errors []string `json:"errors" yaml:"errors"`
 }
 
-// RunHostFingerprint takes a target host and returns a report of all hosts and OS that were detected
+// RunOsFingerprint takes a target host and returns a report of all hosts and OS that were detected
 func RunOsFingerprint(ctx context.Context, target string) (Report, error) {
 	errors := []string{}
 
