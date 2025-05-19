@@ -2,18 +2,20 @@ imports:
   ssh: ./ssh/ssh.yml
   ftp: ./ftp/ftp.yml
   smtp: ./smtp/smtp.yml
-
+  grpc: ./grpc/grpc.yml
 types:
   NetworkApplicationType:
     enum:
       - SSH
       - FTP
       - SMTP
+      - GRPC
   NetworkApplicationEnumerateDetails:
     union:
       EnumerateSshDetails: ssh.EnumerateSshDetails
       EnumerateFtpDetails: ftp.EnumerateFtpDetails
       EnumerateSmtpDetails: smtp.EnumerateSmtpDetails
+      EnumerateGrpcDetails: grpc.EnumerateGrpcDetails
   NetworkApplicationEnumerateReport:
     properties:
       targets: list<string>

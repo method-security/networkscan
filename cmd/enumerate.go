@@ -44,6 +44,37 @@ func (a *NetworkScan) InitEnumerateCommand() {
 	_ = enumerateFtpCmd.MarkFlagRequired("targets")
 	enumerateCmd.AddCommand(enumerateFtpCmd)
 
+	// GRPC enumerate
+	enumerateGrpcCmd := &cobra.Command{
+		Use:   "grpc",
+		Short: "Enumerate data about GRPC on a target host",
+		Long:  `Enumerate data about GRPC on a target host`,
+		Run: func(cmd *cobra.Command, args []string) {
+			targets, err := cmd.Flags().GetStringSlice("targets")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			timeout, err := cmd.Flags().GetInt("timeout")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			report, err := enumerate.RunNetworkApplicationEnumerate(cmd.Context(), targets, enumerateFern.NetworkApplicationTypeGrpc, timeout)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			a.OutputSignal.Content = report
+		},
+	}
+	enumerateGrpcCmd.Flags().StringSlice("targets", []string{}, "Target IP Socket or FQDN Socket to enumerate")
+	enumerateGrpcCmd.Flags().Int("timeout", 30, "Total time allowed for enumeration of each target in seconds")
+	_ = enumerateGrpcCmd.MarkFlagRequired("targets")
+	enumerateCmd.AddCommand(enumerateGrpcCmd)
+
 	// SMTP enumerate
 	enumerateSMTPCmd := &cobra.Command{
 		Use:   "smtp",
