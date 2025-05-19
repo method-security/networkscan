@@ -1,6 +1,12 @@
 imports:
   common: ../common/common.yml
 types:
+  DiscoverServiceConfig:
+    properties:
+      target: string
+      port: integer
+      timeout: integer
+
   DiscoverServiceDetails:
     properties:
       host: string
@@ -13,6 +19,6 @@ types:
       metadata: optional<map<string, string>>
   DiscoverServiceReport:
     properties:
-      target: string
+      config: DiscoverServiceConfig
       services: optional<list<DiscoverServiceDetails>>
       errors: optional<list<string>>

@@ -1,4 +1,13 @@
 types:
+  ScanType:
+    enum:
+      - TCP_SYN
+      - TCP_ACK
+      - ICMP_ECHO
+      - ICMP_TIMESTAMP
+      - ARP
+      - ICMP_ADDRESS_MASK
+
   DiscoverHostDetails:
     properties:
       ip: string
