@@ -120,7 +120,7 @@ func convertToTLSInfo(state *tls.ConnectionState) *discoverFern.DiscoverTlsDetai
 
 		// Signature names defined in `signatureAlgorithmDetails` in the `x509` package have a hyphen
 		// Which is removed for proper enum conversion
-		signatureAlgorithm, err := discoverFern.NewSignatureAlgorithmFromString(strings.Replace(cert.SignatureAlgorithm.String(), "-", "", 1))
+		signatureAlgorithm, err := discoverFern.NewSignatureAlgorithmFromString(strings.Replace(cert.SignatureAlgorithm.String(), "-", "_", 1))
 		if err == nil {
 			certificate.SignatureAlgorithm = &signatureAlgorithm
 		}
