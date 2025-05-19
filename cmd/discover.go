@@ -150,7 +150,12 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			report, err := discover.RunServiceFingerprint(cmd.Context(), timeout, target, port)
+			config := discoverFern.DiscoverServiceConfig{
+				Target:  target,
+				Port:    port,
+				Timeout: timeout,
+			}
+			report, err := discover.RunServiceFingerprint(cmd.Context(), config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -185,7 +190,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			report, err := discover.GetTLSInfo(cmd.Context(), targets, discoverFern.DiscoverTlsConfig{Timeout: timeout, InsecureSkipVerify: insecure})
+			report, err := discover.GetTLSInfo(cmd.Context(), targets, LoadTLSConfig(targets, timeout, insecure))
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return

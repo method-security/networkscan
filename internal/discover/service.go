@@ -17,18 +17,18 @@ import (
 )
 
 // RunServiceFingerprint performs a service fingerprint on the specified target
-func RunServiceFingerprint(ctx context.Context, timeout int, target string, port int) (*discoverFern.DiscoverServiceReport, error) {
-	resources := discoverFern.DiscoverServiceReport{Target: target}
+func RunServiceFingerprint(ctx context.Context, config discoverFern.DiscoverServiceConfig) (*discoverFern.DiscoverServiceReport, error) {
+	resources := discoverFern.DiscoverServiceReport{Config: &config}
 	errors := []string{}
 
 	fxConfig := scan.Config{
 		FastMode:       false,
-		DefaultTimeout: time.Duration(timeout) * time.Second,
+		DefaultTimeout: time.Duration(config.Timeout) * time.Second,
 		UDP:            false,
 		Verbose:        true,
 	}
 
-	ips, err := getIPs(target)
+	ips, err := getIPs(config.Target)
 	if err != nil {
 		return &resources, err
 	}
@@ -41,8 +41,8 @@ func RunServiceFingerprint(ctx context.Context, timeout int, target string, port
 		}
 
 		fxTarget := plugins.Target{
-			Address: netip.AddrPortFrom(ipAddr, uint16(port)),
-			Host:    target,
+			Address: netip.AddrPortFrom(ipAddr, uint16(config.Port)),
+			Host:    config.Target,
 		}
 
 		result, err := fxConfig.SimpleScanTarget(fxTarget)
