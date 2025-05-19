@@ -12,6 +12,8 @@ import (
 
 	common "github.com/Method-Security/networkscan/generated/go/common"
 	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
+
+	// Register the grpc plugin
 	_ "github.com/Method-Security/networkscan/internal/discover/plugins/service/grpc"
 	"github.com/praetorian-inc/fingerprintx/pkg/plugins"
 	"github.com/praetorian-inc/fingerprintx/pkg/scan"

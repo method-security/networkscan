@@ -11,16 +11,16 @@ import (
 
 /* ---------- public plugin objects ---------- */
 
-type GRPCMetadata struct {
+type Metadata struct {
 	PrefaceAck         bool   `json:"prefaceAck"`
 	SupportsReflection bool   `json:"supportsReflection,omitempty"`
 	HealthStatus       string `json:"healthStatus,omitempty"`
 }
 
-func (GRPCMetadata) Type() string { return "grpc" } // satisfies plugins.Metadata
+func (Metadata) Type() string { return "grpc" } // satisfies plugins.Metadata
 
-type GRPCPlugin struct{}
-type GRPCTLSPlugin struct{}
+type Plugin struct{}
+type TLSPlugin struct{}
 
 const (
 	GRPC    = "grpc"
@@ -28,35 +28,34 @@ const (
 )
 
 func init() {
-	plugins.RegisterPlugin(&GRPCPlugin{})
-	plugins.RegisterPlugin(&GRPCTLSPlugin{})
+	plugins.RegisterPlugin(&Plugin{})
+	plugins.RegisterPlugin(&TLSPlugin{})
 }
 
 /* ---------- interface glue ---------- */
 
-func (p *GRPCPlugin) Name() string    { return GRPC }
-func (p *GRPCTLSPlugin) Name() string { return GRPCTLS }
+func (p *Plugin) Name() string    { return GRPC }
+func (p *TLSPlugin) Name() string { return GRPCTLS }
 
-func (p *GRPCPlugin) Type() plugins.Protocol    { return plugins.TCP }
-func (p *GRPCTLSPlugin) Type() plugins.Protocol { return plugins.TCPTLS }
+func (p *Plugin) Type() plugins.Protocol    { return plugins.TCP }
+func (p *TLSPlugin) Type() plugins.Protocol { return plugins.TCPTLS }
 
-// gRPC default ports + popular fall-backs
-func (p *GRPCPlugin) PortPriority(port uint16) bool {
+func (p *Plugin) PortPriority(port uint16) bool {
 	return port == 50051 || port == 6565
 }
-func (p *GRPCTLSPlugin) PortPriority(port uint16) bool {
+func (p *TLSPlugin) PortPriority(port uint16) bool {
 	return port == 443 || port == 8443 || port == 5443
 }
 
-func (p *GRPCPlugin) Priority() int    { return 500 } // pick any unused slot
-func (p *GRPCTLSPlugin) Priority() int { return 501 }
+func (p *Plugin) Priority() int    { return 500 } // pick any unused slot
+func (p *TLSPlugin) Priority() int { return 501 }
 
 /* ---------- runtime ---------- */
 
-func (p *GRPCPlugin) Run(conn net.Conn, t time.Duration, tgt plugins.Target) (*plugins.Service, error) {
+func (p *Plugin) Run(conn net.Conn, t time.Duration, tgt plugins.Target) (*plugins.Service, error) {
 	return detectGRPC(conn, tgt, t, false)
 }
-func (p *GRPCTLSPlugin) Run(conn net.Conn, t time.Duration, tgt plugins.Target) (*plugins.Service, error) {
+func (p *TLSPlugin) Run(conn net.Conn, t time.Duration, tgt plugins.Target) (*plugins.Service, error) {
 	return detectGRPC(conn, tgt, t, true)
 }
 
@@ -88,7 +87,7 @@ func detectGRPC(conn net.Conn, tgt plugins.Target, timeout time.Duration, tls bo
 		healthStatus = "responded"
 	}
 
-	meta := GRPCMetadata{
+	meta := Metadata{
 		PrefaceAck:         prefaceAck,
 		SupportsReflection: supportsReflection,
 		HealthStatus:       healthStatus,
