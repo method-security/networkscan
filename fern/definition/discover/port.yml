@@ -1,0 +1,23 @@
+types:
+  DiscoverPortConfig:
+    properties:
+      target: string
+      tcpPorts: optional<string>
+      udpPorts: optional<string>
+      topPorts: optional<string>
+      threads: integer
+      scanType: string
+  DiscoverPortDetails:
+    properties:
+      port: integer
+      protocol: string
+  DiscoverSocketDetails:
+    properties:
+      host: string
+      ip: string
+      ports: optional<list<DiscoverPortDetails>>
+  DiscoverPortReport:
+    properties:
+      config: DiscoverPortConfig
+      hosts: optional<list<DiscoverSocketDetails>>
+      errors: optional<list<string>>
