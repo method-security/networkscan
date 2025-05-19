@@ -90,7 +90,12 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			ports, err := cmd.Flags().GetString("ports")
+			tcpPorts, err := cmd.Flags().GetString("tcp-ports")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			udpPorts, err := cmd.Flags().GetString("udp-ports")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -114,7 +119,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(errors.New("scan-type must be either syn or connect"))
 				return
 			}
-			report, err := discover.RunPortScan(cmd.Context(), target, ports, topPorts, threads, scanType)
+			report, err := discover.RunPortScan(cmd.Context(), target, tcpPorts, udpPorts, topPorts, threads, scanType)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -123,8 +128,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 		},
 	}
 	discoverPortCmd.Flags().String("target", "", "Target IP or FQDN to scan for ports")
-	discoverPortCmd.Flags().String("ports", "", "Port/Port Range to scan")
-	discoverPortCmd.Flags().String("top-ports", "", "Top Ports to scan (full | 100 | 1000)")
+	discoverPortCmd.Flags().String("tcp-ports", "", "TCP Port/Port Range to scan")
+	discoverPortCmd.Flags().String("udp-ports", "", "UDP Port/Port Range to scan")
+	discoverPortCmd.Flags().String("top-ports", "", "Top TCP Ports to scan (full | 100 | 1000)")
 	discoverPortCmd.Flags().Int("threads", 25, "Number of threads to use for scanning")
 	discoverPortCmd.Flags().String("scan-type", "syn", "Type of scan to perform (syn | connect)")
 	_ = discoverPortCmd.MarkFlagRequired("target")

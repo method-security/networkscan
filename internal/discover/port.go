@@ -2,6 +2,7 @@ package discover
 
 import (
 	"context"
+	"strings"
 
 	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/projectdiscovery/goflags"
@@ -11,11 +12,11 @@ import (
 
 // RunPortScan takes a target host and a list of ports to scan and returns a report of all hosts that were scanned and
 // their open ports.
-func RunPortScan(ctx context.Context, target string, ports string, topport string, threads int, scantype string) (*discoverFern.DiscoverPortReport, error) {
+func RunPortScan(ctx context.Context, target string, tcpPorts string, udpPorts string, topport string, threads int, scantype string) (*discoverFern.DiscoverPortReport, error) {
 	resources := discoverFern.DiscoverPortReport{}
 	errors := []string{}
 
-	portscanResult, err := getPortScan(ctx, target, ports, topport, threads, scantype)
+	portscanResult, err := getPortScan(ctx, target, tcpPorts, udpPorts, topport, threads, scantype)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
@@ -25,7 +26,7 @@ func RunPortScan(ctx context.Context, target string, ports string, topport strin
 	return &resources, nil
 }
 
-func getPortScan(ctx context.Context, target string, ports string, topports string, threads int, scantype string) ([]*discoverFern.DiscoverSocketDetails, error) {
+func getPortScan(ctx context.Context, target string, tcpPorts string, udpPorts string, topports string, threads int, scantype string) ([]*discoverFern.DiscoverSocketDetails, error) {
 	output := result.HostResult{}
 	hosts := []*discoverFern.DiscoverSocketDetails{}
 	// These settings mimic naabu's default settings
@@ -56,9 +57,24 @@ func getPortScan(ctx context.Context, target string, ports string, topports stri
 		portscanOpts.ScanType = ""
 	}
 
-	if ports != "" {
-		portscanOpts.Ports = ports
+	// Combine tcpPorts and udpPorts into a single string for portscanOpts.Ports
+	var portList []string
+	if tcpPorts != "" {
+		portList = append(portList, tcpPorts)
 	}
+	if udpPorts != "" {
+		udpParts := strings.Split(udpPorts, ",")
+		for _, udp := range udpParts {
+			udp = strings.TrimSpace(udp)
+			if udp != "" {
+				portList = append(portList, "u:"+udp)
+			}
+		}
+	}
+	if len(portList) > 0 {
+		portscanOpts.Ports = strings.Join(portList, ",")
+	}
+
 	if topports != "" {
 		portscanOpts.TopPorts = topports
 	}
