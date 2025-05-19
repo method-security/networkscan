@@ -115,11 +115,15 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			if scanType != "syn" && scanType != "connect" {
-				a.OutputSignal.AddError(errors.New("scan-type must be either syn or connect"))
-				return
+			config := discoverFern.DiscoverPortConfig{
+				Target:   target,
+				TcpPorts: &tcpPorts,
+				UdpPorts: &udpPorts,
+				TopPorts: &topPorts,
+				Threads:  threads,
+				ScanType: scanType,
 			}
-			report, err := discover.RunPortScan(cmd.Context(), target, tcpPorts, udpPorts, topPorts, threads, scanType)
+			report, err := discover.RunPortScan(cmd.Context(), config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
