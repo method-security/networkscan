@@ -5,6 +5,7 @@ types:
       - DHCP
       - ECHO
       - FTP
+      - GRPC
       - HTTP
       - HTTPS
       - HTTP2
