@@ -36,7 +36,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverFern.DiscoverServ
 		return &resources, err
 	}
 
-	var fingerprintResults []*discoverFern.DiscoverServiceDetails
+	var fingerprintResults []*discoverFern.ServiceDetails
 	for _, ip := range ips {
 		ipAddr, err := netip.ParseAddr(ip.String())
 		if err != nil {
@@ -60,7 +60,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverFern.DiscoverServ
 		}
 
 		metadata := metadataMap(result.Metadata())
-		fingerprintResult := discoverFern.DiscoverServiceDetails{
+		fingerprintResult := discoverFern.ServiceDetails{
 			Host:      result.Host,
 			Ip:        result.IP,
 			Port:      result.Port,

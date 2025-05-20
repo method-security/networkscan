@@ -7,17 +7,20 @@ types:
       topPorts: optional<string>
       threads: integer
       scanType: string
-  DiscoverPortDetails:
+
+  PortDetails:
     properties:
       port: integer
       protocol: string
-  DiscoverSocketDetails:
+
+  SocketDetails:
     properties:
       host: string
       ip: string
-      ports: optional<list<DiscoverPortDetails>>
+      ports: optional<list<PortDetails>>
+
   DiscoverPortReport:
     properties:
       config: DiscoverPortConfig
-      hosts: optional<list<DiscoverSocketDetails>>
+      hosts: optional<list<SocketDetails>>
       errors: optional<list<string>>

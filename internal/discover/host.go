@@ -25,8 +25,8 @@ func RunHostDiscovery(ctx context.Context, target string, scantype string) (disc
 	}, nil
 }
 
-func getHostDiscover(ctx context.Context, target string, scantype string) ([]*discoverFern.DiscoverHostDetails, error) {
-	hostDetails := []*discoverFern.DiscoverHostDetails{}
+func getHostDiscover(ctx context.Context, target string, scantype string) ([]*discoverFern.HostDetails, error) {
+	hostDetails := []*discoverFern.HostDetails{}
 	hostDiscoverOpts := &runner.Options{
 		Silent:            true,
 		JSON:              true,
@@ -80,8 +80,8 @@ func getHostDiscover(ctx context.Context, target string, scantype string) ([]*di
 
 }
 
-func parseHostDiscoverResult(result result.HostResult) *discoverFern.DiscoverHostDetails {
-	return &discoverFern.DiscoverHostDetails{
+func parseHostDiscoverResult(result result.HostResult) *discoverFern.HostDetails {
+	return &discoverFern.HostDetails{
 		Host: result.Host,
 		Ip:   result.IP,
 	}

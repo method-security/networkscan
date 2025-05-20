@@ -32,7 +32,7 @@ type LibraryEnumerateSSH struct{}
 //   e. MACs
 //   f. Auth Methods (Public Key, Password)
 
-func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.NetworkApplicationEnumerateDetails, []string) {
+func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.EnumerateServiceDetails, []string) {
 	var details ssh.EnumerateSshDetails
 	details.Target = target
 	errors := []string{}
@@ -42,14 +42,14 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateSshDetails(&details), errors
+		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 	}
 
 	// Get SSH Banner
 	version, versionASCII, err := getSSHVersion(conn)
 	if err != nil || version == nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateSshDetails(&details), errors
+		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 	}
 	details.Version = version
 
@@ -57,7 +57,7 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	rawASCII, err := getSSHAlgorithms(conn)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateSshDetails(&details), errors
+		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 	}
 
 	fullASCII := rawASCII
@@ -87,5 +87,5 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 		errors = append(errors, err.Error())
 	}
 
-	return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateSshDetails(&details), errors
+	return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 }

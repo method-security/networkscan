@@ -8,12 +8,12 @@ types:
       - ARP
       - ICMP_ADDRESS_MASK
 
-  DiscoverHostDetails:
+  HostDetails:
     properties:
       ip: string
       host: string
 
   DiscoverHostReport:
     properties:
-      hosts: list<DiscoverHostDetails>
+      hosts: list<HostDetails>
       errors: list<string>
