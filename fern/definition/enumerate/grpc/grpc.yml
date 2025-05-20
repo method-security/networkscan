@@ -18,4 +18,4 @@ types:
       services: list<GrpcService>
       rawDescriptorSet: string # base64-encoded FileDescriptorSet
       reflectionSupported: boolean
-      errors: list<string>
+      errors: optional<list<string>>
