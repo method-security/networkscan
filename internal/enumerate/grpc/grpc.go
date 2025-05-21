@@ -24,7 +24,7 @@ import (
 type LibraryEnumerateGRPC struct{}
 
 // EnumerateTarget performs a gRPC scan against a target URL and returns the report.
-func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.NetworkApplicationEnumerateDetails, []string) {
+func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.EnumerateServiceDetails, []string) {
 	var details grpc.EnumerateGrpcDetails
 	details.Target = target
 	errors := []string{}
@@ -33,34 +33,34 @@ func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target str
 	conn, err := connectToGRPCServer(ctx, target)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateGrpcDetails(&details), errors
+		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 	defer closeConnection(conn)
 
 	stream, err := createReflectionClient(ctx, conn)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateGrpcDetails(&details), errors
+		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
 	services, err := requestAndReceiveServices(stream)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateGrpcDetails(&details), errors
+		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
 	rawDescriptors, err := processServices(stream, services, &details)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateGrpcDetails(&details), errors
+		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
 	if err := encodeRawDescriptors(rawDescriptors, &details); err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateGrpcDetails(&details), errors
+		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
-	return enumerateFern.NewNetworkApplicationEnumerateDetailsFromEnumerateGrpcDetails(&details), errors
+	return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 }
 
 // connectToGRPCServer dials the target with a timeout.

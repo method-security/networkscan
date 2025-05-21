@@ -26,9 +26,9 @@ func RunPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) (*
 	return &resources, nil
 }
 
-func getPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) ([]*discoverFern.DiscoverSocketDetails, error) {
+func getPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) ([]*discoverFern.SocketDetails, error) {
 	output := result.HostResult{}
-	hosts := []*discoverFern.DiscoverSocketDetails{}
+	hosts := []*discoverFern.SocketDetails{}
 	// These settings mimic naabu's default settings
 	portscanOpts := &runner.Options{
 		Silent:            false,
@@ -92,15 +92,15 @@ func getPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) ([
 
 }
 
-func parsePortScanResult(result *result.HostResult) *discoverFern.DiscoverSocketDetails {
-	ports := []*discoverFern.DiscoverPortDetails{}
+func parsePortScanResult(result *result.HostResult) *discoverFern.SocketDetails {
+	ports := []*discoverFern.PortDetails{}
 	for _, p := range result.Ports {
-		ports = append(ports, &discoverFern.DiscoverPortDetails{
+		ports = append(ports, &discoverFern.PortDetails{
 			Port:     p.Port,
 			Protocol: p.Protocol.String(),
 		})
 	}
-	host := discoverFern.DiscoverSocketDetails{
+	host := discoverFern.SocketDetails{
 		Host:  result.Host,
 		Ip:    result.IP,
 		Ports: ports,

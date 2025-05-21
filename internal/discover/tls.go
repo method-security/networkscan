@@ -17,7 +17,7 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverFern.Dis
 	resources := discoverFern.DiscoverTlsReport{Config: &config}
 	errors := []string{}
 
-	serviceDetails := []*discoverFern.DiscoverTlsSummary{}
+	serviceDetails := []*discoverFern.TlsSummary{}
 	for _, targetAddress := range addresses {
 		// Define timeout for the TLS connection
 		dialer := &net.Dialer{
@@ -54,7 +54,7 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverFern.Dis
 		}
 
 		// Construct AddressTlsReport
-		serviceDetail := discoverFern.DiscoverTlsSummary{
+		serviceDetail := discoverFern.TlsSummary{
 			Address:    targetAddress,
 			TlsDetails: tlsInfo,
 		}
@@ -84,8 +84,8 @@ func tlsVersionToString(version uint16) discoverFern.TlsVersion {
 }
 
 // Convert TLS connection state to TLSInfo
-func convertToTLSInfo(state *tls.ConnectionState) *discoverFern.DiscoverTlsDetails {
-	tlsInfo := &discoverFern.DiscoverTlsDetails{
+func convertToTLSInfo(state *tls.ConnectionState) *discoverFern.TlsDetails {
+	tlsInfo := &discoverFern.TlsDetails{
 		Certificates: []*discoverFern.Certificate{},
 	}
 

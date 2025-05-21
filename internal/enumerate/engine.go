@@ -15,24 +15,24 @@ import (
 )
 
 type NetworkApplicationLibrary interface {
-	EnumerateTarget(ctx context.Context, target string) (*enumerateFern.NetworkApplicationEnumerateDetails, []string)
+	EnumerateTarget(ctx context.Context, target string) (*enumerateFern.EnumerateServiceDetails, []string)
 }
 
 type NetworkApplicationEngine struct {
 	Library NetworkApplicationLibrary
 }
 
-func RunNetworkApplicationEnumerate(ctx context.Context, targets []string, networkApplication enumerateFern.NetworkApplicationType, timeout int) (enumerateFern.NetworkApplicationEnumerateReport, error) {
+func RunServiceEnumerate(ctx context.Context, targets []string, serviceType enumerateFern.ServiceType, timeout int) (enumerateFern.EnumerateServiceReport, error) {
 	log.Printf("[INFO] Starting enumeration for %d targets with a timeout of %ds", len(targets), timeout)
-	resource := enumerateFern.NetworkApplicationEnumerateReport{Targets: targets}
+	resource := enumerateFern.EnumerateServiceReport{Targets: targets}
 
-	engine, err := getEngine(networkApplication)
+	engine, err := getEngine(serviceType)
 	if err != nil {
-		return enumerateFern.NetworkApplicationEnumerateReport{}, err
+		return enumerateFern.EnumerateServiceReport{}, err
 	}
 
 	// Create channels for collecting results and errors
-	detailsChan := make(chan *enumerateFern.NetworkApplicationEnumerateDetails, len(targets))
+	detailsChan := make(chan *enumerateFern.EnumerateServiceDetails, len(targets))
 	errorsChan := make(chan string, len(targets))
 	var wg sync.WaitGroup
 
@@ -48,14 +48,14 @@ func RunNetworkApplicationEnumerate(ctx context.Context, targets []string, netwo
 
 			// Start enumeration
 			resultChan := make(chan struct {
-				detail *enumerateFern.NetworkApplicationEnumerateDetails
+				detail *enumerateFern.EnumerateServiceDetails
 				errs   []string
 			}, 1)
 
 			go func() {
 				detail, errs := engine.Library.EnumerateTarget(targetCtx, target)
 				resultChan <- struct {
-					detail *enumerateFern.NetworkApplicationEnumerateDetails
+					detail *enumerateFern.EnumerateServiceDetails
 					errs   []string
 				}{detail, errs}
 			}()
@@ -89,7 +89,7 @@ func RunNetworkApplicationEnumerate(ctx context.Context, targets []string, netwo
 	}()
 
 	// Collect results
-	var details []*enumerateFern.NetworkApplicationEnumerateDetails
+	var details []*enumerateFern.EnumerateServiceDetails
 	var errors []string
 
 	for detail := range detailsChan {
@@ -106,17 +106,17 @@ func RunNetworkApplicationEnumerate(ctx context.Context, targets []string, netwo
 }
 
 // Factory function to create the appropriate engine
-func getEngine(application enumerateFern.NetworkApplicationType) (NetworkApplicationEngine, error) {
-	switch application {
-	case enumerateFern.NetworkApplicationTypeSsh:
+func getEngine(serviceType enumerateFern.ServiceType) (NetworkApplicationEngine, error) {
+	switch serviceType {
+	case enumerateFern.ServiceTypeSsh:
 		return NetworkApplicationEngine{Library: &ssh.LibraryEnumerateSSH{}}, nil
-	case enumerateFern.NetworkApplicationTypeFtp:
+	case enumerateFern.ServiceTypeFtp:
 		return NetworkApplicationEngine{Library: &ftp.LibraryEnumerateFTP{}}, nil
-	case enumerateFern.NetworkApplicationTypeSmtp:
+	case enumerateFern.ServiceTypeSmtp:
 		return NetworkApplicationEngine{Library: &smtp.LibraryEnumerateSMTP{}}, nil
-	case enumerateFern.NetworkApplicationTypeGrpc:
+	case enumerateFern.ServiceTypeGrpc:
 		return NetworkApplicationEngine{Library: &grpc.LibraryEnumerateGRPC{}}, nil
 	default:
-		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", application)
+		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", serviceType)
 	}
 }

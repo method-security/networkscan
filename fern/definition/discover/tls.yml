@@ -10,6 +10,7 @@ types:
       - TLS_1_2
       - TLS_1_3
       - UNKNOWN
+
   SignatureAlgorithm:
     enum:
       - MD2_RSA
@@ -29,6 +30,7 @@ types:
       - SHA384_RSA_PSS
       - SHA512_RSA_PSS
       - ED25519
+
   PublicKeyAlgorithm:
     enum:
       - DES
@@ -45,6 +47,7 @@ types:
       - RSA
       - RSA_1024
       - UNKNOWN
+
   Certificate:
     properties:
       subjectCommonName: optional<string>
@@ -57,23 +60,24 @@ types:
       signature: optional<string>
       signatureAlgorithm: optional<SignatureAlgorithm>
       publicKeyAlgorithm: optional<PublicKeyAlgorithm>
+
   # Config
   DiscoverTlsConfig:
     properties:
       timeout: integer
       insecureSkipVerify: boolean
   # Data
-  DiscoverTlsDetails:
+  TlsDetails:
     properties:
       version: optional<TlsVersion>
       cipherSuite: optional<string>
       certificates: optional<list<Certificate>>
-  DiscoverTlsSummary:
+  TlsSummary:
     properties:
       address: string
-      tlsDetails: optional<DiscoverTlsDetails>
+      tlsDetails: optional<TlsDetails>
   DiscoverTlsReport:
     properties:
-      details: optional<list<DiscoverTlsSummary>>
+      details: optional<list<TlsSummary>>
       errors: optional<list<string>>
       config: DiscoverTlsConfig

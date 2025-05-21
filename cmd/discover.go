@@ -13,14 +13,14 @@ import (
 func (a *NetworkScan) InitDiscoverCommand() {
 	discoverCmd := &cobra.Command{
 		Use:   "discover",
-		Short: "Discover hosts, ports, services, and TLS info",
-		Long:  `Discover hosts, ports, services, and TLS info`,
+		Short: "Discover live hosts, open ports, running services, and TLS configurations on a network.",
+		Long:  `Discover live hosts, open ports, running services, and TLS configurations on a network.`,
 	}
 
 	discoverHostCmd := &cobra.Command{
 		Use:   "host",
-		Short: "Discover hosts on a network",
-		Long:  `Discover hosts on a network`,
+		Short: "Identify live hosts within a given IP, hostname, or CIDR range using various discovery techniques.",
+		Long:  `Identify live hosts within a given IP, hostname, or CIDR range using various discovery techniques.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if !privileges.IsPrivileged {
 				a.OutputSignal.AddError(errors.New("discover host can only be run as a privileged user"))
@@ -44,15 +44,15 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	discoverHostCmd.Flags().String("target", "", "Target IP, host, or CIDR to scan for hosts")
-	discoverHostCmd.Flags().String("scan-type", "", "Scan type for host discovery (tcpsyn | tcpack | icmpecho | icmptimestamp | arp | icmpaddressmask)")
+	discoverHostCmd.Flags().String("target", "", "Target IP address, hostname, or CIDR range to scan for live hosts")
+	discoverHostCmd.Flags().String("scan-type", "", "Discovery scan type: tcpsyn, tcpack, icmpecho, icmptimestamp, arp, or icmpaddressmask")
 	_ = discoverHostCmd.MarkFlagRequired("target")
 	discoverCmd.AddCommand(discoverHostCmd)
 
 	discoverOSCmd := &cobra.Command{
 		Use:   "os",
-		Short: "Fingerprint the operating system on a target host",
-		Long:  `Fingerprint the operating system on a target host`,
+		Short: "Detect and fingerprint the operating system running on a specified host (requires nmap and root privileges).",
+		Long:  `Detect and fingerprint the operating system running on a specified host (requires nmap and root privileges).`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if !privileges.IsPrivileged {
 				a.OutputSignal.AddError(errors.New("discover os can only be run as a privileged user"))
@@ -76,14 +76,14 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	discoverOSCmd.Flags().String("target", "", "Target IP or FQDN to detect")
+	discoverOSCmd.Flags().String("target", "", "Target IP address or fully qualified domain name (FQDN) for OS fingerprinting")
 	_ = discoverOSCmd.MarkFlagRequired("target")
 	discoverCmd.AddCommand(discoverOSCmd)
 
 	discoverPortCmd := &cobra.Command{
 		Use:   "port",
-		Short: "Scan open ports on a target host",
-		Long:  `Scan open ports on a target host`,
+		Short: "Scan a target host for open TCP and UDP ports using customizable scan types and port ranges.",
+		Long:  `Scan a target host for open TCP and UDP ports using customizable scan types and port ranges.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			target, err := cmd.Flags().GetString("target")
 			if err != nil {
@@ -131,19 +131,19 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	discoverPortCmd.Flags().String("target", "", "Target IP or FQDN to scan for ports")
-	discoverPortCmd.Flags().String("tcp-ports", "", "TCP Port/Port Range to scan")
-	discoverPortCmd.Flags().String("udp-ports", "", "UDP Port/Port Range to scan")
-	discoverPortCmd.Flags().String("top-ports", "", "Top TCP Ports to scan (full | 100 | 1000)")
-	discoverPortCmd.Flags().Int("threads", 25, "Number of threads to use for scanning")
-	discoverPortCmd.Flags().String("scan-type", "syn", "Type of scan to perform (syn | connect)")
+	discoverPortCmd.Flags().String("target", "", "Target IP address or FQDN to scan for open ports")
+	discoverPortCmd.Flags().String("tcp-ports", "", "Comma-separated list or range of TCP ports to scan (e.g., 22,80,443 or 1-1024)")
+	discoverPortCmd.Flags().String("udp-ports", "", "Comma-separated list or range of UDP ports to scan (e.g., 53,161 or 1-1024)")
+	discoverPortCmd.Flags().String("top-ports", "", "Scan the top N most common TCP ports (options: full, 100, 1000)")
+	discoverPortCmd.Flags().Int("threads", 25, "Number of concurrent threads to use during port scanning")
+	discoverPortCmd.Flags().String("scan-type", "syn", "Port scan type: syn (default, requires root) or connect (TCP connect scan)")
 	_ = discoverPortCmd.MarkFlagRequired("target")
 	discoverCmd.AddCommand(discoverPortCmd)
 
 	discoverServiceCmd := &cobra.Command{
 		Use:   "service",
-		Short: "Fingerprint a network service behind an open port",
-		Long:  `Fingerprint a network service behind an open port`,
+		Short: "Identify and fingerprint the network service running on a specific open port of a target host.",
+		Long:  `Identify and fingerprint the network service running on a specific open port of a target host.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			target, err := cmd.Flags().GetString("target")
 			if err != nil {
@@ -173,17 +173,17 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	discoverServiceCmd.Flags().String("target", "", "Target address (e.g., 192.168.1.1 or example.com)")
-	discoverServiceCmd.Flags().Int("port", 0, "Address Port (e.g., 443)")
-	discoverServiceCmd.Flags().Int("timeout", 5, "Timeout limit for each handshake in seconds")
+	discoverServiceCmd.Flags().String("target", "", "Target IP address or hostname where the service is running")
+	discoverServiceCmd.Flags().Int("port", 0, "Port number of the service to fingerprint (e.g., 443)")
+	discoverServiceCmd.Flags().Int("timeout", 5, "Timeout in seconds for each service fingerprinting attempt")
 	_ = discoverServiceCmd.MarkFlagRequired("target")
 	_ = discoverServiceCmd.MarkFlagRequired("port")
 	discoverCmd.AddCommand(discoverServiceCmd)
 
 	discoverTLSCmd := &cobra.Command{
 		Use:   "tls",
-		Short: "Discover TLS Config and Certificate of a network address socket",
-		Long:  `Discover TLS Config and Certificate of a network address socket`,
+		Short: "Retrieve and analyze the TLS configuration and certificate details for one or more target addresses.",
+		Long:  `Retrieve and analyze the TLS configuration and certificate details for one or more target addresses.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			targets, err := cmd.Flags().GetStringSlice("targets")
 			if err != nil {
@@ -208,9 +208,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	discoverTLSCmd.Flags().StringSlice("targets", []string{}, "Address of target")
-	discoverTLSCmd.Flags().Int("timeout", 30, "Timeout limit for each handshake in seconds")
-	discoverTLSCmd.Flags().Bool("insecure", false, "Skip TLS verification")
+	discoverTLSCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to analyze TLS configuration")
+	discoverTLSCmd.Flags().Int("timeout", 30, "Timeout in seconds for each TLS handshake attempt")
+	discoverTLSCmd.Flags().Bool("insecure", false, "Skip certificate verification (allow insecure TLS connections)")
 	discoverCmd.AddCommand(discoverTLSCmd)
 
 	a.RootCmd.AddCommand(discoverCmd)
