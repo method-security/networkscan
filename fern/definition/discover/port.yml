@@ -1,12 +1,16 @@
 types:
+  PortScanType:
+    enum:
+      - SYN
+      - CONNECT
+
   DiscoverPortConfig:
     properties:
       target: string
-      tcpPorts: optional<string>
-      udpPorts: optional<string>
+      ports: optional<string>
       topPorts: optional<string>
       threads: integer
-      scanType: string
+      scanType: PortScanType
 
   PortDetails:
     properties:

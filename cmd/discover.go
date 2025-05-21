@@ -95,12 +95,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			tcpPorts, err := cmd.Flags().GetString("tcp-ports")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			udpPorts, err := cmd.Flags().GetString("udp-ports")
+			ports, err := cmd.Flags().GetString("ports")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -120,13 +115,17 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
+			scanTypeEnum, err := discoverFern.NewPortScanTypeFromString(scanType)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
 			config := discoverFern.DiscoverPortConfig{
 				Target:   target,
-				TcpPorts: &tcpPorts,
-				UdpPorts: &udpPorts,
+				Ports:    &ports,
 				TopPorts: &topPorts,
 				Threads:  threads,
-				ScanType: scanType,
+				ScanType: scanTypeEnum,
 			}
 			report, err := discover.RunPortScan(cmd.Context(), config)
 			if err != nil {
