@@ -36,7 +36,12 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			report, err := discover.RunHostDiscovery(cmd.Context(), target, scanType)
+			scanTypeEnum, err := discoverFern.NewScanTypeFromString(scanType)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			report, err := discover.RunHostDiscovery(cmd.Context(), target, scanTypeEnum)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -45,7 +50,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 		},
 	}
 	discoverHostCmd.Flags().String("target", "", "Target IP address, hostname, or CIDR range to scan for live hosts")
-	discoverHostCmd.Flags().String("scan-type", "", "Discovery scan type: tcpsyn, tcpack, icmpecho, icmptimestamp, arp, or icmpaddressmask")
+	discoverHostCmd.Flags().String("scan-type", "ICMP_ECHO", "Discovery scan type: TCP_SYN, TCP_ACK, ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK")
 	_ = discoverHostCmd.MarkFlagRequired("target")
 	discoverCmd.AddCommand(discoverHostCmd)
 

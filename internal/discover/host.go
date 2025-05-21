@@ -11,7 +11,7 @@ import (
 )
 
 // RunHostDiscovery takes a target host (which can be a CIDR) and a scantype and returns a report of all hosts that were discovered
-func RunHostDiscovery(ctx context.Context, target string, scantype string) (discoverFern.DiscoverHostReport, error) {
+func RunHostDiscovery(ctx context.Context, target string, scantype discoverFern.ScanType) (discoverFern.DiscoverHostReport, error) {
 	errors := []string{}
 
 	hostDiscoverResult, err := getHostDiscover(ctx, target, scantype)
@@ -25,7 +25,7 @@ func RunHostDiscovery(ctx context.Context, target string, scantype string) (disc
 	}, nil
 }
 
-func getHostDiscover(ctx context.Context, target string, scantype string) ([]*discoverFern.HostDetails, error) {
+func getHostDiscover(ctx context.Context, target string, scantype discoverFern.ScanType) ([]*discoverFern.HostDetails, error) {
 	hostDetails := []*discoverFern.HostDetails{}
 	hostDiscoverOpts := &runner.Options{
 		Silent:            true,
@@ -49,20 +49,20 @@ func getHostDiscover(ctx context.Context, target string, scantype string) ([]*di
 	}
 
 	switch scantype {
-	case "tcpsyn":
+	case discoverFern.ScanTypeTcpSyn:
 		hostDiscoverOpts.TcpSynPingProbes = goflags.StringSlice{"80"}
-	case "tcpack":
+	case discoverFern.ScanTypeTcpAck:
 		hostDiscoverOpts.TcpAckPingProbes = goflags.StringSlice{"80"}
-	case "icmpecho":
+	case discoverFern.ScanTypeIcmpEcho:
 		hostDiscoverOpts.IcmpEchoRequestProbe = true
-	case "icmptimestamp":
+	case discoverFern.ScanTypeIcmpTimestamp:
 		hostDiscoverOpts.IcmpTimestampRequestProbe = true
-	case "arp":
+	case discoverFern.ScanTypeArp:
 		hostDiscoverOpts.ArpPing = true
-	case "icmpaddressmask":
+	case discoverFern.ScanTypeIcmpAddressMask:
 		hostDiscoverOpts.IcmpAddressMaskRequestProbe = true
 	default:
-		fmt.Print("No valid scantype provided")
+		return hostDetails, fmt.Errorf("no valid scantype provided")
 	}
 
 	hostdiscover, err := runner.NewRunner(hostDiscoverOpts)
@@ -76,8 +76,18 @@ func getHostDiscover(ctx context.Context, target string, scantype string) ([]*di
 		return hostDetails, err
 	}
 
-	return hostDetails, nil
+	// Deduplicate hostDetails by Host and Ip
+	unique := make(map[string]*discoverFern.HostDetails)
+	for _, hd := range hostDetails {
+		key := hd.Host + "|" + hd.Ip
+		unique[key] = hd
+	}
+	result := make([]*discoverFern.HostDetails, 0, len(unique))
+	for _, hd := range unique {
+		result = append(result, hd)
+	}
 
+	return result, nil
 }
 
 func parseHostDiscoverResult(result result.HostResult) *discoverFern.HostDetails {
