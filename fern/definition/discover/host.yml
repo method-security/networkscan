@@ -1,5 +1,5 @@
 types:
-  ScanType:
+  HostScanType:
     enum:
       - TCP_SYN
       - TCP_ACK

@@ -36,7 +36,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			scanTypeEnum, err := discoverFern.NewScanTypeFromString(scanType)
+			scanTypeEnum, err := discoverFern.NewHostScanTypeFromString(scanType)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -87,8 +87,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 	discoverPortCmd := &cobra.Command{
 		Use:   "port",
-		Short: "Scan a target host for open TCP and UDP ports using customizable scan types and port ranges.",
-		Long:  `Scan a target host for open TCP and UDP ports using customizable scan types and port ranges.`,
+		Short: "Scan a target host for open TCP ports using customizable scan types and port ranges.",
+		Long:  `Scan a target host for open TCP ports using customizable scan types and port ranges.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			target, err := cmd.Flags().GetString("target")
 			if err != nil {
@@ -136,11 +136,10 @@ func (a *NetworkScan) InitDiscoverCommand() {
 		},
 	}
 	discoverPortCmd.Flags().String("target", "", "Target IP address or FQDN to scan for open ports")
-	discoverPortCmd.Flags().String("tcp-ports", "", "Comma-separated list or range of TCP ports to scan (e.g., 22,80,443 or 1-1024)")
-	discoverPortCmd.Flags().String("udp-ports", "", "Comma-separated list or range of UDP ports to scan (e.g., 53,161 or 1-1024)")
-	discoverPortCmd.Flags().String("top-ports", "", "Scan the top N most common TCP ports (options: full, 100, 1000)")
+	discoverPortCmd.Flags().String("ports", "", "Comma-separated list or range of TCP ports to scan (e.g., 22,80,443 or 1-1024)")
+	discoverPortCmd.Flags().String("top-ports", "100", "Scan the top N most common TCP ports (options: full, 100, 1000)")
 	discoverPortCmd.Flags().Int("threads", 25, "Number of concurrent threads to use during port scanning")
-	discoverPortCmd.Flags().String("scan-type", "syn", "Port scan type: syn (default, requires root) or connect (TCP connect scan)")
+	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN (default, requires root) or CONNECT")
 	_ = discoverPortCmd.MarkFlagRequired("target")
 	discoverCmd.AddCommand(discoverPortCmd)
 
