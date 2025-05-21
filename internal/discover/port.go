@@ -4,8 +4,8 @@ import (
 	"context"
 	"flag"
 	"os"
-	"strings"
 
+	common "github.com/Method-Security/networkscan/generated/go/common"
 	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/projectdiscovery/goflags"
 	"github.com/projectdiscovery/naabu/v2/pkg/result"
@@ -53,28 +53,14 @@ func getPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) ([
 	}
 
 	switch config.ScanType {
-	case "syn":
+	case discoverFern.PortScanTypeSyn:
 		portscanOpts.ScanType = runner.SynScan
-	case "connect":
+	case discoverFern.PortScanTypeConnect:
 		portscanOpts.ScanType = runner.ConnectScan
 	}
 
-	// Combine tcpPorts and udpPorts into a single string for portscanOpts.Ports
-	var portList []string
-	if config.TcpPorts != nil {
-		portList = append(portList, *config.TcpPorts)
-	}
-	if config.UdpPorts != nil {
-		udpParts := strings.Split(*config.UdpPorts, ",")
-		for _, udp := range udpParts {
-			udp = strings.TrimSpace(udp)
-			if udp != "" {
-				portList = append(portList, "u:"+udp)
-			}
-		}
-	}
-	if len(portList) > 0 {
-		portscanOpts.Ports = strings.Join(portList, ",")
+	if config.Ports != nil {
+		portscanOpts.Ports = *config.Ports
 	}
 
 	if config.TopPorts != nil {
@@ -101,7 +87,7 @@ func parsePortScanResult(result *result.HostResult) *discoverFern.SocketDetails 
 	for _, p := range result.Ports {
 		ports = append(ports, &discoverFern.PortDetails{
 			Port:     p.Port,
-			Protocol: p.Protocol.String(),
+			Protocol: common.TransportType(p.Protocol.String()),
 		})
 	}
 	host := discoverFern.SocketDetails{
