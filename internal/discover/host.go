@@ -11,7 +11,7 @@ import (
 )
 
 // RunHostDiscovery takes a target host (which can be a CIDR) and a scantype and returns a report of all hosts that were discovered
-func RunHostDiscovery(ctx context.Context, target string, scantype discoverFern.ScanType) (discoverFern.DiscoverHostReport, error) {
+func RunHostDiscovery(ctx context.Context, target string, scantype discoverFern.HostScanType) (discoverFern.DiscoverHostReport, error) {
 	errors := []string{}
 
 	hostDiscoverResult, err := getHostDiscover(ctx, target, scantype)
@@ -25,7 +25,7 @@ func RunHostDiscovery(ctx context.Context, target string, scantype discoverFern.
 	}, nil
 }
 
-func getHostDiscover(ctx context.Context, target string, scantype discoverFern.ScanType) ([]*discoverFern.HostDetails, error) {
+func getHostDiscover(ctx context.Context, target string, scantype discoverFern.HostScanType) ([]*discoverFern.HostDetails, error) {
 	hostDetails := []*discoverFern.HostDetails{}
 	hostDiscoverOpts := &runner.Options{
 		Silent:            true,
@@ -49,17 +49,17 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverFern.S
 	}
 
 	switch scantype {
-	case discoverFern.ScanTypeTcpSyn:
+	case discoverFern.HostScanTypeTcpSyn:
 		hostDiscoverOpts.TcpSynPingProbes = goflags.StringSlice{"80"}
-	case discoverFern.ScanTypeTcpAck:
+	case discoverFern.HostScanTypeTcpAck:
 		hostDiscoverOpts.TcpAckPingProbes = goflags.StringSlice{"80"}
-	case discoverFern.ScanTypeIcmpEcho:
+	case discoverFern.HostScanTypeIcmpEcho:
 		hostDiscoverOpts.IcmpEchoRequestProbe = true
-	case discoverFern.ScanTypeIcmpTimestamp:
+	case discoverFern.HostScanTypeIcmpTimestamp:
 		hostDiscoverOpts.IcmpTimestampRequestProbe = true
-	case discoverFern.ScanTypeArp:
+	case discoverFern.HostScanTypeArp:
 		hostDiscoverOpts.ArpPing = true
-	case discoverFern.ScanTypeIcmpAddressMask:
+	case discoverFern.HostScanTypeIcmpAddressMask:
 		hostDiscoverOpts.IcmpAddressMaskRequestProbe = true
 	default:
 		return hostDetails, fmt.Errorf("no valid scantype provided")
