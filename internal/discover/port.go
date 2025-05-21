@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 
+	common "github.com/Method-Security/networkscan/generated/go/common"
 	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/projectdiscovery/goflags"
 	"github.com/projectdiscovery/naabu/v2/pkg/result"
@@ -86,7 +87,7 @@ func parsePortScanResult(result *result.HostResult) *discoverFern.SocketDetails 
 	for _, p := range result.Ports {
 		ports = append(ports, &discoverFern.PortDetails{
 			Port:     p.Port,
-			Protocol: p.Protocol.String(),
+			Protocol: common.TransportType(p.Protocol.String()),
 		})
 	}
 	host := discoverFern.SocketDetails{

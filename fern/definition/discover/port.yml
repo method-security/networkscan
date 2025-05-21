@@ -1,3 +1,5 @@
+imports:
+  common: ../common/common.yml
 types:
   PortScanType:
     enum:
@@ -15,7 +17,7 @@ types:
   PortDetails:
     properties:
       port: integer
-      protocol: string
+      protocol: common.TransportType
 
   SocketDetails:
     properties:
