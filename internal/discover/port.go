@@ -2,6 +2,8 @@ package discover
 
 import (
 	"context"
+	"flag"
+	"os"
 	"strings"
 
 	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
@@ -27,6 +29,8 @@ func RunPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) (*
 }
 
 func getPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) ([]*discoverFern.SocketDetails, error) {
+	// Hide OS args from Naabu
+	hideOsArgsFromNaabu()
 	output := result.HostResult{}
 	hosts := []*discoverFern.SocketDetails{}
 	// These settings mimic naabu's default settings
@@ -106,4 +110,11 @@ func parsePortScanResult(result *result.HostResult) *discoverFern.SocketDetails 
 		Ports: ports,
 	}
 	return &host
+}
+
+func hideOsArgsFromNaabu() {
+	orig := make([]string, len(os.Args))
+	copy(orig, os.Args)
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+	os.Args = os.Args[:1]
 }
