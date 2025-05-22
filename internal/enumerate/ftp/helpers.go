@@ -1,25 +1,31 @@
 package ftp
 
 import (
+	// Standard
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"time"
 
+	// Generated
 	ftp "github.com/Method-Security/networkscan/generated/go/enumerate/ftp"
+	// External
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // Function to attempt connection with retry on timeout or broken pipe errors
 func attemptConnection(ctx context.Context, target string) (net.Conn, error) {
+	// Initialize
+	log := svc1log.FromContext(ctx)
+
 	dialer := net.Dialer{}
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
-		log.Printf("[ERROR] Initial connection failed: %v", err)
+		log.Error("Initial connection failed", svc1log.SafeParam("error", err.Error()))
 		// Retry once if it was a broken pipe error
 		if strings.Contains(err.Error(), "broken pipe") {
-			log.Printf("[INFO] Retrying connection to %s", target)
+			log.Info("Retrying connection to %s", svc1log.SafeParam("target", target))
 			conn, err = dialer.DialContext(ctx, "tcp", target)
 		}
 	}
@@ -27,7 +33,10 @@ func attemptConnection(ctx context.Context, target string) (net.Conn, error) {
 }
 
 // Function to grab the FTP banner
-func grabBanner(conn net.Conn) (string, error) {
+func grabBanner(ctx context.Context, conn net.Conn) (string, error) {
+	// Initialize
+	log := svc1log.FromContext(ctx)
+
 	var bannerStr string
 	response := make([]byte, bufferSize)
 	for {
@@ -38,21 +47,24 @@ func grabBanner(conn net.Conn) (string, error) {
 		// Safely append raw bytes without assuming ASCII encoding
 		bannerStr += string(response[:n])
 
-		log.Printf("[INFO] Reading banner, current content (partial): %x", response[:n]) // Log as hex to handle non-ASCII characters
+		log.Info("Reading banner, current content (partial)", svc1log.SafeParam("content", string(response[:n])))
 
 		if strings.Contains(bannerStr, "220") {
 			break
 		}
 	}
-	log.Printf("[INFO] Final banner: %s", strings.TrimSpace(bannerStr))
+	log.Info("Final banner", svc1log.SafeParam("banner", strings.TrimSpace(bannerStr)))
 	return bannerStr, nil
 }
 
 // Function to check for anonymous login with retry on failure
 func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.Conn, details *ftp.EnumerateFtpDetails) []string {
+	// Initialize
+	log := svc1log.FromContext(ctx)
+
 	errors := []string{}
-	if err := checkAnonymousLogin(conn, details); err != nil {
-		log.Printf("[WARNING] Error checking anonymous login, retrying...")
+	if err := checkAnonymousLogin(ctx, conn, details); err != nil {
+		log.Warn("Error checking anonymous login, retrying...", svc1log.SafeParam("error", err.Error()))
 
 		// Reconnect and retry
 		conn, err = attemptConnection(ctx, target)
@@ -62,7 +74,7 @@ func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.C
 		}
 
 		// Retry checking anonymous login after reconnect
-		err = checkAnonymousLogin(conn, details)
+		err = checkAnonymousLogin(ctx, conn, details)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("failed to reconnect: %v", err))
 		}
@@ -76,8 +88,11 @@ func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.C
 }
 
 // Function to check for anonymous login
-func checkAnonymousLogin(conn net.Conn, details *ftp.EnumerateFtpDetails) error {
-	log.Printf("[INFO] Checking for anonymous login...")
+func checkAnonymousLogin(ctx context.Context, conn net.Conn, details *ftp.EnumerateFtpDetails) error {
+	// Initialize
+	log := svc1log.FromContext(ctx)
+
+	log.Info("Checking for anonymous login...")
 
 	// Send the USER anonymous command
 	_, err := conn.Write([]byte("USER anonymous\r\n"))
@@ -94,7 +109,7 @@ func checkAnonymousLogin(conn net.Conn, details *ftp.EnumerateFtpDetails) error 
 
 	if n > 0 {
 		responseStr := string(response[:n])
-		log.Printf("[INFO] Anonymous login response received")
+		log.Info("Anonymous login response received", svc1log.SafeParam("response", responseStr))
 
 		if strings.HasPrefix(responseStr, "331") {
 			_, err = conn.Write([]byte("PASS anonymous\r\n"))
@@ -110,27 +125,27 @@ func checkAnonymousLogin(conn net.Conn, details *ftp.EnumerateFtpDetails) error 
 
 			if n > 0 {
 				responseStr = string(response[:n])
-				log.Printf("[INFO] Password response received")
+				log.Info("Password response received", svc1log.SafeParam("response", responseStr))
 
 				// Check for response indicating anonymous login status
 				if strings.HasPrefix(responseStr, "530") {
 					details.AllowsAnonymousLogin = new(bool)
 					*details.AllowsAnonymousLogin = false
-					log.Printf("[INFO] Anonymous login not supported (530 response)")
+					log.Info("Anonymous login not supported (530 response)")
 				} else if strings.HasPrefix(responseStr, "230") {
 					details.AllowsAnonymousLogin = new(bool)
 					*details.AllowsAnonymousLogin = true
-					log.Printf("[INFO] Anonymous login supported")
+					log.Info("Anonymous login supported")
 				} else {
 					details.AllowsAnonymousLogin = new(bool)
 					*details.AllowsAnonymousLogin = false
-					log.Printf("[WARNING] Unexpected response: %s", strings.TrimSpace(responseStr))
+					log.Warn("Unexpected response", svc1log.SafeParam("response", strings.TrimSpace(responseStr)))
 				}
 			}
 		} else {
 			details.AllowsAnonymousLogin = new(bool)
 			*details.AllowsAnonymousLogin = false
-			log.Printf("[INFO] Anonymous login not supported (no 331 response)")
+			log.Info("Anonymous login not supported (no 331 response)")
 		}
 	}
 
@@ -138,8 +153,11 @@ func checkAnonymousLogin(conn net.Conn, details *ftp.EnumerateFtpDetails) error 
 }
 
 // Function to check if TLS is implemented (supported) using the FEAT command
-func checkTLSImplemented(conn net.Conn, details *ftp.EnumerateFtpDetails) error {
-	log.Printf("[INFO] Sending FEAT command to check if TLS is implemented...")
+func checkTLSImplemented(ctx context.Context, conn net.Conn, details *ftp.EnumerateFtpDetails) error {
+	// Initialize
+	log := svc1log.FromContext(ctx)
+
+	log.Info("Sending FEAT command to check if TLS is implemented...")
 	_, err := conn.Write([]byte("FEAT\r\n"))
 	if err != nil {
 		return fmt.Errorf("error sending FEAT command: %v", err)
@@ -153,12 +171,12 @@ readLoop: // Label for the outer loop
 	for {
 		select {
 		case <-timeout:
-			log.Printf("[ERROR] Timeout while reading FEAT response.")
+			log.Error("Timeout while reading FEAT response.")
 			return fmt.Errorf("timeout while reading FEAT response")
 		default:
 			err = conn.SetReadDeadline(time.Now().Add(5 * time.Second)) // Set a read deadline
 			if err != nil {
-				log.Printf("[ERROR] failed to set read deadline: %v", err)
+				log.Error("failed to set read deadline", svc1log.SafeParam("error", err.Error()))
 				return fmt.Errorf("failed to set read deadline: %v", err)
 			}
 			n, err := conn.Read(response)
@@ -167,7 +185,7 @@ readLoop: // Label for the outer loop
 					continue
 				}
 				if err.Error() == "EOF" {
-					log.Printf("[INFO] EOF encountered: TLS not implemented (no response from server).")
+					log.Info("EOF encountered: TLS not implemented (no response from server).")
 					return nil
 				}
 				return fmt.Errorf("error reading FEAT response: %v", err)
@@ -185,19 +203,22 @@ readLoop: // Label for the outer loop
 	if strings.Contains(featResponse, "TLS") || strings.Contains(featResponse, "SSL") || (strings.Contains(featResponse, "RFC") && (strings.Contains(featResponse, "2228") || strings.Contains(featResponse, "4217"))) {
 		details.TlsImplemented = new(bool)
 		*details.TlsImplemented = true
-		log.Printf("[INFO] TLS Implemented")
+		log.Info("TLS Implemented")
 	} else {
 		details.TlsImplemented = new(bool)
 		*details.TlsImplemented = false
-		log.Printf("[INFO] TLS not implemented")
+		log.Info("TLS not implemented")
 	}
 
 	return nil
 }
 
 // Function to check if TLS is forced (i.e., required by the server)
-func checkTLSForced(conn net.Conn, details *ftp.EnumerateFtpDetails) []string {
-	log.Printf("[INFO] Sending TLS commands to check if TLS is forced...")
+func checkTLSForced(ctx context.Context, conn net.Conn, details *ftp.EnumerateFtpDetails) []string {
+	// Initialize
+	log := svc1log.FromContext(ctx)
+
+	log.Info("Sending TLS commands to check if TLS is forced...")
 	errors := []string{}
 	_, err := conn.Write([]byte("AUTH TLS\r\n"))
 	if err != nil {
@@ -219,15 +240,15 @@ func checkTLSForced(conn net.Conn, details *ftp.EnumerateFtpDetails) []string {
 
 	if n > 0 {
 		tlsResponse := string(response[:n])
-		log.Printf("[INFO] TLS response received")
+		log.Info("TLS response received", svc1log.SafeParam("response", tlsResponse))
 
 		tlsForced := strings.HasPrefix(tlsResponse, "234")
 		details.TlsForced = &tlsForced
-		log.Printf("[INFO] TLS Forced: %v", tlsForced)
+		log.Info("TLS Forced", svc1log.SafeParam("forced", tlsForced))
 	} else {
 		details.TlsForced = new(bool)
 		*details.TlsForced = false
-		log.Printf("[WARNING] No response or unexpected response for TLS, TLS not forced.")
+		log.Warn("No response or unexpected response for TLS, TLS not forced.")
 	}
 
 	return nil

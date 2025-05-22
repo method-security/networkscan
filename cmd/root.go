@@ -109,6 +109,8 @@ func (a *NetworkScan) InitRootCommand() {
 	a.RootCmd.AddCommand(versionCmd)
 }
 
+// validateOutputFormat checks if the provided output format is valid and returns the corresponding writer.Format.
+// Supported formats are: json, yaml, and signal.
 func validateOutputFormat(output string) (writer.Format, error) {
 	var format writer.FormatValue
 	switch strings.ToLower(output) {

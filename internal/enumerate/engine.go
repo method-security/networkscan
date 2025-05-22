@@ -1,38 +1,49 @@
+// Package enumerate implements service enumeration functionality for various network protocols.
 package enumerate
 
 import (
+	// Standard
 	"context"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
-	enumerateFern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	// Generated
+	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	// Internal
 	ftp "github.com/Method-Security/networkscan/internal/enumerate/ftp"
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
 )
 
+// NetworkApplicationLibrary defines the interface for service-specific enumeration implementations.
+// Each service type (SSH, FTP, SMTP, gRPC) must implement this interface.
 type NetworkApplicationLibrary interface {
-	EnumerateTarget(ctx context.Context, target string) (*enumerateFern.EnumerateServiceDetails, []string)
+	EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string)
 }
 
+// NetworkApplicationEngine provides a wrapper around service-specific enumeration libraries.
+// It manages the execution of enumeration tasks for different network services.
 type NetworkApplicationEngine struct {
 	Library NetworkApplicationLibrary
 }
 
-func RunServiceEnumerate(ctx context.Context, targets []string, serviceType enumerateFern.ServiceType, timeout int) (enumerateFern.EnumerateServiceReport, error) {
+// RunServiceEnumerate performs concurrent enumeration of multiple targets for a specific service type.
+// It manages timeouts, error handling, and result collection for each target.
+// Returns a report containing enumeration details and any errors encountered.
+func RunServiceEnumerate(ctx context.Context, targets []string, serviceType enumeratefern.ServiceType, timeout int) (enumeratefern.EnumerateServiceReport, error) {
 	log.Printf("[INFO] Starting enumeration for %d targets with a timeout of %ds", len(targets), timeout)
-	resource := enumerateFern.EnumerateServiceReport{Targets: targets}
+	resource := enumeratefern.EnumerateServiceReport{Targets: targets}
 
 	engine, err := getEngine(serviceType)
 	if err != nil {
-		return enumerateFern.EnumerateServiceReport{}, err
+		return enumeratefern.EnumerateServiceReport{}, err
 	}
 
 	// Create channels for collecting results and errors
-	detailsChan := make(chan *enumerateFern.EnumerateServiceDetails, len(targets))
+	detailsChan := make(chan *enumeratefern.EnumerateServiceDetails, len(targets))
 	errorsChan := make(chan string, len(targets))
 	var wg sync.WaitGroup
 
@@ -48,14 +59,14 @@ func RunServiceEnumerate(ctx context.Context, targets []string, serviceType enum
 
 			// Start enumeration
 			resultChan := make(chan struct {
-				detail *enumerateFern.EnumerateServiceDetails
+				detail *enumeratefern.EnumerateServiceDetails
 				errs   []string
 			}, 1)
 
 			go func() {
 				detail, errs := engine.Library.EnumerateTarget(targetCtx, target)
 				resultChan <- struct {
-					detail *enumerateFern.EnumerateServiceDetails
+					detail *enumeratefern.EnumerateServiceDetails
 					errs   []string
 				}{detail, errs}
 			}()
@@ -89,7 +100,7 @@ func RunServiceEnumerate(ctx context.Context, targets []string, serviceType enum
 	}()
 
 	// Collect results
-	var details []*enumerateFern.EnumerateServiceDetails
+	var details []*enumeratefern.EnumerateServiceDetails
 	var errors []string
 
 	for detail := range detailsChan {
@@ -105,16 +116,17 @@ func RunServiceEnumerate(ctx context.Context, targets []string, serviceType enum
 	return resource, nil
 }
 
-// Factory function to create the appropriate engine
-func getEngine(serviceType enumerateFern.ServiceType) (NetworkApplicationEngine, error) {
+// getEngine creates and returns the appropriate enumeration engine for the specified service type.
+// It acts as a factory function to instantiate service-specific enumeration libraries.
+func getEngine(serviceType enumeratefern.ServiceType) (NetworkApplicationEngine, error) {
 	switch serviceType {
-	case enumerateFern.ServiceTypeSsh:
+	case enumeratefern.ServiceTypeSsh:
 		return NetworkApplicationEngine{Library: &ssh.LibraryEnumerateSSH{}}, nil
-	case enumerateFern.ServiceTypeFtp:
+	case enumeratefern.ServiceTypeFtp:
 		return NetworkApplicationEngine{Library: &ftp.LibraryEnumerateFTP{}}, nil
-	case enumerateFern.ServiceTypeSmtp:
+	case enumeratefern.ServiceTypeSmtp:
 		return NetworkApplicationEngine{Library: &smtp.LibraryEnumerateSMTP{}}, nil
-	case enumerateFern.ServiceTypeGrpc:
+	case enumeratefern.ServiceTypeGrpc:
 		return NetworkApplicationEngine{Library: &grpc.LibraryEnumerateGRPC{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", serviceType)

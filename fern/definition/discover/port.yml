@@ -5,7 +5,6 @@ types:
     enum:
       - SYN
       - CONNECT
-
   DiscoverPortConfig:
     properties:
       target: string
@@ -13,18 +12,15 @@ types:
       topPorts: optional<string>
       threads: integer
       scanType: PortScanType
-
   PortDetails:
     properties:
       port: integer
       protocol: common.TransportType
-
   SocketDetails:
     properties:
       host: string
       ip: string
       ports: optional<list<PortDetails>>
-
   DiscoverPortReport:
     properties:
       config: DiscoverPortConfig
