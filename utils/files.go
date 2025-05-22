@@ -1,3 +1,4 @@
+// Package utils provides utility functions used across the networkscan application.
 package utils
 
 import (
@@ -6,7 +7,10 @@ import (
 	"path/filepath"
 )
 
-// GetEntriesFromTXTFiles returns a list of all entries in the given TXT files
+// GetEntriesFromTXTFiles reads and combines entries from multiple text files.
+// It takes a list of file paths, reads each file line by line, and returns a combined
+// list of all entries. Each line in the input files becomes a separate entry.
+// Returns an error if any file cannot be opened or read.
 func GetEntriesFromTXTFiles(paths []string) ([]string, error) {
 	entries := []string{}
 	for _, path := range paths {

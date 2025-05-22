@@ -9,6 +9,8 @@ import (
 	cobra "github.com/spf13/cobra"
 )
 
+// InitEnumerateCommand initializes the enumerate command and its subcommands (ftp, grpc, smtp, ssh).
+// Each subcommand implements service-specific enumeration functionality for different network protocols.
 func (a *NetworkScan) InitEnumerateCommand() {
 	enumerateCmd := &cobra.Command{
 		Use:   "enumerate",

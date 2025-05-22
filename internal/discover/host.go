@@ -1,3 +1,4 @@
+// Package discover implements network discovery functionality for finding live hosts and services.
 package discover
 
 import (
@@ -13,7 +14,9 @@ import (
 	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
-// RunHostDiscovery takes a target host (which can be a CIDR) and a scantype and returns a report of all hosts that were discovered
+// RunHostDiscovery performs host discovery on the specified target using the given scan type.
+// It returns a report containing discovered hosts and any errors encountered during the process.
+// The target can be a single IP, hostname, or CIDR range.
 func RunHostDiscovery(ctx context.Context, target string, scantype discoverfern.HostScanType) (discoverfern.DiscoverHostReport, error) {
 	errors := []string{}
 
@@ -28,6 +31,8 @@ func RunHostDiscovery(ctx context.Context, target string, scantype discoverfern.
 	}, nil
 }
 
+// getHostDiscover configures and runs the host discovery process using the Naabu library.
+// It sets up scan options based on the provided scan type and returns discovered host details.
 func getHostDiscover(ctx context.Context, target string, scantype discoverfern.HostScanType) ([]*discoverfern.HostDetails, error) {
 	hostDetails := []*discoverfern.HostDetails{}
 	hostDiscoverOpts := &runner.Options{
@@ -93,6 +98,8 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverfern.H
 	return result, nil
 }
 
+// parseHostDiscoverResult converts a Naabu host result into our internal HostDetails format.
+// It extracts the hostname and IP address from the discovery result.
 func parseHostDiscoverResult(result result.HostResult) *discoverfern.HostDetails {
 	return &discoverfern.HostDetails{
 		Host: result.Host,

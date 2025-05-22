@@ -1,3 +1,4 @@
+// Package discover implements network discovery functionality for finding live hosts and services.
 package discover
 
 import (
@@ -21,7 +22,9 @@ import (
 	scan "github.com/praetorian-inc/fingerprintx/pkg/scan"
 )
 
-// RunServiceFingerprint performs a service fingerprint on the specified target
+// RunServiceFingerprint performs service fingerprinting on the specified target and port.
+// It uses the fingerprintx library to identify running services and their characteristics.
+// Returns a report containing service details and any errors encountered during the process.
 func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	resources := discoverfern.DiscoverServiceReport{Config: &config}
 	errors := []string{}
@@ -80,6 +83,8 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 	return &resources, nil
 }
 
+// metadataMap converts plugin metadata into a string map.
+// It handles different metadata types (maps, structs) and extracts their key-value pairs.
 func metadataMap(metadata plugins.Metadata) map[string]string {
 	result := make(map[string]string)
 	// Check if metadata is nil
@@ -118,6 +123,8 @@ func metadataMap(metadata plugins.Metadata) map[string]string {
 	return result
 }
 
+// getIPs resolves the target hostname to a list of IP addresses.
+// Returns an error if the hostname cannot be resolved or no IPs are found.
 func getIPs(target string) ([]net.IP, error) {
 	ips, err := net.LookupIP(target)
 	if err != nil {
@@ -129,6 +136,8 @@ func getIPs(target string) ([]net.IP, error) {
 	return ips, nil
 }
 
+// getTransportTypeEnum converts a transport type string to our internal enum type.
+// Returns UNKNOWN if the transport type is not recognized.
 func getTransportTypeEnum(transport string) common.TransportType {
 	transportTypeEnum, err := common.NewTransportTypeFromString(strings.ToUpper(transport))
 	if err != nil {
@@ -137,6 +146,8 @@ func getTransportTypeEnum(transport string) common.TransportType {
 	return transportTypeEnum
 }
 
+// getProtocolTypeEnum converts a protocol type string to our internal enum type.
+// Returns UNKNOWN if the protocol type is not recognized.
 func getProtocolTypeEnum(protocol string) common.ProtocolType {
 	protocolTypeEnum, err := common.NewProtocolTypeFromString(strings.ToUpper(protocol))
 	if err != nil {

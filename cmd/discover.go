@@ -14,6 +14,8 @@ import (
 	cobra "github.com/spf13/cobra"
 )
 
+// InitDiscoverCommand initializes the discover command and its subcommands (host, os, port, service, tls).
+// Each subcommand implements a specific network discovery functionality.
 func (a *NetworkScan) InitDiscoverCommand() {
 	discoverCmd := &cobra.Command{
 		Use:   "discover",
@@ -263,6 +265,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	a.RootCmd.AddCommand(discoverCmd)
 }
 
+// getDiscoverPortConfig creates a configuration for port scanning with the provided parameters.
+// It handles both specific port ranges and top ports scanning modes.
 func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, scanType discoverfern.PortScanType) discoverfern.DiscoverPortConfig {
 	return discoverfern.DiscoverPortConfig{
 		Target:   target,
@@ -273,6 +277,8 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 	}
 }
 
+// getDiscoverServiceConfig creates a configuration for service fingerprinting with the provided parameters.
+// It sets up the target, port, and timeout for service discovery.
 func getDiscoverServiceConfig(target string, port int, timeout int) discoverfern.DiscoverServiceConfig {
 	return discoverfern.DiscoverServiceConfig{
 		Target:  target,
@@ -281,6 +287,8 @@ func getDiscoverServiceConfig(target string, port int, timeout int) discoverfern
 	}
 }
 
+// getDiscoverTLSConfig creates a configuration for TLS scanning with the provided parameters.
+// It configures the targets, timeout, and TLS verification settings.
 func getDiscoverTLSConfig(targets []string, timeout int, insecure bool) discoverfern.DiscoverTlsConfig {
 	config := discoverfern.DiscoverTlsConfig{
 		Targets:            targets,

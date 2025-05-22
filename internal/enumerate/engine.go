@@ -1,3 +1,4 @@
+// Package enumerate implements service enumeration functionality for various network protocols.
 package enumerate
 
 import (
@@ -17,14 +18,21 @@ import (
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
 )
 
+// NetworkApplicationLibrary defines the interface for service-specific enumeration implementations.
+// Each service type (SSH, FTP, SMTP, gRPC) must implement this interface.
 type NetworkApplicationLibrary interface {
 	EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string)
 }
 
+// NetworkApplicationEngine provides a wrapper around service-specific enumeration libraries.
+// It manages the execution of enumeration tasks for different network services.
 type NetworkApplicationEngine struct {
 	Library NetworkApplicationLibrary
 }
 
+// RunServiceEnumerate performs concurrent enumeration of multiple targets for a specific service type.
+// It manages timeouts, error handling, and result collection for each target.
+// Returns a report containing enumeration details and any errors encountered.
 func RunServiceEnumerate(ctx context.Context, targets []string, serviceType enumeratefern.ServiceType, timeout int) (enumeratefern.EnumerateServiceReport, error) {
 	log.Printf("[INFO] Starting enumeration for %d targets with a timeout of %ds", len(targets), timeout)
 	resource := enumeratefern.EnumerateServiceReport{Targets: targets}
@@ -108,7 +116,8 @@ func RunServiceEnumerate(ctx context.Context, targets []string, serviceType enum
 	return resource, nil
 }
 
-// Factory function to create the appropriate engine
+// getEngine creates and returns the appropriate enumeration engine for the specified service type.
+// It acts as a factory function to instantiate service-specific enumeration libraries.
 func getEngine(serviceType enumeratefern.ServiceType) (NetworkApplicationEngine, error) {
 	switch serviceType {
 	case enumeratefern.ServiceTypeSsh:

@@ -1,3 +1,4 @@
+// Package discover implements network discovery functionality for finding live hosts and services.
 package discover
 
 import (
@@ -9,12 +10,15 @@ import (
 	nmap "github.com/Ullaakut/nmap/v3"
 )
 
+// Report contains the results of an OS fingerprinting scan, including the nmap run results
+// and any errors encountered during the process.
 type Report struct {
 	Run    nmap.Run `json:"run" yaml:"run"`
 	Errors []string `json:"errors" yaml:"errors"`
 }
 
-// RunOsFingerprint takes a target host and returns a report of all hosts and OS that were detected
+// RunOsFingerprint performs OS fingerprinting on the specified target using nmap.
+// It returns a report containing the detected operating system information and any errors encountered.
 func RunOsFingerprint(ctx context.Context, target string) (Report, error) {
 	errors := []string{}
 
@@ -29,6 +33,8 @@ func RunOsFingerprint(ctx context.Context, target string) (Report, error) {
 	}, nil
 }
 
+// getFingerprint configures and runs an nmap scan with OS detection enabled.
+// It uses the nmap library to perform the actual OS fingerprinting and returns the scan results.
 func getFingerprint(ctx context.Context, target string) (nmap.Run, error) {
 	scanner, err := nmap.NewScanner(
 		ctx,
@@ -48,5 +54,4 @@ func getFingerprint(ctx context.Context, target string) (nmap.Run, error) {
 	}
 
 	return *result, nil
-
 }

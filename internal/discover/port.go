@@ -1,3 +1,4 @@
+// Package discover implements network discovery functionality for finding live hosts and services.
 package discover
 
 import (
@@ -16,8 +17,8 @@ import (
 	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
-// RunPortScan takes a target host and a list of ports to scan and returns a report of all hosts that were scanned and
-// their open ports.
+// RunPortScan performs a port scan on the specified target using the provided configuration.
+// It returns a report containing discovered open ports and any errors encountered during the process.
 func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*discoverfern.DiscoverPortReport, error) {
 	resources := discoverfern.DiscoverPortReport{Config: &config}
 	errors := []string{}
@@ -32,6 +33,8 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 	return &resources, nil
 }
 
+// getPortScan configures and runs the port scanning process using the Naabu library.
+// It sets up scan options based on the provided configuration and returns discovered port details.
 func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([]*discoverfern.SocketDetails, error) {
 	// Hide OS args from Naabu
 	hideOsArgsFromNaabu()
@@ -86,6 +89,8 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 
 }
 
+// parsePortScanResult converts a Naabu port scan result into our internal SocketDetails format.
+// It extracts host information and open ports from the scan result.
 func parsePortScanResult(result *result.HostResult) *discoverfern.SocketDetails {
 	ports := []*discoverfern.PortDetails{}
 	for _, p := range result.Ports {
@@ -102,6 +107,8 @@ func parsePortScanResult(result *result.HostResult) *discoverfern.SocketDetails 
 	return &host
 }
 
+// hideOsArgsFromNaabu prevents Naabu from processing command line arguments.
+// This is necessary because Naabu tries to parse all command line arguments, which can conflict with our CLI.
 func hideOsArgsFromNaabu() {
 	orig := make([]string, len(os.Args))
 	copy(orig, os.Args)

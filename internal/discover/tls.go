@@ -1,3 +1,4 @@
+// Package discover implements network discovery functionality for finding live hosts and services.
 package discover
 
 import (
@@ -14,7 +15,9 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
-// GetTLSInfo retrieves TLS details for a given address
+// GetTLSInfo retrieves TLS configuration and certificate details for a list of target addresses.
+// It establishes TLS connections to each target and extracts information about the TLS version,
+// cipher suite, and certificates. Returns a report containing the TLS details and any errors encountered.
 func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.DiscoverTlsConfig) (discoverfern.DiscoverTlsReport, error) {
 	resources := discoverfern.DiscoverTlsReport{Config: &config}
 	errors := []string{}
@@ -69,7 +72,8 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.Dis
 	return resources, nil
 }
 
-// Map TLS version to string
+// tlsVersionToString converts a TLS version number to our internal enum type.
+// Maps standard TLS version constants to their corresponding enum values.
 func tlsVersionToString(version uint16) discoverfern.TlsVersion {
 	switch version {
 	case tls.VersionTLS10:
@@ -85,7 +89,8 @@ func tlsVersionToString(version uint16) discoverfern.TlsVersion {
 	}
 }
 
-// Convert TLS connection state to TLSInfo
+// convertToTLSInfo extracts and formats TLS connection state information into our internal format.
+// It processes the TLS version, cipher suite, and certificate chain, including detailed certificate information.
 func convertToTLSInfo(state *tls.ConnectionState) *discoverfern.TlsDetails {
 	tlsInfo := &discoverfern.TlsDetails{
 		Certificates: []*discoverfern.Certificate{},
