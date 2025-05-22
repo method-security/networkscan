@@ -1,6 +1,7 @@
 package discover
 
 import (
+	// Standard
 	"context"
 	"crypto/tls"
 	"encoding/hex"
@@ -9,15 +10,16 @@ import (
 	"strings"
 	"time"
 
-	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
+	// Generated
+	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
 // GetTLSInfo retrieves TLS details for a given address
-func GetTLSInfo(ctx context.Context, addresses []string, config discoverFern.DiscoverTlsConfig) (discoverFern.DiscoverTlsReport, error) {
-	resources := discoverFern.DiscoverTlsReport{Config: &config}
+func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.DiscoverTlsConfig) (discoverfern.DiscoverTlsReport, error) {
+	resources := discoverfern.DiscoverTlsReport{Config: &config}
 	errors := []string{}
 
-	serviceDetails := []*discoverFern.TlsSummary{}
+	serviceDetails := []*discoverfern.TlsSummary{}
 	for _, targetAddress := range addresses {
 		// Define timeout for the TLS connection
 		dialer := &net.Dialer{
@@ -54,7 +56,7 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverFern.Dis
 		}
 
 		// Construct AddressTlsReport
-		serviceDetail := discoverFern.TlsSummary{
+		serviceDetail := discoverfern.TlsSummary{
 			Address:    targetAddress,
 			TlsDetails: tlsInfo,
 		}
@@ -68,25 +70,25 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverFern.Dis
 }
 
 // Map TLS version to string
-func tlsVersionToString(version uint16) discoverFern.TlsVersion {
+func tlsVersionToString(version uint16) discoverfern.TlsVersion {
 	switch version {
 	case tls.VersionTLS10:
-		return discoverFern.TlsVersionTls10
+		return discoverfern.TlsVersionTls10
 	case tls.VersionTLS11:
-		return discoverFern.TlsVersionTls11
+		return discoverfern.TlsVersionTls11
 	case tls.VersionTLS12:
-		return discoverFern.TlsVersionTls12
+		return discoverfern.TlsVersionTls12
 	case tls.VersionTLS13:
-		return discoverFern.TlsVersionTls13
+		return discoverfern.TlsVersionTls13
 	default:
-		return discoverFern.TlsVersionUnknown
+		return discoverfern.TlsVersionUnknown
 	}
 }
 
 // Convert TLS connection state to TLSInfo
-func convertToTLSInfo(state *tls.ConnectionState) *discoverFern.TlsDetails {
-	tlsInfo := &discoverFern.TlsDetails{
-		Certificates: []*discoverFern.Certificate{},
+func convertToTLSInfo(state *tls.ConnectionState) *discoverfern.TlsDetails {
+	tlsInfo := &discoverfern.TlsDetails{
+		Certificates: []*discoverfern.Certificate{},
 	}
 
 	if state.Version != 0 {
@@ -107,7 +109,7 @@ func convertToTLSInfo(state *tls.ConnectionState) *discoverFern.TlsDetails {
 		})
 		certString := string(certPEM)
 		signatureHex := hex.EncodeToString(cert.Signature)
-		certificate := &discoverFern.Certificate{
+		certificate := &discoverfern.Certificate{
 			SubjectCommonName: &cert.Subject.CommonName,
 			IssuerCommonName:  &cert.Issuer.CommonName,
 			ValidFrom:         &cert.NotBefore,
@@ -120,11 +122,11 @@ func convertToTLSInfo(state *tls.ConnectionState) *discoverFern.TlsDetails {
 
 		// Signature names defined in `signatureAlgorithmDetails` in the `x509` package have a hyphen
 		// Which is removed for proper enum conversion
-		signatureAlgorithm, err := discoverFern.NewSignatureAlgorithmFromString(strings.Replace(cert.SignatureAlgorithm.String(), "-", "_", 1))
+		signatureAlgorithm, err := discoverfern.NewSignatureAlgorithmFromString(strings.Replace(cert.SignatureAlgorithm.String(), "-", "_", 1))
 		if err == nil {
 			certificate.SignatureAlgorithm = &signatureAlgorithm
 		}
-		publicKeyAlgorithm, err := discoverFern.NewPublicKeyAlgorithmFromString(cert.PublicKeyAlgorithm.String())
+		publicKeyAlgorithm, err := discoverfern.NewPublicKeyAlgorithmFromString(cert.PublicKeyAlgorithm.String())
 		if err == nil {
 			certificate.PublicKeyAlgorithm = &publicKeyAlgorithm
 		}

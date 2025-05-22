@@ -1,6 +1,7 @@
 package discover
 
 import (
+	// Standard
 	"context"
 	"errors"
 	"fmt"
@@ -10,18 +11,19 @@ import (
 	"strings"
 	"time"
 
+	// Generated
 	common "github.com/Method-Security/networkscan/generated/go/common"
-	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
+	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 
-	// Register the grpc plugin
-	_ "github.com/Method-Security/networkscan/internal/discover/plugins/service/grpc"
-	"github.com/praetorian-inc/fingerprintx/pkg/plugins"
-	"github.com/praetorian-inc/fingerprintx/pkg/scan"
+	// External
+	_ "github.com/Method-Security/networkscan/internal/discover/plugins/service/grpc" // Register the grpc plugin
+	plugins "github.com/praetorian-inc/fingerprintx/pkg/plugins"
+	scan "github.com/praetorian-inc/fingerprintx/pkg/scan"
 )
 
 // RunServiceFingerprint performs a service fingerprint on the specified target
-func RunServiceFingerprint(ctx context.Context, config discoverFern.DiscoverServiceConfig) (*discoverFern.DiscoverServiceReport, error) {
-	resources := discoverFern.DiscoverServiceReport{Config: &config}
+func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
+	resources := discoverfern.DiscoverServiceReport{Config: &config}
 	errors := []string{}
 
 	fxConfig := scan.Config{
@@ -36,7 +38,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverFern.DiscoverServ
 		return &resources, err
 	}
 
-	var fingerprintResults []*discoverFern.ServiceDetails
+	var fingerprintResults []*discoverfern.ServiceDetails
 	for _, ip := range ips {
 		ipAddr, err := netip.ParseAddr(ip.String())
 		if err != nil {
@@ -60,7 +62,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverFern.DiscoverServ
 		}
 
 		metadata := metadataMap(result.Metadata())
-		fingerprintResult := discoverFern.ServiceDetails{
+		fingerprintResult := discoverfern.ServiceDetails{
 			Host:      result.Host,
 			Ip:        result.IP,
 			Port:      result.Port,

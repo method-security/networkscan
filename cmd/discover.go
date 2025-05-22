@@ -1,13 +1,17 @@
 package cmd
 
 import (
+	// Standard
 	"errors"
 	"os/exec"
 
-	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
+	// Generated
+	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	// Internal
 	discover "github.com/Method-Security/networkscan/internal/discover"
-	"github.com/projectdiscovery/naabu/v2/pkg/privileges"
-	"github.com/spf13/cobra"
+	// External
+	privileges "github.com/projectdiscovery/naabu/v2/pkg/privileges"
+	cobra "github.com/spf13/cobra"
 )
 
 func (a *NetworkScan) InitDiscoverCommand() {
@@ -26,21 +30,27 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(errors.New("discover host can only be run as a privileged user"))
 				return
 			}
+
+			// Target flags
 			target, err := cmd.Flags().GetString("target")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
+
+			// Config flags
 			scanType, err := cmd.Flags().GetString("scan-type")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			scanTypeEnum, err := discoverFern.NewHostScanTypeFromString(scanType)
+			scanTypeEnum, err := discoverfern.NewHostScanTypeFromString(scanType)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
+
+			// Generate the report
 			report, err := discover.RunHostDiscovery(cmd.Context(), target, scanTypeEnum)
 			if err != nil {
 				a.OutputSignal.AddError(err)
@@ -51,7 +61,11 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	discoverHostCmd.Flags().String("target", "", "Target IP address, hostname, or CIDR range to scan for live hosts")
 	discoverHostCmd.Flags().String("scan-type", "ICMP_ECHO", "Discovery scan type: TCP_SYN, TCP_ACK, ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK")
+
+	// Mark Required Flags
 	_ = discoverHostCmd.MarkFlagRequired("target")
+
+	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverHostCmd)
 
 	discoverOSCmd := &cobra.Command{
@@ -63,16 +77,22 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(errors.New("discover os can only be run as a privileged user"))
 				return
 			}
+
+			// Check if nmap is installed
 			_, err := exec.LookPath("nmap")
 			if err != nil {
 				a.OutputSignal.AddError(errors.New("nmap is not installed or is not in the system path"))
 				return
 			}
+
+			// Target flags
 			target, err := cmd.Flags().GetString("target")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
+
+			// Generate the report
 			report, err := discover.RunOsFingerprint(cmd.Context(), target)
 			if err != nil {
 				a.OutputSignal.AddError(err)
@@ -82,7 +102,11 @@ func (a *NetworkScan) InitDiscoverCommand() {
 		},
 	}
 	discoverOSCmd.Flags().String("target", "", "Target IP address or fully qualified domain name (FQDN) for OS fingerprinting")
+
+	// Mark Required Flags
 	_ = discoverOSCmd.MarkFlagRequired("target")
+
+	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverOSCmd)
 
 	discoverPortCmd := &cobra.Command{
@@ -90,11 +114,14 @@ func (a *NetworkScan) InitDiscoverCommand() {
 		Short: "Scan a target host for open TCP ports using customizable scan types and port ranges.",
 		Long:  `Scan a target host for open TCP ports using customizable scan types and port ranges.`,
 		Run: func(cmd *cobra.Command, args []string) {
+			// Target flags
 			target, err := cmd.Flags().GetString("target")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
+
+			// Config flags
 			ports, err := cmd.Flags().GetString("ports")
 			if err != nil {
 				a.OutputSignal.AddError(err)
@@ -115,18 +142,16 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			scanTypeEnum, err := discoverFern.NewPortScanTypeFromString(scanType)
+			scanTypeEnum, err := discoverfern.NewPortScanTypeFromString(scanType)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			config := discoverFern.DiscoverPortConfig{
-				Target:   target,
-				Ports:    &ports,
-				TopPorts: &topPorts,
-				Threads:  threads,
-				ScanType: scanTypeEnum,
-			}
+
+			// Set Config
+			config := getDiscoverPortConfig(target, ports, topPorts, threads, scanTypeEnum)
+
+			// Generate the report
 			report, err := discover.RunPortScan(cmd.Context(), config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
@@ -140,7 +165,11 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().String("top-ports", "", "Scan the top N most common TCP ports (options: full, 100, 1000)")
 	discoverPortCmd.Flags().Int("threads", 25, "Number of concurrent threads to use during port scanning")
 	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN (default, requires root) or CONNECT")
+
+	// Mark Required Flags
 	_ = discoverPortCmd.MarkFlagRequired("target")
+
+	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverPortCmd)
 
 	discoverServiceCmd := &cobra.Command{
@@ -163,11 +192,11 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			config := discoverFern.DiscoverServiceConfig{
-				Target:  target,
-				Port:    port,
-				Timeout: timeout,
-			}
+
+			// Set Config
+			config := getDiscoverServiceConfig(target, port, timeout)
+
+			// Generate the report
 			report, err := discover.RunServiceFingerprint(cmd.Context(), config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
@@ -179,8 +208,12 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverServiceCmd.Flags().String("target", "", "Target IP address or hostname where the service is running")
 	discoverServiceCmd.Flags().Int("port", 0, "Port number of the service to fingerprint (e.g., 443)")
 	discoverServiceCmd.Flags().Int("timeout", 5, "Timeout in seconds for each service fingerprinting attempt")
+
+	// Mark Required Flags
 	_ = discoverServiceCmd.MarkFlagRequired("target")
 	_ = discoverServiceCmd.MarkFlagRequired("port")
+
+	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverServiceCmd)
 
 	discoverTLSCmd := &cobra.Command{
@@ -203,7 +236,12 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			report, err := discover.GetTLSInfo(cmd.Context(), targets, LoadTLSConfig(targets, timeout, insecure))
+
+			// Generate the config
+			config := getDiscoverTLSConfig(targets, timeout, insecure)
+
+			// Generate the report
+			report, err := discover.GetTLSInfo(cmd.Context(), targets, config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -214,13 +252,38 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverTLSCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to analyze TLS configuration")
 	discoverTLSCmd.Flags().Int("timeout", 30, "Timeout in seconds for each TLS handshake attempt")
 	discoverTLSCmd.Flags().Bool("insecure", false, "Skip certificate verification (allow insecure TLS connections)")
+
+	// Mark Required Flags
+	_ = discoverTLSCmd.MarkFlagRequired("targets")
+
+	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverTLSCmd)
 
+	// Add Command to Root Command
 	a.RootCmd.AddCommand(discoverCmd)
 }
 
-func LoadTLSConfig(targets []string, timeout int, insecure bool) discoverFern.DiscoverTlsConfig {
-	config := discoverFern.DiscoverTlsConfig{
+func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, scanType discoverfern.PortScanType) discoverfern.DiscoverPortConfig {
+	return discoverfern.DiscoverPortConfig{
+		Target:   target,
+		Ports:    &ports,
+		TopPorts: &topPorts,
+		Threads:  threads,
+		ScanType: scanType,
+	}
+}
+
+func getDiscoverServiceConfig(target string, port int, timeout int) discoverfern.DiscoverServiceConfig {
+	return discoverfern.DiscoverServiceConfig{
+		Target:  target,
+		Port:    port,
+		Timeout: timeout,
+	}
+}
+
+func getDiscoverTLSConfig(targets []string, timeout int, insecure bool) discoverfern.DiscoverTlsConfig {
+	config := discoverfern.DiscoverTlsConfig{
+		Targets:            targets,
 		Timeout:            timeout,
 		InsecureSkipVerify: insecure,
 	}

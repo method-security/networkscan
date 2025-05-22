@@ -1,15 +1,18 @@
 package smtp
 
 import (
+	// Standard
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net"
 	netsmtp "net/smtp"
 	"strings"
 
+	// Generated
 	smtp "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
+	// External
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 func tryTCPConnection(ctx context.Context, target string) (net.Conn, error) {
@@ -36,27 +39,30 @@ func parseAuthMethods(methods []string) []smtp.AuthCommand {
 	return result
 }
 
-func testUnauthenticatedEmail(c *netsmtp.Client, hostname string) bool {
+func testUnauthenticatedEmail(ctx context.Context, c *netsmtp.Client, hostname string) bool {
+	// Initialize
+	log := svc1log.FromContext(ctx)
+
 	// Form proper email addresses
 	testEmail := fmt.Sprintf("test@%s", hostname)
 
 	// Try to send an email without authentication
 	err := c.Mail(testEmail)
 	if err != nil {
-		log.Printf("[DEBUG] Mail From command failed: %v", err)
+		log.Debug("Mail From command failed", svc1log.SafeParam("error", err))
 		return false
 	}
 
 	err = c.Rcpt(testEmail)
 	if err != nil {
-		log.Printf("[DEBUG] Rcpt To command failed: %v", err)
+		log.Debug("Rcpt To command failed", svc1log.SafeParam("error", err))
 		return false
 	}
 
 	// Reset the session
 	err = c.Reset()
 	if err != nil {
-		log.Printf("[DEBUG] Failed to reset SMTP client: %v", err)
+		log.Debug("Failed to reset SMTP client", svc1log.SafeParam("error", err))
 	}
 
 	return true

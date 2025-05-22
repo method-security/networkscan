@@ -1,16 +1,20 @@
 package smtp
 
 import (
+	// Standard
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net"
 	netsmtp "net/smtp"
 	"strings"
 
-	enumerateFern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	// Generated
+	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	smtp "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
+
+	// External
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // LibraryEnumerateSMTP implements NetworkApplicationLibrary for SMTP enumeration.
@@ -26,8 +30,11 @@ type LibraryEnumerateSMTP struct{}
 //     a. Parse data returned from 'AUTH' command
 //  4. Test unauthenticated email
 //     a. If unauthenticated email is not allowed, set AllowsUnauthenticatedEmail to false
-func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.EnumerateServiceDetails, []string) {
-	log.Printf("[INFO] Starting enumeration for target: %s", target)
+func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
+	// Initialize
+	log := svc1log.FromContext(ctx)
+
+	log.Info("Starting enumeration for target", svc1log.SafeParam("target", target))
 	detail := smtp.EnumerateSmtpDetails{
 		Target: target,
 	}
@@ -37,7 +44,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	hostname, _, err := net.SplitHostPort(target)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("invalid target format: %v", err))
-		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
 	}
 	config := &tls.Config{
 		ServerName:         hostname,
@@ -46,23 +53,23 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 
 	var conn net.Conn
 	// Try to connect to service
-	log.Printf("[DEBUG] Attempting plain TCP connection to %s", target)
+	log.Debug("Attempting plain TCP connection to target", svc1log.SafeParam("target", target))
 	conn, err = tryTCPConnection(ctx, target)
 	if err == nil {
 		tlsForce := false
 		detail.ForceTls = &tlsForce
-		log.Printf("[DEBUG] Plain TCP connection successful")
+		log.Debug("Plain TCP connection successful")
 	} else {
-		log.Printf("[DEBUG] Plain TCP connection failed, trying TLS: %v", err)
+		log.Debug("Plain TCP connection failed, trying TLS", svc1log.SafeParam("error", err))
 		// If TCP fails, try TLS
 		conn, err = tryTLSConnection(target, hostname)
 		if err != nil {
 			canConnect := false
 			detail.CanConnect = &canConnect
 			errors = append(errors, fmt.Sprintf("both TCP and TLS connections failed: %v", err))
-			return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
+			return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
 		}
-		log.Printf("[DEBUG] TLS connection successful")
+		log.Debug("TLS connection successful")
 		TLSSupported := true
 		forceTLS := true
 		detail.TlsSupported = &TLSSupported
@@ -71,52 +78,51 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 
 	canConnect := true
 	detail.CanConnect = &canConnect
-	log.Printf("[INFO] Connected to %s", target)
+	log.Info("Connected to target", svc1log.SafeParam("target", target))
 
 	// Create SMTP client
 	client, err := netsmtp.NewClient(conn, hostname)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("SMTP client creation failed: %v", err))
-		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
 	}
 
 	// Try STARTTLS if TLS connection established above
 	if detail.TlsSupported == nil {
-		log.Printf("[DEBUG] Attempting STARTTLS")
+		log.Debug("Attempting STARTTLS")
 		err = client.StartTLS(config)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("TLS upgrade failed: %v", err))
 			TLSSupported := false
 			detail.TlsSupported = &TLSSupported
-			log.Printf("[DEBUG] STARTTLS failed")
+			log.Debug("STARTTLS failed")
 		} else {
-			log.Printf("[DEBUG] STARTTLS successful")
+			log.Debug("STARTTLS successful")
 			TLSSupported := true
 			detail.TlsSupported = &TLSSupported
 		}
 	}
 
 	// Check authentication methods
-	log.Printf("[INFO] Checking authentication methods")
+	log.Debug("Checking authentication methods")
 	if ok, param := client.Extension("AUTH"); ok {
 		authMethods := parseAuthMethods(strings.Split(param, " "))
 		detail.AuthCommands = authMethods
-		log.Printf("[INFO] Supported auth methods: %v", authMethods)
+		log.Debug("Supported auth methods", svc1log.SafeParam("authMethods", authMethods))
 	} else {
-		log.Printf("[INFO] No authentication methods found")
+		log.Debug("No authentication methods found")
 	}
 
 	// Test if unauthenticated email is allowed
-	log.Printf("[INFO] Testing unauthenticated email")
-	allowsUnauthenticatedEmail := testUnauthenticatedEmail(client, hostname)
+	log.Debug("Testing unauthenticated email")
+	allowsUnauthenticatedEmail := testUnauthenticatedEmail(ctx, client, hostname)
 	detail.AllowsUnauthenticatedEmail = &allowsUnauthenticatedEmail
-	log.Printf("[INFO] Unauthenticated email %s supported",
-		map[bool]string{true: "is", false: "is not"}[allowsUnauthenticatedEmail])
+	log.Debug("Unauthenticated email", svc1log.SafeParam("allowsUnauthenticatedEmail", allowsUnauthenticatedEmail))
 
 	err = conn.Close()
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("failed to close connection: %v", err))
 	}
 
-	return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
+	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
 }

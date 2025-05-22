@@ -1,11 +1,13 @@
 package grpc
 
 import (
+	// Standard
 	"bytes"
 	"net"
 	"time"
 
-	"github.com/praetorian-inc/fingerprintx/pkg/plugins"
+	// External
+	plugins "github.com/praetorian-inc/fingerprintx/pkg/plugins"
 	utils "github.com/praetorian-inc/fingerprintx/pkg/plugins/pluginutils"
 )
 

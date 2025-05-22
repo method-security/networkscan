@@ -6,7 +6,6 @@ types:
       target: string
       port: integer
       timeout: integer
-
   ServiceDetails:
     properties:
       host: string
@@ -17,7 +16,6 @@ types:
       transport: common.TransportType
       protocol: common.ProtocolType
       metadata: optional<map<string, string>>
-
   DiscoverServiceReport:
     properties:
       config: DiscoverServiceConfig

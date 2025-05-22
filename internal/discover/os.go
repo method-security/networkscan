@@ -1,10 +1,12 @@
 package discover
 
 import (
+	// Standard
 	"context"
 	"fmt"
 
-	"github.com/Ullaakut/nmap/v3"
+	// External
+	nmap "github.com/Ullaakut/nmap/v3"
 )
 
 type Report struct {

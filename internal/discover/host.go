@@ -1,17 +1,20 @@
 package discover
 
 import (
+	// Standard
 	"context"
 	"fmt"
 
-	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
-	"github.com/projectdiscovery/goflags"
-	"github.com/projectdiscovery/naabu/v2/pkg/result"
-	"github.com/projectdiscovery/naabu/v2/pkg/runner"
+	// Generated
+	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	// External
+	goflags "github.com/projectdiscovery/goflags"
+	result "github.com/projectdiscovery/naabu/v2/pkg/result"
+	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
 // RunHostDiscovery takes a target host (which can be a CIDR) and a scantype and returns a report of all hosts that were discovered
-func RunHostDiscovery(ctx context.Context, target string, scantype discoverFern.HostScanType) (discoverFern.DiscoverHostReport, error) {
+func RunHostDiscovery(ctx context.Context, target string, scantype discoverfern.HostScanType) (discoverfern.DiscoverHostReport, error) {
 	errors := []string{}
 
 	hostDiscoverResult, err := getHostDiscover(ctx, target, scantype)
@@ -19,14 +22,14 @@ func RunHostDiscovery(ctx context.Context, target string, scantype discoverFern.
 		errors = append(errors, err.Error())
 	}
 
-	return discoverFern.DiscoverHostReport{
+	return discoverfern.DiscoverHostReport{
 		Hosts:  hostDiscoverResult,
 		Errors: errors,
 	}, nil
 }
 
-func getHostDiscover(ctx context.Context, target string, scantype discoverFern.HostScanType) ([]*discoverFern.HostDetails, error) {
-	hostDetails := []*discoverFern.HostDetails{}
+func getHostDiscover(ctx context.Context, target string, scantype discoverfern.HostScanType) ([]*discoverfern.HostDetails, error) {
+	hostDetails := []*discoverfern.HostDetails{}
 	hostDiscoverOpts := &runner.Options{
 		Silent:            true,
 		JSON:              true,
@@ -49,17 +52,17 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverFern.H
 	}
 
 	switch scantype {
-	case discoverFern.HostScanTypeTcpSyn:
+	case discoverfern.HostScanTypeTcpSyn:
 		hostDiscoverOpts.TcpSynPingProbes = goflags.StringSlice{"80"}
-	case discoverFern.HostScanTypeTcpAck:
+	case discoverfern.HostScanTypeTcpAck:
 		hostDiscoverOpts.TcpAckPingProbes = goflags.StringSlice{"80"}
-	case discoverFern.HostScanTypeIcmpEcho:
+	case discoverfern.HostScanTypeIcmpEcho:
 		hostDiscoverOpts.IcmpEchoRequestProbe = true
-	case discoverFern.HostScanTypeIcmpTimestamp:
+	case discoverfern.HostScanTypeIcmpTimestamp:
 		hostDiscoverOpts.IcmpTimestampRequestProbe = true
-	case discoverFern.HostScanTypeArp:
+	case discoverfern.HostScanTypeArp:
 		hostDiscoverOpts.ArpPing = true
-	case discoverFern.HostScanTypeIcmpAddressMask:
+	case discoverfern.HostScanTypeIcmpAddressMask:
 		hostDiscoverOpts.IcmpAddressMaskRequestProbe = true
 	default:
 		return hostDetails, fmt.Errorf("no valid scantype provided")
@@ -77,12 +80,12 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverFern.H
 	}
 
 	// Deduplicate hostDetails by Host and Ip
-	unique := make(map[string]*discoverFern.HostDetails)
+	unique := make(map[string]*discoverfern.HostDetails)
 	for _, hd := range hostDetails {
 		key := hd.Host + "|" + hd.Ip
 		unique[key] = hd
 	}
-	result := make([]*discoverFern.HostDetails, 0, len(unique))
+	result := make([]*discoverfern.HostDetails, 0, len(unique))
 	for _, hd := range unique {
 		result = append(result, hd)
 	}
@@ -90,8 +93,8 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverFern.H
 	return result, nil
 }
 
-func parseHostDiscoverResult(result result.HostResult) *discoverFern.HostDetails {
-	return &discoverFern.HostDetails{
+func parseHostDiscoverResult(result result.HostResult) *discoverfern.HostDetails {
+	return &discoverfern.HostDetails{
 		Host: result.Host,
 		Ip:   result.IP,
 	}

@@ -1,31 +1,39 @@
 package ssh
 
 import (
+	// Standard
+	"context"
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"unicode"
 
+	// External
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	ssh "golang.org/x/crypto/ssh"
 )
 
 // getSSHVersion retrieves the SSH version string from the server.
-func getSSHVersion(conn net.Conn) (*string, *string, error) {
+func getSSHVersion(ctx context.Context, conn net.Conn) (*string, *string, error) {
+	// Initialize
+	log := svc1log.FromContext(ctx)
+
 	clientVersion := "SSH-2.0-GoSSHScanner\r\n"
 	_, err := conn.Write([]byte(clientVersion))
 	if err != nil {
+		log.Error("Failed to send SSH version string", svc1log.SafeParam("error", err))
 		return nil, nil, fmt.Errorf("failed to send SSH version string: %w", err)
 	}
 
 	buf := make([]byte, 255)
 	n, err := conn.Read(buf)
 	if err != nil {
+		log.Error("Failed to read SSH version string", svc1log.SafeParam("error", err))
 		return nil, nil, fmt.Errorf("failed to read SSH version string: %w", err)
 	}
 
 	returnedASCII := strings.TrimSpace(string(buf[:n]))
-	fmt.Printf("[INFO] SSH Server Version: %s\n", returnedASCII)
+	log.Info("SSH Server Version", svc1log.SafeParam("version", returnedASCII))
 
 	version := extractSSHVersion(returnedASCII)
 
@@ -45,7 +53,10 @@ func extractSSHVersion(handshake string) *string {
 }
 
 // getSSHAlgorithms performs a partial SSH handshake and extracts the raw ASCII response.
-func getSSHAlgorithms(conn net.Conn) (string, error) {
+func getSSHAlgorithms(ctx context.Context, conn net.Conn) (string, error) {
+	// Initialize
+	log := svc1log.FromContext(ctx)
+
 	kexinitPayload := []byte{
 		0x14, 0x00, 0x00, 0x00, 0x0C, 's', 's', 'h', '-', '2', '.', '0', '-', 'G', 'o',
 	}
@@ -61,7 +72,7 @@ func getSSHAlgorithms(conn net.Conn) (string, error) {
 	}
 
 	rawASCII := bytesToASCII(buf[:n])
-	fmt.Printf("[DEBUG] Raw SSH Handshake Response (ASCII):\n%s\n", rawASCII)
+	log.Debug("Raw SSH Handshake Response (ASCII)", svc1log.SafeParam("rawASCII", rawASCII))
 
 	return rawASCII, nil
 }
@@ -92,8 +103,9 @@ func extractAlgorithms[T any](rawData string, knownAlgos map[string]T) []T {
 }
 
 // passwordAuthSupported performs a password fallback check on the target.
-func passwordAuthSupported(target string) (*bool, error) {
-	log.Printf("[INFO] Starting passwordAuthSupported check for target: %s", target)
+func passwordAuthSupported(ctx context.Context, target string) (*bool, error) {
+	// Initialize
+	log := svc1log.FromContext(ctx)
 
 	config := &ssh.ClientConfig{
 		User:            "test",
@@ -101,44 +113,44 @@ func passwordAuthSupported(target string) (*bool, error) {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
-	log.Printf("[INFO] Attempting to connect to %s", target)
+	log.Debug("Attempting to connect to %s", svc1log.SafeParam("target", target))
 	client, err := ssh.Dial("tcp", target, config)
 	if err != nil {
 		if strings.Contains(err.Error(), "no supported methods remain") && strings.Contains(err.Error(), "password") {
-			log.Printf("[ERROR] %s", err.Error())
+			log.Error("Password support but username/password not correct for %s", svc1log.SafeParam("error", err.Error()))
 			fallback := true
 			return &fallback, fmt.Errorf("password support but username/password not correct for %s: %w", target, err)
 		}
-		log.Printf("[ERROR] %s", err.Error())
+		log.Error("Failed to connect to %s", svc1log.SafeParam("error", err.Error()))
 		return nil, fmt.Errorf("failed to connect to %s: %w", target, err)
 	}
 
 	session, err := client.NewSession()
 	if err != nil {
-		log.Printf("[ERROR] Error creating session for %s: %s", target, err.Error())
+		log.Error("Failed to create session for %s", svc1log.SafeParam("error", err.Error()))
 		return nil, fmt.Errorf("failed to create session for %s: %w", target, err)
 	}
 
-	log.Printf("[INFO] Running a simple command on %s to test password authentication", target)
+	log.Debug("Running a simple command on %s to test password authentication", svc1log.SafeParam("target", target))
 	err = session.Run("true")
 	if err != nil {
-		log.Printf("[ERROR] Password authentication failed for %s: %s", target, err.Error())
+		log.Error("Password authentication failed for %s", svc1log.SafeParam("error", err.Error()))
 		return nil, fmt.Errorf("password authentication failed for %s: %w", target, err)
 	}
 
 	err = client.Close()
 	if err != nil {
-		log.Printf("[ERROR] Failed to close client for %s: %s", target, err.Error())
+		log.Error("Failed to close client for %s", svc1log.SafeParam("error", err.Error()))
 		return nil, fmt.Errorf("failed to close client for %s: %w", target, err)
 	}
 
 	err = session.Close()
 	if err != nil {
-		log.Printf("[ERROR] Failed to close session for %s: %s", target, err.Error())
+		log.Error("Failed to close session for %s", svc1log.SafeParam("error", err.Error()))
 		return nil, fmt.Errorf("failed to close session for %s: %w", target, err)
 	}
 
 	fallback := true
-	log.Printf("[INFO] Password authentication supported for %s", target)
+	log.Debug("Password authentication supported for %s", svc1log.SafeParam("target", target))
 	return &fallback, nil
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"net"
 
-	enumerateFern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	ssh "github.com/Method-Security/networkscan/generated/go/enumerate/ssh"
 )
 
@@ -32,7 +32,7 @@ type LibraryEnumerateSSH struct{}
 //   e. MACs
 //   f. Auth Methods (Public Key, Password)
 
-func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.EnumerateServiceDetails, []string) {
+func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
 	var details ssh.EnumerateSshDetails
 	details.Target = target
 	errors := []string{}
@@ -42,22 +42,22 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 	}
 
 	// Get SSH Banner
-	version, versionASCII, err := getSSHVersion(conn)
+	version, versionASCII, err := getSSHVersion(ctx, conn)
 	if err != nil || version == nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 	}
 	details.Version = version
 
 	// Perform SSH handshake to extract KEX data
-	rawASCII, err := getSSHAlgorithms(conn)
+	rawASCII, err := getSSHAlgorithms(ctx, conn)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 	}
 
 	fullASCII := rawASCII
@@ -74,7 +74,7 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	}
 
 	// Check if password authentication is supported
-	passwordSupported, err := passwordAuthSupported(target)
+	passwordSupported, err := passwordAuthSupported(ctx, target)
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
@@ -87,5 +87,5 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 		errors = append(errors, err.Error())
 	}
 
-	return enumerateFern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
+	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 }

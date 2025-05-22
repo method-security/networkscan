@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	// Generated
 	smtp "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
 )
 

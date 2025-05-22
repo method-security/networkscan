@@ -1,21 +1,25 @@
 package discover
 
 import (
+	// Standard
 	"context"
 	"flag"
 	"os"
 
+	// Generated
 	common "github.com/Method-Security/networkscan/generated/go/common"
-	discoverFern "github.com/Method-Security/networkscan/generated/go/discover"
-	"github.com/projectdiscovery/goflags"
-	"github.com/projectdiscovery/naabu/v2/pkg/result"
-	"github.com/projectdiscovery/naabu/v2/pkg/runner"
+	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+
+	// External
+	goflags "github.com/projectdiscovery/goflags"
+	result "github.com/projectdiscovery/naabu/v2/pkg/result"
+	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
 // RunPortScan takes a target host and a list of ports to scan and returns a report of all hosts that were scanned and
 // their open ports.
-func RunPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) (*discoverFern.DiscoverPortReport, error) {
-	resources := discoverFern.DiscoverPortReport{Config: &config}
+func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*discoverfern.DiscoverPortReport, error) {
+	resources := discoverfern.DiscoverPortReport{Config: &config}
 	errors := []string{}
 
 	portscanResult, err := getPortScan(ctx, config)
@@ -28,11 +32,11 @@ func RunPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) (*
 	return &resources, nil
 }
 
-func getPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) ([]*discoverFern.SocketDetails, error) {
+func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([]*discoverfern.SocketDetails, error) {
 	// Hide OS args from Naabu
 	hideOsArgsFromNaabu()
 	output := result.HostResult{}
-	hosts := []*discoverFern.SocketDetails{}
+	hosts := []*discoverfern.SocketDetails{}
 	// These settings mimic naabu's default settings
 	portscanOpts := &runner.Options{
 		Silent:            false,
@@ -53,9 +57,9 @@ func getPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) ([
 	}
 
 	switch config.ScanType {
-	case discoverFern.PortScanTypeSyn:
+	case discoverfern.PortScanTypeSyn:
 		portscanOpts.ScanType = runner.SynScan
-	case discoverFern.PortScanTypeConnect:
+	case discoverfern.PortScanTypeConnect:
 		portscanOpts.ScanType = runner.ConnectScan
 	}
 
@@ -82,15 +86,15 @@ func getPortScan(ctx context.Context, config discoverFern.DiscoverPortConfig) ([
 
 }
 
-func parsePortScanResult(result *result.HostResult) *discoverFern.SocketDetails {
-	ports := []*discoverFern.PortDetails{}
+func parsePortScanResult(result *result.HostResult) *discoverfern.SocketDetails {
+	ports := []*discoverfern.PortDetails{}
 	for _, p := range result.Ports {
-		ports = append(ports, &discoverFern.PortDetails{
+		ports = append(ports, &discoverfern.PortDetails{
 			Port:     p.Port,
 			Protocol: common.TransportType(p.Protocol.String()),
 		})
 	}
-	host := discoverFern.SocketDetails{
+	host := discoverfern.SocketDetails{
 		Host:  result.Host,
 		Ip:    result.IP,
 		Ports: ports,

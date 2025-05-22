@@ -5,18 +5,18 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"time"
 
 	// Generated
-	enumerateFern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	grpc "github.com/Method-Security/networkscan/generated/go/enumerate/grpc"
 
 	// External
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	grpcLib "google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
-	"google.golang.org/protobuf/proto"
+	insecure "google.golang.org/grpc/credentials/insecure"
+	grpc_reflection_v1alpha "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
+	proto "google.golang.org/protobuf/proto"
 	descriptorpb "google.golang.org/protobuf/types/descriptorpb"
 )
 
@@ -24,43 +24,44 @@ import (
 type LibraryEnumerateGRPC struct{}
 
 // EnumerateTarget performs a gRPC scan against a target URL and returns the report.
-func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target string) (*enumerateFern.EnumerateServiceDetails, []string) {
+func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
 	var details grpc.EnumerateGrpcDetails
 	details.Target = target
 	errors := []string{}
-	log.Printf("[INFO] Enumerating target: %s", target)
+	log := svc1log.FromContext(ctx)
+	log.Info("Enumerating target", svc1log.SafeParam("target", target))
 
 	conn, err := connectToGRPCServer(ctx, target)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 	defer closeConnection(conn)
 
 	stream, err := createReflectionClient(ctx, conn)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
 	services, err := requestAndReceiveServices(stream)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
 	rawDescriptors, err := processServices(stream, services, &details)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
 	if err := encodeRawDescriptors(rawDescriptors, &details); err != nil {
 		errors = append(errors, err.Error())
-		return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
-	return enumerateFern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 }
 
 // connectToGRPCServer dials the target with a timeout.
