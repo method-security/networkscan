@@ -38,7 +38,7 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.Dis
 
 		// Establish TLS connection
 		conn, err := tls.DialWithDialer(dialer, "tcp", targetAddress, &tls.Config{
-			InsecureSkipVerify: config.InsecureSkipVerify,
+			InsecureSkipVerify: !config.VerifyTls,
 		})
 		if err != nil {
 			errors = append(errors, err.Error())

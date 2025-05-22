@@ -62,7 +62,7 @@ types:
     properties:
       targets: list<string>
       timeout: integer
-      insecureSkipVerify: boolean
+      verifyTls: boolean
   # Data
   TlsDetails:
     properties:
