@@ -2,10 +2,16 @@
 
 networkscan offers a variety of scanning techniques to security teams working across all cloud providers and on-premise environments. Each of the below pages offers you an in depth look at a networkscan capability related to a unique scanning technique.
 
-- [Port](./port.md)
 - [Host](./host.md)
 - [OS](./os.md)
-- [Address](./address.md)
+- [Port](./port.md)
+- [Service](./service.md)
+- [TLS](./tls.md)
+- [FTP](./ftp.md)
+- [GRPC](./grpc.md)
+- [SMTP](./smtp.md)
+- [SSH](./ssh.md)
+- [Bruteforce](./bruteforce.md)
 
 ## Top Level Flags
 
