@@ -1,11 +1,23 @@
 # Capabilities
 
-networkscan offers a variety of scanning techniques to security teams working across all cloud providers and on-premise environments. Each of the below pages offers you an in depth look at a networkscan capability related to a unique scanning technique.
+networkscan organizes its functionality into modules. Each module groups a set of related commands used during different phases of a network assessment.
 
-- [Port](./port.md)
+## Discover
+
 - [Host](./host.md)
 - [OS](./os.md)
+- [Port](./port.md)
 - [Address](./address.md)
+
+## Enumerate
+
+- [FTP](./ftp.md)
+- [SMTP](./smtp.md)
+- [SSH](./ssh.md)
+
+## Pentest
+
+- [Bruteforce](./bruteforce.md)
 
 ## Top Level Flags
 
