@@ -1,0 +1,23 @@
+imports:
+  ssh: ./ssh/ssh.yml
+  ftp: ./ftp/ftp.yml
+  smtp: ./smtp/smtp.yml
+  grpc: ./grpc/grpc.yml
+types:
+  ServiceType:
+    enum:
+      - SSH
+      - FTP
+      - SMTP
+      - GRPC
+  EnumerateServiceDetails:
+    union:
+      EnumerateSshDetails: ssh.EnumerateSshDetails
+      EnumerateFtpDetails: ftp.EnumerateFtpDetails
+      EnumerateSmtpDetails: smtp.EnumerateSmtpDetails
+      EnumerateGrpcDetails: grpc.EnumerateGrpcDetails
+  EnumerateServiceReport:
+    properties:
+      targets: list<string>
+      details: optional<list<EnumerateServiceDetails>>
+      errors: optional<list<string>>

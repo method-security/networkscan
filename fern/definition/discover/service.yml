@@ -1,0 +1,23 @@
+imports:
+  common: ../common/common.yml
+types:
+  DiscoverServiceConfig:
+    properties:
+      target: string
+      port: integer
+      timeout: integer
+  ServiceDetails:
+    properties:
+      host: string
+      ip: string
+      port: integer
+      tls: boolean
+      version: string
+      transport: common.TransportType
+      protocol: common.ProtocolType
+      metadata: optional<map<string, string>>
+  DiscoverServiceReport:
+    properties:
+      config: DiscoverServiceConfig
+      services: optional<list<ServiceDetails>>
+      errors: optional<list<string>>

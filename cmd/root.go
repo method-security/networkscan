@@ -32,6 +32,7 @@ type NetworkScan struct {
 // hold the root command and all subcommands used throughout execution of the CLI. We pass the version command here
 // from the main.go file, where we set the version string during the build process.
 func NewNetworkScan(version string) *NetworkScan {
+	startedAt := datetime.DateTime(time.Now())
 	networkScan := NetworkScan{
 		Version: version,
 		RootFlags: config.RootFlags{
@@ -39,7 +40,7 @@ func NewNetworkScan(version string) *NetworkScan {
 			Verbose: false,
 		},
 		OutputConfig: writer.NewOutputConfig(nil, writer.NewFormat(writer.SIGNAL)),
-		OutputSignal: signal.NewSignal(nil, datetime.DateTime(time.Now()), nil, 0, nil),
+		OutputSignal: signal.NewSignal(nil, &startedAt, nil, 0, nil),
 	}
 	return &networkScan
 }
@@ -78,7 +79,7 @@ func (a *NetworkScan) InitRootCommand() {
 			return writer.Write(
 				a.OutputSignal.Content,
 				a.OutputConfig,
-				a.OutputSignal.StartedAt,
+				&a.OutputSignal.StartedAt,
 				a.OutputSignal.CompletedAt,
 				a.OutputSignal.Status,
 				a.OutputSignal.ErrorMessage,
@@ -108,6 +109,8 @@ func (a *NetworkScan) InitRootCommand() {
 	a.RootCmd.AddCommand(versionCmd)
 }
 
+// validateOutputFormat checks if the provided output format is valid and returns the corresponding writer.Format.
+// Supported formats are: json, yaml, and signal.
 func validateOutputFormat(output string) (writer.Format, error) {
 	var format writer.FormatValue
 	switch strings.ToLower(output) {

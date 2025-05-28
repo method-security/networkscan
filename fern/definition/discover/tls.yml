@@ -1,0 +1,80 @@
+types:
+  # ENUMs
+  TlsVersion:
+    enum:
+      - SSL_1_0
+      - SSL_2_0
+      - SSL_3_0
+      - TLS_1_0
+      - TLS_1_1
+      - TLS_1_2
+      - TLS_1_3
+      - UNKNOWN
+  SignatureAlgorithm:
+    enum:
+      - MD2_RSA
+      - MD5_RSA
+      - MD5_ECDSA
+      - SHA1_RSA
+      - SHA256_RSA
+      - SHA384_RSA
+      - SHA512_RSA
+      - DSA_SHA1
+      - DSA_SHA256
+      - ECDSA_SHA1
+      - ECDSA_SHA256
+      - ECDSA_SHA384
+      - ECDSA_SHA512
+      - SHA256_RSA_PSS
+      - SHA384_RSA_PSS
+      - SHA512_RSA_PSS
+      - ED25519
+  PublicKeyAlgorithm:
+    enum:
+      - DES
+      - DH_1024
+      - DH_512
+      - DH_768
+      - DSA
+      - DSA_1024
+      - ECDSA
+      - ECDSA_SHA1
+      - ECDH_SHA1
+      - ED25519
+      - RC4
+      - RSA
+      - RSA_1024
+      - UNKNOWN
+  Certificate:
+    properties:
+      subjectCommonName: optional<string>
+      issuerCommonName: optional<string>
+      validFrom: optional<datetime>
+      validTo: optional<datetime>
+      version: optional<integer>
+      serialNumber: optional<string>
+      certificate: optional<string>
+      signature: optional<string>
+      signatureAlgorithm: optional<SignatureAlgorithm>
+      publicKeyAlgorithm: optional<PublicKeyAlgorithm>
+  # Config
+  DiscoverTlsConfig:
+    properties:
+      targets: list<string>
+      timeout: integer
+      verifyTls: boolean
+  # Data
+  TlsDetails:
+    properties:
+      version: optional<TlsVersion>
+      cipherSuite: optional<string>
+      certificates: optional<list<Certificate>>
+  TlsSummary:
+    properties:
+      address: string
+      tlsDetails: optional<TlsDetails>
+  DiscoverTlsReport:
+    properties:
+      details: optional<list<TlsSummary>>
+      errors: optional<list<string>>
+      config: DiscoverTlsConfig

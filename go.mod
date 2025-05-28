@@ -1,19 +1,23 @@
 module github.com/Method-Security/networkscan
 
-go 1.22.5
+go 1.24.0
+
+toolchain go1.24.2
 
 require (
-	github.com/Method-Security/pkg v0.0.3
+	github.com/Method-Security/pkg v0.0.6
 	github.com/Ullaakut/nmap/v3 v3.0.3
 	github.com/google/uuid v1.6.0
 	github.com/palantir/pkg/datetime v1.1.0
-	github.com/palantir/witchcraft-go-logging v1.57.0
+	github.com/palantir/witchcraft-go-logging v1.60.0
 	github.com/praetorian-inc/fingerprintx v1.1.14
 	github.com/projectdiscovery/goflags v0.1.51
 	github.com/projectdiscovery/naabu/v2 v2.3.1
-	github.com/spf13/cobra v1.8.0
-	github.com/stretchr/testify v1.9.0
-	golang.org/x/crypto v0.31.0
+	github.com/spf13/cobra v1.9.1
+	github.com/stretchr/testify v1.10.0
+	golang.org/x/crypto v0.33.0
+	google.golang.org/grpc v1.72.1
+	google.golang.org/protobuf v1.36.5
 )
 
 require (
@@ -40,7 +44,6 @@ require (
 	github.com/fatih/color v1.15.0 // indirect
 	github.com/gaukas/godicttls v0.0.4 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-github/v30 v30.1.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
@@ -48,7 +51,7 @@ require (
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.16.7 // indirect
+	github.com/klauspost/compress v1.17.8 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
@@ -72,9 +75,10 @@ require (
 	github.com/palantir/pkg/safelong v1.1.0 // indirect
 	github.com/palantir/pkg/safeyaml v1.1.0 // indirect
 	github.com/palantir/pkg/transform v1.1.0 // indirect
-	github.com/palantir/witchcraft-go-error v1.38.0 // indirect
-	github.com/palantir/witchcraft-go-params v1.35.0 // indirect
-	github.com/palantir/witchcraft-go-tracing v1.37.0 // indirect
+	github.com/palantir/pkg/uuid v1.2.0 // indirect
+	github.com/palantir/witchcraft-go-error v1.41.0 // indirect
+	github.com/palantir/witchcraft-go-params v1.38.0 // indirect
+	github.com/palantir/witchcraft-go-tracing v1.40.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -105,7 +109,7 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/shirou/gopsutil/v3 v3.23.7 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/tidwall/btree v1.6.0 // indirect
 	github.com/tidwall/buntdb v1.3.0 // indirect
@@ -129,17 +133,17 @@ require (
 	github.com/zmap/zcrypto v0.0.0-20230814193918-dbe676986518 // indirect
 	go.etcd.io/bbolt v1.3.7 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
 	golang.org/x/mod v0.17.0 // indirect
-	golang.org/x/net v0.28.0 // indirect
-	golang.org/x/oauth2 v0.11.0 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/term v0.27.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/net v0.35.0 // indirect
+	golang.org/x/oauth2 v0.26.0 // indirect
+	golang.org/x/sync v0.11.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/term v0.29.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
-	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/protobuf v1.33.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250218202821-56aae31c358a // indirect
 	gopkg.in/djherbis/times.v1 v1.3.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

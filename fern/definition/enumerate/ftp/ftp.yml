@@ -1,0 +1,10 @@
+types:
+  EnumerateFtpDetails:
+    properties:
+      target: string
+      successfulConnection: optional<boolean>
+      banner: optional<string>
+      tlsImplemented: optional<boolean>
+      tlsForced: optional<boolean>
+      allowsAnonymousLogin: optional<boolean>
+      error: optional<string>

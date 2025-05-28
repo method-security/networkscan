@@ -1,0 +1,28 @@
+imports:
+  common: ../common/common.yml
+types:
+  PortScanType:
+    enum:
+      - SYN
+      - CONNECT
+  DiscoverPortConfig:
+    properties:
+      target: string
+      ports: optional<string>
+      topPorts: optional<string>
+      threads: integer
+      scanType: PortScanType
+  PortDetails:
+    properties:
+      port: integer
+      protocol: common.TransportType
+  SocketDetails:
+    properties:
+      host: string
+      ip: string
+      ports: optional<list<PortDetails>>
+  DiscoverPortReport:
+    properties:
+      config: DiscoverPortConfig
+      hosts: optional<list<SocketDetails>>
+      errors: optional<list<string>>
