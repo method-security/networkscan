@@ -6,7 +6,7 @@ toolchain go1.24.2
 
 require (
 	github.com/Method-Security/pkg v0.0.6
-	github.com/Ullaakut/nmap/v3 v3.0.3
+	github.com/Ullaakut/nmap/v3 v3.0.6
 	github.com/google/uuid v1.6.0
 	github.com/palantir/pkg/datetime v1.1.0
 	github.com/palantir/witchcraft-go-logging v1.60.0
