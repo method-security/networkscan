@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -176,7 +177,6 @@ func (s *Scanner) Run() (result *Run, warnings *[]string, err error) {
 			type progress struct {
 				TaskProgress []TaskProgress `xml:"taskprogress" json:"task_progress"`
 			}
-			p := &progress{}
 			for {
 				select {
 				case <-doneProgress:
@@ -184,7 +184,8 @@ func (s *Scanner) Run() (result *Run, warnings *[]string, err error) {
 					return
 				default:
 					time.Sleep(time.Millisecond * 100)
-					_ = xml.Unmarshal(stdout.Bytes(), p)
+					var p progress
+					_ = xml.Unmarshal(stdout.Bytes(), &p)
 					progressIndex := len(p.TaskProgress) - 1
 					if progressIndex >= 0 {
 						s.liveProgress <- p.TaskProgress[progressIndex].Percent
@@ -250,15 +251,36 @@ func choosePorts(result *Run, filter func(Port) bool) {
 
 func (s *Scanner) processNmapResult(result *Run, warnings *[]string, stdout, stderr *bytes.Buffer, done chan error, doneProgress chan bool) error {
 	// Wait for nmap to finish.
-	var err = <-done
+	var (
+		errStatus = <-done
+		err       error
+	)
 	close(doneProgress)
-	if err != nil {
-		return err
+
+	// Check for errors indicated by stderr output.
+	if errStdout := checkStdErr(stderr, warnings); errStdout != nil {
+		return errStdout
 	}
 
-	// Check stderr output.
-	if err := checkStdErr(stderr, warnings); err != nil {
-		return err
+	// Check for errors indicated by context or return code.
+	switch {
+	case errors.Is(s.ctx.Err(), context.DeadlineExceeded): // Command context exceeded
+		return ErrScanTimeout
+	case errors.Is(s.ctx.Err(), context.Canceled): // Command context cancelled programmatically
+		return ErrScanInterrupt
+	case errStatus != nil: // Error with status code returned by Nmap
+
+		// Return suitable error or pass through original exit status
+		switch {
+		case errStatus.Error() == "exit status 0xc000013a": // Exit code for ctrl+c on Windows
+			return ErrScanInterrupt
+		case errStatus.Error() == "exit status 130": // Exit code for ctrl+c on Linux
+			return ErrScanInterrupt
+		// TODO: Add clauses for other known exit codes we might want to define closer.
+		default:
+			return errStatus
+		}
+	default:
 	}
 
 	// Parse nmap xml output. Usually nmap always returns valid XML, even if there is a scan error.
@@ -310,6 +332,10 @@ func checkStdErr(stderr *bytes.Buffer, warnings *[]string) error {
 		switch {
 		case strings.Contains(warning, "Malloc Failed!"):
 			return ErrMallocFailed
+		case strings.Contains(warning, "requires root privileges."):
+			return ErrRequiresRoot
+		// TODO: Add cases for other known errors we might want to guard.
+		default:
 		}
 	}
 	return nil
