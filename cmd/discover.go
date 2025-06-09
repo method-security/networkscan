@@ -253,7 +253,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	discoverTLSCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to analyze TLS configuration")
 	discoverTLSCmd.Flags().Int("timeout", 30, "Timeout in seconds for each TLS handshake attempt")
-	discoverTLSCmd.Flags().Bool("verify-tls", true, "Verify TLS certificates (default: true)")
+	discoverTLSCmd.Flags().Bool("verify-tls", false, "Verify TLS certificates (default: true)")
 
 	// Mark Required Flags
 	_ = discoverTLSCmd.MarkFlagRequired("targets")
