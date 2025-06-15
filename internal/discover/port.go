@@ -28,7 +28,7 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 		errors = append(errors, err.Error())
 	}
 
-	resources.Hosts = portscanResult
+	resources.Results = portscanResult
 	resources.Errors = errors
 	return &resources, nil
 }
