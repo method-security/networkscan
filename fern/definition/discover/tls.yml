@@ -75,6 +75,6 @@ types:
       tlsDetails: optional<TlsDetails>
   DiscoverTlsReport:
     properties:
-      details: optional<list<TlsSummary>>
+      results: optional<list<TlsSummary>>
       errors: optional<list<string>>
       config: DiscoverTlsConfig
