@@ -78,7 +78,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 		fingerprintResults = append(fingerprintResults, &fingerprintResult)
 	}
 
-	resources.Services = fingerprintResults
+	resources.Results = fingerprintResults
 	resources.Errors = errors
 	return &resources, nil
 }

@@ -19,5 +19,5 @@ types:
   DiscoverServiceReport:
     properties:
       config: DiscoverServiceConfig
-      services: optional<list<ServiceDetails>>
+      results: optional<list<ServiceDetails>>
       errors: optional<list<string>>
