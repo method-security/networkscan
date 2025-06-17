@@ -33,28 +33,28 @@ type NetworkApplicationEngine struct {
 // RunServiceEnumerate performs concurrent enumeration of multiple targets for a specific service type.
 // It manages timeouts, error handling, and result collection for each target.
 // Returns a report containing enumeration details and any errors encountered.
-func RunServiceEnumerate(ctx context.Context, targets []string, serviceType enumeratefern.ServiceType, timeout int) (enumeratefern.EnumerateServiceReport, error) {
-	log.Printf("[INFO] Starting enumeration for %d targets with a timeout of %ds", len(targets), timeout)
-	resource := enumeratefern.EnumerateServiceReport{Targets: targets}
+func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServiceConfig) (enumeratefern.EnumerateServiceReport, error) {
+	log.Printf("[INFO] Starting enumeration for %d targets with a timeout of %ds", len(config.Targets), config.Timeout)
+	resource := enumeratefern.EnumerateServiceReport{Config: &config}
 
-	engine, err := getEngine(serviceType)
+	engine, err := getEngine(config.Service)
 	if err != nil {
 		return enumeratefern.EnumerateServiceReport{}, err
 	}
 
 	// Create channels for collecting results and errors
-	detailsChan := make(chan *enumeratefern.EnumerateServiceDetails, len(targets))
-	errorsChan := make(chan string, len(targets))
+	detailsChan := make(chan *enumeratefern.EnumerateServiceDetails, len(config.Targets))
+	errorsChan := make(chan string, len(config.Targets))
 	var wg sync.WaitGroup
 
 	// Process each target concurrently
-	for _, target := range targets {
+	for _, target := range config.Targets {
 		wg.Add(1)
 		go func(target string) {
 			defer wg.Done()
 
 			// Create a context with timeout for each target
-			targetCtx, targetCancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+			targetCtx, targetCancel := context.WithTimeout(ctx, time.Duration(config.Timeout)*time.Second)
 			defer targetCancel()
 
 			// Start enumeration
@@ -75,7 +75,7 @@ func RunServiceEnumerate(ctx context.Context, targets []string, serviceType enum
 			select {
 			case <-targetCtx.Done():
 				if targetCtx.Err() == context.DeadlineExceeded {
-					errMsg := fmt.Sprintf("Timeout (%ds) while enumerating %s", timeout, target)
+					errMsg := fmt.Sprintf("Timeout (%ds) while enumerating %s", config.Timeout, target)
 					errorsChan <- errMsg
 					log.Printf("[ERROR] %s", errMsg)
 				}
@@ -110,23 +110,23 @@ func RunServiceEnumerate(ctx context.Context, targets []string, serviceType enum
 		errors = append(errors, err)
 	}
 
-	log.Printf("[INFO] Enumeration complete. Processed %d targets with %d errors", len(targets), len(errors))
-	resource.Details = details
+	log.Printf("[INFO] Enumeration complete. Processed %d targets with %d errors", len(config.Targets), len(errors))
+	resource.Result = &enumeratefern.EnumerateServiceResult{Details: details}
 	resource.Errors = errors
 	return resource, nil
 }
 
 // getEngine creates and returns the appropriate enumeration engine for the specified service type.
 // It acts as a factory function to instantiate service-specific enumeration libraries.
-func getEngine(serviceType enumeratefern.ServiceType) (NetworkApplicationEngine, error) {
+func getEngine(serviceType enumeratefern.SupportedServiceType) (NetworkApplicationEngine, error) {
 	switch serviceType {
-	case enumeratefern.ServiceTypeSsh:
+	case enumeratefern.SupportedServiceTypeSsh:
 		return NetworkApplicationEngine{Library: &ssh.LibraryEnumerateSSH{}}, nil
-	case enumeratefern.ServiceTypeFtp:
+	case enumeratefern.SupportedServiceTypeFtp:
 		return NetworkApplicationEngine{Library: &ftp.LibraryEnumerateFTP{}}, nil
-	case enumeratefern.ServiceTypeSmtp:
+	case enumeratefern.SupportedServiceTypeSmtp:
 		return NetworkApplicationEngine{Library: &smtp.LibraryEnumerateSMTP{}}, nil
-	case enumeratefern.ServiceTypeGrpc:
+	case enumeratefern.SupportedServiceTypeGrpc:
 		return NetworkApplicationEngine{Library: &grpc.LibraryEnumerateGRPC{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", serviceType)

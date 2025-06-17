@@ -19,7 +19,6 @@ import (
 // It establishes TLS connections to each target and extracts information about the TLS version,
 // cipher suite, and certificates. Returns a report containing the TLS details and any errors encountered.
 func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.DiscoverTlsConfig) (discoverfern.DiscoverTlsReport, error) {
-	resources := discoverfern.DiscoverTlsReport{Config: &config}
 	errors := []string{}
 
 	serviceDetails := []*discoverfern.TlsSummary{}
@@ -66,10 +65,11 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.Dis
 		serviceDetails = append(serviceDetails, &serviceDetail)
 	}
 
-	resources.Details = serviceDetails
-	resources.Errors = errors
-
-	return resources, nil
+	return discoverfern.DiscoverTlsReport{
+		Config: &config,
+		Result: &discoverfern.DiscoverTlsResult{Details: serviceDetails},
+		Errors: errors,
+	}, nil
 }
 
 // tlsVersionToString converts a TLS version number to our internal enum type.
