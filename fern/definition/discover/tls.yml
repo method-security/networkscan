@@ -60,7 +60,7 @@ types:
       subjectCommonName: optional<string> # Can be empty
   TlsDetails:
     properties:
-      version: optional<TlsVersion>
+      version: TlsVersion
       cipherSuite: optional<string>
       certificates: list<Certificate>
   TlsSummary:

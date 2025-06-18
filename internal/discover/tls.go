@@ -136,7 +136,7 @@ func convertToTLSInfo(state *tls.ConnectionState) *discoverfern.TlsDetails {
 
 	if state.Version != 0 {
 		version := tlsVersionToString(state.Version)
-		tlsInfo.Version = &version
+		tlsInfo.Version = version
 	}
 
 	if state.CipherSuite != 0 {
