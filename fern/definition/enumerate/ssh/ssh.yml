@@ -3,7 +3,7 @@ types:
   AuthMethod:
     enum:
       - PASSWORD
-      - PUBLICKEY
+      - PUBLIC_KEY
   HostKeyAlgorithm:
     enum:
       - SSHDSS
