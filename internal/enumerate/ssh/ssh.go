@@ -70,7 +70,7 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	details.Ciphers = extractAlgorithms(fullASCII, commonCiphers)
 	details.Macs = extractAlgorithms(fullASCII, commonMACs)
 	if len(details.HostKeyAlgos) >= 0 {
-		details.AuthMethods = []ssh.AuthMethod{ssh.AuthMethodPublickey}
+		details.AuthMethods = []ssh.AuthMethod{ssh.AuthMethodPublicKey}
 	}
 
 	// Check if password authentication is supported
