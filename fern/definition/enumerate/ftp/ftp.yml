@@ -1,4 +1,5 @@
 types:
+  # Report structs
   EnumerateFtpDetails:
     properties:
       target: string

@@ -4,26 +4,30 @@ imports:
   smtp: ./smtp/smtp.yml
   grpc: ./grpc/grpc.yml
 types:
+  # ENUMs
   SupportedServiceType:
     enum:
       - SSH
       - FTP
       - SMTP
       - GRPC
+  # Report structs
   EnumerateServiceDetails:
     union:
       EnumerateSshDetails: ssh.EnumerateSshDetails
       EnumerateFtpDetails: ftp.EnumerateFtpDetails
       EnumerateSmtpDetails: smtp.EnumerateSmtpDetails
       EnumerateGrpcDetails: grpc.EnumerateGrpcDetails
+  EnumerateServiceResult:
+    properties:
+      details: optional<list<EnumerateServiceDetails>>
+  # Config
   EnumerateServiceConfig:
     properties:
       targets: list<string>
       service: SupportedServiceType
       timeout: integer
-  EnumerateServiceResult:
-    properties:
-      details: optional<list<EnumerateServiceDetails>>
+  # Final report
   EnumerateServiceReport:
     properties:
       config: EnumerateServiceConfig

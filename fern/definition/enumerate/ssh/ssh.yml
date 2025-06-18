@@ -1,4 +1,5 @@
 types:
+  # ENUMs
   AuthMethod:
     enum:
       - PASSWORD
@@ -69,6 +70,7 @@ types:
       - HMACRIPEMD160
       - HMACSHA3256
       - HMACSHA3512
+  # Report structs
   EnumerateSshDetails:
     properties:
       target: string

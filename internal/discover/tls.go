@@ -15,6 +15,28 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
+// isIPAddress checks if a given host string is an IP address (IPv4 or IPv6)
+func isIPAddress(host string) bool {
+	return net.ParseIP(host) != nil
+}
+
+// lookupIPAddress performs DNS lookup for a hostname and returns the first IP address found
+func lookupIPAddress(ctx context.Context, hostname string) (string, error) {
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, hostname)
+	if err != nil {
+		return "", err
+	}
+	if len(ips) == 0 {
+		return "", &net.DNSError{
+			Err:        "no such host",
+			Name:       hostname,
+			Server:     "",
+			IsNotFound: true,
+		}
+	}
+	return ips[0].IP.String(), nil
+}
+
 // GetTLSInfo retrieves TLS configuration and certificate details for a list of target addresses.
 // It establishes TLS connections to each target and extracts information about the TLS version,
 // cipher suite, and certificates. Returns a report containing the TLS details and any errors encountered.
@@ -29,10 +51,25 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.Dis
 		}
 
 		// Check if the address includes a port
-		_, port, err := net.SplitHostPort(targetAddress)
+		host, port, err := net.SplitHostPort(targetAddress)
 		if err != nil || port == "" {
 			errors = append(errors, "Address does not have a valid port")
 			continue
+		}
+
+		// Determine IP address for the target
+		var ipAddress string
+		if isIPAddress(host) {
+			// Host is already an IP address
+			ipAddress = host
+		} else {
+			// Host is an FQDN, perform DNS lookup
+			resolvedIP, err := lookupIPAddress(ctx, host)
+			if err != nil {
+				errors = append(errors, "Failed to resolve hostname "+host+": "+err.Error())
+				continue
+			}
+			ipAddress = resolvedIP
 		}
 
 		// Establish TLS connection
@@ -59,7 +96,8 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.Dis
 
 		// Construct AddressTlsReport
 		serviceDetail := discoverfern.TlsSummary{
-			Address:    targetAddress,
+			Socket:     targetAddress,
+			IpAddress:  ipAddress,
 			TlsDetails: tlsInfo,
 		}
 		serviceDetails = append(serviceDetails, &serviceDetail)

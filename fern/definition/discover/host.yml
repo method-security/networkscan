@@ -7,10 +7,12 @@ types:
       - ICMP_TIMESTAMP
       - ARP
       - ICMP_ADDRESS_MASK
+  # Report structs
   HostDetails:
     properties:
       ip: string
       host: string
+  # Final report
   DiscoverHostReport:
     properties:
       hosts: list<HostDetails>
