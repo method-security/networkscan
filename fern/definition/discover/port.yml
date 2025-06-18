@@ -1,10 +1,12 @@
 imports:
   common: ../common/common.yml
 types:
+# ENUMs
   PortScanType:
     enum:
       - SYN
       - CONNECT
+  # Report structs
   PortDetails:
     properties:
       port: integer
@@ -14,6 +16,10 @@ types:
       host: string
       ip: string
       ports: optional<list<PortDetails>>
+  DiscoverPortResult:
+    properties:
+      sockets: optional<list<SocketDetails>>
+  # Config
   DiscoverPortConfig:
     properties:
       target: string
@@ -21,9 +27,7 @@ types:
       topPorts: optional<string>
       threads: integer
       scanType: PortScanType
-  DiscoverPortResult:
-    properties:
-      sockets: optional<list<SocketDetails>>
+  # Final report
   DiscoverPortReport:
     properties:
       config: DiscoverPortConfig

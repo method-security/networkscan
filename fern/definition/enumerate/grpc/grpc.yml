@@ -12,6 +12,7 @@ types:
     properties:
       name: string # pkg.Svc
       methods: list<RpcMethod>
+  # Report structs
   EnumerateGrpcDetails:
     properties:
       target: string

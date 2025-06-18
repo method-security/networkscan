@@ -45,6 +45,7 @@ types:
       - RSA
       - RSA_1024
       - UNKNOWN
+  # Report structs
   Certificate:
     properties:
       subjectCommonName: optional<string>
@@ -64,16 +65,19 @@ types:
       certificates: optional<list<Certificate>>
   TlsSummary:
     properties:
-      address: string
+      socket: string
+      ipAddress: string
       tlsDetails: optional<TlsDetails>
+  DiscoverTlsResult:
+    properties:
+      details: optional<list<TlsSummary>>
+  # Config
   DiscoverTlsConfig:
     properties:
       targets: list<string>
       timeout: integer
       verifyTls: boolean
-  DiscoverTlsResult:
-    properties:
-      details: optional<list<TlsSummary>>
+  # Final report
   DiscoverTlsReport:
     properties:
       config: DiscoverTlsConfig
