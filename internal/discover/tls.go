@@ -153,25 +153,25 @@ func convertToTLSInfo(state *tls.ConnectionState) *discoverfern.TlsDetails {
 		certString := string(certPEM)
 		signatureHex := hex.EncodeToString(cert.Signature)
 		certificate := &discoverfern.Certificate{
+			Certificate:       certString,
+			SerialNumber:      serialNumber,
+			Signature:         signatureHex,
 			SubjectCommonName: &cert.Subject.CommonName,
 			IssuerCommonName:  &cert.Issuer.CommonName,
-			ValidFrom:         &cert.NotBefore,
-			ValidTo:           &cert.NotAfter,
-			Version:           &cert.Version,
-			SerialNumber:      &serialNumber,
-			Certificate:       &certString,
-			Signature:         &signatureHex,
+			ValidFrom:         cert.NotBefore,
+			ValidTo:           cert.NotAfter,
+			Version:           cert.Version,
 		}
 
 		// Signature names defined in `signatureAlgorithmDetails` in the `x509` package have a hyphen
 		// Which is removed for proper enum conversion
 		signatureAlgorithm, err := discoverfern.NewSignatureAlgorithmFromString(strings.Replace(cert.SignatureAlgorithm.String(), "-", "_", 1))
 		if err == nil {
-			certificate.SignatureAlgorithm = &signatureAlgorithm
+			certificate.SignatureAlgorithm = signatureAlgorithm
 		}
 		publicKeyAlgorithm, err := discoverfern.NewPublicKeyAlgorithmFromString(cert.PublicKeyAlgorithm.String())
 		if err == nil {
-			certificate.PublicKeyAlgorithm = &publicKeyAlgorithm
+			certificate.PublicKeyAlgorithm = publicKeyAlgorithm
 		}
 
 		tlsInfo.Certificates = append(tlsInfo.Certificates, certificate)
