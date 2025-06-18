@@ -20,7 +20,6 @@ import (
 // RunPortScan performs a port scan on the specified target using the provided configuration.
 // It returns a report containing discovered open ports and any errors encountered during the process.
 func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*discoverfern.DiscoverPortReport, error) {
-	resources := discoverfern.DiscoverPortReport{Config: &config}
 	errors := []string{}
 
 	portscanResult, err := getPortScan(ctx, config)
@@ -28,9 +27,8 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 		errors = append(errors, err.Error())
 	}
 
-	resources.Results = portscanResult
-	resources.Errors = errors
-	return &resources, nil
+	return &discoverfern.DiscoverPortReport{
+		Config: &config, Result: &discoverfern.DiscoverPortResult{Sockets: portscanResult}, Errors: errors}, nil
 }
 
 // getPortScan configures and runs the port scanning process using the Naabu library.

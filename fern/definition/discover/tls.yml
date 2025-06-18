@@ -57,13 +57,6 @@ types:
       signature: optional<string>
       signatureAlgorithm: optional<SignatureAlgorithm>
       publicKeyAlgorithm: optional<PublicKeyAlgorithm>
-  # Config
-  DiscoverTlsConfig:
-    properties:
-      targets: list<string>
-      timeout: integer
-      verifyTls: boolean
-  # Data
   TlsDetails:
     properties:
       version: optional<TlsVersion>
@@ -73,8 +66,16 @@ types:
     properties:
       address: string
       tlsDetails: optional<TlsDetails>
-  DiscoverTlsReport:
+  DiscoverTlsConfig:
+    properties:
+      targets: list<string>
+      timeout: integer
+      verifyTls: boolean
+  DiscoverTlsResult:
     properties:
       details: optional<list<TlsSummary>>
-      errors: optional<list<string>>
+  DiscoverTlsReport:
+    properties:
       config: DiscoverTlsConfig
+      result: DiscoverTlsResult
+      errors: optional<list<string>>

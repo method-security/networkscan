@@ -78,9 +78,11 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 		fingerprintResults = append(fingerprintResults, &fingerprintResult)
 	}
 
-	resources.Results = fingerprintResults
-	resources.Errors = errors
-	return &resources, nil
+	return &discoverfern.DiscoverServiceReport{
+		Config: &config,
+		Result: &discoverfern.DiscoverServiceResult{Services: fingerprintResults},
+		Errors: errors,
+	}, nil
 }
 
 // metadataMap converts plugin metadata into a string map.
