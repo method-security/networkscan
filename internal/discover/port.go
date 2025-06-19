@@ -45,7 +45,7 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		NoColor:           true,
 		Rate:              runner.DefaultRateConnectScan,
 		Retries:           runner.DefaultRetriesConnectScan,
-		Threads:           config.Threads,
+		Threads:           *config.Threads,
 		Timeout:           runner.DefaultPortTimeoutConnectScan,
 		Host:              goflags.StringSlice{config.Target},
 		SkipHostDiscovery: true,

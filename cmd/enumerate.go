@@ -53,7 +53,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 			config := enumeratefern.EnumerateServiceConfig{
 				Targets: targets,
 				Service: serviceEnum,
-				Timeout: timeout,
+				Timeout: &timeout,
 			}
 
 			// Generate the report

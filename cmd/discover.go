@@ -272,7 +272,7 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 		Target:   target,
 		Ports:    &ports,
 		TopPorts: &topPorts,
-		Threads:  threads,
+		Threads:  &threads,
 		ScanType: scanType,
 	}
 }
@@ -283,7 +283,7 @@ func getDiscoverServiceConfig(target string, port int, timeout int) discoverfern
 	return discoverfern.DiscoverServiceConfig{
 		Target:  target,
 		Port:    port,
-		Timeout: timeout,
+		Timeout: &timeout,
 	}
 }
 
@@ -292,8 +292,8 @@ func getDiscoverServiceConfig(target string, port int, timeout int) discoverfern
 func getDiscoverTLSConfig(targets []string, timeout int, verifyTLS bool) discoverfern.DiscoverTlsConfig {
 	config := discoverfern.DiscoverTlsConfig{
 		Targets:   targets,
-		Timeout:   timeout,
-		VerifyTls: verifyTLS,
+		Timeout:   &timeout,
+		VerifyTls: &verifyTLS,
 	}
 	return config
 }

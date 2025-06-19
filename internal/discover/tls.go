@@ -47,7 +47,7 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.Dis
 	for _, targetAddress := range addresses {
 		// Define timeout for the TLS connection
 		dialer := &net.Dialer{
-			Timeout: time.Duration(config.Timeout) * time.Second,
+			Timeout: time.Duration(*config.Timeout) * time.Second,
 		}
 
 		// Check if the address includes a port
@@ -74,7 +74,7 @@ func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.Dis
 
 		// Establish TLS connection
 		conn, err := tls.DialWithDialer(dialer, "tcp", targetAddress, &tls.Config{
-			InsecureSkipVerify: !config.VerifyTls,
+			InsecureSkipVerify: !*config.VerifyTls,
 		})
 		if err != nil {
 			errors = append(errors, err.Error())

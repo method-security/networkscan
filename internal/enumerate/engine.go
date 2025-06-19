@@ -54,7 +54,7 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 			defer wg.Done()
 
 			// Create a context with timeout for each target
-			targetCtx, targetCancel := context.WithTimeout(ctx, time.Duration(config.Timeout)*time.Second)
+			targetCtx, targetCancel := context.WithTimeout(ctx, time.Duration(*config.Timeout)*time.Second)
 			defer targetCancel()
 
 			// Start enumeration

@@ -31,7 +31,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 
 	fxConfig := scan.Config{
 		FastMode:       false,
-		DefaultTimeout: time.Duration(config.Timeout) * time.Second,
+		DefaultTimeout: time.Duration(*config.Timeout) * time.Second,
 		UDP:            false,
 		Verbose:        true,
 	}
