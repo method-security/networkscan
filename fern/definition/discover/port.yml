@@ -1,7 +1,7 @@
 imports:
   common: ../common/common.yml
 types:
-# ENUMs
+  # ENUMs
   PortScanType:
     enum:
       - SYN
@@ -25,7 +25,7 @@ types:
       target: string
       ports: optional<string>
       topPorts: optional<string>
-      threads: integer
+      threads: optional<integer>
       scanType: PortScanType
   # Final report
   DiscoverPortReport:

@@ -20,7 +20,7 @@ types:
     properties:
       target: string
       port: integer
-      timeout: integer
+      timeout: optional<integer>
   # Final report
   DiscoverServiceReport:
     properties:

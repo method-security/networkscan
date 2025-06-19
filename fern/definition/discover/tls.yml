@@ -75,8 +75,8 @@ types:
   DiscoverTlsConfig:
     properties:
       targets: list<string>
-      timeout: integer
-      verifyTls: boolean
+      timeout: optional<integer>
+      verifyTls: optional<boolean>
   # Final report
   DiscoverTlsReport:
     properties:

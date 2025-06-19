@@ -26,7 +26,7 @@ types:
     properties:
       targets: list<string>
       service: SupportedServiceType
-      timeout: integer
+      timeout: optional<integer>
   # Final report
   EnumerateServiceReport:
     properties:
