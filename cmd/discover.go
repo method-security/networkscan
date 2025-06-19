@@ -273,7 +273,7 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 		Ports:    &ports,
 		TopPorts: &topPorts,
 		Threads:  &threads,
-		ScanType: scanType,
+		ScanType: &scanType,
 	}
 }
 

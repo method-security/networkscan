@@ -57,7 +57,7 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		},
 	}
 
-	switch config.ScanType {
+	switch *config.ScanType {
 	case discoverfern.PortScanTypeSyn:
 		portscanOpts.ScanType = runner.SynScan
 	case discoverfern.PortScanTypeConnect:
