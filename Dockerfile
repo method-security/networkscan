@@ -13,19 +13,11 @@ RUN \
   mkdir -p /opt/method/${CLI_NAME}/var/data && \
   mkdir -p /opt/method/${CLI_NAME}/var/data/tmp && \
   mkdir -p /opt/method/${CLI_NAME}/var/conf && \
-  mkdir -p /opt/method/${CLI_NAME}/var/conf/pentest && \
-  mkdir -p /opt/method/${CLI_NAME}/var/conf/pentest/bruteforce && \
-  mkdir -p /opt/method/${CLI_NAME}/var/conf/pentest/ssh && \
-  mkdir -p /opt/method/${CLI_NAME}/var/conf/pentest/telnet && \
   mkdir -p /opt/method/${CLI_NAME}/var/log && \
   mkdir -p /opt/method/${CLI_NAME}/service/bin && \
   mkdir -p /mnt/output
 
-COPY configs/*                              /opt/method/${CLI_NAME}/var/conf/
-COPY configs/pentest/                       /opt/method/${CLI_NAME}/var/conf/pentest/
-COPY configs/pentest/bruteforce/            /opt/method/${CLI_NAME}/var/conf/pentest/bruteforce/
-COPY configs/pentest/bruteforce/ssh/        /opt/method/${CLI_NAME}/var/conf/pentest/bruteforce/ssh/
-COPY configs/pentest/bruteforce/telnet/     /opt/method/${CLI_NAME}/var/conf/pentest/bruteforce/telnet/
+COPY configs/                              /opt/method/${CLI_NAME}/var/conf/
 
 COPY ${CLI_NAME} /opt/method/${CLI_NAME}/service/bin/${CLI_NAME}
 

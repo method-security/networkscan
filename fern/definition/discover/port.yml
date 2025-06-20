@@ -1,7 +1,7 @@
 imports:
   common: ../common/common.yml
 types:
-# ENUMs
+  # ENUMs
   PortScanType:
     enum:
       - SYN
