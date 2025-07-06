@@ -13,19 +13,9 @@ nav:
       - Basic Usage: getting-started/basic-usage.md
   - Docs:
       - Overview: docs/index.md
-      - Discover:
-          - Host: docs/host.md
-          - OS: docs/os.md
-          - Port: docs/port.md
-          - Service: docs/service.md
-          - TLS: docs/tls.md
-      - Enumerate:
-          - FTP: docs/ftp.md
-          - GRPC: docs/grpc.md
-          - SMTP: docs/smtp.md
-          - SSH: docs/ssh.md
-      - Pentest:
-          - Bruteforce: docs/bruteforce.md
+      - Discover: docs/discover.md
+      - Enumerate: docs/enumerate.md
+      - Pentest: docs/pentest.md
   - Contributing:
       - How to contribute: community/community.md
       - Development:

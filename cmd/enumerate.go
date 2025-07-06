@@ -21,6 +21,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 		Long:  `Enumerate detailed information about supported network services on target hosts.`,
 	}
 
+	// Service Command
 	enumerateServiceCmd := &cobra.Command{
 		Use:   "service",
 		Short: "Enumerate detailed information about supported network services on target hosts.",

@@ -43,14 +43,14 @@ go run main.go <command>
 For example, the following commands would be the same, but the former requires building the CLI first:
 
 ```bash
-networkscan port scan --target scanme.sh
-go run main.go port scan --target scanme.sh
+networkscan discover port --targets 127.0.0.1 --ports 22 --ports 80
+go run main.go discover port --target 127.0.0.1 --ports 22 --ports 80
 ```
 
 If you are dealing with a command or subcommand that requires a privileged user to run, on a Unix based machine a quick way to do this is:
 
 ```bash
-sudo $(which go) run main.go host discover --target 192.168.0.0/24
+sudo $(which go) run main.go discover port --target 192.168.0.0 --ports 443
 ```
 
 ## Testing releases locally
