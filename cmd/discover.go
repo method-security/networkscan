@@ -23,6 +23,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 		Long:  `Discover live hosts, open ports, running services, and TLS configurations on a network.`,
 	}
 
+	// Host Command
 	discoverHostCmd := &cobra.Command{
 		Use:   "host",
 		Short: "Identify live hosts within a given IP, hostname, or CIDR range using various discovery techniques.",
@@ -70,6 +71,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverHostCmd)
 
+	// OS Command
 	discoverOSCmd := &cobra.Command{
 		Use:   "os",
 		Short: "Detect and fingerprint the operating system running on a specified host (requires nmap and root privileges).",
@@ -111,6 +113,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverOSCmd)
 
+	// Port Command
 	discoverPortCmd := &cobra.Command{
 		Use:   "port",
 		Short: "Scan a target host for open TCP ports using customizable scan types and port ranges.",
@@ -174,6 +177,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverPortCmd)
 
+	// Service Command
 	discoverServiceCmd := &cobra.Command{
 		Use:   "service",
 		Short: "Identify and fingerprint the network service running on a specific open port of a target host.",
@@ -218,6 +222,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverServiceCmd)
 
+	// TLS Command
 	discoverTLSCmd := &cobra.Command{
 		Use:   "tls",
 		Short: "Retrieve and analyze the TLS configuration and certificate details for one or more target addresses.",
