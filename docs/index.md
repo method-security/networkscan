@@ -28,13 +28,13 @@ For the full list of available installation options, please see the [Installatio
 ### General Usage
 
 ```bash
-networkscan port scan --target <target>
+discover port <flags>
 ```
 
 #### Examples
 
 ```bash
-networkscan port scan --topports 100 --target scanme.sh
+discover port --target 127.0.0.1 --ports 22,80,443
 ```
 
 ## Contributing

@@ -1,35 +1,48 @@
-# Capabilities
+# NetworkScan Documentation
 
-networkscan offers a variety of scanning techniques to security teams working across all cloud providers and on-premise environments. Each of the below pages offers you an in depth look at a networkscan capability related to a unique scanning technique.
+NetworkScan is a comprehensive network scanning and penetration testing tool that provides capabilities for discovering network resources, enumerating services, and performing security assessments.
 
-- [Host](./host.md)
-- [OS](./os.md)
-- [Port](./port.md)
-- [Service](./service.md)
-- [TLS](./tls.md)
-- [FTP](./ftp.md)
-- [GRPC](./grpc.md)
-- [SMTP](./smtp.md)
-- [SSH](./ssh.md)
-- [Bruteforce](./bruteforce.md)
+## Available Commands
 
-## Top Level Flags
+### Discover
+Network discovery capabilities to identify live hosts, open ports, running services, and TLS configurations.
 
-networkscan has several top level flags that can be used on any subcommand. These include:
+**Subcommands:**
+- `host` - Identify live hosts within IP ranges using various discovery techniques
+- `os` - Detect and fingerprint operating systems (requires nmap and root privileges)
+- `port` - Scan for open TCP ports with customizable scan types and port ranges
+- `service` - Identify and fingerprint network services on specific ports
+- `tls` - Retrieve and analyze TLS configuration and certificate details
+
+### Enumerate
+Detailed enumeration of supported network services on target hosts.
+
+**Subcommands:**
+- `service` - Enumerate detailed information about supported network services (ftp, grpc, smtp, ssh)
+
+### Pentest
+Penetration testing modules against network services.
+
+**Subcommands:**
+- `service` - Run penetration testing modules against network services
+  - `bruteforce` - Perform brute-force attacks against specified service modules
+
+## Global Flags
+
+All commands support the following global flags:
+
+- `-o, --output string` - Output format (signal, json, yaml). Default value is signal (default "signal")
+- `-f, --output-file string` - Path to output file. If blank, will output to STDOUT
+- `-q, --quiet` - Suppress output
+- `-v, --verbose` - Verbose output
+
+## Getting Help
+
+For help with any command, use the `-h` or `--help` flag:
 
 ```bash
-Flags:
-  -h, --help                 help for networkscan
-  -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
-  -f, --output-file string   Path to output file. If blank, will output to STDOUT
-  -q, --quiet                Suppress output
-  -v, --verbose              Verbose output
+networkscan -h
+networkscan discover -h
+networkscan enumerate service -h
+networkscan pentest service bruteforce -h
 ```
-
-## Version Command
-
-Run `networkscan version` to get the exact version information for your binary
-
-## Output Formats
-
-For more information on the various output formats that are supported by networkscan, see the [Output Formats](https://method-security.github.io/docs/output.html) page in our organization wide documentation.
