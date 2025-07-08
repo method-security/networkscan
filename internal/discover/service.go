@@ -65,12 +65,13 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 		}
 
 		metadata := metadataMap(result.Metadata())
+		resultVersion := result.Version
 		fingerprintResult := discoverfern.ServiceDetails{
 			Host:      result.Host,
 			Ip:        result.IP,
 			Port:      result.Port,
 			Tls:       result.TLS,
-			Version:   result.Version,
+			Version:   &resultVersion,
 			Transport: getTransportTypeEnum(result.Transport),
 			Protocol:  getProtocolTypeEnum(result.Protocol),
 			Metadata:  metadata,
