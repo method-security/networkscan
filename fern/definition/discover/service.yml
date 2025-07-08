@@ -8,7 +8,7 @@ types:
       ip: string
       port: integer
       tls: boolean
-      version: string
+      version: optional<string>
       transport: common.TransportType
       protocol: common.ProtocolType
       metadata: optional<map<string, string>>
