@@ -1,104 +1,138 @@
+// Package grpc fingerprints gRPC services by issuing a Server-Reflection
+// ListServices request.  It avoids HTTP/2 false-positives because only a
+// genuine gRPC server can speak the reflection protocol or return a proper
+// gRPC UNIMPLEMENTED status.
 package grpc
 
 import (
-	// Standard
-	"bytes"
+	"context"
+	"crypto/tls"
+	"fmt"
 	"net"
 	"time"
 
-	// External
-	plugins "github.com/praetorian-inc/fingerprintx/pkg/plugins"
-	utils "github.com/praetorian-inc/fingerprintx/pkg/plugins/pluginutils"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+	reflectionpb "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
+	"google.golang.org/grpc/status"
+
+	common "github.com/Method-Security/networkscan/generated/go/common"
+	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
-/* ---------- public plugin objects ---------- */
+/* -------------------------------------------------------------------------- */
+/*  Exported fingerprinter                                                    */
+/* -------------------------------------------------------------------------- */
 
-type Metadata struct {
-	PrefaceAck         bool   `json:"prefaceAck"`
-	SupportsReflection bool   `json:"supportsReflection,omitempty"`
-	HealthStatus       string `json:"healthStatus,omitempty"`
-}
+type Fingerprinter struct{}
 
-func (Metadata) Type() string { return "grpc" } // satisfies plugins.Metadata
+func (Fingerprinter) Name() string { return "grpc" }
 
-type Plugin struct{}
-type TLSPlugin struct{}
+func (Fingerprinter) Detect(ctx context.Context, ip net.IP, cfg discoverfern.DiscoverServiceConfig) (*discoverfern.ServiceDetails, error) {
+	addr := fmt.Sprintf("%s:%d", ip, cfg.Port)
+	timeout := time.Duration(cfg.Timeout) * time.Second
 
-const (
-	GRPC    = "grpc"
-	GRPCTLS = "grpc" // same logical service, different transport
-)
-
-func init() {
-	plugins.RegisterPlugin(&Plugin{})
-	plugins.RegisterPlugin(&TLSPlugin{})
-}
-
-/* ---------- interface glue ---------- */
-
-func (p *Plugin) Name() string    { return GRPC }
-func (p *TLSPlugin) Name() string { return GRPCTLS }
-
-func (p *Plugin) Type() plugins.Protocol    { return plugins.TCP }
-func (p *TLSPlugin) Type() plugins.Protocol { return plugins.TCPTLS }
-
-func (p *Plugin) PortPriority(port uint16) bool {
-	return port == 50051 || port == 6565
-}
-func (p *TLSPlugin) PortPriority(port uint16) bool {
-	return port == 443 || port == 8443 || port == 5443
-}
-
-func (p *Plugin) Priority() int    { return 500 } // pick any unused slot
-func (p *TLSPlugin) Priority() int { return 501 }
-
-/* ---------- runtime ---------- */
-
-func (p *Plugin) Run(conn net.Conn, t time.Duration, tgt plugins.Target) (*plugins.Service, error) {
-	return detectGRPC(conn, tgt, t, false)
-}
-func (p *TLSPlugin) Run(conn net.Conn, t time.Duration, tgt plugins.Target) (*plugins.Service, error) {
-	return detectGRPC(conn, tgt, t, true)
-}
-
-/* ---------- detector ---------- */
-
-// Minimum HTTP/2 client preface + empty SETTINGS frame.
-var clientPreface = append(
-	[]byte("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"),
-	// length(3) type(1) flags(1) reserved+streamid(4)
-	[]byte{0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00}...,
-)
-
-func detectGRPC(conn net.Conn, tgt plugins.Target, timeout time.Duration, tls bool) (*plugins.Service, error) {
-	// Send the preface; expect SETTINGS + maybe GOAWAY or HEADERS
-	resp, err := utils.SendRecv(conn, clientPreface, timeout)
+	/* ---- try plaintext first --------------------------------------------- */
+	conn, tlsUsed, err := dial(ctx, addr, timeout, false)
 	if err != nil {
-		return nil, err
+		/* ---- fallback to opportunistic TLS -------------------------------- */
+		conn, tlsUsed, err = dial(ctx, addr, timeout, true)
+		if err != nil {
+			return nil, nil // neither path worked → not gRPC
+		}
 	}
-	if len(resp) == 0 {
-		return nil, nil // no response, let next plugin try
+	defer conn.Close()
+
+	/* ---- Server-reflection ListServices ---------------------------------- */
+	rctx, cancel := context.WithTimeout(ctx, timeout/2)
+	defer cancel()
+
+	refClient, err := reflectionpb.NewServerReflectionClient(conn).ServerReflectionInfo(rctx)
+	if err != nil {
+		return nil, nil // reflection service not reachable → not gRPC
+	}
+	if err := refClient.Send(&reflectionpb.ServerReflectionRequest{
+		MessageRequest: &reflectionpb.ServerReflectionRequest_ListServices{
+			ListServices: "*",
+		},
+	}); err != nil {
+		return nil, nil // send failed
 	}
 
-	// Very lightweight heuristics:
-	prefaceAck := bytes.Contains(resp, []byte{0x00, 0x00, 0x00, 0x04}) // SETTINGS type=4
-	// Optional extras – cheap checks that don’t require full protobuf parsing
-	supportsReflection := bytes.Contains(resp, []byte("server reflection"))
-	healthStatus := ""
-	if bytes.Contains(resp, []byte("grpc-status")) {
-		healthStatus = "responded"
+	resp, err := refClient.Recv()
+
+	/* ---- evaluate outcome ------------------------------------------------- */
+	switch {
+	//   1. Successful list → definite gRPC
+	case err == nil && resp.GetListServicesResponse() != nil:
+		return buildResult(cfg, ip, tlsUsed, "LIST_OK"), nil
+
+	//   2. gRPC status UNIMPLEMENTED → still gRPC (reflection disabled)
+	case err != nil && status.Code(err) == codes.Unimplemented:
+		return buildResult(cfg, ip, tlsUsed, "UNIMPLEMENTED"), nil
+
+	//   otherwise → not gRPC
+	default:
+		return nil, nil
+	}
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Helpers                                                                   */
+/* -------------------------------------------------------------------------- */
+
+func dial(ctx context.Context, addr string, to time.Duration, useTLS bool) (*grpc.ClientConn, bool, error) {
+	dctx, cancel := context.WithTimeout(ctx, to)
+	defer cancel()
+
+	opts := []grpc.DialOption{grpc.WithBlock()}
+	if useTLS {
+		opts = append(opts,
+			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	meta := Metadata{
-		PrefaceAck:         prefaceAck,
-		SupportsReflection: supportsReflection,
-		HealthStatus:       healthStatus,
+	conn, err := grpc.DialContext(dctx, addr, opts...)
+	if err != nil {
+		return nil, false, err
 	}
+	return conn, useTLS, nil
+}
 
-	transport := plugins.TCP
-	if tls {
-		transport = plugins.TCPTLS
+func buildResult(cfg discoverfern.DiscoverServiceConfig, ip net.IP, tlsUsed bool, statusStr string) *discoverfern.ServiceDetails {
+	transport := "TCP"
+	if tlsUsed {
+		transport = "TCPTLS"
 	}
+	meta := map[string]string{"reflection": statusStr}
 
-	return plugins.CreateServiceFrom(tgt, meta, tls, "", transport), nil
+	return &discoverfern.ServiceDetails{
+		Host:      cfg.Target,
+		Ip:        ip.String(),
+		Port:      cfg.Port,
+		Tls:       tlsUsed,
+		Version:   nil,
+		Transport: enumTransport(transport),
+		Protocol:  enumProtocol("GRPC"),
+		Metadata:  meta,
+	}
+}
+
+func enumTransport(s string) common.TransportType {
+	e, err := common.NewTransportTypeFromString(s)
+	if err != nil {
+		e, _ = common.NewTransportTypeFromString("UNKNOWN")
+	}
+	return e
+}
+
+func enumProtocol(s string) common.ProtocolType {
+	e, err := common.NewProtocolTypeFromString(s)
+	if err != nil {
+		e, _ = common.NewProtocolTypeFromString("UNKNOWN")
+	}
+	return e
 }

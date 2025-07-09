@@ -17,117 +17,129 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 
 	// External
-	_ "github.com/Method-Security/networkscan/internal/discover/plugins/service/grpc" // Register the grpc plugin
 	plugins "github.com/praetorian-inc/fingerprintx/pkg/plugins"
 	scan "github.com/praetorian-inc/fingerprintx/pkg/scan"
+
+	// Custom fingerprinters
+	grpcfp "github.com/Method-Security/networkscan/internal/discover/plugins/service/grpc"
 )
 
-// RunServiceFingerprint performs service fingerprinting on the specified target and port.
-// It uses the fingerprintx library to identify running services and their characteristics.
-// Returns a report containing service details and any errors encountered during the process.
-func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
-	resources := discoverfern.DiscoverServiceReport{Config: &config}
-	errors := []string{}
+/* -------------------------------------------------------------------------- */
+/*  Custom-fingerprinter interface & registry                                 */
+/* -------------------------------------------------------------------------- */
 
-	fxConfig := scan.Config{
+// Fingerprinter detects **one** specific application protocol (gRPC, MQTT, …).
+// On match: (*ServiceDetails, nil)
+// On “not mine”: (nil, nil)
+// On fatal error: (nil, err)
+type Fingerprinter interface {
+	Name() string
+	Detect(ctx context.Context, ip net.IP, cfg discoverfern.DiscoverServiceConfig) (*discoverfern.ServiceDetails, error)
+}
+
+// List the modules you want to run after fingerprintx fails.
+var customFingerprintModules = []Fingerprinter{
+	&grpcfp.Fingerprinter{},
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Public entry-point                                                        */
+/* -------------------------------------------------------------------------- */
+
+// RunServiceFingerprint fingerprints the service at target:port.
+//  1. Let fingerprintx try first.
+//  2. If it cannot decide, run the custom modules in order until one hits.
+func RunServiceFingerprint(ctx context.Context, cfg discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
+	rep := &discoverfern.DiscoverServiceReport{Config: &cfg}
+	var results []*discoverfern.ServiceDetails
+
+	ips, err := getIPs(cfg.Target)
+	if err != nil {
+		return rep, err
+	}
+
+	fxCfg := scan.Config{
 		FastMode:       false,
-		DefaultTimeout: time.Duration(config.Timeout) * time.Second,
+		DefaultTimeout: time.Duration(cfg.Timeout) * time.Second,
 		UDP:            false,
 		Verbose:        true,
 	}
 
-	ips, err := getIPs(config.Target)
-	if err != nil {
-		return &resources, err
-	}
-
-	var fingerprintResults []*discoverfern.ServiceDetails
 	for _, ip := range ips {
-		ipAddr, err := netip.ParseAddr(ip.String())
-		if err != nil {
-			return &resources, err
+		addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(cfg.Port))
+		fxTarget := plugins.Target{Address: addrPort, Host: cfg.Target}
+
+		/* --- 1. fingerprintx ------------------------------------------------- */
+		if fxRes, fxErr := fxCfg.SimpleScanTarget(fxTarget); fxErr == nil && fxRes != nil && fxRes.Protocol != "" {
+			results = append(results, fxToServiceDetails(fxRes))
+			continue // done with this IP
 		}
 
-		fxTarget := plugins.Target{
-			Address: netip.AddrPortFrom(ipAddr, uint16(config.Port)),
-			Host:    config.Target,
+		/* --- 2. custom modules ---------------------------------------------- */
+		for _, fp := range customFingerprintModules {
+			det, err := fp.Detect(ctx, ip, cfg)
+			if err != nil {
+				rep.Errors = append(rep.Errors, fmt.Sprintf("%s(%s): %v", fp.Name(), ip, err))
+				continue
+			}
+			if det != nil { // hit!
+				results = append(results, det)
+				break
+			}
 		}
-
-		result, err := fxConfig.SimpleScanTarget(fxTarget)
-		if err != nil {
-			errors = append(errors, err.Error())
-			continue
-		}
-
-		if result == nil {
-			errors = append(errors, "scan result is empty")
-			continue
-		}
-
-		metadata := metadataMap(result.Metadata())
-		resultVersion := result.Version
-		fingerprintResult := discoverfern.ServiceDetails{
-			Host:      result.Host,
-			Ip:        result.IP,
-			Port:      result.Port,
-			Tls:       result.TLS,
-			Version:   &resultVersion,
-			Transport: getTransportTypeEnum(result.Transport),
-			Protocol:  getProtocolTypeEnum(result.Protocol),
-			Metadata:  metadata,
-		}
-		fingerprintResults = append(fingerprintResults, &fingerprintResult)
 	}
 
-	return &discoverfern.DiscoverServiceReport{
-		Config: &config,
-		Result: &discoverfern.DiscoverServiceResult{Services: fingerprintResults},
-		Errors: errors,
-	}, nil
+	rep.Result = &discoverfern.DiscoverServiceResult{Services: results}
+	return rep, nil
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Helpers                                                                   */
+/* -------------------------------------------------------------------------- */
+
+func fxToServiceDetails(res *plugins.Service) *discoverfern.ServiceDetails {
+	md := metadataMap(res.Metadata())
+	ver := res.Version
+
+	return &discoverfern.ServiceDetails{
+		Host:      res.Host,
+		Ip:        res.IP,
+		Port:      res.Port,
+		Tls:       res.TLS,
+		Version:   &ver,
+		Transport: getTransportTypeEnum(res.Transport),
+		Protocol:  getProtocolTypeEnum(res.Protocol),
+		Metadata:  md,
+	}
 }
 
 // metadataMap converts plugin metadata into a string map.
-// It handles different metadata types (maps, structs) and extracts their key-value pairs.
 func metadataMap(metadata plugins.Metadata) map[string]string {
-	result := make(map[string]string)
-	// Check if metadata is nil
+	out := make(map[string]string)
 	if metadata == nil {
-		return result
+		return out
 	}
-	// Check if metadata implements the standard Map() method
-	if mapper, ok := metadata.(interface{ Map() map[string]string }); ok {
-		return mapper.Map()
+	if m, ok := metadata.(interface{ Map() map[string]string }); ok {
+		return m.Map()
 	}
-	// Use reflection as a fallback
 	v := reflect.ValueOf(metadata)
 	switch v.Kind() {
 	case reflect.Map:
-		// Handle the case where metadata is a map
-		for _, key := range v.MapKeys() {
-			value := v.MapIndex(key)
-			result[key.String()] = fmt.Sprintf("%v", value.Interface())
+		for _, k := range v.MapKeys() {
+			out[k.String()] = fmt.Sprintf("%v", v.MapIndex(k).Interface())
 		}
 	case reflect.Struct:
-		// Handle the case where metadata is a struct
 		t := v.Type()
 		for i := 0; i < v.NumField(); i++ {
-			field := t.Field(i)
-			// Skip unexported fields
-			if field.PkgPath != "" {
-				continue
+			f := t.Field(i)
+			if f.PkgPath == "" { // exported
+				out[f.Name] = fmt.Sprintf("%v", v.Field(i).Interface())
 			}
-			value := v.Field(i)
-			result[field.Name] = fmt.Sprintf("%v", value.Interface())
 		}
-	default:
-		return result
 	}
-
-	return result
+	return out
 }
 
-// getIPs resolves the target hostname to a list of IP addresses.
-// Returns an error if the hostname cannot be resolved or no IPs are found.
 func getIPs(target string) ([]net.IP, error) {
 	ips, err := net.LookupIP(target)
 	if err != nil {
@@ -139,22 +151,18 @@ func getIPs(target string) ([]net.IP, error) {
 	return ips, nil
 }
 
-// getTransportTypeEnum converts a transport type string to our internal enum type.
-// Returns UNKNOWN if the transport type is not recognized.
-func getTransportTypeEnum(transport string) common.TransportType {
-	transportTypeEnum, err := common.NewTransportTypeFromString(strings.ToUpper(transport))
+func getTransportTypeEnum(s string) common.TransportType {
+	e, err := common.NewTransportTypeFromString(strings.ToUpper(s))
 	if err != nil {
-		transportTypeEnum, _ = common.NewTransportTypeFromString("UNKNOWN")
+		e, _ = common.NewTransportTypeFromString("UNKNOWN")
 	}
-	return transportTypeEnum
+	return e
 }
 
-// getProtocolTypeEnum converts a protocol type string to our internal enum type.
-// Returns UNKNOWN if the protocol type is not recognized.
-func getProtocolTypeEnum(protocol string) common.ProtocolType {
-	protocolTypeEnum, err := common.NewProtocolTypeFromString(strings.ToUpper(protocol))
+func getProtocolTypeEnum(s string) common.ProtocolType {
+	e, err := common.NewProtocolTypeFromString(strings.ToUpper(s))
 	if err != nil {
-		protocolTypeEnum, _ = common.NewProtocolTypeFromString("UNKNOWN")
+		e, _ = common.NewProtocolTypeFromString("UNKNOWN")
 	}
-	return protocolTypeEnum
+	return e
 }
