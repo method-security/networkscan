@@ -11,15 +11,14 @@ import (
 	"net"
 	"time"
 
+	common "github.com/Method-Security/networkscan/generated/go/common"
+	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	reflectionpb "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
 	"google.golang.org/grpc/status"
-
-	common "github.com/Method-Security/networkscan/generated/go/common"
-	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
 /* -------------------------------------------------------------------------- */
@@ -43,7 +42,7 @@ func (Fingerprinter) Detect(ctx context.Context, ip net.IP, cfg discoverfern.Dis
 			return nil, nil // neither path worked → not gRPC
 		}
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	/* ---- Server-reflection ListServices ---------------------------------- */
 	rctx, cancel := context.WithTimeout(ctx, timeout/2)

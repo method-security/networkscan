@@ -49,95 +49,95 @@ var customFingerprintModules = []Fingerprinter{
 // RunServiceFingerprint fingerprints the service at target:port.
 //  1. Let fingerprintx try first.
 //  2. If it cannot decide, run the custom modules in order until one hits.
-func RunServiceFingerprint(ctx context.Context, cfg discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
-	rep := &discoverfern.DiscoverServiceReport{Config: &cfg}
+func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
+	report := &discoverfern.DiscoverServiceReport{Config: &config}
 	var results []*discoverfern.ServiceDetails
 
-	ips, err := getIPs(cfg.Target)
+	ips, err := getIPs(config.Target)
 	if err != nil {
-		return rep, err
+		return report, err
 	}
 
-	fxCfg := scan.Config{
+	fingerprintConfig := scan.Config{
 		FastMode:       false,
-		DefaultTimeout: time.Duration(cfg.Timeout) * time.Second,
+		DefaultTimeout: time.Duration(config.Timeout) * time.Second,
 		UDP:            false,
 		Verbose:        true,
 	}
 
 	for _, ip := range ips {
-		addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(cfg.Port))
-		fxTarget := plugins.Target{Address: addrPort, Host: cfg.Target}
+		addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(config.Port))
+		fingerprintTarget := plugins.Target{Address: addrPort, Host: config.Target}
 
 		/* --- 1. fingerprintx ------------------------------------------------- */
-		if fxRes, fxErr := fxCfg.SimpleScanTarget(fxTarget); fxErr == nil && fxRes != nil && fxRes.Protocol != "" {
-			results = append(results, fxToServiceDetails(fxRes))
+		if fingerprintResult, fingerprintError := fingerprintConfig.SimpleScanTarget(fingerprintTarget); fingerprintError == nil && fingerprintResult != nil && fingerprintResult.Protocol != "" {
+			results = append(results, fxToServiceDetails(fingerprintResult))
 			continue // done with this IP
 		}
 
 		/* --- 2. custom modules ---------------------------------------------- */
-		for _, fp := range customFingerprintModules {
-			det, err := fp.Detect(ctx, ip, cfg)
+		for _, fingerprinter := range customFingerprintModules {
+			detection, err := fingerprinter.Detect(ctx, ip, config)
 			if err != nil {
-				rep.Errors = append(rep.Errors, fmt.Sprintf("%s(%s): %v", fp.Name(), ip, err))
+				report.Errors = append(report.Errors, fmt.Sprintf("%s(%s): %v", fingerprinter.Name(), ip, err))
 				continue
 			}
-			if det != nil { // hit!
-				results = append(results, det)
+			if detection != nil { // hit!
+				results = append(results, detection)
 				break
 			}
 		}
 	}
 
-	rep.Result = &discoverfern.DiscoverServiceResult{Services: results}
-	return rep, nil
+	report.Result = &discoverfern.DiscoverServiceResult{Services: results}
+	return report, nil
 }
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                   */
 /* -------------------------------------------------------------------------- */
 
-func fxToServiceDetails(res *plugins.Service) *discoverfern.ServiceDetails {
-	md := metadataMap(res.Metadata())
-	ver := res.Version
+func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
+	metadata := metadataMap(result.Metadata())
+	version := result.Version
 
 	return &discoverfern.ServiceDetails{
-		Host:      res.Host,
-		Ip:        res.IP,
-		Port:      res.Port,
-		Tls:       res.TLS,
-		Version:   &ver,
-		Transport: getTransportTypeEnum(res.Transport),
-		Protocol:  getProtocolTypeEnum(res.Protocol),
-		Metadata:  md,
+		Host:      result.Host,
+		Ip:        result.IP,
+		Port:      result.Port,
+		Tls:       result.TLS,
+		Version:   &version,
+		Transport: getTransportTypeEnum(result.Transport),
+		Protocol:  getProtocolTypeEnum(result.Protocol),
+		Metadata:  metadata,
 	}
 }
 
 // metadataMap converts plugin metadata into a string map.
 func metadataMap(metadata plugins.Metadata) map[string]string {
-	out := make(map[string]string)
+	output := make(map[string]string)
 	if metadata == nil {
-		return out
+		return output
 	}
-	if m, ok := metadata.(interface{ Map() map[string]string }); ok {
-		return m.Map()
+	if mapper, ok := metadata.(interface{ Map() map[string]string }); ok {
+		return mapper.Map()
 	}
-	v := reflect.ValueOf(metadata)
-	switch v.Kind() {
+	value := reflect.ValueOf(metadata)
+	switch value.Kind() {
 	case reflect.Map:
-		for _, k := range v.MapKeys() {
-			out[k.String()] = fmt.Sprintf("%v", v.MapIndex(k).Interface())
+		for _, key := range value.MapKeys() {
+			output[key.String()] = fmt.Sprintf("%v", value.MapIndex(key).Interface())
 		}
 	case reflect.Struct:
-		t := v.Type()
-		for i := 0; i < v.NumField(); i++ {
-			f := t.Field(i)
-			if f.PkgPath == "" { // exported
-				out[f.Name] = fmt.Sprintf("%v", v.Field(i).Interface())
+		structType := value.Type()
+		for i := 0; i < value.NumField(); i++ {
+			field := structType.Field(i)
+			if field.PkgPath == "" { // exported
+				output[field.Name] = fmt.Sprintf("%v", value.Field(i).Interface())
 			}
 		}
 	}
-	return out
+	return output
 }
 
 func getIPs(target string) ([]net.IP, error) {
@@ -151,18 +151,18 @@ func getIPs(target string) ([]net.IP, error) {
 	return ips, nil
 }
 
-func getTransportTypeEnum(s string) common.TransportType {
-	e, err := common.NewTransportTypeFromString(strings.ToUpper(s))
+func getTransportTypeEnum(input string) common.TransportType {
+	enumValue, err := common.NewTransportTypeFromString(strings.ToUpper(input))
 	if err != nil {
-		e, _ = common.NewTransportTypeFromString("UNKNOWN")
+		enumValue, _ = common.NewTransportTypeFromString("UNKNOWN")
 	}
-	return e
+	return enumValue
 }
 
-func getProtocolTypeEnum(s string) common.ProtocolType {
-	e, err := common.NewProtocolTypeFromString(strings.ToUpper(s))
+func getProtocolTypeEnum(input string) common.ProtocolType {
+	enumValue, err := common.NewProtocolTypeFromString(strings.ToUpper(input))
 	if err != nil {
-		e, _ = common.NewProtocolTypeFromString("UNKNOWN")
+		enumValue, _ = common.NewProtocolTypeFromString("UNKNOWN")
 	}
-	return e
+	return enumValue
 }

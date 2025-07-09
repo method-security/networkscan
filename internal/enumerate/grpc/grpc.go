@@ -15,7 +15,7 @@ import (
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	grpcLib "google.golang.org/grpc"
 	insecure "google.golang.org/grpc/credentials/insecure"
-	grpc_reflection_v1alpha "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
+	reflectionpb "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
 	proto "google.golang.org/protobuf/proto"
 	descriptorpb "google.golang.org/protobuf/types/descriptorpb"
 )
@@ -83,15 +83,15 @@ func closeConnection(conn *grpcLib.ClientConn) {
 }
 
 // createReflectionClient opens a reflection stream.
-func createReflectionClient(ctx context.Context, conn *grpcLib.ClientConn) (grpc_reflection_v1alpha.ServerReflection_ServerReflectionInfoClient, error) {
-	client := grpc_reflection_v1alpha.NewServerReflectionClient(conn)
+func createReflectionClient(ctx context.Context, conn *grpcLib.ClientConn) (reflectionpb.ServerReflection_ServerReflectionInfoClient, error) {
+	client := reflectionpb.NewServerReflectionClient(conn)
 	return client.ServerReflectionInfo(ctx)
 }
 
 // requestAndReceiveServices lists services via reflection.
-func requestAndReceiveServices(stream grpc_reflection_v1alpha.ServerReflection_ServerReflectionInfoClient) ([]*grpc_reflection_v1alpha.ServiceResponse, error) {
-	if err := stream.Send(&grpc_reflection_v1alpha.ServerReflectionRequest{
-		MessageRequest: &grpc_reflection_v1alpha.ServerReflectionRequest_ListServices{
+func requestAndReceiveServices(stream reflectionpb.ServerReflection_ServerReflectionInfoClient) ([]*reflectionpb.ServiceResponse, error) {
+	if err := stream.Send(&reflectionpb.ServerReflectionRequest{
+		MessageRequest: &reflectionpb.ServerReflectionRequest_ListServices{
 			ListServices: "*",
 		},
 	}); err != nil {
@@ -107,7 +107,7 @@ func requestAndReceiveServices(stream grpc_reflection_v1alpha.ServerReflection_S
 }
 
 // processServices gathers descriptors and extracts method info.
-func processServices(stream grpc_reflection_v1alpha.ServerReflection_ServerReflectionInfoClient, services []*grpc_reflection_v1alpha.ServiceResponse, details *grpc.EnumerateGrpcDetails) ([]*descriptorpb.FileDescriptorProto, error) {
+func processServices(stream reflectionpb.ServerReflection_ServerReflectionInfoClient, services []*reflectionpb.ServiceResponse, details *grpc.EnumerateGrpcDetails) ([]*descriptorpb.FileDescriptorProto, error) {
 	var rawDescriptors []*descriptorpb.FileDescriptorProto
 
 	for _, service := range services {
@@ -131,16 +131,16 @@ func processServices(stream grpc_reflection_v1alpha.ServerReflection_ServerRefle
 }
 
 // requestFileDescriptor requests a file descriptor for a symbol.
-func requestFileDescriptor(stream grpc_reflection_v1alpha.ServerReflection_ServerReflectionInfoClient, serviceName string) error {
-	return stream.Send(&grpc_reflection_v1alpha.ServerReflectionRequest{
-		MessageRequest: &grpc_reflection_v1alpha.ServerReflectionRequest_FileContainingSymbol{
+func requestFileDescriptor(stream reflectionpb.ServerReflection_ServerReflectionInfoClient, serviceName string) error {
+	return stream.Send(&reflectionpb.ServerReflectionRequest{
+		MessageRequest: &reflectionpb.ServerReflectionRequest_FileContainingSymbol{
 			FileContainingSymbol: serviceName,
 		},
 	})
 }
 
 // receiveFileDescriptor receives a file descriptor response.
-func receiveFileDescriptor(stream grpc_reflection_v1alpha.ServerReflection_ServerReflectionInfoClient, serviceName string) ([][]byte, error) {
+func receiveFileDescriptor(stream reflectionpb.ServerReflection_ServerReflectionInfoClient, serviceName string) ([][]byte, error) {
 	resp, err := stream.Recv()
 	if err != nil {
 		return nil, fmt.Errorf("failed to receive file descriptor for service %s: %v", serviceName, err)
