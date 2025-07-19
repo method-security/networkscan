@@ -3,6 +3,7 @@ imports:
   ftp: ./ftp/ftp.yml
   smtp: ./smtp/smtp.yml
   grpc: ./grpc/grpc.yml
+  smb: ./smb/smb.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -11,6 +12,7 @@ types:
       - FTP
       - SMTP
       - GRPC
+      - SMB
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -18,6 +20,7 @@ types:
       EnumerateFtpDetails: ftp.EnumerateFtpDetails
       EnumerateSmtpDetails: smtp.EnumerateSmtpDetails
       EnumerateGrpcDetails: grpc.EnumerateGrpcDetails
+      EnumerateSmbDetails: smb.EnumerateSmbDetails
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>
