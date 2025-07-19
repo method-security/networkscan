@@ -11,7 +11,7 @@ import (
 )
 
 // Client represents a unified SMB client that provides base functionality
-// for both enumeration and pentest operations, similar to netexec
+// for both enumeration and pentest operations
 type Client struct {
 	Host            string
 	Port            int
