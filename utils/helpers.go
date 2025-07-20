@@ -3,11 +3,9 @@ package utils
 
 import (
 	"bufio"
-	"fmt"
-	"net"
 	"os"
 	"path/filepath"
-	"strings"
+	"strconv"
 )
 
 // GetEntriesFromTXTFiles reads and combines entries from multiple text files.
@@ -39,28 +37,11 @@ func GetEntriesFromTXTFiles(paths []string) ([]string, error) {
 	return entries, nil
 }
 
-// ExtractHostPort parses a target string to extract host and port.
-// It supports both "host:port" and "host" formats.
-// If no port is specified, returns the host and port 0.
-func ExtractHostPort(target string) (string, int) {
-	if strings.Contains(target, ":") {
-		host, portStr, err := net.SplitHostPort(target)
-		if err == nil {
-			if port := ParsePort(portStr); port > 0 {
-				return host, port
-			}
-		}
-	}
-	return target, 0
-}
-
 // ParsePort converts a port string to an integer.
-// Returns 0 if the port string is invalid or out of range.
+// Returns 0 if the port string is invalid or out of range (1-65535).
 func ParsePort(portStr string) int {
-	var port int
-	_, _ = fmt.Sscanf(portStr, "%d", &port)
-	if port < 1 || port > 65535 {
-		return 0
+	if port, err := strconv.Atoi(portStr); err == nil && port > 0 && port <= 65535 {
+		return port
 	}
-	return port
+	return 0
 }
