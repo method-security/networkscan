@@ -1,0 +1,197 @@
+package smb
+
+import (
+	"context"
+	"fmt"
+	"net"
+
+	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	smb "github.com/Method-Security/networkscan/generated/go/enumerate/smb"
+	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
+	"github.com/Method-Security/networkscan/utils"
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
+)
+
+// LibraryEnumerateSMB implements NetworkApplicationLibrary for SMB enumeration using the shared protocol library.
+type LibraryEnumerateSMB struct{}
+
+// EnumerateTarget performs comprehensive SMB enumeration using the shared SMB protocol library
+func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
+	var details smb.EnumerateSmbDetails
+	details.Target = target
+	errors := []string{}
+
+	log := svc1log.FromContext(ctx)
+	log.Info("Starting SMB enumeration for target", svc1log.SafeParam("target", target))
+
+	host, portStr, err := net.SplitHostPort(target)
+	port := 445 // Default SMB port
+	if err == nil {
+		// Port was provided, try to parse it
+		if p := utils.ParsePort(portStr); p > 0 {
+			port = p
+		}
+	} else {
+		// No port provided, use target as host
+		host = target
+	}
+
+	// Create SMB client using shared protocol library
+	client := smbclient.NewClient(host, port)
+	client.SetNullSession() // Use null session for enumeration
+
+	// Attempt connection
+	err = client.ConnectWithContext(ctx)
+	if err != nil {
+		log.Error("Failed to connect to target",
+			svc1log.SafeParam("target", target),
+			svc1log.SafeParam("error", err))
+		errors = append(errors, fmt.Sprintf("Failed to connect to %s: %v", target, err))
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmbDetails(&details), errors
+	}
+	defer func() { _ = client.Close() }()
+
+	log.Info("Successfully connected to target", svc1log.SafeParam("target", target))
+
+	// Set SMB version information - using SMB3.0.2 as default
+	version := smb.SmbVersionSmb302
+	details.Version = &version
+	details.SupportedVersions = []smb.SmbVersion{
+		smb.SmbVersionSmb302,
+		smb.SmbVersionSmb30,
+		smb.SmbVersionSmb21,
+		smb.SmbVersionSmb20,
+	}
+
+	// Get server information from the protocol library
+	serverInfo := client.GetServerInfo()
+	if serverInfo != nil {
+		smbServerInfo := convertToSmbServerInfo(serverInfo)
+		details.ServerInfo = smbServerInfo
+		log.Info("Extracted server info",
+			svc1log.SafeParam("target", target),
+			svc1log.SafeParam("server", serverInfo.ServerName),
+			svc1log.SafeParam("domain", serverInfo.Domain),
+			svc1log.SafeParam("os", serverInfo.OSVersion))
+	}
+
+	// Enumerate shares using the protocol library
+	log.Info("Enumerating shares", svc1log.SafeParam("target", target))
+	shares, shareErr := client.EnumerateSharesWithContext(ctx)
+	if shareErr != nil {
+		errors = append(errors, fmt.Sprintf("Share enumeration failed: %v", shareErr))
+	}
+
+	if len(shares) > 0 {
+		smbShares := convertToSmbShares(shares)
+		details.Shares = smbShares
+		log.Info("Found shares",
+			svc1log.SafeParam("shareCount", len(shares)),
+			svc1log.SafeParam("target", target))
+
+		// Check if this appears to be a domain controller
+		if serverInfo != nil && client.DetectDomainController(shares) {
+			enhancedOSVersion := serverInfo.OSVersion + " (Domain Controller)"
+			smbServerInfo := details.ServerInfo
+			if smbServerInfo != nil {
+				smbServerInfo.OsVersion = &enhancedOSVersion
+			}
+		}
+	}
+
+	// Set authentication method information
+	authMethods := []smb.AuthMethod{smb.AuthMethodNtlm}
+	details.AuthMethods = authMethods
+
+	// Set authentication capabilities
+	anonymousAllowed := client.IsAuthenticated()
+	details.AnonymousLoginAllowed = &anonymousAllowed
+	log.Info("Anonymous login capability determined",
+		svc1log.SafeParam("target", target),
+		svc1log.SafeParam("anonymousAllowed", anonymousAllowed))
+
+	guestAllowed := false // Will be determined during share enumeration
+	details.GuestLoginAllowed = &guestAllowed
+
+	nullSessionAllowed := anonymousAllowed // Typically the same
+	details.NullSessionAllowed = &nullSessionAllowed
+
+	// Set security settings from server info
+	if serverInfo != nil {
+		details.SigningRequired = &serverInfo.SigningRequired
+		details.EncryptionSupported = &serverInfo.EncryptionSupported
+	}
+
+	// Set raw response information
+	rawResponse := fmt.Sprintf("SMB2 Connection - Signing: %v, Encryption: %v",
+		serverInfo != nil && serverInfo.SigningRequired,
+		serverInfo != nil && serverInfo.EncryptionSupported)
+	details.RawResponse = &rawResponse
+
+	log.Info("SMB enumeration completed", svc1log.SafeParam("target", target))
+
+	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmbDetails(&details), errors
+}
+
+// convertToSmbServerInfo converts protocol library ServerInfo to fern ServerInfo
+func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *smb.ServerInfo {
+	if serverInfo == nil {
+		return nil
+	}
+
+	return &smb.ServerInfo{
+		ServerName:   &serverInfo.ServerName,
+		Domain:       &serverInfo.Domain,
+		OsVersion:    &serverInfo.OSVersion,
+		Capabilities: serverInfo.Capabilities,
+	}
+}
+
+// convertToSmbShares converts protocol library ShareInfo to fern SmbShare
+func convertToSmbShares(shares []*smbclient.ShareInfo) []*smb.SmbShare {
+	var smbShares []*smb.SmbShare
+
+	for _, share := range shares {
+		shareType := convertShareType(share.Type)
+		shareAccess := convertShareAccess(share.Access)
+
+		smbShare := &smb.SmbShare{
+			Name:            share.Name,
+			Type:            shareType,
+			Accessible:      share.Accessible,
+			Access:          &shareAccess,
+			AnonymousAccess: share.AnonymousAccess,
+			GuestAccess:     share.GuestAccess,
+		}
+
+		smbShares = append(smbShares, smbShare)
+	}
+
+	return smbShares
+}
+
+// convertShareType converts string share type to fern ShareType
+func convertShareType(shareType string) smb.ShareType {
+	switch shareType {
+	case "IPC":
+		return smb.ShareTypeIpc
+	case "Print":
+		return smb.ShareTypePrint
+	case "Disk":
+		return smb.ShareTypeDisk
+	default:
+		return smb.ShareTypeDisk
+	}
+}
+
+// convertShareAccess converts string share access to fern ShareAccess
+func convertShareAccess(access string) smb.ShareAccess {
+	switch access {
+	case "Read":
+		return smb.ShareAccessReadOnly
+	case "Write", "Full":
+		return smb.ShareAccessReadWrite
+	default:
+		return smb.ShareAccessNoAccess
+	}
+}
