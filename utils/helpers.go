@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // GetEntriesFromTXTFiles reads and combines entries from multiple text files.
@@ -34,4 +35,13 @@ func GetEntriesFromTXTFiles(paths []string) ([]string, error) {
 		entries = append(entries, lines...)
 	}
 	return entries, nil
+}
+
+// ParsePort converts a port string to an integer.
+// Returns 0 if the port string is invalid or out of range (1-65535).
+func ParsePort(portStr string) int {
+	if port, err := strconv.Atoi(portStr); err == nil && port > 0 && port <= 65535 {
+		return port
+	}
+	return 0
 }
