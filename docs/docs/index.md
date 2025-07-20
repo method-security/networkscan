@@ -23,9 +23,10 @@ Detailed enumeration of supported network services on target hosts.
 ### Pentest
 Penetration testing modules against network services.
 
-**Subcommands:**
-- `service` - Run penetration testing modules against network services
-  - `bruteforce` - Perform brute-force attacks against specified service modules
+**Available Services:**
+- `smb` - SMB penetration testing with authentication, command execution, and share enumeration
+- `ssh` - SSH penetration testing with authentication, command execution, and file transfer  
+- `telnet` - Telnet penetration testing with authentication and command execution
 
 ## Global Flags
 
@@ -44,5 +45,5 @@ For help with any command, use the `-h` or `--help` flag:
 networkscan -h
 networkscan discover -h
 networkscan enumerate service -h
-networkscan pentest service bruteforce -h
+networkscan pentest smb -h
 ```

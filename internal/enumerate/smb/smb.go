@@ -35,7 +35,7 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	// Attempt connection
 	err := client.ConnectWithContext(ctx)
 	if err != nil {
-		log.Error("Failed to connect to target", 
+		log.Error("Failed to connect to target",
 			svc1log.SafeParam("target", target),
 			svc1log.SafeParam("error", err))
 		errors = append(errors, fmt.Sprintf("Failed to connect to %s: %v", target, err))
@@ -60,7 +60,7 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	if serverInfo != nil {
 		smbServerInfo := convertToSmbServerInfo(serverInfo)
 		details.ServerInfo = smbServerInfo
-		log.Info("Extracted server info", 
+		log.Info("Extracted server info",
 			svc1log.SafeParam("target", target),
 			svc1log.SafeParam("server", serverInfo.ServerName),
 			svc1log.SafeParam("domain", serverInfo.Domain),
@@ -77,7 +77,7 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	if len(shares) > 0 {
 		smbShares := convertToSmbShares(shares)
 		details.Shares = smbShares
-		log.Info("Found shares", 
+		log.Info("Found shares",
 			svc1log.SafeParam("shareCount", len(shares)),
 			svc1log.SafeParam("target", target))
 
@@ -98,7 +98,7 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	// Set authentication capabilities
 	anonymousAllowed := client.IsAuthenticated()
 	details.AnonymousLoginAllowed = &anonymousAllowed
-	log.Info("Anonymous login capability determined", 
+	log.Info("Anonymous login capability determined",
 		svc1log.SafeParam("target", target),
 		svc1log.SafeParam("anonymousAllowed", anonymousAllowed))
 

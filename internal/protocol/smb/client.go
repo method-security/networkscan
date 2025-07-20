@@ -144,7 +144,7 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 	c.isAuthenticated = session.IsAuthenticated()
 
 	log := svc1log.FromContext(ctx)
-	log.Info("SMB connection established", 
+	log.Info("SMB connection established",
 		svc1log.SafeParam("host", c.Host),
 		svc1log.SafeParam("port", c.Port),
 		svc1log.SafeParam("authenticated", c.isAuthenticated))
@@ -253,7 +253,7 @@ func (c *Client) EnumerateSharesWithContext(ctx context.Context) ([]*ShareInfo, 
 		shares = append(shares, shareInfo)
 	}
 
-	log.Info("Share enumeration completed", 
+	log.Info("Share enumeration completed",
 		svc1log.SafeParam("totalShares", len(shares)),
 		svc1log.SafeParam("accessibleShares", c.countAccessibleShares(shares)))
 	return shares, nil
@@ -316,7 +316,7 @@ func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
 		}
 
 		log := svc1log.FromContext(ctx)
-		log.Info("Extracted server info", 
+		log.Info("Extracted server info",
 			svc1log.SafeParam("server", c.serverInfo.ServerName),
 			svc1log.SafeParam("domain", c.serverInfo.Domain),
 			svc1log.SafeParam("os", c.serverInfo.OSVersion))
