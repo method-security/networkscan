@@ -1,13 +1,14 @@
 package smb
 
 import (
+	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
 	gosmb "github.com/jfjallid/go-smb/smb"
 	"github.com/jfjallid/go-smb/spnego"
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // Client represents a unified SMB client that provides base functionality
@@ -92,6 +93,11 @@ func (c *Client) SetNullSession() {
 
 // Connect establishes connection to SMB server and performs authentication
 func (c *Client) Connect() error {
+	return c.ConnectWithContext(context.Background())
+}
+
+// ConnectWithContext establishes connection to SMB server and performs authentication with context
+func (c *Client) ConnectWithContext(ctx context.Context) error {
 	if c.isConnected {
 		return nil
 	}
@@ -137,11 +143,15 @@ func (c *Client) Connect() error {
 	c.isConnected = true
 	c.isAuthenticated = session.IsAuthenticated()
 
-	log.Printf("[INFO] SMB connection established to %s:%d, authenticated: %v", c.Host, c.Port, c.isAuthenticated)
+	log := svc1log.FromContext(ctx)
+	log.Info("SMB connection established", 
+		svc1log.SafeParam("host", c.Host),
+		svc1log.SafeParam("port", c.Port),
+		svc1log.SafeParam("authenticated", c.isAuthenticated))
 
 	// Extract server information
-	if err := c.extractServerInfo(); err != nil {
-		log.Printf("[WARNING] Failed to extract server info: %v", err)
+	if err := c.extractServerInfoWithContext(ctx); err != nil {
+		log.Warn("Failed to extract server info", svc1log.SafeParam("error", err))
 	}
 
 	return nil
@@ -205,6 +215,11 @@ func (c *Client) TestCredentials(username, password, domain string) (bool, strin
 
 // EnumerateShares lists available shares using TreeConnect testing
 func (c *Client) EnumerateShares() ([]*ShareInfo, error) {
+	return c.EnumerateSharesWithContext(context.Background())
+}
+
+// EnumerateSharesWithContext lists available shares using TreeConnect testing with context
+func (c *Client) EnumerateSharesWithContext(ctx context.Context) ([]*ShareInfo, error) {
 	if !c.isConnected {
 		return nil, fmt.Errorf("not connected to SMB server")
 	}
@@ -212,7 +227,8 @@ func (c *Client) EnumerateShares() ([]*ShareInfo, error) {
 	commonShares := []string{"C$", "D$", "E$", "ADMIN$", "IPC$", "PRINT$", "FAX$", "SYSVOL", "NETLOGON", "Users", "Public", "Share", "Data", "Files", "Shared", "Transfer", "Backup", "Archive", "Home", "Homes"}
 	var shares []*ShareInfo
 
-	log.Printf("[INFO] Testing %d common share names for accessibility", len(commonShares))
+	log := svc1log.FromContext(ctx)
+	log.Info("Testing common share names for accessibility", svc1log.SafeParam("shareCount", len(commonShares)))
 
 	for _, shareName := range commonShares {
 		shareInfo := &ShareInfo{
@@ -237,7 +253,9 @@ func (c *Client) EnumerateShares() ([]*ShareInfo, error) {
 		shares = append(shares, shareInfo)
 	}
 
-	log.Printf("[INFO] Found %d total shares, %d accessible", len(shares), c.countAccessibleShares(shares))
+	log.Info("Share enumeration completed", 
+		svc1log.SafeParam("totalShares", len(shares)),
+		svc1log.SafeParam("accessibleShares", c.countAccessibleShares(shares)))
 	return shares, nil
 }
 
@@ -253,6 +271,11 @@ func (c *Client) Close() error {
 
 // extractServerInfo extracts server information from the SMB session
 func (c *Client) extractServerInfo() error {
+	return c.extractServerInfoWithContext(context.Background())
+}
+
+// extractServerInfoWithContext extracts server information from the SMB session with context
+func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
 	if c.session == nil {
 		return fmt.Errorf("no active session")
 	}
@@ -292,11 +315,15 @@ func (c *Client) extractServerInfo() error {
 			c.serverInfo.OSVersion = "Windows Server"
 		}
 
-		log.Printf("[INFO] Extracted server info - Server: %s, Domain: %s, OS: %s",
-			c.serverInfo.ServerName, c.serverInfo.Domain, c.serverInfo.OSVersion)
+		log := svc1log.FromContext(ctx)
+		log.Info("Extracted server info", 
+			svc1log.SafeParam("server", c.serverInfo.ServerName),
+			svc1log.SafeParam("domain", c.serverInfo.Domain),
+			svc1log.SafeParam("os", c.serverInfo.OSVersion))
 	} else {
 		c.serverInfo.OSVersion = "Windows Server"
-		log.Printf("[WARNING] NTLM target info not available")
+		log := svc1log.FromContext(ctx)
+		log.Warn("NTLM target info not available")
 	}
 
 	return nil

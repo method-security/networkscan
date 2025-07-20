@@ -3,11 +3,12 @@ package smb
 import (
 	"context"
 	"fmt"
-	"log"
 
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	smb "github.com/Method-Security/networkscan/generated/go/enumerate/smb"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
+	"github.com/Method-Security/networkscan/utils"
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // LibraryEnumerateSMB implements NetworkApplicationLibrary for SMB enumeration using the shared protocol library.
@@ -19,9 +20,10 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	details.Target = target
 	errors := []string{}
 
-	log.Printf("[INFO] Starting SMB enumeration for target: %s", target)
+	log := svc1log.FromContext(ctx)
+	log.Info("Starting SMB enumeration for target", svc1log.SafeParam("target", target))
 
-	host, port := extractHostPort(target)
+	host, port := utils.ExtractHostPort(target)
 	if port == 0 {
 		port = 445 // Default SMB port
 	}
@@ -31,15 +33,17 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	client.SetNullSession() // Use null session for enumeration
 
 	// Attempt connection
-	err := client.Connect()
+	err := client.ConnectWithContext(ctx)
 	if err != nil {
-		log.Printf("[ERROR] Failed to connect to %s: %v", target, err)
+		log.Error("Failed to connect to target", 
+			svc1log.SafeParam("target", target),
+			svc1log.SafeParam("error", err))
 		errors = append(errors, fmt.Sprintf("Failed to connect to %s: %v", target, err))
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmbDetails(&details), errors
 	}
 	defer func() { _ = client.Close() }()
 
-	log.Printf("[INFO] Successfully connected to %s", target)
+	log.Info("Successfully connected to target", svc1log.SafeParam("target", target))
 
 	// Set SMB version information - using SMB3.0.2 as default
 	version := smb.SmbVersionSmb302
@@ -56,13 +60,16 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	if serverInfo != nil {
 		smbServerInfo := convertToSmbServerInfo(serverInfo)
 		details.ServerInfo = smbServerInfo
-		log.Printf("[INFO] Extracted server info for %s - Server: %s, Domain: %s, OS: %s",
-			target, serverInfo.ServerName, serverInfo.Domain, serverInfo.OSVersion)
+		log.Info("Extracted server info", 
+			svc1log.SafeParam("target", target),
+			svc1log.SafeParam("server", serverInfo.ServerName),
+			svc1log.SafeParam("domain", serverInfo.Domain),
+			svc1log.SafeParam("os", serverInfo.OSVersion))
 	}
 
 	// Enumerate shares using the protocol library
-	log.Printf("[INFO] Enumerating shares for %s", target)
-	shares, shareErr := client.EnumerateShares()
+	log.Info("Enumerating shares", svc1log.SafeParam("target", target))
+	shares, shareErr := client.EnumerateSharesWithContext(ctx)
 	if shareErr != nil {
 		errors = append(errors, fmt.Sprintf("Share enumeration failed: %v", shareErr))
 	}
@@ -70,7 +77,9 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	if len(shares) > 0 {
 		smbShares := convertToSmbShares(shares)
 		details.Shares = smbShares
-		log.Printf("[INFO] Found %d shares for %s", len(shares), target)
+		log.Info("Found shares", 
+			svc1log.SafeParam("shareCount", len(shares)),
+			svc1log.SafeParam("target", target))
 
 		// Check if this appears to be a domain controller
 		if serverInfo != nil && client.DetectDomainController(shares) {
@@ -89,7 +98,9 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	// Set authentication capabilities
 	anonymousAllowed := client.IsAuthenticated()
 	details.AnonymousLoginAllowed = &anonymousAllowed
-	log.Printf("[INFO] Anonymous login allowed for %s: %v", target, anonymousAllowed)
+	log.Info("Anonymous login capability determined", 
+		svc1log.SafeParam("target", target),
+		svc1log.SafeParam("anonymousAllowed", anonymousAllowed))
 
 	guestAllowed := false // Will be determined during share enumeration
 	details.GuestLoginAllowed = &guestAllowed
@@ -109,7 +120,7 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 		serverInfo != nil && serverInfo.EncryptionSupported)
 	details.RawResponse = &rawResponse
 
-	log.Printf("[INFO] SMB enumeration completed for %s", target)
+	log.Info("SMB enumeration completed", svc1log.SafeParam("target", target))
 
 	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmbDetails(&details), errors
 }
