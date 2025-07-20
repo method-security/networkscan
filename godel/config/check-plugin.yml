@@ -16,7 +16,8 @@ checks:
         - main.go
   importalias:
     exclude:
-      paths: []
+      paths:
+        - generated/**
   errcheck:
     exclude:
       paths:
