@@ -72,8 +72,93 @@ The tool follows a modular architecture with clear separation of concerns:
 
 ## Development Patterns
 
+### CLI Development Conventions
+- Follow the CLI Development Conventions for attack stage organization
+- Use `<stage>Cmd` in camelCase for top-level commands (e.g., `discoverCmd`)
+- Use `<stage><Component>Cmd` for subcommands (e.g., `discoverHostCmd`)
+- Implement Run functions with action verbs (e.g., `RunHostDiscovery`, `RunPortScan`)
+
+### Flag Naming and Handling
+- Use kebab-case for CLI flags: `--scan-type`
+- Use camelCase when extracting flags: `scanType, err := cmd.Flags().GetString("scan-type")`
+- Always check errors when extracting flags:
+  ```go
+  if err != nil {
+      a.OutputSignal.AddError(err)
+      return
+  }
+  ```
+- Use `.GetStringSlice` for slice inputs with plural flag names
+- Mark required flags explicitly: `_ = cmd.MarkFlagRequired("target")`
+
+### Code Organization
+- Repository organized by attack stage (`discover`, `enumerate`, `pentest`)
+- Mirror naming between `fern/definition/<stage>/<component>.yml`, `internal/<stage>/<component>.go`, and `cmd/<stage>.go`
+- Use subdirectories for complex components, flat files for simple ones
+
+### Fern Type Requirements
+- **MANDATORY**: Every CLI command with output must have a corresponding Fern report structure
+- **Three-Part Structure Pattern**: All commands must define:
+  ```yaml
+  # 1. Config type for input parameters
+  <Stage><Component>Config:
+    properties:
+      # Command-specific configuration parameters
+      target: string
+      timeout: optional<integer>
+  
+  # 2. Result type for output data
+  <Stage><Component>Result:
+    properties:
+      # Command-specific result data
+      hosts: optional<list<HostDetail>>
+      services: optional<list<ServiceDetail>>
+  
+  # 3. Report type wrapping config, result, and errors
+  <Stage><Component>Report:
+    properties:
+      config: <Stage><Component>Config
+      result: <Stage><Component>Result
+      errors: optional<list<string>>
+  ```
+- **Example Implementation**:
+  ```yaml
+  DiscoverTlsConfig:
+    properties:
+      target: string
+      timeout: integer
+      insecureSkipVerify: boolean
+  
+  DiscoverTlsResult:
+    properties:
+      tlsDetails: optional<list<TlsDetail>>
+  
+  DiscoverTlsReport:
+    properties:
+      config: DiscoverTlsConfig
+      result: DiscoverTlsResult
+      errors: optional<list<string>>
+  ```
+- **Type Organization**: Follow the CLI Development Conventions type ordering:
+  1. ENUMs (e.g., `TlsVersion`, `ScanType`)
+  2. Common Objects (e.g., `Certificate`, `ServiceDetail`)
+  3. Config Types (e.g., `DiscoverTlsConfig`)
+  4. Result Types (e.g., `DiscoverTlsResult`)
+  5. Report Types (e.g., `DiscoverTlsReport`)
+
+### Development Commands
+```bash
+# MANDATORY: Run after completing TODOs to ensure code can be merged
+./godelw verify
+
+# Build the binary
+./godelw build
+```
+
+### General Patterns
 - Use svc1log for all logging operations
 - Follow existing code patterns for new protocol support
 - Maintain separation between discovery, enumeration, and penetration testing
 - Shared protocol libraries should be used across modules for consistency
 - Configuration through Fern definitions for type safety
+- **CRITICAL**: Always run `./godelw verify` after TODO completion before merging
