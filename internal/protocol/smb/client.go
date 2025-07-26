@@ -102,11 +102,13 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 		return nil
 	}
 
-	// Create SMB connection options
+	// Create SMB connection options (matching go-secdump defaults)
 	options := gosmb.Options{
-		Host:        c.Host,
-		Port:        c.Port,
-		DialTimeout: c.Timeout,
+		Host:              c.Host,
+		Port:              c.Port,
+		DialTimeout:       c.Timeout,
+		DisableEncryption: false, // Allow encryption (key fix)
+		// Remove workstation name that might be filtered
 	}
 
 	// Set up authentication based on configuration
@@ -120,11 +122,12 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 			Password: "",
 		}
 	} else if c.Username != "" || c.Password != "" {
+		// Match go-secdump configuration more closely
 		options.Initiator = &spnego.NTLMInitiator{
 			User:      c.Username,
 			Password:  c.Password,
 			Domain:    c.Domain,
-			LocalUser: c.Domain == "",
+			LocalUser: false, // Don't assume local user
 		}
 	} else {
 		// Default to null session if no credentials provided
@@ -248,6 +251,7 @@ func (c *Client) EnumerateSharesWithContext(ctx context.Context) ([]*ShareInfo, 
 			shareInfo.Accessible = true
 			shareInfo.Access = "Read" // Assume read access if TreeConnect succeeded
 			_ = c.session.TreeDisconnect(shareName)
+
 		}
 
 		shares = append(shares, shareInfo)
@@ -354,25 +358,10 @@ func (c *Client) countAccessibleShares(shares []*ShareInfo) int {
 	return count
 }
 
-// DetectDomainController checks if the server appears to be a domain controller
-func (c *Client) DetectDomainController(shares []*ShareInfo) bool {
-	if c.serverInfo == nil {
-		return false
+// GetSMBSession returns the underlying go-smb connection for DCE/RPC operations
+func (c *Client) GetSMBSession() (*gosmb.Connection, error) {
+	if !c.isConnected || c.session == nil {
+		return nil, fmt.Errorf("no active SMB session")
 	}
-
-	// Check for typical DC naming patterns
-	if strings.Contains(strings.ToLower(c.serverInfo.ServerName), "dc") ||
-		strings.Contains(strings.ToLower(c.serverInfo.ServerName), "domain") {
-		return true
-	}
-
-	// Check for domain controller specific shares
-	for _, share := range shares {
-		shareName := strings.ToUpper(share.Name)
-		if shareName == "SYSVOL" || shareName == "NETLOGON" {
-			return true
-		}
-	}
-
-	return false
+	return c.session, nil
 }

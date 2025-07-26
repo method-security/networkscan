@@ -186,10 +186,13 @@ github.com/inconshreveable/mousetrap
 ## explicit; go 1.24
 github.com/jfjallid/go-smb/gss
 github.com/jfjallid/go-smb/krb5ssp
+github.com/jfjallid/go-smb/msdtyp
 github.com/jfjallid/go-smb/ntlmssp
 github.com/jfjallid/go-smb/smb
 github.com/jfjallid/go-smb/smb/crypto/ccm
 github.com/jfjallid/go-smb/smb/crypto/cmac
+github.com/jfjallid/go-smb/smb/dcerpc
+github.com/jfjallid/go-smb/smb/dcerpc/msrrp
 github.com/jfjallid/go-smb/smb/encoder
 github.com/jfjallid/go-smb/spnego
 # github.com/jfjallid/gofork v1.7.6

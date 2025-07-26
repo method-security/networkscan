@@ -89,14 +89,6 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 			svc1log.SafeParam("shareCount", len(shares)),
 			svc1log.SafeParam("target", target))
 
-		// Check if this appears to be a domain controller
-		if serverInfo != nil && client.DetectDomainController(shares) {
-			enhancedOSVersion := serverInfo.OSVersion + " (Domain Controller)"
-			smbServerInfo := details.ServerInfo
-			if smbServerInfo != nil {
-				smbServerInfo.OsVersion = &enhancedOSVersion
-			}
-		}
 	}
 
 	// Set authentication method information
