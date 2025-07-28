@@ -41,92 +41,81 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	// Create SMB client using shared protocol library
 	client := smbclient.NewClient(host, port)
 
-	// Try multiple connection methods and extract server info from any successful NTLM challenge
+	// Test all connection methods and extract server info
 	var serverInfo *smbclient.ServerInfo
-	var connectionSuccessful bool
 	var authAttempts []*smbfern.AuthAttempt
+	var nullSessionAllowed, anonymousAllowed, guestAllowed bool
+	var connectionSuccessful bool
 
-	// Try null session first
+	// Test null session
 	client.SetNullSession()
 	err = client.ConnectWithContext(ctx)
-	nullSessionAttempt := &smbfern.AuthAttempt{
-		Username:  "",
+	if err == nil {
+		nullSessionAllowed = true
+		connectionSuccessful = true
+		log.Info("Null session allowed", svc1log.SafeParam("target", target))
+		if client.GetServerInfo() != nil {
+			serverInfo = client.GetServerInfo()
+		}
+		_ = client.Close()
+	} else {
+		log.Debug("Null session failed", svc1log.SafeParam("error", err.Error()))
+	}
+
+	// Test anonymous connection
+	client.SetAnonymous()
+	err = client.ConnectWithContext(ctx)
+	if err == nil {
+		anonymousAllowed = true
+		connectionSuccessful = true
+		log.Info("Anonymous login allowed", svc1log.SafeParam("target", target))
+		if serverInfo == nil && client.GetServerInfo() != nil {
+			serverInfo = client.GetServerInfo()
+		}
+		_ = client.Close()
+	} else {
+		log.Debug("Anonymous connection failed", svc1log.SafeParam("error", err.Error()))
+	}
+
+	// Test guest authentication (this is a real credential-based auth attempt)
+	client.SetCredentials("guest", "", "")
+	err = client.ConnectWithContext(ctx)
+	guestAttempt := &smbfern.AuthAttempt{
+		Username:  "guest",
 		Password:  "",
 		Success:   err == nil,
 		Timestamp: time.Now(),
 	}
-	if err != nil {
-		nullSessionAttempt.Message = err.Error()
-		log.Debug("Null session connection failed", svc1log.SafeParam("error", err.Error()))
-
-		// Try anonymous connection
-		client.SetAnonymous()
-		err = client.ConnectWithContext(ctx)
-		anonymousAttempt := &smbfern.AuthAttempt{
-			Username:  "anonymous",
-			Password:  "",
-			Success:   err == nil,
-			Timestamp: time.Now(),
-		}
-		if err != nil {
-			anonymousAttempt.Message = err.Error()
-			log.Debug("Anonymous connection failed", svc1log.SafeParam("error", err.Error()))
-
-			// Try guest connection
-			client.SetCredentials("guest", "", "")
-			err = client.ConnectWithContext(ctx)
-			guestAttempt := &smbfern.AuthAttempt{
-				Username:  "guest",
-				Password:  "",
-				Success:   err == nil,
-				Timestamp: time.Now(),
-			}
-			if err != nil {
-				guestAttempt.Message = err.Error()
-				log.Debug("Guest connection failed", svc1log.SafeParam("error", err.Error()))
-
-				// Try to extract server info from the failed connection attempts
-				// The NTLM challenge should have occurred during the connection attempts
-				if client.GetServerInfo() != nil {
-					serverInfo = client.GetServerInfo()
-					log.Info("Successfully extracted server info from failed connection NTLM challenge",
-						svc1log.SafeParam("target", target),
-						svc1log.SafeParam("server", serverInfo.ServerName),
-						svc1log.SafeParam("domain", serverInfo.Domain),
-						svc1log.SafeParam("os", serverInfo.OSVersion))
-				}
-
-				// Add connection error to errors list
-				errors = append(errors, fmt.Sprintf("Failed to connect to %s: %v", target, err))
-				log.Debug("Connection failed",
-					svc1log.SafeParam("target", target),
-					svc1log.SafeParam("error", err.Error()),
-					svc1log.SafeParam("errorType", fmt.Sprintf("%T", err)))
-				connectionSuccessful = false
-			} else {
-				guestAttempt.Message = "Guest login allowed"
-				connectionSuccessful = true
-				log.Info("Successfully connected with guest credentials", svc1log.SafeParam("target", target))
-			}
-			authAttempts = append(authAttempts, guestAttempt)
-		} else {
-			anonymousAttempt.Message = "Anonymous login allowed"
-			connectionSuccessful = true
-			log.Info("Successfully connected with anonymous credentials", svc1log.SafeParam("target", target))
-		}
-		authAttempts = append(authAttempts, anonymousAttempt)
-	} else {
-		nullSessionAttempt.Message = "Null session allowed"
+	if err == nil {
+		guestAllowed = true
 		connectionSuccessful = true
-		log.Info("Successfully connected with null session", svc1log.SafeParam("target", target))
+		guestAttempt.Message = "Guest authentication successful"
+		log.Info("Guest authentication allowed", svc1log.SafeParam("target", target))
+		if serverInfo == nil && client.GetServerInfo() != nil {
+			serverInfo = client.GetServerInfo()
+		}
+		_ = client.Close()
+	} else {
+		guestAttempt.Message = err.Error()
+		log.Debug("Guest authentication failed", svc1log.SafeParam("error", err.Error()))
 	}
-	authAttempts = append(authAttempts, nullSessionAttempt)
+	authAttempts = append(authAttempts, guestAttempt)
 
-	if connectionSuccessful {
-		defer func() { _ = client.Close() }()
-		// Extract server info from successful connection
-		serverInfo = client.GetServerInfo()
+	// If all connections failed, try to extract server info from NTLM challenge
+	if !connectionSuccessful {
+		if client.GetServerInfo() != nil {
+			serverInfo = client.GetServerInfo()
+			log.Info("Extracted server info from NTLM challenge despite connection failures",
+				svc1log.SafeParam("target", target),
+				svc1log.SafeParam("server", serverInfo.ServerName),
+				svc1log.SafeParam("domain", serverInfo.Domain),
+				svc1log.SafeParam("os", serverInfo.OSVersion))
+		}
+		errors = append(errors, fmt.Sprintf("All connection methods failed for %s", target))
 	}
+
+	// Final cleanup - close any remaining connection
+	defer func() { _ = client.Close() }()
 
 	// Set SMB version information and server info
 	if serverInfo != nil {
@@ -197,22 +186,7 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	authMethods := []smb.AuthMethod{smb.AuthMethodNtlm}
 	details.AuthMethods = authMethods
 
-	// Set authentication capabilities based on which connection method succeeded
-	var nullSessionAllowed, anonymousAllowed, guestAllowed bool
-
-	if connectionSuccessful {
-		// Determine which authentication method worked based on client state
-		if client.UseNullSession {
-			nullSessionAllowed = true
-			log.Info("Null session authentication allowed", svc1log.SafeParam("target", target))
-		} else if client.UseAnonymous {
-			anonymousAllowed = true
-			log.Info("Anonymous authentication allowed", svc1log.SafeParam("target", target))
-		} else if client.Username == "guest" {
-			guestAllowed = true
-			log.Info("Guest authentication allowed", svc1log.SafeParam("target", target))
-		}
-	}
+	// Authentication capabilities are already determined above
 
 	details.AnonymousLoginAllowed = &anonymousAllowed
 	details.GuestLoginAllowed = &guestAllowed
