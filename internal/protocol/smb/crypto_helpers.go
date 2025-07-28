@@ -12,30 +12,9 @@ import (
 	"fmt"
 	"hash"
 	"math/bits"
-	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/pbkdf2"
-)
-
-// Windows version constants
-const (
-	WinUnknown = iota
-	WinXP
-	WinServer2003
-	WinVista
-	WinServer2008
-	Win7
-	WinServer2008R2
-	Win8
-	WinServer2012
-	Win81
-	WinServer2012R2
-	Win10
-	WinServer2016
-	WinServer2019
-	WinServer2022
-	Win11
 )
 
 // Global variables for cryptographic operations
@@ -50,58 +29,6 @@ var (
 )
 
 var aes256Constant = []byte{0x6B, 0x65, 0x72, 0x62, 0x65, 0x72, 0x6F, 0x73, 0x7B, 0x9B, 0x5B, 0x2B, 0x93, 0x13, 0x2B, 0x93, 0x5C, 0x9B, 0xDC, 0xDA, 0xD9, 0x5C, 0x98, 0x99, 0xC4, 0xCA, 0xE4, 0xDE, 0xE6, 0xD6, 0xCA, 0xE4}
-
-// GetOSVersion determines Windows OS version from build and version info
-func GetOSVersion(currentBuild int, currentVersion float64, server bool) byte {
-	currentVersionStr := strconv.FormatFloat(currentVersion, 'f', 1, 64)
-	if server {
-		switch {
-		case currentBuild >= 3790 && currentBuild < 6001:
-			return WinServer2003
-		case currentBuild >= 6001 && currentBuild < 7601:
-			return WinServer2008
-		case currentBuild >= 7601 && currentBuild < 9200:
-			return WinServer2008R2
-		case currentBuild >= 9200 && currentBuild < 9600:
-			return WinServer2012
-		case currentBuild >= 9200 && currentBuild < 14393:
-			return WinServer2012R2
-		case currentBuild >= 14393 && currentBuild < 17763:
-			return WinServer2016
-		case currentBuild >= 17763 && currentBuild < 20348:
-			return WinServer2019
-		case currentBuild >= 20348:
-			return WinServer2022
-		default:
-			return WinUnknown
-		}
-	} else {
-		switch currentVersionStr {
-		case "5.1":
-			return WinXP
-		case "6.0":
-			return WinVista
-		case "6.1":
-			return Win7
-		case "6.2":
-			return Win8
-		case "6.3":
-			return Win81
-		case "10.0":
-			if currentBuild < 22000 {
-				return Win10
-			}
-			return Win11
-		default:
-			return WinUnknown
-		}
-	}
-}
-
-// IsWin10After1607 checks if Windows version is Windows 10 Anniversary Update or later
-func IsWin10After1607(build int, version float64) (bool, error) {
-	return build >= 14393, nil
-}
 
 // SHA256 performs SHA-256 hash with multiple rounds
 func SHA256(key, value []byte, rounds int) []byte {
