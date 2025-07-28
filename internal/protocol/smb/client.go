@@ -101,41 +101,27 @@ func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*ServerInf
 	log := svc1log.FromContext(ctx)
 	log.Debug("Starting ExtractServerInfoFromChallenge using go-smb NTLM challenge", svc1log.SafeParam("host", c.Host), svc1log.SafeParam("port", c.Port))
 
-	// Create SMB connection with dummy credentials to trigger NTLM challenge
-	// The key is that even if authentication fails, the NTLM challenge will contain server info
-	options := gosmb.Options{
-		Host:              c.Host,
-		Port:              c.Port,
-		DialTimeout:       c.Timeout,
-		DisableEncryption: false,
-	}
+	// If we don't have an existing session, try to establish one with null session
+	if c.session == nil {
+		// Set up null session temporarily
+		originalNullSession := c.UseNullSession
+		c.UseNullSession = true
 
-	// Use dummy credentials to force NTLM challenge - we don't care if auth succeeds
-	options.Initiator = &spnego.NTLMInitiator{
-		User:     "networkscan", // Dummy username
-		Password: "dummy",       // Dummy password
-		Domain:   "",            // No domain initially
-	}
-
-	log.Debug("Creating SMB connection to trigger NTLM challenge")
-	session, err := gosmb.NewConnection(options)
-
-	// We expect this might fail, but the NTLM challenge should still have occurred
-	if err != nil {
-		log.Debug("SMB connection failed as expected", svc1log.SafeParam("error", err.Error()))
-		// Even if connection failed, the session might still have target info from the challenge
-		if session == nil {
-			return nil, fmt.Errorf("failed to establish SMB connection and no session available: %v", err)
+		err := c.ConnectWithContext(ctx)
+		if err != nil {
+			log.Debug("Failed to establish null session for server info extraction", svc1log.SafeParam("error", err.Error()))
+			// Even if connection failed, check if we got a session with target info
+			if c.session == nil {
+				return nil, fmt.Errorf("failed to establish session for server info extraction: %v", err)
+			}
 		}
+
+		// Restore original null session setting
+		c.UseNullSession = originalNullSession
 	}
 
-	// Ensure we clean up the session
-	if session != nil {
-		defer session.Close()
-	}
-
-	// Extract target info from the NTLM challenge
-	targetInfo := session.GetTargetInfo()
+	// Extract target info from the NTLM challenge in current session
+	targetInfo := c.session.GetTargetInfo()
 	if targetInfo == nil {
 		log.Debug("No target info available from NTLM challenge")
 		return nil, fmt.Errorf("no target info available from NTLM challenge")
@@ -145,7 +131,7 @@ func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*ServerInf
 
 	// Convert go-smb TargetInfo to our ServerInfo structure
 	serverInfo := &ServerInfo{
-		SigningRequired: session.IsSigningRequired(),
+		SigningRequired: c.session.IsSigningRequired(),
 	}
 
 	// Extract server information from target info
