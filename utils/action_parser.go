@@ -43,7 +43,7 @@ func (p *SMBActionParser) ParseActions(actionStrings []string) ([]*pentest.Pente
 }
 
 func (p *SMBActionParser) GetValidActions() []string {
-	return []string{"auth", "command", "user_enum", "share_enum", "samdump", "lsadump"}
+	return []string{"auth", "samdump", "lsadump"}
 }
 
 func (p *SMBActionParser) ContainsAction(actions []*pentest.PentestAction, target interface{}) bool {
