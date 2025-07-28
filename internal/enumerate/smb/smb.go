@@ -62,6 +62,10 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 		}
 	} else {
 		log.Debug("Null session failed", svc1log.SafeParam("error", nullErr.Error()))
+		// Extract server info even if connection failed (from NTLM challenge)
+		if serverInfo == nil && nullClient.GetServerInfo() != nil {
+			serverInfo = nullClient.GetServerInfo()
+		}
 		_ = nullClient.Close()
 	}
 	
@@ -80,6 +84,10 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 			}
 		} else {
 			log.Debug("Anonymous connection failed", svc1log.SafeParam("error", anonErr.Error()))
+			// Extract server info even if connection failed (from NTLM challenge)
+			if serverInfo == nil && anonClient.GetServerInfo() != nil {
+				serverInfo = anonClient.GetServerInfo()
+			}
 			_ = anonClient.Close()
 		}
 	}
@@ -112,6 +120,10 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	} else {
 		guestAttempt.Message = guestErr.Error()
 		log.Debug("Guest authentication failed", svc1log.SafeParam("error", guestErr.Error()))
+		// Extract server info even if connection failed (from NTLM challenge)
+		if serverInfo == nil && guestClient.GetServerInfo() != nil {
+			serverInfo = guestClient.GetServerInfo()
+		}
 		_ = guestClient.Close()
 	}
 	authAttempts = append(authAttempts, guestAttempt)
@@ -121,16 +133,8 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 		client = workingClient
 	}
 
-	// If all connections failed, try to extract server info from NTLM challenge
+	// If all connections failed, log the error
 	if !connectionSuccessful {
-		if client.GetServerInfo() != nil {
-			serverInfo = client.GetServerInfo()
-			log.Info("Extracted server info from NTLM challenge despite connection failures",
-				svc1log.SafeParam("target", target),
-				svc1log.SafeParam("server", serverInfo.ServerName),
-				svc1log.SafeParam("domain", serverInfo.Domain),
-				svc1log.SafeParam("os", serverInfo.OSVersion))
-		}
 		errors = append(errors, fmt.Sprintf("All connection methods failed for %s", target))
 	}
 
