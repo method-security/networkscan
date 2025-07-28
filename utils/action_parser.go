@@ -9,16 +9,16 @@ import (
 
 // ServiceActionParser defines the interface for parsing service-specific actions
 type ServiceActionParser interface {
-	ParseActions(actionStrings []string) ([]*pentest.PentestAction, error)
+	ParseActions(actionStrings []string) ([]*pentest.PentestServiceAction, error)
 	GetValidActions() []string
-	ContainsAction(actions []*pentest.PentestAction, target interface{}) bool
+	ContainsAction(actions []*pentest.PentestServiceAction, target interface{}) bool
 }
 
 // SMBActionParser handles SMB-specific action parsing
 type SMBActionParser struct{}
 
-func (p *SMBActionParser) ParseActions(actionStrings []string) ([]*pentest.PentestAction, error) {
-	var actions []*pentest.PentestAction
+func (p *SMBActionParser) ParseActions(actionStrings []string) ([]*pentest.PentestServiceAction, error) {
+	var actions []*pentest.PentestServiceAction
 
 	for _, actionStr := range actionStrings {
 		// Handle comma-separated actions in a single flag
@@ -34,7 +34,7 @@ func (p *SMBActionParser) ParseActions(actionStrings []string) ([]*pentest.Pente
 			if err != nil {
 				return nil, fmt.Errorf("invalid SMB action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
 			}
-			action := pentest.NewPentestActionFromSmb(smbAction)
+			action := pentest.NewPentestServiceActionFromSmb(smbAction)
 			actions = append(actions, action)
 		}
 	}
@@ -46,7 +46,7 @@ func (p *SMBActionParser) GetValidActions() []string {
 	return []string{"auth", "samdump", "lsadump"}
 }
 
-func (p *SMBActionParser) ContainsAction(actions []*pentest.PentestAction, target interface{}) bool {
+func (p *SMBActionParser) ContainsAction(actions []*pentest.PentestServiceAction, target interface{}) bool {
 	targetAction, ok := target.(pentest.PentestSmbAction)
 	if !ok {
 		return false
@@ -62,8 +62,8 @@ func (p *SMBActionParser) ContainsAction(actions []*pentest.PentestAction, targe
 // SSHActionParser handles SSH-specific action parsing
 type SSHActionParser struct{}
 
-func (p *SSHActionParser) ParseActions(actionStrings []string) ([]*pentest.PentestAction, error) {
-	var actions []*pentest.PentestAction
+func (p *SSHActionParser) ParseActions(actionStrings []string) ([]*pentest.PentestServiceAction, error) {
+	var actions []*pentest.PentestServiceAction
 
 	for _, actionStr := range actionStrings {
 		// Handle comma-separated actions in a single flag
@@ -79,7 +79,7 @@ func (p *SSHActionParser) ParseActions(actionStrings []string) ([]*pentest.Pente
 			if err != nil {
 				return nil, fmt.Errorf("invalid SSH action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
 			}
-			action := pentest.NewPentestActionFromSsh(sshAction)
+			action := pentest.NewPentestServiceActionFromSsh(sshAction)
 			actions = append(actions, action)
 		}
 	}
@@ -91,7 +91,7 @@ func (p *SSHActionParser) GetValidActions() []string {
 	return []string{"auth", "command", "user_enum", "file_transfer"}
 }
 
-func (p *SSHActionParser) ContainsAction(actions []*pentest.PentestAction, target interface{}) bool {
+func (p *SSHActionParser) ContainsAction(actions []*pentest.PentestServiceAction, target interface{}) bool {
 	targetAction, ok := target.(pentest.PentestSshAction)
 	if !ok {
 		return false
@@ -107,8 +107,8 @@ func (p *SSHActionParser) ContainsAction(actions []*pentest.PentestAction, targe
 // TelnetActionParser handles Telnet-specific action parsing
 type TelnetActionParser struct{}
 
-func (p *TelnetActionParser) ParseActions(actionStrings []string) ([]*pentest.PentestAction, error) {
-	var actions []*pentest.PentestAction
+func (p *TelnetActionParser) ParseActions(actionStrings []string) ([]*pentest.PentestServiceAction, error) {
+	var actions []*pentest.PentestServiceAction
 
 	for _, actionStr := range actionStrings {
 		// Handle comma-separated actions in a single flag
@@ -124,7 +124,7 @@ func (p *TelnetActionParser) ParseActions(actionStrings []string) ([]*pentest.Pe
 			if err != nil {
 				return nil, fmt.Errorf("invalid Telnet action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
 			}
-			action := pentest.NewPentestActionFromTelnet(telnetAction)
+			action := pentest.NewPentestServiceActionFromTelnet(telnetAction)
 			actions = append(actions, action)
 		}
 	}
@@ -136,7 +136,7 @@ func (p *TelnetActionParser) GetValidActions() []string {
 	return []string{"auth", "command"}
 }
 
-func (p *TelnetActionParser) ContainsAction(actions []*pentest.PentestAction, target interface{}) bool {
+func (p *TelnetActionParser) ContainsAction(actions []*pentest.PentestServiceAction, target interface{}) bool {
 	targetAction, ok := target.(pentest.PentestTelnetAction)
 	if !ok {
 		return false
@@ -153,7 +153,7 @@ func (p *TelnetActionParser) ContainsAction(actions []*pentest.PentestAction, ta
 type ActionUtil struct{}
 
 // ContainsAction checks if actions contain a specific target action (generic version)
-func (au *ActionUtil) ContainsAction(actions []*pentest.PentestAction, serviceType string, target interface{}) bool {
+func (au *ActionUtil) ContainsAction(actions []*pentest.PentestServiceAction, serviceType string, target interface{}) bool {
 	switch serviceType {
 	case "smb":
 		if targetAction, ok := target.(pentest.PentestSmbAction); ok {
