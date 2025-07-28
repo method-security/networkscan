@@ -3,7 +3,6 @@ package smb
 import (
 	"context"
 	"fmt"
-	"net"
 	"time"
 
 	smbfern "github.com/Method-Security/networkscan/generated/go/common/smb"
@@ -26,17 +25,7 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	log := svc1log.FromContext(ctx)
 	log.Info("Starting SMB enumeration for target", svc1log.SafeParam("target", target))
 
-	host, portStr, err := net.SplitHostPort(target)
-	port := 445 // Default SMB port
-	if err == nil {
-		// Port was provided, try to parse it
-		if p := utils.ParsePort(portStr); p > 0 {
-			port = p
-		}
-	} else {
-		// No port provided, use target as host
-		host = target
-	}
+	host, port := utils.ParseHostPort(target, 445)
 
 	// Create SMB client using shared protocol library
 	client := smbclient.NewClient(host, port)

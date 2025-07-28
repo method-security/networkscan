@@ -154,12 +154,15 @@ func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*ServerInf
 		serverInfo.OSVersion = "Windows Server"
 	}
 
-	// Set default capabilities and versions
-	serverInfo.Capabilities = []string{"DFS", "Leasing"}
+	// Set capabilities based on actual server state
+	var capabilities []string
 	if serverInfo.SigningRequired {
-		serverInfo.Capabilities = append(serverInfo.Capabilities, "Signing")
+		capabilities = append(capabilities, "Signing")
 	}
-	serverInfo.SupportedVersions = []string{"SMB3.0.2", "SMB3.0", "SMB2.1", "SMB2.0"}
+	serverInfo.Capabilities = capabilities
+
+	// SupportedVersions should be extracted from actual SMB negotiation, not hardcoded
+	serverInfo.SupportedVersions = []string{}
 
 	log.Debug("Successfully extracted server info from NTLM challenge",
 		svc1log.SafeParam("serverName", serverInfo.ServerName),
