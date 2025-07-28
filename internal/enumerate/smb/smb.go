@@ -68,7 +68,7 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 		}
 		_ = nullClient.Close()
 	}
-	
+
 	// Test anonymous connection if null session failed
 	if !connectionSuccessful {
 		anonClient := smbclient.NewClient(host, port)
