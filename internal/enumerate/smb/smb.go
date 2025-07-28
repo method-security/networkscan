@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	smbfern "github.com/Method-Security/networkscan/generated/go/common/smb"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	smb "github.com/Method-Security/networkscan/generated/go/enumerate/smb"
+	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
 	"github.com/Method-Security/networkscan/utils"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"

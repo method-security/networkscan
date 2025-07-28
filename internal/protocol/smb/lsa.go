@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	smbfern "github.com/Method-Security/networkscan/generated/go/common/smb"
+	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	gosmb "github.com/jfjallid/go-smb/smb"
 	"github.com/jfjallid/go-smb/smb/dcerpc/msrrp"
 	"github.com/jfjallid/go-smb/smb/encoder"

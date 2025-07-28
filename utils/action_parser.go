@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	pentest "github.com/Method-Security/networkscan/generated/go/common/pentest"
+	pentest "github.com/Method-Security/networkscan/generated/go/pentest"
 )
 
 // ServiceActionParser defines the interface for parsing service-specific actions
