@@ -105,50 +105,50 @@ func IsWin10After1607(build int, version float64) (bool, error) {
 
 // SHA256 performs SHA-256 hash with multiple rounds
 func SHA256(key, value []byte, rounds int) []byte {
-	if rounds == 0 {
-		rounds = 1000
-	}
+	_ = rounds // Explicitly ignore rounds parameter to match go-secdump bug
 	h := sha256.New()
 	h.Write(key)
-	for i := 0; i < rounds; i++ {
+	for i := 0; i < 1000; i++ { // HARDCODED to match go-secdump bug
 		h.Write(value)
 	}
 	return h.Sum(nil)
 }
 
-// DecryptAES decrypts data using AES with CBC mode
+// DecryptAES decrypts data using AES with CBC mode (go-secdump compatible)
 func DecryptAES(key, ciphertext, iv []byte) ([]byte, error) {
 	nullIV := true
-	if iv != nil {
-		for _, b := range iv {
-			if b != 0 {
-				nullIV = false
-				break
-			}
-		}
-	}
-
-	if nullIV || iv == nil {
-		iv = make([]byte, aes.BlockSize)
-	}
-
+	var mode cipher.BlockMode
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
-
-	if len(ciphertext) < aes.BlockSize {
-		return nil, fmt.Errorf("ciphertext too short")
+	if iv != nil {
+		mode = cipher.NewCBCDecrypter(block, iv)
+		nullIV = false
+	} else {
+		iv = make([]byte, 16)
 	}
-
-	if len(ciphertext)%aes.BlockSize != 0 {
-		return nil, fmt.Errorf("ciphertext is not a multiple of the block size")
+	ciphertextLen := len(ciphertext)
+	var plaintext []byte
+	var cipherBuffer []byte
+	for i := 0; i < ciphertextLen; i += 16 {
+		if nullIV {
+			mode = cipher.NewCBCDecrypter(block, iv)
+		}
+		// Need to calculate 16 bytes block every time and padd with 0 if not enough bytes left
+		dataLeft := len(ciphertext[i:])
+		if dataLeft < 16 {
+			padding := 16 - dataLeft
+			cipherBuffer = ciphertext[i : i+dataLeft]
+			paddBuffer := make([]byte, padding)
+			cipherBuffer = append(cipherBuffer, paddBuffer...)
+		} else {
+			cipherBuffer = ciphertext[i : i+16]
+		}
+		// Decryption in-place
+		mode.CryptBlocks(cipherBuffer, cipherBuffer)
+		plaintext = append(plaintext, cipherBuffer...)
 	}
-
-	mode := cipher.NewCBCDecrypter(block, iv)
-	plaintext := make([]byte, len(ciphertext))
-	mode.CryptBlocks(plaintext, ciphertext)
-
 	return plaintext, nil
 }
 
@@ -284,21 +284,97 @@ func SHA256Hash(data []byte) []byte {
 
 // Kerberos and machine account key derivation
 
-// CalcMachineAESKeys calculates AES keys for machine account
-func CalcMachineAESKeys(hostname, domain string, password []byte) ([]byte, []byte, error) {
-	// Kerberos principal: hostname$@DOMAIN
-	principal := strings.ToUpper(hostname) + "$@" + strings.ToUpper(domain)
+// unicodeHexToUtf8 converts UTF-16LE bytes to UTF-8 string
+func unicodeHexToUtf8(utf16Bytes []byte) (string, error) {
+	if len(utf16Bytes)%2 > 0 {
+		return "", fmt.Errorf("Unicode (UTF 16 LE) specified, but uneven data length")
+	}
 
-	// Convert to UTF-8 bytes
-	principalBytes := []byte(principal)
+	utf16Data := make([]uint16, len(utf16Bytes)/2)
+	for i := 0; i < len(utf16Bytes); i += 2 {
+		utf16Data[i/2] = uint16(utf16Bytes[i]) | uint16(utf16Bytes[i+1])<<8
+	}
 
-	// Derive AES-128 key
-	aes128Constant := []byte{0x6B, 0x65, 0x72, 0x62, 0x65, 0x72, 0x6F, 0x73, 0x7B, 0x9B, 0x5B, 0x2B, 0x93, 0x13, 0x2B, 0x93}
-	aes128Key := pbkdf2.Key(password, append(principalBytes, aes128Constant...), 4096, 16, sha1.New)
+	// Convert UTF-16 to UTF-8
+	runes := make([]rune, 0, len(utf16Data))
+	for i := 0; i < len(utf16Data); i++ {
+		v := utf16Data[i]
+		if v < 0xD800 || v > 0xDFFF {
+			// Not a surrogate pair
+			runes = append(runes, rune(v))
+		} else if v >= 0xD800 && v <= 0xDBFF && i+1 < len(utf16Data) {
+			// High surrogate
+			low := utf16Data[i+1]
+			if low >= 0xDC00 && low <= 0xDFFF {
+				// Valid surrogate pair
+				r := 0x10000 + (rune(v&0x3FF) << 10) + rune(low&0x3FF)
+				runes = append(runes, r)
+				i++ // Skip the low surrogate
+			}
+		}
+	}
 
-	// Derive AES-256 key
-	aes256Key := pbkdf2.Key(password, append(principalBytes, aes256Constant...), 4096, 32, sha1.New)
+	return string(runes), nil
+}
 
+// calcAES128Key calculates AES-128 key using go-secdump method
+func calcAES128Key(key []byte) ([]byte, error) {
+	result := make([]byte, 16)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new AES cipher: %v", err)
+	}
+	iv := make([]byte, 16)
+	mode := cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(result, aes256Constant[:16])
+	return result, nil
+}
+
+// calcAES256Key calculates AES-256 key using go-secdump method
+func calcAES256Key(key []byte) ([]byte, error) {
+	key1 := make([]byte, 32)
+	key2 := make([]byte, 32)
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new AES cipher: %v", err)
+	}
+	iv := make([]byte, 16)
+	mode := cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(key1, aes256Constant)
+
+	block, err = aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create the second new AES cipher: %v", err)
+	}
+	mode = cipher.NewCBCEncrypter(block, iv)
+	mode.CryptBlocks(key2, key1)
+	result := append(key1[:16], key2[:16]...)
+	return result, nil
+}
+
+// CalcMachineAESKeys calculates AES keys for machine account (go-secdump compatible)
+func CalcMachineAESKeys(hostname, domain string, hexPass []byte) ([]byte, []byte, error) {
+	const ITERATIONS int = 4096 // Default for Active Directory
+
+	domain = strings.ToUpper(domain)
+	salt := fmt.Sprintf("%shost%s.%s", domain, strings.ToLower(hostname), strings.ToLower(domain))
+
+	val, err := unicodeHexToUtf8(hexPass)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to decode the MachineAccount's Unicode password: %v", err)
+	}
+	passBytes := []byte(val)
+
+	dk256 := pbkdf2.Key(passBytes, []byte(salt), ITERATIONS, 32, sha1.New)
+	dk128 := dk256[:16]
+	aes256Key, err := calcAES256Key(dk256)
+	if err != nil {
+		return nil, nil, err
+	}
+	aes128Key, err := calcAES128Key(dk128)
+	if err != nil {
+		return nil, nil, err
+	}
 	return aes128Key, aes256Key, nil
 }
 

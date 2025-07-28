@@ -1,11 +1,13 @@
+imports:
+  pentestSmb: ../../pentest/smb/smb.yml
+
 types:
   # Authentication methods
   AuthMethod:
     enum:
-      - ANONYMOUS
-      - GUEST
       - NTLM
       - KERBEROS
+  
   
   # Share types
   ShareType:
@@ -55,6 +57,7 @@ types:
       lanManagerVersion: optional<string>
       capabilities: optional<list<string>>
   
+  
   # Main enumeration details
   EnumerateSmbDetails:
     properties:
@@ -69,4 +72,5 @@ types:
       nullSessionAllowed: optional<boolean>
       signingRequired: optional<boolean>
       encryptionSupported: optional<boolean>
+      authAttempts: optional<list<pentestSmb.AuthAttempt>>
       rawResponse: optional<string>

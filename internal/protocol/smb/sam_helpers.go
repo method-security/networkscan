@@ -5,13 +5,13 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/hmac"
+	"crypto/des"
 	"crypto/md5"
 	"crypto/rc4"
-	"crypto/sha1"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math/bits"
 	"strconv"
 	"strings"
 	"unicode/utf16"
@@ -519,43 +519,40 @@ func DumpSAM(ctx context.Context, rpccon *msrrp.RPCCon, hKey []byte, modifyDacl 
 
 // Hash decryption functions
 
-// DecryptAESHash decrypts AES-encrypted NT hash
+// DecryptAESHash decrypts AES-encrypted NT hash using go-secdump's exact implementation
 func DecryptAESHash(data, iv, syskey []byte, rid uint32) ([]byte, error) {
-	// Create decryption key from syskey and RID
 	ridBytes := make([]byte, 4)
+	encHash := make([]byte, 16)
 	binary.LittleEndian.PutUint32(ridBytes, rid)
-
-	key := hmacSHA1(syskey, ridBytes)[:16]
-
-	block, err := aes.NewCipher(key)
+	a1, err := aes.NewCipher(syskey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to init AES key: %v", err)
 	}
-
-	mode := cipher.NewCBCDecrypter(block, iv)
-	decrypted := make([]byte, len(data))
-	mode.CryptBlocks(decrypted, data)
-
-	return decrypted, nil
+	c1 := cipher.NewCBCDecrypter(a1, iv)
+	c1.CryptBlocks(encHash, data)
+	ntHash, err := decryptNTHashWithRID(encHash, ridBytes)
+	return ntHash, err
 }
 
-// DecryptRC4Hash decrypts RC4-encrypted NT hash
+// DecryptRC4Hash decrypts RC4-encrypted NT hash using go-secdump's exact implementation
 func DecryptRC4Hash(data, syskey []byte, rid uint32) ([]byte, error) {
-	// Create decryption key from syskey and RID
 	ridBytes := make([]byte, 4)
+	encHash := make([]byte, 16)
 	binary.LittleEndian.PutUint32(ridBytes, rid)
+	input2 := []byte{}
+	input2 = append(input2, syskey...)
+	input2 = append(input2, ridBytes...)
+	input2 = append(input2, S3...)
+	rc4key := md5.Sum(input2)
 
-	key := hmacSHA1(syskey, ridBytes)
-
-	cipher, err := rc4.NewCipher(key[:16])
+	// Decrypt the encrypted NT Hash
+	c2, err := rc4.NewCipher(rc4key[:])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to init RC4 key: %v", err)
 	}
-
-	decrypted := make([]byte, len(data))
-	cipher.XORKeyStream(decrypted, data)
-
-	return decrypted, nil
+	c2.XORKeyStream(encHash, data)
+	ntHash, err := decryptNTHashWithRID(encHash, ridBytes)
+	return ntHash, err
 }
 
 // Helper functions for SAM extraction
@@ -605,9 +602,57 @@ func IsValidNTHash(hash string) bool {
 	return len(hash) == 32 && strings.ToUpper(hash) != "31D6CFE0D16AE931B73C59D7E0C089C0" // Empty password hash
 }
 
-// hmacSHA1 calculates HMAC-SHA1 (internal helper)
-func hmacSHA1(key, data []byte) []byte {
-	mac := hmac.New(sha1.New, key)
-	mac.Write(data)
-	return mac.Sum(nil)
+// decryptNTHashWithRID decrypts NT hash using RID-derived DES keys (from go-secdump)
+func decryptNTHashWithRID(encHash, ridBytes []byte) ([]byte, error) {
+	nt1 := make([]byte, 8)
+	nt2 := make([]byte, 8)
+	desSrc1 := make([]byte, 7)
+	desSrc2 := make([]byte, 7)
+	shift1 := []int{0, 1, 2, 3, 0, 1, 2}
+	shift2 := []int{3, 0, 1, 2, 3, 0, 1}
+
+	for i := 0; i < 7; i++ {
+		desSrc1[i] = ridBytes[shift1[i]]
+		desSrc2[i] = ridBytes[shift2[i]]
+	}
+
+	deskey1 := plusOddParity(desSrc1)
+	deskey2 := plusOddParity(desSrc2)
+
+	dc1, err := des.NewCipher(deskey1)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize first DES cipher: %v", err)
+	}
+
+	dc2, err := des.NewCipher(deskey2)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize second DES cipher: %v", err)
+	}
+
+	dc1.Decrypt(nt1, encHash[:8])
+	dc2.Decrypt(nt2, encHash[8:])
+
+	hash := append(nt1, nt2...)
+	return hash, nil
+}
+
+// plusOddParity converts 56-bit key to 64-bit DES key with odd parity (exact go-secdump implementation)
+func plusOddParity(input []byte) []byte {
+	output := make([]byte, 8)
+	output[0] = input[0] >> 0x01
+	output[1] = ((input[0] & 0x01) << 6) | (input[1] >> 2)
+	output[2] = ((input[1] & 0x03) << 5) | (input[2] >> 3)
+	output[3] = ((input[2] & 0x07) << 4) | (input[3] >> 4)
+	output[4] = ((input[3] & 0x0f) << 3) | (input[4] >> 5)
+	output[5] = ((input[4] & 0x1f) << 2) | (input[5] >> 6)
+	output[6] = ((input[5] & 0x3f) << 1) | (input[6] >> 7)
+	output[7] = input[6] & 0x7f
+	for i := 0; i < 8; i++ {
+		if (bits.OnesCount(uint(output[i])) % 2) == 0 {
+			output[i] = (output[i] << 1) | 0x1
+		} else {
+			output[i] = (output[i] << 1) & 0xfe
+		}
+	}
+	return output
 }

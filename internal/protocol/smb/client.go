@@ -30,15 +30,14 @@ type Client struct {
 
 // ServerInfo contains basic server information extracted from SMB connection
 type ServerInfo struct {
-	ServerName          string
-	Domain              string
-	OSVersion           string
-	ServerType          string
-	IsDomainController  bool
-	Capabilities        []string
-	SigningRequired     bool
-	EncryptionSupported bool
-	SupportedVersions   []string
+	ServerName         string
+	Domain             string
+	OSVersion          string
+	ServerType         string
+	IsDomainController bool
+	Capabilities       []string
+	SigningRequired    bool
+	SupportedVersions  []string
 }
 
 // ShareInfo represents SMB share information
@@ -96,6 +95,103 @@ func (c *Client) Connect() error {
 	return c.ConnectWithContext(context.Background())
 }
 
+// ExtractServerInfoFromChallenge attempts to extract server information from NTLM challenge
+// This works even when authentication fails, as the challenge contains server metadata
+func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*ServerInfo, error) {
+	log := svc1log.FromContext(ctx)
+	log.Debug("Starting ExtractServerInfoFromChallenge using go-smb NTLM challenge", svc1log.SafeParam("host", c.Host), svc1log.SafeParam("port", c.Port))
+
+	// Create SMB connection with dummy credentials to trigger NTLM challenge
+	// The key is that even if authentication fails, the NTLM challenge will contain server info
+	options := gosmb.Options{
+		Host:              c.Host,
+		Port:              c.Port,
+		DialTimeout:       c.Timeout,
+		DisableEncryption: false,
+	}
+
+	// Use dummy credentials to force NTLM challenge - we don't care if auth succeeds
+	options.Initiator = &spnego.NTLMInitiator{
+		User:     "networkscan", // Dummy username
+		Password: "dummy",       // Dummy password
+		Domain:   "",            // No domain initially
+	}
+
+	log.Debug("Creating SMB connection to trigger NTLM challenge")
+	session, err := gosmb.NewConnection(options)
+
+	// We expect this might fail, but the NTLM challenge should still have occurred
+	if err != nil {
+		log.Debug("SMB connection failed as expected", svc1log.SafeParam("error", err.Error()))
+		// Even if connection failed, the session might still have target info from the challenge
+		if session == nil {
+			return nil, fmt.Errorf("failed to establish SMB connection and no session available: %v", err)
+		}
+	}
+
+	// Ensure we clean up the session
+	if session != nil {
+		defer session.Close()
+	}
+
+	// Extract target info from the NTLM challenge
+	targetInfo := session.GetTargetInfo()
+	if targetInfo == nil {
+		log.Debug("No target info available from NTLM challenge")
+		return nil, fmt.Errorf("no target info available from NTLM challenge")
+	}
+
+	log.Debug("Successfully retrieved target info from NTLM challenge")
+
+	// Convert go-smb TargetInfo to our ServerInfo structure
+	serverInfo := &ServerInfo{
+		SigningRequired: session.IsSigningRequired(),
+	}
+
+	// Extract server information from target info
+	if targetInfo.DnsComputerName != "" {
+		serverInfo.ServerName = targetInfo.DnsComputerName
+	} else if targetInfo.NBComputerName != "" {
+		serverInfo.ServerName = targetInfo.NBComputerName
+	}
+
+	if targetInfo.DnsDomainName != "" {
+		serverInfo.Domain = targetInfo.DnsDomainName
+	} else if targetInfo.NBDomainName != "" {
+		serverInfo.Domain = targetInfo.NBDomainName
+	}
+
+	// Parse and enhance the OS version
+	if targetInfo.GuessedOSVersion != "" {
+		serverInfo.OSVersion = parseWindowsVersion(targetInfo.GuessedOSVersion)
+	} else {
+		serverInfo.OSVersion = "Windows Server"
+	}
+
+	// Set default capabilities and versions
+	serverInfo.Capabilities = []string{"DFS", "Leasing"}
+	if serverInfo.SigningRequired {
+		serverInfo.Capabilities = append(serverInfo.Capabilities, "Signing")
+	}
+	serverInfo.SupportedVersions = []string{"SMB3.0.2", "SMB3.0", "SMB2.1", "SMB2.0"}
+
+	log.Debug("Successfully extracted server info from NTLM challenge",
+		svc1log.SafeParam("serverName", serverInfo.ServerName),
+		svc1log.SafeParam("domain", serverInfo.Domain),
+		svc1log.SafeParam("osVersion", serverInfo.OSVersion))
+
+	return serverInfo, nil
+}
+
+// GetDomainFromServerInfo extracts domain information from server info for authentication
+func (c *Client) GetDomainFromServerInfo(ctx context.Context) string {
+	serverInfo, err := c.ExtractServerInfoFromChallenge(ctx)
+	if err != nil || serverInfo == nil {
+		return ""
+	}
+	return serverInfo.Domain
+}
+
 // ConnectWithContext establishes connection to SMB server and performs authentication with context
 func (c *Client) ConnectWithContext(ctx context.Context) error {
 	if c.isConnected {
@@ -139,6 +235,15 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 	// Attempt connection
 	session, err := gosmb.NewConnection(options)
 	if err != nil {
+		// Even if connection failed, try to extract server info from NTLM challenge
+		if session != nil {
+			c.session = session
+			// Use the existing server info extraction logic
+			if err := c.extractServerInfoWithContext(ctx); err != nil {
+				log := svc1log.FromContext(ctx)
+				log.Debug("Failed to extract server info from failed connection", svc1log.SafeParam("error", err))
+			}
+		}
 		return fmt.Errorf("failed to connect to SMB server %s:%d: %v", c.Host, c.Port, err)
 	}
 
@@ -285,10 +390,9 @@ func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
 	}
 
 	c.serverInfo = &ServerInfo{
-		SigningRequired:     c.session.IsSigningRequired(),
-		EncryptionSupported: false, // Default to false as detection is complex
-		Capabilities:        []string{"DFS", "Leasing"},
-		SupportedVersions:   []string{"SMB3.0.2", "SMB3.0", "SMB2.1", "SMB2.0"},
+		SigningRequired:   c.session.IsSigningRequired(),
+		Capabilities:      []string{"DFS", "Leasing"},
+		SupportedVersions: []string{"SMB3.0.2", "SMB3.0", "SMB2.1", "SMB2.0"},
 	}
 
 	if c.session.IsSigningRequired() {
