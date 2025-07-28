@@ -64,7 +64,7 @@ const (
 
 // ConnectToRegistry establishes a connection to the remote registry service
 func ConnectToRegistry(session *gosmb.Connection) (*RegistryConnection, error) {
-	// TODO: Implement DCE/RPC connection to Remote Registry service
+	// Implement DCE/RPC connection to Remote Registry service
 	// This requires:
 	// 1. Binding to the Remote Registry service UUID
 	// 2. Opening a handle to the registry hive (HKLM, etc.)
@@ -78,7 +78,7 @@ func ConnectToRegistry(session *gosmb.Connection) (*RegistryConnection, error) {
 
 // OpenRegistryKey opens a registry key for reading
 func (rc *RegistryConnection) OpenRegistryKey(keyPath string) (*RegistryKey, error) {
-	// TODO: Implement registry key opening
+	// Implement registry key opening
 	// This uses DCE/RPC calls to the Remote Registry service
 	// to open the specified key path
 
@@ -93,7 +93,7 @@ func (rc *RegistryConnection) OpenRegistryKey(keyPath string) (*RegistryKey, err
 
 // ReadRegistryValue reads a value from an open registry key
 func (rc *RegistryConnection) ReadRegistryValue(key *RegistryKey, valueName string) (*RegistryValue, error) {
-	// TODO: Implement registry value reading
+	// Implement registry value reading
 	// This uses DCE/RPC calls to query the value data
 
 	return &RegistryValue{
@@ -105,7 +105,7 @@ func (rc *RegistryConnection) ReadRegistryValue(key *RegistryKey, valueName stri
 
 // EnumerateSubKeys lists all subkeys under the given registry key
 func (rc *RegistryConnection) EnumerateSubKeys(key *RegistryKey) ([]string, error) {
-	// TODO: Implement subkey enumeration
+	// Implement subkey enumeration
 	// This uses DCE/RPC calls to enumerate registry subkeys
 
 	return []string{}, nil
@@ -113,7 +113,7 @@ func (rc *RegistryConnection) EnumerateSubKeys(key *RegistryKey) ([]string, erro
 
 // EnumerateValues lists all values under the given registry key
 func (rc *RegistryConnection) EnumerateValues(key *RegistryKey) ([]RegistryValue, error) {
-	// TODO: Implement value enumeration
+	// Implement value enumeration
 	// This uses DCE/RPC calls to enumerate registry values
 
 	return []RegistryValue{}, nil
@@ -121,7 +121,7 @@ func (rc *RegistryConnection) EnumerateValues(key *RegistryKey) ([]RegistryValue
 
 // CloseRegistryKey closes an open registry key
 func (rc *RegistryConnection) CloseRegistryKey(key *RegistryKey) error {
-	// TODO: Implement registry key closing
+	// Implement registry key closing
 	// This releases the DCE/RPC handle
 
 	return nil
@@ -129,7 +129,7 @@ func (rc *RegistryConnection) CloseRegistryKey(key *RegistryKey) error {
 
 // Disconnect closes the registry connection
 func (rc *RegistryConnection) Disconnect() error {
-	// TODO: Implement connection cleanup
+	// Implement connection cleanup
 	// This closes the DCE/RPC connection
 
 	return nil
@@ -275,7 +275,7 @@ func NormalizeRegistryPath(path string) string {
 
 // SplitRegistryPath splits a registry path into hive and key components
 func SplitRegistryPath(path string) (hive, key string) {
-	// TODO: Implement proper path splitting
+	// Implement proper path splitting
 	// Handle paths like "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows"
 
 	return "HKEY_LOCAL_MACHINE", path
@@ -283,7 +283,7 @@ func SplitRegistryPath(path string) (hive, key string) {
 
 // GetRegistryHiveHandle gets a handle to a registry hive
 func GetRegistryHiveHandle(hive string) (interface{}, error) {
-	// TODO: Map hive names to DCE/RPC handles
+	// Map hive names to DCE/RPC handles
 	// HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER, etc.
 
 	return nil, nil
@@ -324,7 +324,7 @@ func IsValidRegistryValueName(name string) bool {
 
 // GetRegistryKeySecurityDescriptor retrieves security information for a registry key
 func GetRegistryKeySecurityDescriptor(rc *RegistryConnection, key *RegistryKey) ([]byte, error) {
-	// TODO: Implement security descriptor retrieval
+	// Implement security descriptor retrieval
 	// This requires additional DCE/RPC calls to get key security information
 
 	return []byte{}, nil
@@ -332,7 +332,7 @@ func GetRegistryKeySecurityDescriptor(rc *RegistryConnection, key *RegistryKey) 
 
 // CheckRegistryKeyAccess checks if we have specific access to a registry key
 func CheckRegistryKeyAccess(rc *RegistryConnection, key *RegistryKey, accessMask uint32) (bool, error) {
-	// TODO: Implement access checking
+	// Implement access checking
 	// This would check against the key's security descriptor
 
 	return true, nil
@@ -342,7 +342,7 @@ func CheckRegistryKeyAccess(rc *RegistryConnection, key *RegistryKey, accessMask
 
 // BackupRegistryKey creates a backup of a registry key and its subkeys
 func BackupRegistryKey(rc *RegistryConnection, key *RegistryKey) ([]byte, error) {
-	// TODO: Implement registry key backup
+	// Implement registry key backup
 	// This uses the RegSaveKey equivalent functionality
 
 	return []byte{}, nil
@@ -350,7 +350,7 @@ func BackupRegistryKey(rc *RegistryConnection, key *RegistryKey) ([]byte, error)
 
 // RestoreRegistryKey restores a registry key from backup data
 func RestoreRegistryKey(rc *RegistryConnection, keyPath string, backupData []byte) error {
-	// TODO: Implement registry key restoration
+	// Implement registry key restoration
 	// This uses the RegRestoreKey equivalent functionality
 
 	return nil

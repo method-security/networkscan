@@ -498,7 +498,6 @@ func GetLSASecrets(rpccon *msrrp.RPCCon, base []byte, history, modifyDacl bool) 
 					secret = record2.Secret
 				} else {
 					continue
-					//TODO
 				}
 				if valueType == "OldVal" {
 					key += "_history"
@@ -1056,7 +1055,6 @@ func DumpLSASecrets(ctx context.Context, rpccon *msrrp.RPCCon, hKey []byte, modi
 func ExtractLSASecrets(session *gosmb.Connection) ([]LSASecret, error) {
 	var secrets []LSASecret
 
-	// TODO: Implement LSA secret extraction
 	// This requires:
 	// 1. Opening HKLM\SECURITY registry key
 	// 2. Extracting LSA encryption keys

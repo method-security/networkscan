@@ -2,10 +2,8 @@ package smb
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
-	"syscall"
 	"time"
 
 	smbfern "github.com/Method-Security/networkscan/generated/go/common/smb"
@@ -98,19 +96,12 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 						svc1log.SafeParam("os", serverInfo.OSVersion))
 				}
 
-				// Only add to main errors if this looks like a connectivity issue, not auth failure
-				if isConnectivityError(err) {
-					errors = append(errors, fmt.Sprintf("Failed to connect to %s: %v", target, err))
-					log.Debug("Classified as connectivity error",
-						svc1log.SafeParam("target", target),
-						svc1log.SafeParam("error", err.Error()),
-						svc1log.SafeParam("errorType", fmt.Sprintf("%T", err)))
-				} else {
-					log.Debug("Classified as authentication error, not adding to main errors",
-						svc1log.SafeParam("target", target),
-						svc1log.SafeParam("error", err.Error()),
-						svc1log.SafeParam("errorType", fmt.Sprintf("%T", err)))
-				}
+				// Add connection error to errors list
+				errors = append(errors, fmt.Sprintf("Failed to connect to %s: %v", target, err))
+				log.Debug("Connection failed",
+					svc1log.SafeParam("target", target),
+					svc1log.SafeParam("error", err.Error()),
+					svc1log.SafeParam("errorType", fmt.Sprintf("%T", err)))
 				connectionSuccessful = false
 			} else {
 				guestAttempt.Message = "Guest login allowed"
@@ -280,50 +271,6 @@ func convertToSmbShares(shares []*smbclient.ShareInfo) []*smb.SmbShare {
 	}
 
 	return smbShares
-}
-
-// isConnectivityError determines if an error is a connectivity issue vs authentication failure
-// Uses Go's error handling idioms instead of string matching
-func isConnectivityError(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// Check for network-level errors using error types
-	var netErr net.Error
-	if errors.As(err, &netErr) {
-		// Network timeout, connection refused, etc.
-		return true
-	}
-
-	// Check for syscall errors (connection refused, network unreachable, etc.)
-	var syscallErr *net.OpError
-	if errors.As(err, &syscallErr) {
-		if errno, ok := syscallErr.Err.(syscall.Errno); ok {
-			switch errno {
-			case syscall.ECONNREFUSED, syscall.EHOSTUNREACH, syscall.ENETUNREACH,
-				syscall.ECONNRESET, syscall.ETIMEDOUT, syscall.ECONNABORTED:
-				return true
-			}
-		}
-		// For other OpErrors, check if they're network-related
-		return true
-	}
-
-	// Check for DNS resolution errors
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
-		return true
-	}
-
-	// Check for context deadline exceeded (timeout)
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-
-	// For unknown error types, be conservative and don't add to main errors
-	// Authentication errors are typically protocol-specific and won't match above patterns
-	return false
 }
 
 // convertShareType converts string share type to fern ShareType
