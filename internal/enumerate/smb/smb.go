@@ -38,82 +38,80 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	var workingClient *smbclient.Client
 
 	// Test null session first
-	nullClient := smbclient.NewClient(host, port)
-	nullClient.SetNullSession()
-	nullErr := nullClient.ConnectWithContext(ctx)
-	if nullErr == nil {
+	nullResult := smbclient.TestConnectionMethod(ctx, host, port,
+		func(c *smbclient.Client) { c.SetNullSession() },
+		"Null session", target)
+
+	if nullResult.Success {
 		nullSessionAllowed = true
 		connectionSuccessful = true
-		workingClient = nullClient
-		log.Info("Null session allowed", svc1log.SafeParam("target", target))
-		if nullClient.GetServerInfo() != nil {
-			serverInfo = nullClient.GetServerInfo()
+		workingClient = nullResult.Client
+		if nullResult.ServerInfo != nil {
+			serverInfo = nullResult.ServerInfo
 		}
 	} else {
-		log.Debug("Null session failed", svc1log.SafeParam("error", nullErr.Error()))
 		// Extract server info even if connection failed (from NTLM challenge)
-		if serverInfo == nil && nullClient.GetServerInfo() != nil {
-			serverInfo = nullClient.GetServerInfo()
+		if serverInfo == nil && nullResult.ServerInfo != nil {
+			serverInfo = nullResult.ServerInfo
 		}
-		_ = nullClient.Close()
+		_ = nullResult.Client.Close()
 	}
 
 	// Test anonymous connection if null session failed
 	if !connectionSuccessful {
-		anonClient := smbclient.NewClient(host, port)
-		anonClient.SetAnonymous()
-		anonErr := anonClient.ConnectWithContext(ctx)
-		if anonErr == nil {
+		anonResult := smbclient.TestConnectionMethod(ctx, host, port,
+			func(c *smbclient.Client) { c.SetAnonymous() },
+			"Anonymous login", target)
+
+		if anonResult.Success {
 			anonymousAllowed = true
 			connectionSuccessful = true
-			workingClient = anonClient
-			log.Info("Anonymous login allowed", svc1log.SafeParam("target", target))
-			if anonClient.GetServerInfo() != nil {
-				serverInfo = anonClient.GetServerInfo()
+			workingClient = anonResult.Client
+			if anonResult.ServerInfo != nil {
+				serverInfo = anonResult.ServerInfo
 			}
 		} else {
-			log.Debug("Anonymous connection failed", svc1log.SafeParam("error", anonErr.Error()))
 			// Extract server info even if connection failed (from NTLM challenge)
-			if serverInfo == nil && anonClient.GetServerInfo() != nil {
-				serverInfo = anonClient.GetServerInfo()
+			if serverInfo == nil && anonResult.ServerInfo != nil {
+				serverInfo = anonResult.ServerInfo
 			}
-			_ = anonClient.Close()
+			_ = anonResult.Client.Close()
 		}
 	}
 
 	// Test guest authentication (this is a real credential-based auth attempt)
 	// We test this separately to record the auth attempt
-	guestClient := smbclient.NewClient(host, port)
-	guestClient.SetCredentials("guest", "", "")
-	guestErr := guestClient.ConnectWithContext(ctx)
+	guestResult := smbclient.TestConnectionMethod(ctx, host, port,
+		func(c *smbclient.Client) { c.SetCredentials("guest", "", "") },
+		"Guest authentication", target)
+
 	guestAttempt := &smbfern.AuthAttempt{
 		Username:  "guest",
 		Password:  "",
-		Success:   guestErr == nil,
+		Success:   guestResult.Success,
 		Timestamp: time.Now(),
 	}
-	if guestErr == nil {
+
+	if guestResult.Success {
 		guestAllowed = true
 		guestAttempt.Message = "Guest authentication successful"
-		log.Info("Guest authentication allowed", svc1log.SafeParam("target", target))
 		// If no other connection succeeded, use guest connection
 		if !connectionSuccessful {
 			connectionSuccessful = true
-			workingClient = guestClient
-			if guestClient.GetServerInfo() != nil {
-				serverInfo = guestClient.GetServerInfo()
+			workingClient = guestResult.Client
+			if guestResult.ServerInfo != nil {
+				serverInfo = guestResult.ServerInfo
 			}
 		} else {
-			_ = guestClient.Close() // Close guest connection since we have a working one
+			_ = guestResult.Client.Close() // Close guest connection since we have a working one
 		}
 	} else {
-		guestAttempt.Message = guestErr.Error()
-		log.Debug("Guest authentication failed", svc1log.SafeParam("error", guestErr.Error()))
+		guestAttempt.Message = guestResult.Error.Error()
 		// Extract server info even if connection failed (from NTLM challenge)
-		if serverInfo == nil && guestClient.GetServerInfo() != nil {
-			serverInfo = guestClient.GetServerInfo()
+		if serverInfo == nil && guestResult.ServerInfo != nil {
+			serverInfo = guestResult.ServerInfo
 		}
-		_ = guestClient.Close()
+		_ = guestResult.Client.Close()
 	}
 	authAttempts = append(authAttempts, guestAttempt)
 
@@ -145,15 +143,8 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 		if len(serverInfo.SupportedVersions) > 0 {
 			var smbVersions []smb.SmbVersion
 			for _, version := range serverInfo.SupportedVersions {
-				switch version {
-				case "SMB3.0.2":
-					smbVersions = append(smbVersions, smb.SmbVersionSmb302)
-				case "SMB3.0":
-					smbVersions = append(smbVersions, smb.SmbVersionSmb30)
-				case "SMB2.1":
-					smbVersions = append(smbVersions, smb.SmbVersionSmb21)
-				case "SMB2.0":
-					smbVersions = append(smbVersions, smb.SmbVersionSmb20)
+				if smbVersion, ok := smbclient.MapProtocolVersionToEnum(version); ok {
+					smbVersions = append(smbVersions, smbVersion)
 				}
 			}
 			if len(smbVersions) > 0 {
