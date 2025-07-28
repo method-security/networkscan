@@ -58,7 +58,7 @@ func (d *dpapiSystem) unmarshal(data []byte) {
 	copy(d.UserKey[:], data[24:44])
 }
 
-type printableLSASecret struct {
+type PrintableLSASecret struct {
 	secretType  string
 	secrets     []string
 	extraSecret string
@@ -90,22 +90,21 @@ func DecryptLSAKey(rpccon *msrrp.RPCCon, base []byte, data []byte) ([]byte, erro
 		lsaSecretBlob := &lsaSecretBlob{}
 		lsaSecretBlob.unmarshal(plaintext)
 		return lsaSecretBlob.Secret[52:][:32], nil
-	} else {
-		// Windows XP
-		h := md5.New()
-		h.Write(BootKey)
-		for i := 0; i < 1000; i++ {
-			h.Write(data[60:76])
-		}
-		tmpkey := h.Sum(nil)
-		c1, err := rc4.NewCipher(tmpkey[:])
-		if err != nil {
-			return nil, err
-		}
-		plaintext = make([]byte, 48)
-		c1.XORKeyStream(plaintext, data[12:60])
-		return plaintext[0x10:0x20], nil
 	}
+	// Windows XP
+	h := md5.New()
+	h.Write(BootKey)
+	for i := 0; i < 1000; i++ {
+		h.Write(data[60:76])
+	}
+	tmpkey := h.Sum(nil)
+	c1, err := rc4.NewCipher(tmpkey[:])
+	if err != nil {
+		return nil, err
+	}
+	plaintext = make([]byte, 48)
+	c1.XORKeyStream(plaintext, data[12:60])
+	return plaintext[0x10:0x20], nil
 }
 
 // GetLSASecretKey extracts the LSA secret encryption key
@@ -134,10 +133,10 @@ func GetLSASecretKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) ([]byte
 	if VistaStyle {
 		data, _, err = rpccon.QueryValue2(hSubKey, "")
 		if err != nil {
-			rpccon.CloseKeyHandle(hSubKey)
+			_ = rpccon.CloseKeyHandle(hSubKey)
 			return nil, err
 		}
-		rpccon.CloseKeyHandle(hSubKey)
+		_ = rpccon.CloseKeyHandle(hSubKey)
 	}
 
 	if !VistaStyle {
@@ -151,10 +150,10 @@ func GetLSASecretKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) ([]byte
 		}
 		data, _, err = rpccon.QueryValue2(hSubKey, "")
 		if err != nil {
-			rpccon.CloseKeyHandle(hSubKey)
+			_ = rpccon.CloseKeyHandle(hSubKey)
 			return nil, err
 		}
-		rpccon.CloseKeyHandle(hSubKey)
+		_ = rpccon.CloseKeyHandle(hSubKey)
 	}
 	if len(data) == 0 {
 		return nil, fmt.Errorf("failed to get LSA key")
@@ -175,7 +174,7 @@ func GetServiceUser(rpccon *msrrp.RPCCon, base []byte, name string) (string, err
 	if err != nil {
 		return "", err
 	}
-	defer rpccon.CloseKeyHandle(hSubKey)
+	defer func() { _ = rpccon.CloseKeyHandle(hSubKey) }()
 	return rpccon.QueryValueString(hSubKey, "ObjectName")
 }
 
@@ -186,7 +185,7 @@ func GetHostnameAndDomain(rpccon *msrrp.RPCCon, base []byte) (hostname, domain s
 		return "", "", err
 	}
 	defer func(h []byte) {
-		rpccon.CloseKeyHandle(h)
+		_ = rpccon.CloseKeyHandle(h)
 	}(hSubKey)
 
 	domain, err = rpccon.QueryValueString(hSubKey, "Domain")
@@ -202,7 +201,7 @@ func GetHostnameAndDomain(rpccon *msrrp.RPCCon, base []byte) (hostname, domain s
 }
 
 // ParseSecret parses and formats LSA secrets based on their type
-func ParseSecret(rpccon *msrrp.RPCCon, base []byte, name string, secretItem []byte) (*printableLSASecret, error) {
+func ParseSecret(rpccon *msrrp.RPCCon, base []byte, name string, secretItem []byte) (*PrintableLSASecret, error) {
 	if len(secretItem) == 0 {
 		return nil, nil
 	}
@@ -213,7 +212,7 @@ func ParseSecret(rpccon *msrrp.RPCCon, base []byte, name string, secretItem []by
 	secret := ""
 	extrasecret := ""
 	upperName := strings.ToUpper(name)
-	result := &printableLSASecret{}
+	result := &PrintableLSASecret{}
 	result.secretType = "[*] " + name
 
 	if strings.HasPrefix(upperName, "_SC_") {
@@ -286,7 +285,7 @@ func ParseSecret(rpccon *msrrp.RPCCon, base []byte, name string, secretItem []by
 }
 
 // GetLSASecrets extracts LSA secrets from the registry
-func GetLSASecrets(rpccon *msrrp.RPCCon, base []byte, history, modifyDacl bool) ([]printableLSASecret, error) {
+func GetLSASecrets(rpccon *msrrp.RPCCon, base []byte, history, modifyDacl bool) ([]PrintableLSASecret, error) {
 	secretsPath := `SECURITY\Policy\Secrets`
 	var keys []string
 	var err error
@@ -309,7 +308,7 @@ func GetLSASecrets(rpccon *msrrp.RPCCon, base []byte, history, modifyDacl bool) 
 		return nil, err
 	}
 
-	var secrets []printableLSASecret
+	var secrets []PrintableLSASecret
 	for _, key := range keys {
 		if key == "NL$Control" {
 			continue
@@ -332,10 +331,10 @@ func GetLSASecrets(rpccon *msrrp.RPCCon, base []byte, history, modifyDacl bool) 
 
 			value, _, err := rpccon.QueryValue2(hSubKey, "")
 			if err != nil {
-				rpccon.CloseKeyHandle(hSubKey)
+				_ = rpccon.CloseKeyHandle(hSubKey)
 				continue
 			}
-			rpccon.CloseKeyHandle(hSubKey)
+			_ = rpccon.CloseKeyHandle(hSubKey)
 
 			if (len(value) != 0) && (value[0] == 0x0) {
 				if VistaStyle {

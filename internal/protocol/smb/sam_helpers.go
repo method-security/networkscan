@@ -128,10 +128,10 @@ func GetBootKey(rpccon *msrrp.RPCCon, base []byte) ([]byte, error) {
 	}
 	keyinfo, err := rpccon.QueryKeyInfo(hSubKey)
 	if err != nil {
-		rpccon.CloseKeyHandle(hSubKey)
+		_ = rpccon.CloseKeyHandle(hSubKey)
 		return nil, err
 	}
-	rpccon.CloseKeyHandle(hSubKey)
+	_ = rpccon.CloseKeyHandle(hSubKey)
 	jd, err := hex.DecodeString(keyinfo.ClassName)
 	if err != nil {
 		return nil, err
@@ -144,10 +144,10 @@ func GetBootKey(rpccon *msrrp.RPCCon, base []byte) ([]byte, error) {
 	}
 	keyinfo, err = rpccon.QueryKeyInfo(hSubKey)
 	if err != nil {
-		rpccon.CloseKeyHandle(hSubKey)
+		_ = rpccon.CloseKeyHandle(hSubKey)
 		return nil, err
 	}
-	rpccon.CloseKeyHandle(hSubKey)
+	_ = rpccon.CloseKeyHandle(hSubKey)
 	skew1, err := hex.DecodeString(keyinfo.ClassName)
 	if err != nil {
 		return nil, err
@@ -160,10 +160,10 @@ func GetBootKey(rpccon *msrrp.RPCCon, base []byte) ([]byte, error) {
 	}
 	keyinfo, err = rpccon.QueryKeyInfo(hSubKey)
 	if err != nil {
-		rpccon.CloseKeyHandle(hSubKey)
+		_ = rpccon.CloseKeyHandle(hSubKey)
 		return nil, err
 	}
-	rpccon.CloseKeyHandle(hSubKey)
+	_ = rpccon.CloseKeyHandle(hSubKey)
 	gbg, err := hex.DecodeString(keyinfo.ClassName)
 	if err != nil {
 		return nil, err
@@ -176,10 +176,10 @@ func GetBootKey(rpccon *msrrp.RPCCon, base []byte) ([]byte, error) {
 	}
 	keyinfo, err = rpccon.QueryKeyInfo(hSubKey)
 	if err != nil {
-		rpccon.CloseKeyHandle(hSubKey)
+		_ = rpccon.CloseKeyHandle(hSubKey)
 		return nil, err
 	}
-	rpccon.CloseKeyHandle(hSubKey)
+	_ = rpccon.CloseKeyHandle(hSubKey)
 	data, err := hex.DecodeString(keyinfo.ClassName)
 	if err != nil {
 		return nil, err
@@ -214,11 +214,11 @@ func GetSysKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) ([]byte, erro
 
 	fBytes, _, err := rpccon.QueryValue2(hSubKey, "F")
 	if err != nil {
-		rpccon.CloseKeyHandle(hSubKey)
+		_ = rpccon.CloseKeyHandle(hSubKey)
 		return nil, err
 	}
 
-	rpccon.CloseKeyHandle(hSubKey)
+	_ = rpccon.CloseKeyHandle(hSubKey)
 
 	f := &domainAccountF{}
 	err = f.unmarshal(fBytes)
@@ -239,7 +239,7 @@ func GetSysKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) ([]byte, erro
 		}
 		sysKeyIV = samAesData.Salt[:]
 		encSysKey = samAesData.Data[:samAesData.DataLen]
-		tmpSysKey, err = DecryptAESSysKey(BootKey, encSysKey, sysKeyIV)
+		tmpSysKey, _ = DecryptAESSysKey(BootKey, encSysKey, sysKeyIV)
 		copy(sysKey, tmpSysKey)
 	} else if f.Revision == 2 {
 		// RC4
@@ -251,7 +251,7 @@ func GetSysKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) ([]byte, erro
 
 		sysKeyIV = samData.Salt[:]
 		encSysKey = append(samData.Key[:], samData.Checksum[:]...)
-		tmpSysKey, err = DecryptRC4SysKey(BootKey, encSysKey, sysKeyIV)
+		tmpSysKey, _ = DecryptRC4SysKey(BootKey, encSysKey, sysKeyIV)
 		// Verify checksum
 		input := []byte{}
 		input = append(input, tmpSysKey[:16]...)
@@ -332,10 +332,10 @@ func GetNTHash(rpccon *msrrp.RPCCon, base []byte, rids []string, modifyDacl bool
 
 		v, _, err := rpccon.QueryValue2(hSubKey, "V")
 		if err != nil {
-			rpccon.CloseKeyHandle(hSubKey)
+			_ = rpccon.CloseKeyHandle(hSubKey)
 			return nil, err
 		}
-		rpccon.CloseKeyHandle(hSubKey)
+		_ = rpccon.CloseKeyHandle(hSubKey)
 
 		offsetName := binary.LittleEndian.Uint32(v[0x0c:]) + 0xcc
 		szName := binary.LittleEndian.Uint32(v[0x10:])
@@ -351,7 +351,7 @@ func GetNTHash(rpccon *msrrp.RPCCon, base []byte, rids []string, modifyDacl bool
 		}
 		if osBuild < 14393 && (0x14 == szNT) {
 			// PreWin10Anniversary update (RC4)
-			szNT -= 4
+			_ = szNT - 4
 			offsetNTHash := offsetHashStruct + 4
 			result[cntr].AES = false
 			result[cntr].Data = v[offsetNTHash : offsetNTHash+16]
@@ -363,7 +363,7 @@ func GetNTHash(rpccon *msrrp.RPCCon, base []byte, rids []string, modifyDacl bool
 			if afterAnniversary {
 				if 0x14 == szNT {
 					// System upgraded but without password updates
-					szNT -= 4
+					_ = szNT - 4
 					offsetNTHash := offsetHashStruct + 4
 					result[cntr].AES = false
 					result[cntr].Data = v[offsetNTHash : offsetNTHash+16]
@@ -399,15 +399,14 @@ func GetOSVersionBuild(rpccon *msrrp.RPCCon, base []byte) (build int, version fl
 		return
 	}
 	defer func(h []byte) {
-		rpccon.CloseKeyHandle(h)
+		_ = rpccon.CloseKeyHandle(h)
 	}(hSubKey)
 
 	value, err := rpccon.QueryValueString(hSubKey, "CurrentBuild")
 	if err != nil {
 		return
 	}
-	buildStr := string(value)
-	build, err = strconv.Atoi(buildStr)
+	build, err = strconv.Atoi(value)
 	if err != nil {
 		return
 	}
@@ -416,8 +415,7 @@ func GetOSVersionBuild(rpccon *msrrp.RPCCon, base []byte) (build int, version fl
 	if err != nil {
 		return
 	}
-	versionStr := string(value)
-	version, err = strconv.ParseFloat(versionStr, 32)
+	version, err = strconv.ParseFloat(value, 32)
 	if err != nil {
 		return
 	}
@@ -427,7 +425,7 @@ func GetOSVersionBuild(rpccon *msrrp.RPCCon, base []byte) (build int, version fl
 		return
 	}
 	defer func(h []byte) {
-		rpccon.CloseKeyHandle(h)
+		_ = rpccon.CloseKeyHandle(h)
 	}(hSubKey)
 
 	value, err = rpccon.QueryValueString(hSubKey, "ProductType")

@@ -4,7 +4,6 @@
 // Original copyright notice:
 // MIT License
 // Copyright (c) 2023 Jonas Fjällid
-
 package smb
 
 import (
@@ -47,20 +46,20 @@ type RegistryKey struct {
 
 // Registry data type constants
 const (
-	REG_NONE                       = 0
-	REG_SZ                         = 1
-	REG_EXPAND_SZ                  = 2
-	REG_BINARY                     = 3
-	REG_DWORD                      = 4
-	REG_DWORD_LITTLE_ENDIAN        = 4
-	REG_DWORD_BIG_ENDIAN           = 5
-	REG_LINK                       = 6
-	REG_MULTI_SZ                   = 7
-	REG_RESOURCE_LIST              = 8
-	REG_FULL_RESOURCE_DESCRIPTOR   = 9
-	REG_RESOURCE_REQUIREMENTS_LIST = 10
-	REG_QWORD                      = 11
-	REG_QWORD_LITTLE_ENDIAN        = 11
+	RegNone                     = 0
+	RegSZ                       = 1
+	RegExpandSZ                 = 2
+	RegBinary                   = 3
+	RegDword                    = 4
+	RegDwordLittleEndian        = 4
+	RegDwordBigEndian           = 5
+	RegLink                     = 6
+	RegMultiSZ                  = 7
+	RegResourceList             = 8
+	RegFullResourceDescriptor   = 9
+	RegResourceRequirementsList = 10
+	RegQword                    = 11
+	RegQwordLittleEndian        = 11
 )
 
 // ConnectToRegistry establishes a connection to the remote registry service
@@ -99,7 +98,7 @@ func (rc *RegistryConnection) ReadRegistryValue(key *RegistryKey, valueName stri
 
 	return &RegistryValue{
 		Name: valueName,
-		Type: REG_BINARY,
+		Type: RegBinary,
 		Data: []byte{},
 	}, nil
 }
@@ -226,13 +225,13 @@ func IsPrintableString(data []byte) bool {
 // ExtractStringFromRegistryData extracts a string from registry data based on type
 func ExtractStringFromRegistryData(data []byte, dataType uint32) (string, error) {
 	switch dataType {
-	case REG_SZ, REG_EXPAND_SZ:
+	case RegSZ, RegExpandSZ:
 		// UTF-16LE string
 		return UTF16LEBytesToString(data)
-	case REG_MULTI_SZ:
+	case RegMultiSZ:
 		// Multiple UTF-16LE strings separated by null terminators
 		return UTF16LEBytesToString(data) // Simplified - real implementation would split
-	case REG_BINARY:
+	case RegBinary:
 		// Binary data - check if it's printable
 		if IsPrintableString(data) {
 			if len(data)%2 == 0 {
@@ -245,13 +244,13 @@ func ExtractStringFromRegistryData(data []byte, dataType uint32) (string, error)
 			return string(data), nil
 		}
 		return fmt.Sprintf("0x%x", data), nil
-	case REG_DWORD:
+	case RegDword:
 		if len(data) >= 4 {
 			value := BytesToUint32LE(data)
 			return fmt.Sprintf("0x%08x", value), nil
 		}
 		return "0x0", nil
-	case REG_QWORD:
+	case RegQword:
 		if len(data) >= 8 {
 			value := binary.LittleEndian.Uint64(data)
 			return fmt.Sprintf("0x%016x", value), nil

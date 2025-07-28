@@ -20,22 +20,22 @@ import (
 
 // Windows version constants
 const (
-	WIN_UNKNOWN = iota
-	WINXP
-	WIN_SERVER_2003
-	WIN_VISTA
-	WIN_SERVER_2008
-	WIN7
-	WIN_SERVER_2008_R2
-	WIN8
-	WIN_SERVER_2012
-	WIN81
-	WIN_SERVER_2012_R2
-	WIN10
-	WIN_SERVER_2016
-	WIN_SERVER_2019
-	WIN_SERVER_2022
-	WIN11
+	WinUnknown = iota
+	WinXP
+	WinServer2003
+	WinVista
+	WinServer2008
+	Win7
+	WinServer2008R2
+	Win8
+	WinServer2012
+	Win81
+	WinServer2012R2
+	Win10
+	WinServer2016
+	WinServer2019
+	WinServer2022
+	Win11
 )
 
 // Global variables for cryptographic operations
@@ -51,69 +51,49 @@ var (
 
 var aes256Constant = []byte{0x6B, 0x65, 0x72, 0x62, 0x65, 0x72, 0x6F, 0x73, 0x7B, 0x9B, 0x5B, 0x2B, 0x93, 0x13, 0x2B, 0x93, 0x5C, 0x9B, 0xDC, 0xDA, 0xD9, 0x5C, 0x98, 0x99, 0xC4, 0xCA, 0xE4, 0xDE, 0xE6, 0xD6, 0xCA, 0xE4}
 
-var osNameMap = map[byte]string{
-	WIN_UNKNOWN:        "Windows Unknown",
-	WINXP:              "Windows XP",
-	WIN_VISTA:          "Windows Vista",
-	WIN7:               "Windows 7",
-	WIN8:               "Windows 8",
-	WIN81:              "Windows 8.1",
-	WIN10:              "Windows 10",
-	WIN11:              "Windows 11",
-	WIN_SERVER_2003:    "Windows Server 2003",
-	WIN_SERVER_2008:    "Windows Server 2008",
-	WIN_SERVER_2008_R2: "Windows Server 2008 R2",
-	WIN_SERVER_2012:    "Windows Server 2012",
-	WIN_SERVER_2012_R2: "Windows Server 2012 R2",
-	WIN_SERVER_2016:    "Windows Server 2016",
-	WIN_SERVER_2019:    "Windows Server 2019",
-	WIN_SERVER_2022:    "Windows Server 2022",
-}
-
 // GetOSVersion determines Windows OS version from build and version info
 func GetOSVersion(currentBuild int, currentVersion float64, server bool) byte {
 	currentVersionStr := strconv.FormatFloat(currentVersion, 'f', 1, 64)
 	if server {
 		switch {
 		case currentBuild >= 3790 && currentBuild < 6001:
-			return WIN_SERVER_2003
+			return WinServer2003
 		case currentBuild >= 6001 && currentBuild < 7601:
-			return WIN_SERVER_2008
+			return WinServer2008
 		case currentBuild >= 7601 && currentBuild < 9200:
-			return WIN_SERVER_2008_R2
+			return WinServer2008R2
 		case currentBuild >= 9200 && currentBuild < 9600:
-			return WIN_SERVER_2012
+			return WinServer2012
 		case currentBuild >= 9200 && currentBuild < 14393:
-			return WIN_SERVER_2012_R2
+			return WinServer2012R2
 		case currentBuild >= 14393 && currentBuild < 17763:
-			return WIN_SERVER_2016
+			return WinServer2016
 		case currentBuild >= 17763 && currentBuild < 20348:
-			return WIN_SERVER_2019
+			return WinServer2019
 		case currentBuild >= 20348:
-			return WIN_SERVER_2022
+			return WinServer2022
 		default:
-			return WIN_UNKNOWN
+			return WinUnknown
 		}
 	} else {
 		switch currentVersionStr {
 		case "5.1":
-			return WINXP
+			return WinXP
 		case "6.0":
-			return WIN_VISTA
+			return WinVista
 		case "6.1":
-			return WIN7
+			return Win7
 		case "6.2":
-			return WIN8
+			return Win8
 		case "6.3":
-			return WIN81
+			return Win81
 		case "10.0":
 			if currentBuild < 22000 {
-				return WIN10
-			} else {
-				return WIN11
+				return Win10
 			}
+			return Win11
 		default:
-			return WIN_UNKNOWN
+			return WinUnknown
 		}
 	}
 }
@@ -130,7 +110,7 @@ func SHA256(key, value []byte, rounds int) []byte {
 	}
 	h := sha256.New()
 	h.Write(key)
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < rounds; i++ {
 		h.Write(value)
 	}
 	return h.Sum(nil)
