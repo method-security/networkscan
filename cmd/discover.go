@@ -266,6 +266,38 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverTLSCmd)
 
+	// Domain Command
+	discoverDomainCmd := &cobra.Command{
+		Use:   "domain",
+		Short: "Discover domain information from a target host using LDAP/SMB discovery and DNS enumeration of domain controllers.",
+		Long:  `Discover domain information from a target host using LDAP/SMB discovery and DNS enumeration of domain controllers.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			target, err := cmd.Flags().GetString("target")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			// Generate the config
+			config := getDiscoverDomainConfig(target)
+
+			// Generate the report
+			report, err := discover.RunDomainDiscovery(cmd.Context(), config)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			a.OutputSignal.Content = report
+		},
+	}
+	discoverDomainCmd.Flags().String("target", "", "Target IP address or hostname to discover domain information from")
+
+	// Mark Required Flags
+	_ = discoverDomainCmd.MarkFlagRequired("target")
+
+	// Add Command to 'Discover' Command
+	discoverCmd.AddCommand(discoverDomainCmd)
+
 	// Add Command to Root Command
 	a.RootCmd.AddCommand(discoverCmd)
 }
@@ -301,4 +333,12 @@ func getDiscoverTLSConfig(targets []string, timeout int, verifyTLS bool) discove
 		VerifyTls: verifyTLS,
 	}
 	return config
+}
+
+// getDiscoverDomainConfig creates a configuration for domain discovery with the provided parameters.
+// It sets up the target for domain discovery.
+func getDiscoverDomainConfig(target string) discoverfern.DiscoverDomainConfig {
+	return discoverfern.DiscoverDomainConfig{
+		Target: target,
+	}
 }

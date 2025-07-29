@@ -1,0 +1,30 @@
+types:
+  # Common Objects
+  DomainControllerInfo:
+    properties:
+      hostname: optional<string>
+      ipAddress: optional<string>
+
+  DomainInfo:
+    properties:
+      netBIOSDomainName: optional<string>
+      dnsDomainName: optional<string>
+      forestName: optional<string>
+      domainControllers: optional<list<DomainControllerInfo>>
+
+  # Config Types
+  DiscoverDomainConfig:
+    properties:
+      target: string
+
+  # Result Types
+  DiscoverDomainResult:
+    properties:
+      domainInfo: optional<DomainInfo>
+
+  # Report Types
+  DiscoverDomainReport:
+    properties:
+      config: DiscoverDomainConfig
+      result: DiscoverDomainResult
+      errors: optional<list<string>>
