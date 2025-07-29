@@ -92,3 +92,21 @@ func (wr *WordlistResolver) GetPasswordWordlists(passwordLists []pentest.Wordlis
 func (wr *WordlistResolver) GetUsernameWordlists(usernameLists []pentest.WordlistType) ([]string, error) {
 	return wr.LoadWordlistEntries(usernameLists)
 }
+
+// ParseWordlistTypes converts string slice to WordlistType enums
+func ParseWordlistTypes(wordlistStrings []string) ([]pentest.WordlistType, error) {
+	if len(wordlistStrings) == 0 {
+		return []pentest.WordlistType{}, nil
+	}
+
+	var wordlistTypes []pentest.WordlistType
+	for _, list := range wordlistStrings {
+		wordlistType, err := pentest.NewWordlistTypeFromString(list)
+		if err != nil {
+			return nil, fmt.Errorf("invalid wordlist type '%s': %v", list, err)
+		}
+		wordlistTypes = append(wordlistTypes, wordlistType)
+	}
+
+	return wordlistTypes, nil
+}
