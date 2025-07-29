@@ -3,6 +3,7 @@ package utils
 
 import (
 	"bufio"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -44,4 +45,22 @@ func ParsePort(portStr string) int {
 		return port
 	}
 	return 0
+}
+
+// ParseHostPort parses a target string into host and port components.
+// If no port is provided, uses the specified default port.
+// Returns the host and port as separate values.
+func ParseHostPort(target string, defaultPort int) (string, int) {
+	host, portStr, err := net.SplitHostPort(target)
+	port := defaultPort
+	if err == nil {
+		// Port was provided, try to parse it
+		if p := ParsePort(portStr); p > 0 {
+			port = p
+		}
+	} else {
+		// No port provided, use target as host
+		host = target
+	}
+	return host, port
 }
