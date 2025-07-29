@@ -233,7 +233,7 @@ github.com/jfjallid/gokrb5/v8/krberror
 github.com/jfjallid/gokrb5/v8/messages
 github.com/jfjallid/gokrb5/v8/pac
 github.com/jfjallid/gokrb5/v8/types
-# github.com/jfjallid/golog v0.3.3
+# github.com/jfjallid/golog v0.3.4
 ## explicit; go 1.17
 github.com/jfjallid/golog
 # github.com/jfjallid/mstypes v0.0.0-20250515143745-921e33065feb

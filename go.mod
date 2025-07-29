@@ -9,6 +9,7 @@ require (
 	github.com/Ullaakut/nmap/v3 v3.0.6
 	github.com/google/uuid v1.6.0
 	github.com/jfjallid/go-smb v0.6.3
+	github.com/jfjallid/gokrb5/v8 v8.5.1
 	github.com/palantir/pkg/datetime v1.1.0
 	github.com/palantir/witchcraft-go-logging v1.60.0
 	github.com/praetorian-inc/fingerprintx v1.1.14
@@ -52,8 +53,7 @@ require (
 	github.com/gorilla/css v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jfjallid/gofork v1.7.6 // indirect
-	github.com/jfjallid/gokrb5/v8 v8.5.1 // indirect
-	github.com/jfjallid/golog v0.3.3 // indirect
+	github.com/jfjallid/golog v0.3.4 // indirect
 	github.com/jfjallid/mstypes v0.0.0-20250515143745-921e33065feb // indirect
 	github.com/jfjallid/ndr v0.0.0-20250515143046-14ad19ef61a6 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

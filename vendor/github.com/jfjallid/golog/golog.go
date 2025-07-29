@@ -110,6 +110,16 @@ func Get(name string) *MyLogger {
 	}
 }
 
+// For scenarios when we just want to export the underlying logger.
+func Logger() *log.Logger {
+	return std.log
+}
+
+// For scenarios when we just want to export the underlying logger.
+func (ml *MyLogger) Logger() *log.Logger {
+	return ml.log
+}
+
 // New creates a new MyLogger. The level variable sets the loglevel which should
 // be used to filter what is logged. The flags variable is passed directly to
 // the underlying log package to set Logger flags. The output variable sets the
@@ -132,13 +142,25 @@ func SetFlags(flag int) {
 	std.elog.SetFlags(flag)
 }
 
+func Flags() int {
+	return std.log.Flags()
+}
+
 func (ml *MyLogger) SetFlags(flag int) {
 	ml.log.SetFlags(flag)
 	ml.elog.SetFlags(flag)
 }
 
+func (ml *MyLogger) Flags() int {
+	return ml.log.Flags()
+}
+
 func SetOutput(w io.Writer) {
 	std.log.SetOutput(w)
+}
+
+func Writer() io.Writer {
+	return std.log.Writer()
 }
 
 func SetErrOutput(w io.Writer) {
@@ -153,6 +175,10 @@ func (ml *MyLogger) SetErrOutput(w io.Writer) {
 	ml.elog.SetOutput(w)
 }
 
+func (ml *MyLogger) Writer() io.Writer {
+	return ml.log.Writer()
+}
+
 func SetLogLevel(level int) {
 	std.level = level
 }
@@ -163,6 +189,18 @@ func (ml *MyLogger) SetLogLevel(level int) {
 
 func (ml *MyLogger) SetDisplayName(name string) {
 	ml.name = name
+}
+
+func (ml *MyLogger) SetPrefix(prefix string) {
+	ml.log.SetPrefix(prefix)
+}
+
+func (ml *MyLogger) Prefix() string {
+	return ml.log.Prefix()
+}
+
+func (ml *MyLogger) Output(calldepth int, s string) error {
+	return ml.log.Output(calldepth, s)
 }
 
 func (ml *MyLogger) Debug(v ...interface{}) {
@@ -273,6 +311,78 @@ func (ml *MyLogger) Criticalf(format string, v ...interface{}) {
 	}
 }
 
+func (ml *MyLogger) Print(v ...interface{}) {
+	if ml.level >= LevelNotice {
+		ml.elog.Output(2, fmt.Sprintf(ml.name+"[Notice] %v", v...))
+	}
+}
+
+func (ml *MyLogger) Println(v ...interface{}) {
+	if ml.level >= LevelNotice {
+		ml.elog.Output(2, fmt.Sprintf(ml.name+"[Notice] %v", v...))
+	}
+}
+
+func (ml *MyLogger) Printf(format string, v ...interface{}) {
+	if ml.level >= LevelNotice {
+		ml.elog.Output(2, fmt.Sprintf(ml.name+"[Notice] "+format, v...))
+	}
+}
+
+func (ml *MyLogger) Fatal(v ...interface{}) {
+	if ml.level >= LevelCritical {
+		ml.elog.Output(2, fmt.Sprintf(ml.name+"[Critical] %v", v...))
+	}
+	os.Exit(1)
+}
+
+func (ml *MyLogger) Fatalln(v ...interface{}) {
+	if ml.level >= LevelCritical {
+		ml.elog.Output(2, fmt.Sprintf(ml.name+"[Critical] %v", v...))
+	}
+	os.Exit(1)
+}
+
+func (ml *MyLogger) Fatalf(format string, v ...interface{}) {
+	if ml.level >= LevelCritical {
+		ml.elog.Output(2, fmt.Sprintf(ml.name+"[Critical] "+format, v...))
+	}
+	os.Exit(1)
+}
+
+func (ml *MyLogger) Panic(v ...interface{}) {
+	if ml.level >= LevelCritical {
+		ml.elog.Output(2, fmt.Sprintf(ml.name+"[Critical] %v", v...))
+	}
+	panic(v)
+}
+
+func (ml *MyLogger) Panicln(v ...interface{}) {
+	if ml.level >= LevelCritical {
+		ml.elog.Output(2, fmt.Sprintf(ml.name+"[Critical] %v", v...))
+	}
+	panic(v)
+}
+
+func (ml *MyLogger) Panicf(format string, v ...interface{}) {
+	if ml.level >= LevelCritical {
+		ml.elog.Output(2, fmt.Sprintf(ml.name+"[Critical] "+format, v...))
+	}
+	panic(v)
+}
+
+func SetPrefix(prefix string) {
+	std.log.SetPrefix(prefix)
+}
+
+func Prefix() string {
+	return std.log.Prefix()
+}
+
+func Output(calldepth int, s string) error {
+	return std.log.Output(calldepth, s)
+}
+
 func Debug(v ...interface{}) {
 	if std.level >= LevelDebug {
 		std.log.Output(2, fmt.Sprintf("[Debug] %v", v...))
@@ -379,4 +489,64 @@ func Criticalf(format string, v ...interface{}) {
 	if std.level >= LevelCritical {
 		std.elog.Output(2, fmt.Sprintf("[Critical] "+format, v...))
 	}
+}
+
+func Print(v ...interface{}) {
+	if std.level >= LevelNotice {
+		std.elog.Output(2, fmt.Sprintf("[Notice] %v", v...))
+	}
+}
+
+func Println(v ...interface{}) {
+	if std.level >= LevelNotice {
+		std.elog.Output(2, fmt.Sprintf("[Notice] %v", v...))
+	}
+}
+
+func Printf(format string, v ...interface{}) {
+	if std.level >= LevelNotice {
+		std.elog.Output(2, fmt.Sprintf("[Notice] "+format, v...))
+	}
+}
+
+func Fatal(v ...interface{}) {
+	if std.level >= LevelCritical {
+		std.elog.Output(2, fmt.Sprintf("[Critical] %v", v...))
+	}
+	os.Exit(1)
+}
+
+func Fatalln(v ...interface{}) {
+	if std.level >= LevelCritical {
+		std.elog.Output(2, fmt.Sprintf("[Critical] %v", v...))
+	}
+	os.Exit(1)
+}
+
+func Fatalf(format string, v ...interface{}) {
+	if std.level >= LevelCritical {
+		std.elog.Output(2, fmt.Sprintf("[Critical] "+format, v...))
+	}
+	os.Exit(1)
+}
+
+func Panic(v ...interface{}) {
+	if std.level >= LevelCritical {
+		std.elog.Output(2, fmt.Sprintf("[Critical] %v", v...))
+	}
+	panic(v)
+}
+
+func Panicln(v ...interface{}) {
+	if std.level >= LevelCritical {
+		std.elog.Output(2, fmt.Sprintf("[Critical] %v", v...))
+	}
+	panic(v)
+}
+
+func Panicf(format string, v ...interface{}) {
+	if std.level >= LevelCritical {
+		std.elog.Output(2, fmt.Sprintf("[Critical] "+format, v...))
+	}
+	panic(v)
 }
