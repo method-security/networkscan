@@ -55,7 +55,7 @@ func RunDomainDiscovery(ctx context.Context, config discoverfern.DiscoverDomainC
 	} else {
 		// Step 2: Use DNS to find all domain controllers
 		log.Info("Enumerating domain controllers via DNS", svc1log.SafeParam("domain", domainName))
-		domainControllers, dnsErrors := enumerateDomainControllers(ctx, host, domainName)
+		domainControllers, dnsErrors := enumerateDomainControllers(ctx, host, domainName, extractedInfo)
 		errors = append(errors, dnsErrors...)
 
 		// Step 3: Build the domain info with discovered information
@@ -241,7 +241,7 @@ func discoverViaLDAP(ctx context.Context, host string) *basicDomainInfo {
 }
 
 // enumerateDomainControllers uses DNS to find all domain controllers for a domain
-func enumerateDomainControllers(ctx context.Context, host string, domainName string) ([]*discoverfern.DomainControllerInfo, []string) {
+func enumerateDomainControllers(ctx context.Context, host string, domainName string, knownDomainInfo *basicDomainInfo) ([]*discoverfern.DomainControllerInfo, []string) {
 	log := svc1log.FromContext(ctx)
 	var errors []string
 	var domainControllers []*discoverfern.DomainControllerInfo
@@ -258,7 +258,7 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 
 	// Try querying the target host first (likely a DC), then fallback to public DNS
 	dnsServers := []string{
-		fmt.Sprintf("%s:53", host),  // Query the target host directly
+		fmt.Sprintf("%s:53", host), // Query the target host directly
 		"8.8.8.8:53",               // Fallback to public DNS
 		"1.1.1.1:53",               // Fallback to Cloudflare DNS
 	}
@@ -267,7 +267,7 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 	var queryErr error
 
 	for _, dnsServer := range dnsServers {
-		log.Debug("Querying DNS for domain controllers", 
+		log.Debug("Querying DNS for domain controllers",
 			svc1log.SafeParam("query", query),
 			svc1log.SafeParam("server", dnsServer))
 
@@ -276,7 +276,7 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 			log.Debug("DNS query successful", svc1log.SafeParam("server", dnsServer))
 			break
 		}
-		log.Debug("DNS query failed or no results", 
+		log.Debug("DNS query failed or no results",
 			svc1log.SafeParam("server", dnsServer),
 			svc1log.SafeParam("error", queryErr))
 	}
@@ -296,15 +296,36 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 			}
 
 			// Try to resolve hostname to IP
+			var ipAddress string
 			if ips, err := net.LookupIP(hostname); err == nil && len(ips) > 0 {
-				ipStr := ips[0].String()
-				dcInfo.IpAddress = &ipStr
+				ipAddress = ips[0].String()
+				dcInfo.IpAddress = &ipAddress
+			}
+
+			// If DNS resolution failed, use the original target IP
+			if ipAddress == "" {
+				ipAddress = host
+				dcInfo.IpAddress = &ipAddress
+			}
+
+			// Gather detailed information about this DC using SMB
+			dcDetails := gatherDomainControllerDetails(ctx, hostname, ipAddress)
+
+			if dcDetails != nil {
+				if dcDetails.serverVersion != "" {
+					dcInfo.ServerVersion = &dcDetails.serverVersion
+				}
+				// Use the IP from SMB if we didn't get it from DNS resolution
+				if dcInfo.IpAddress == nil && dcDetails.ipAddress != "" {
+					dcInfo.IpAddress = &dcDetails.ipAddress
+				}
 			}
 
 			domainControllers = append(domainControllers, dcInfo)
 			log.Debug("Found domain controller",
 				svc1log.SafeParam("hostname", hostname),
-				svc1log.SafeParam("ip", dcInfo.IpAddress))
+				svc1log.SafeParam("ip", dcInfo.IpAddress),
+				svc1log.SafeParam("serverVersion", dcInfo.ServerVersion))
 		}
 	}
 
@@ -313,6 +334,73 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 	}
 
 	return domainControllers, errors
+}
+
+// domainControllerDetails holds detailed information about a domain controller
+type domainControllerDetails struct {
+	serverVersion string
+	ipAddress     string
+}
+
+// gatherDomainControllerDetails attempts to gather detailed information about a DC using SMB
+func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress string) *domainControllerDetails {
+	log := svc1log.FromContext(ctx)
+
+	// Try multiple connection approaches
+	targets := []string{}
+
+	// Add IP address first if available (most reliable)
+	if ipAddress != "" {
+		targets = append(targets, ipAddress)
+	}
+
+	// Then try hostname
+	if hostname != "" {
+		targets = append(targets, hostname)
+	}
+
+	for _, target := range targets {
+		log.Debug("Attempting to gather DC details via SMB", svc1log.SafeParam("target", target))
+
+		// Create SMB client
+		client := smbclient.NewClient(target, 445)
+		client.Timeout = 10 * time.Second // Shorter timeout for DC probing
+
+		// Try to extract server info from NTLM challenge
+		serverInfo, err := client.ExtractServerInfoFromChallenge(ctx)
+		if err != nil {
+			log.Debug("Failed to extract server info from DC",
+				svc1log.SafeParam("target", target),
+				svc1log.SafeParam("error", err))
+			_ = client.Close()
+			continue // Try next target
+		}
+
+		if serverInfo == nil {
+			log.Debug("No server info available from DC", svc1log.SafeParam("target", target))
+			_ = client.Close()
+			continue // Try next target
+		}
+
+		details := &domainControllerDetails{
+			serverVersion: serverInfo.OSVersion,
+			ipAddress:     target, // Store the target we used to connect
+		}
+
+		// Close the client
+		_ = client.Close()
+
+		log.Debug("Successfully gathered DC details",
+			svc1log.SafeParam("target", target),
+			svc1log.SafeParam("serverVersion", details.serverVersion))
+
+		return details
+	}
+
+	log.Debug("Failed to gather DC details from any target",
+		svc1log.SafeParam("hostname", hostname),
+		svc1log.SafeParam("ipAddress", ipAddress))
+	return nil
 }
 
 // Helper functions

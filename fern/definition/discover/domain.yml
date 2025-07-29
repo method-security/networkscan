@@ -4,6 +4,7 @@ types:
     properties:
       hostname: optional<string>
       ipAddress: optional<string>
+      serverVersion: optional<string>
 
   DomainInfo:
     properties:
