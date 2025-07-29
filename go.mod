@@ -7,6 +7,7 @@ toolchain go1.24.2
 require (
 	github.com/Method-Security/pkg v0.0.6
 	github.com/Ullaakut/nmap/v3 v3.0.6
+	github.com/go-ldap/ldap/v3 v3.4.11
 	github.com/google/uuid v1.6.0
 	github.com/jfjallid/go-smb v0.6.3
 	github.com/jfjallid/gokrb5/v8 v8.5.1
@@ -47,7 +48,6 @@ require (
 	github.com/fatih/color v1.15.0 // indirect
 	github.com/gaukas/godicttls v0.0.4 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667 // indirect
-	github.com/go-ldap/ldap/v3 v3.4.11 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/go-github/v30 v30.1.0 // indirect
