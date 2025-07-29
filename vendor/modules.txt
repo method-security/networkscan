@@ -1,6 +1,9 @@
 # aead.dev/minisign v0.2.0
 ## explicit; go 1.16
 aead.dev/minisign
+# github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358
+## explicit
+github.com/Azure/go-ntlmssp
 # github.com/Masterminds/semver/v3 v3.2.1
 ## explicit; go 1.18
 github.com/Masterminds/semver/v3
@@ -155,6 +158,12 @@ github.com/fatih/color
 # github.com/gaukas/godicttls v0.0.4
 ## explicit; go 1.19
 github.com/gaukas/godicttls
+# github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667
+## explicit; go 1.13
+github.com/go-asn1-ber/asn1-ber
+# github.com/go-ldap/ldap/v3 v3.4.11
+## explicit; go 1.23.0
+github.com/go-ldap/ldap/v3
 # github.com/go-ole/go-ole v1.2.6
 ## explicit; go 1.12
 github.com/go-ole/go-ole
@@ -233,7 +242,7 @@ github.com/jfjallid/gokrb5/v8/krberror
 github.com/jfjallid/gokrb5/v8/messages
 github.com/jfjallid/gokrb5/v8/pac
 github.com/jfjallid/gokrb5/v8/types
-# github.com/jfjallid/golog v0.3.3
+# github.com/jfjallid/golog v0.3.4
 ## explicit; go 1.17
 github.com/jfjallid/golog
 # github.com/jfjallid/mstypes v0.0.0-20250515143745-921e33065feb
