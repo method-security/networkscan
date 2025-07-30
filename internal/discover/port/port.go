@@ -1,4 +1,3 @@
-// Package discover implements network discovery functionality for finding live hosts and services.
 package discover
 
 import (
@@ -20,11 +19,19 @@ import (
 // RunPortScan performs a port scan on the specified target using the provided configuration.
 // It returns a report containing discovered open ports and any errors encountered during the process.
 func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*discoverfern.DiscoverPortReport, error) {
+
 	errors := []string{}
 
 	portscanResult, err := getPortScan(ctx, config)
 	if err != nil {
 		errors = append(errors, err.Error())
+	}
+
+	// Filter ports by service validation if requested
+	if config.Validate {
+		validatedPorts, validationErrors := validatePortScan(ctx, config, portscanResult)
+		portscanResult = validatedPorts
+		errors = append(errors, validationErrors...)
 	}
 
 	return &discoverfern.DiscoverPortReport{
