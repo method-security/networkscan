@@ -6,8 +6,7 @@ import (
 	"time"
 
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
-	"github.com/Method-Security/networkscan/generated/go/enumerate/smb"
-	smbprotocol "github.com/Method-Security/networkscan/generated/go/enumerate/smb"
+	smb "github.com/Method-Security/networkscan/generated/go/enumerate/smb"
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
 	"github.com/Method-Security/networkscan/utils"
@@ -170,7 +169,7 @@ func (s *LibraryEnumerateSMB) performAuthentication(ctx context.Context, host st
 }
 
 // processServerInfo sets up server info and SMB version details in the response
-func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *smbclient.ServerInfo, details *smbprotocol.EnumerateSmbDetails, target string, log svc1log.Logger) {
+func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *smbclient.ServerInfo, details *smb.EnumerateSmbDetails, target string, log svc1log.Logger) {
 	if serverInfo != nil {
 		smbServerInfo := convertToSmbServerInfo(serverInfo)
 		details.ServerInfo = smbServerInfo
@@ -183,7 +182,7 @@ func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *smbclient.ServerInfo
 
 		// Set supported versions from server capabilities if available
 		if len(serverInfo.SupportedVersions) > 0 {
-			var smbVersions []smbprotocol.SmbVersion
+			var smbVersions []smb.SmbVersion
 			for _, version := range serverInfo.SupportedVersions {
 				if smbVersion, ok := smbclient.MapProtocolVersionToEnum(version); ok {
 					smbVersions = append(smbVersions, smbVersion)
@@ -199,21 +198,21 @@ func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *smbclient.ServerInfo
 
 	// Set defaults if server info wasn't available or didn't have version info
 	if details.Version == nil {
-		version := smbprotocol.SmbVersionSmb302
+		version := smb.SmbVersionSmb302
 		details.Version = &version
 	}
 	if len(details.SupportedVersions) == 0 {
-		details.SupportedVersions = []smbprotocol.SmbVersion{
-			smbprotocol.SmbVersionSmb302,
-			smbprotocol.SmbVersionSmb30,
-			smbprotocol.SmbVersionSmb21,
-			smbprotocol.SmbVersionSmb20,
+		details.SupportedVersions = []smb.SmbVersion{
+			smb.SmbVersionSmb302,
+			smb.SmbVersionSmb30,
+			smb.SmbVersionSmb21,
+			smb.SmbVersionSmb20,
 		}
 	}
 }
 
 // enumerateShares performs share enumeration if connection is successful
-func (s *LibraryEnumerateSMB) enumerateShares(ctx context.Context, client *smbclient.Client, connectionSuccessful bool, details *smbprotocol.EnumerateSmbDetails, target string, log svc1log.Logger) []string {
+func (s *LibraryEnumerateSMB) enumerateShares(ctx context.Context, client *smbclient.Client, connectionSuccessful bool, details *smb.EnumerateSmbDetails, target string, log svc1log.Logger) []string {
 	var errors []string
 
 	if connectionSuccessful {
@@ -236,7 +235,7 @@ func (s *LibraryEnumerateSMB) enumerateShares(ctx context.Context, client *smbcl
 }
 
 // assembleResponse builds the final enumeration response
-func (s *LibraryEnumerateSMB) assembleResponse(details *smbprotocol.EnumerateSmbDetails, state authenticationState, serverInfo *smbclient.ServerInfo) {
+func (s *LibraryEnumerateSMB) assembleResponse(details *smb.EnumerateSmbDetails, state authenticationState, serverInfo *smbclient.ServerInfo) {
 	// Set authentication method information
 	authMethods := []smb.AuthMethod{smb.AuthMethodNtlm}
 	details.AuthMethods = authMethods
@@ -262,7 +261,7 @@ func (s *LibraryEnumerateSMB) assembleResponse(details *smbprotocol.EnumerateSmb
 
 // EnumerateTarget performs comprehensive SMB enumeration using the shared SMB protocol library
 func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
-	var details smbprotocol.EnumerateSmbDetails
+	var details smb.EnumerateSmbDetails
 	details.Target = target
 	var errors []string
 
@@ -320,14 +319,14 @@ func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *smb.ServerInfo {
 }
 
 // convertToSmbShares converts protocol library ShareInfo to fern SmbShare
-func convertToSmbShares(shares []*smbclient.ShareInfo) []*smbprotocol.SmbShare {
-	var smbShares []*smbprotocol.SmbShare
+func convertToSmbShares(shares []*smbclient.ShareInfo) []*smb.SmbShare {
+	var smbShares []*smb.SmbShare
 
 	for _, share := range shares {
 		shareType := convertShareType(share.Type)
 		shareAccess := convertShareAccess(share.Access)
 
-		smbShare := &smbprotocol.SmbShare{
+		smbShare := &smb.SmbShare{
 			Name:            share.Name,
 			Type:            shareType,
 			Accessible:      share.Accessible,
