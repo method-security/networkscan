@@ -74,6 +74,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 	_ = enumerateServiceCmd.MarkFlagRequired("targets")
 	_ = enumerateServiceCmd.MarkFlagRequired("service")
 
+	// Add Command to 'Enumerate' Command
 	enumerateCmd.AddCommand(enumerateServiceCmd)
 
 	// Add Command to 'Root' Command
