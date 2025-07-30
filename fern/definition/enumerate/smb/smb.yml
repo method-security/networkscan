@@ -1,22 +1,76 @@
 imports:
-  common: ../../common/protocol/smb.yml
+  pentestSmb: ../../pentest/smb/smb.yml
 
 types:
+  # Authentication methods
+  AuthMethod:
+    enum:
+      - NTLM
+      - KERBEROS
+  
+  
+  # Share types
+  ShareType:
+    enum:
+      - DISK
+      - PRINT
+      - DEVICE
+      - IPC
+      - UNKNOWN
+  
+  # SMB versions
+  SmbVersion:
+    enum:
+      - SMB1
+      - SMB2_0
+      - SMB2_1
+      - SMB3_0
+      - SMB3_0_2
+      - SMB3_1_1
+  
+  # Share access levels
+  ShareAccess:
+    enum:
+      - READ_ONLY
+      - READ_WRITE
+      - NO_ACCESS
+      - UNKNOWN
+  
+  # SMB share information
+  SmbShare:
+    properties:
+      name: string
+      type: ShareType
+      comment: optional<string>
+      accessible: boolean
+      access: optional<ShareAccess>
+      anonymousAccess: boolean
+      guestAccess: boolean
+  
+  # Server information
+  ServerInfo:
+    properties:
+      workgroup: optional<string>
+      domain: optional<string>
+      serverName: optional<string>
+      osVersion: optional<string>
+      lanManagerVersion: optional<string>
+      capabilities: optional<list<string>>
   
   
   # Main enumeration details
   EnumerateSmbDetails:
     properties:
       target: string
-      version: optional<common.SmbVersion>
-      supportedVersions: optional<list<common.SmbVersion>>
-      shares: optional<list<common.SmbShare>>
-      authMethods: optional<list<common.AuthMethod>>
-      serverInfo: optional<common.SmbServerInfo>
+      version: optional<SmbVersion>
+      supportedVersions: optional<list<SmbVersion>>
+      shares: optional<list<SmbShare>>
+      authMethods: optional<list<AuthMethod>>
+      serverInfo: optional<ServerInfo>
       anonymousLoginAllowed: optional<boolean>
       guestLoginAllowed: optional<boolean>
       nullSessionAllowed: optional<boolean>
       signingRequired: optional<boolean>
       encryptionSupported: optional<boolean>
-      authAttempts: optional<list<common.AuthAttempt>>
+      authAttempts: optional<list<pentestSmb.AuthAttempt>>
       rawResponse: optional<string>
