@@ -32,6 +32,7 @@ type Client struct {
 type ServerInfo struct {
 	ServerName         string
 	Domain             string
+	NetBIOSDomainName  string
 	OSVersion          string
 	ServerType         string
 	IsDomainController bool
@@ -145,6 +146,11 @@ func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*ServerInf
 		serverInfo.Domain = targetInfo.DnsDomainName
 	} else if targetInfo.NBDomainName != "" {
 		serverInfo.Domain = targetInfo.NBDomainName
+	}
+
+	// Always set NetBIOS domain name if available
+	if targetInfo.NBDomainName != "" {
+		serverInfo.NetBIOSDomainName = targetInfo.NBDomainName
 	}
 
 	// Parse and enhance the OS version
@@ -396,6 +402,11 @@ func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
 			c.serverInfo.Domain = targetInfo.DnsDomainName
 		} else if targetInfo.NBDomainName != "" {
 			c.serverInfo.Domain = targetInfo.NBDomainName
+		}
+
+		// Always set NetBIOS domain name if available
+		if targetInfo.NBDomainName != "" {
+			c.serverInfo.NetBIOSDomainName = targetInfo.NBDomainName
 		}
 
 		// Use DNS computer name if available, fallback to NetBIOS computer name
