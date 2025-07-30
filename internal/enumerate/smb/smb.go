@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	smbprotocol "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
-	smb "github.com/Method-Security/networkscan/generated/go/enumerate/smb"
+	"github.com/Method-Security/networkscan/generated/go/enumerate/smb"
+	smbprotocol "github.com/Method-Security/networkscan/generated/go/enumerate/smb"
+	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
 	"github.com/Method-Security/networkscan/utils"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -21,7 +22,7 @@ type authTestResult struct {
 	success       bool
 	client        *smbclient.Client
 	serverInfo    *smbclient.ServerInfo
-	authAttempt   *smbprotocol.AuthAttempt
+	authAttempt   *smbfern.AuthAttempt
 	allowedMethod bool
 }
 
@@ -63,7 +64,7 @@ func (s *LibraryEnumerateSMB) testGuestAuthentication(ctx context.Context, host 
 		func(c *smbclient.Client) { c.SetCredentials("guest", "", "") },
 		"Guest authentication", target)
 
-	authAttempt := &smbprotocol.AuthAttempt{
+	authAttempt := &smbfern.AuthAttempt{
 		Username:  "guest",
 		Password:  "",
 		Success:   guestResult.Success,
@@ -90,7 +91,7 @@ func (s *LibraryEnumerateSMB) testGuestAuthentication(ctx context.Context, host 
 // authenticationState holds the collective results of all authentication tests
 type authenticationState struct {
 	serverInfo           *smbclient.ServerInfo
-	authAttempts         []*smbprotocol.AuthAttempt
+	authAttempts         []*smbfern.AuthAttempt
 	nullSessionAllowed   bool
 	anonymousAllowed     bool
 	guestAllowed         bool
@@ -169,7 +170,7 @@ func (s *LibraryEnumerateSMB) performAuthentication(ctx context.Context, host st
 }
 
 // processServerInfo sets up server info and SMB version details in the response
-func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *smbclient.ServerInfo, details *smb.EnumerateSmbDetails, target string, log svc1log.Logger) {
+func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *smbclient.ServerInfo, details *smbprotocol.EnumerateSmbDetails, target string, log svc1log.Logger) {
 	if serverInfo != nil {
 		smbServerInfo := convertToSmbServerInfo(serverInfo)
 		details.ServerInfo = smbServerInfo
@@ -212,7 +213,7 @@ func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *smbclient.ServerInfo
 }
 
 // enumerateShares performs share enumeration if connection is successful
-func (s *LibraryEnumerateSMB) enumerateShares(ctx context.Context, client *smbclient.Client, connectionSuccessful bool, details *smb.EnumerateSmbDetails, target string, log svc1log.Logger) []string {
+func (s *LibraryEnumerateSMB) enumerateShares(ctx context.Context, client *smbclient.Client, connectionSuccessful bool, details *smbprotocol.EnumerateSmbDetails, target string, log svc1log.Logger) []string {
 	var errors []string
 
 	if connectionSuccessful {
@@ -235,9 +236,9 @@ func (s *LibraryEnumerateSMB) enumerateShares(ctx context.Context, client *smbcl
 }
 
 // assembleResponse builds the final enumeration response
-func (s *LibraryEnumerateSMB) assembleResponse(details *smb.EnumerateSmbDetails, state authenticationState, serverInfo *smbclient.ServerInfo) {
+func (s *LibraryEnumerateSMB) assembleResponse(details *smbprotocol.EnumerateSmbDetails, state authenticationState, serverInfo *smbclient.ServerInfo) {
 	// Set authentication method information
-	authMethods := []smbprotocol.AuthMethod{smbprotocol.AuthMethodNtlm}
+	authMethods := []smb.AuthMethod{smb.AuthMethodNtlm}
 	details.AuthMethods = authMethods
 
 	// Set authentication capabilities
@@ -261,7 +262,7 @@ func (s *LibraryEnumerateSMB) assembleResponse(details *smb.EnumerateSmbDetails,
 
 // EnumerateTarget performs comprehensive SMB enumeration using the shared SMB protocol library
 func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
-	var details smb.EnumerateSmbDetails
+	var details smbprotocol.EnumerateSmbDetails
 	details.Target = target
 	var errors []string
 
@@ -305,12 +306,12 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 }
 
 // convertToSmbServerInfo converts protocol library ServerInfo to fern ServerInfo
-func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *smbprotocol.SmbServerInfo {
+func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *smb.ServerInfo {
 	if serverInfo == nil {
 		return nil
 	}
 
-	return &smbprotocol.SmbServerInfo{
+	return &smb.ServerInfo{
 		ServerName:   &serverInfo.ServerName,
 		Domain:       &serverInfo.Domain,
 		OsVersion:    &serverInfo.OSVersion,
@@ -342,27 +343,27 @@ func convertToSmbShares(shares []*smbclient.ShareInfo) []*smbprotocol.SmbShare {
 }
 
 // convertShareType converts string share type to fern ShareType
-func convertShareType(shareType string) smbprotocol.ShareType {
+func convertShareType(shareType string) smb.ShareType {
 	switch shareType {
 	case "IPC":
-		return smbprotocol.ShareTypeIpc
+		return smb.ShareTypeIpc
 	case "Print":
-		return smbprotocol.ShareTypePrint
+		return smb.ShareTypePrint
 	case "Disk":
-		return smbprotocol.ShareTypeDisk
+		return smb.ShareTypeDisk
 	default:
-		return smbprotocol.ShareTypeDisk
+		return smb.ShareTypeDisk
 	}
 }
 
 // convertShareAccess converts string share access to fern ShareAccess
-func convertShareAccess(access string) smbprotocol.ShareAccess {
+func convertShareAccess(access string) smb.ShareAccess {
 	switch access {
 	case "Read":
-		return smbprotocol.ShareAccessReadOnly
+		return smb.ShareAccessReadOnly
 	case "Write", "Full":
-		return smbprotocol.ShareAccessReadWrite
+		return smb.ShareAccessReadWrite
 	default:
-		return smbprotocol.ShareAccessNoAccess
+		return smb.ShareAccessNoAccess
 	}
 }
