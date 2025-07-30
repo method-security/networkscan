@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	smbprotocol "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	smb "github.com/Method-Security/networkscan/generated/go/enumerate/smb"
-	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
 	"github.com/Method-Security/networkscan/utils"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -21,7 +21,7 @@ type authTestResult struct {
 	success       bool
 	client        *smbclient.Client
 	serverInfo    *smbclient.ServerInfo
-	authAttempt   *smbfern.AuthAttempt
+	authAttempt   *smbprotocol.AuthAttempt
 	allowedMethod bool
 }
 
@@ -63,7 +63,7 @@ func (s *LibraryEnumerateSMB) testGuestAuthentication(ctx context.Context, host 
 		func(c *smbclient.Client) { c.SetCredentials("guest", "", "") },
 		"Guest authentication", target)
 
-	authAttempt := &smbfern.AuthAttempt{
+	authAttempt := &smbprotocol.AuthAttempt{
 		Username:  "guest",
 		Password:  "",
 		Success:   guestResult.Success,
@@ -90,7 +90,7 @@ func (s *LibraryEnumerateSMB) testGuestAuthentication(ctx context.Context, host 
 // authenticationState holds the collective results of all authentication tests
 type authenticationState struct {
 	serverInfo           *smbclient.ServerInfo
-	authAttempts         []*smbfern.AuthAttempt
+	authAttempts         []*smbprotocol.AuthAttempt
 	nullSessionAllowed   bool
 	anonymousAllowed     bool
 	guestAllowed         bool
@@ -182,7 +182,7 @@ func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *smbclient.ServerInfo
 
 		// Set supported versions from server capabilities if available
 		if len(serverInfo.SupportedVersions) > 0 {
-			var smbVersions []smb.SmbVersion
+			var smbVersions []smbprotocol.SmbVersion
 			for _, version := range serverInfo.SupportedVersions {
 				if smbVersion, ok := smbclient.MapProtocolVersionToEnum(version); ok {
 					smbVersions = append(smbVersions, smbVersion)
@@ -198,15 +198,15 @@ func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *smbclient.ServerInfo
 
 	// Set defaults if server info wasn't available or didn't have version info
 	if details.Version == nil {
-		version := smb.SmbVersionSmb302
+		version := smbprotocol.SmbVersionSmb302
 		details.Version = &version
 	}
 	if len(details.SupportedVersions) == 0 {
-		details.SupportedVersions = []smb.SmbVersion{
-			smb.SmbVersionSmb302,
-			smb.SmbVersionSmb30,
-			smb.SmbVersionSmb21,
-			smb.SmbVersionSmb20,
+		details.SupportedVersions = []smbprotocol.SmbVersion{
+			smbprotocol.SmbVersionSmb302,
+			smbprotocol.SmbVersionSmb30,
+			smbprotocol.SmbVersionSmb21,
+			smbprotocol.SmbVersionSmb20,
 		}
 	}
 }
@@ -237,7 +237,7 @@ func (s *LibraryEnumerateSMB) enumerateShares(ctx context.Context, client *smbcl
 // assembleResponse builds the final enumeration response
 func (s *LibraryEnumerateSMB) assembleResponse(details *smb.EnumerateSmbDetails, state authenticationState, serverInfo *smbclient.ServerInfo) {
 	// Set authentication method information
-	authMethods := []smb.AuthMethod{smb.AuthMethodNtlm}
+	authMethods := []smbprotocol.AuthMethod{smbprotocol.AuthMethodNtlm}
 	details.AuthMethods = authMethods
 
 	// Set authentication capabilities
@@ -305,12 +305,12 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 }
 
 // convertToSmbServerInfo converts protocol library ServerInfo to fern ServerInfo
-func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *smb.ServerInfo {
+func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *smbprotocol.SmbServerInfo {
 	if serverInfo == nil {
 		return nil
 	}
 
-	return &smb.ServerInfo{
+	return &smbprotocol.SmbServerInfo{
 		ServerName:   &serverInfo.ServerName,
 		Domain:       &serverInfo.Domain,
 		OsVersion:    &serverInfo.OSVersion,
@@ -319,14 +319,14 @@ func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *smb.ServerInfo {
 }
 
 // convertToSmbShares converts protocol library ShareInfo to fern SmbShare
-func convertToSmbShares(shares []*smbclient.ShareInfo) []*smb.SmbShare {
-	var smbShares []*smb.SmbShare
+func convertToSmbShares(shares []*smbclient.ShareInfo) []*smbprotocol.SmbShare {
+	var smbShares []*smbprotocol.SmbShare
 
 	for _, share := range shares {
 		shareType := convertShareType(share.Type)
 		shareAccess := convertShareAccess(share.Access)
 
-		smbShare := &smb.SmbShare{
+		smbShare := &smbprotocol.SmbShare{
 			Name:            share.Name,
 			Type:            shareType,
 			Accessible:      share.Accessible,
@@ -342,27 +342,27 @@ func convertToSmbShares(shares []*smbclient.ShareInfo) []*smb.SmbShare {
 }
 
 // convertShareType converts string share type to fern ShareType
-func convertShareType(shareType string) smb.ShareType {
+func convertShareType(shareType string) smbprotocol.ShareType {
 	switch shareType {
 	case "IPC":
-		return smb.ShareTypeIpc
+		return smbprotocol.ShareTypeIpc
 	case "Print":
-		return smb.ShareTypePrint
+		return smbprotocol.ShareTypePrint
 	case "Disk":
-		return smb.ShareTypeDisk
+		return smbprotocol.ShareTypeDisk
 	default:
-		return smb.ShareTypeDisk
+		return smbprotocol.ShareTypeDisk
 	}
 }
 
 // convertShareAccess converts string share access to fern ShareAccess
-func convertShareAccess(access string) smb.ShareAccess {
+func convertShareAccess(access string) smbprotocol.ShareAccess {
 	switch access {
 	case "Read":
-		return smb.ShareAccessReadOnly
+		return smbprotocol.ShareAccessReadOnly
 	case "Write", "Full":
-		return smb.ShareAccessReadWrite
+		return smbprotocol.ShareAccessReadWrite
 	default:
-		return smb.ShareAccessNoAccess
+		return smbprotocol.ShareAccessNoAccess
 	}
 }

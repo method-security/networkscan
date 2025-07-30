@@ -3,7 +3,7 @@ package smb
 import (
 	"context"
 
-	smbprotocol "github.com/Method-Security/networkscan/generated/go/common/protocol/smb"
+	smbprotocol "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 

@@ -1,0 +1,52 @@
+types:
+  # LDAP Protocol Common Types
+  
+  # Domain Object Types
+  DomainObjectType:
+    enum:
+      - USER
+      - GROUP
+      - COMPUTER
+      - DOMAIN_CONTROLLER
+      - ORGANIZATIONAL_UNIT
+      - GPO
+      - CONTAINER
+
+  # Collection Methods for domain enumeration
+  CollectionMethod:
+    enum:
+      - group
+      - localadmin
+      - session
+      - trusts
+      - default
+      - all
+      - loggedon
+      - objectprops
+      - experimental
+      - acl
+      - dcom
+      - rdp
+      - psremote
+      - dconly
+      - container
+
+  # LDAP Server Information
+  LdapServerInfo:
+    properties:
+      serverName: optional<string>
+      domain: optional<string>
+      baseDN: optional<string>
+      supportsTLS: optional<boolean>
+      supportsStartTLS: optional<boolean>
+      supportsSASL: optional<boolean>
+      anonymousBindAllowed: optional<boolean>
+      
+  # Basic LDAP Connection Info
+  LdapConnectionInfo:
+    properties:
+      target: string
+      port: integer
+      useSSL: boolean
+      anonymousBind: boolean
+      bindUsername: optional<string>
