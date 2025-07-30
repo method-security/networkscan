@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	pentest "github.com/Method-Security/networkscan/generated/go/pentest"
+	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
 )
 
 // ServiceActionParser defines the interface for parsing service-specific actions
@@ -171,11 +172,52 @@ func (au *ActionUtil) ContainsAction(actions []*pentest.PentestServiceAction, se
 	return false
 }
 
+// LDAPActionParser handles LDAP-specific action parsing
+type LDAPActionParser struct{}
+
+func (p *LDAPActionParser) ParseActions(actionStrings []string) ([]ldapfern.LdapAction, error) {
+	var actions []ldapfern.LdapAction
+
+	for _, actionStr := range actionStrings {
+		// Handle comma-separated actions in a single flag
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue // Skip empty parts
+			}
+			// Convert to uppercase for enum matching
+			upperPart := strings.ToUpper(part)
+			ldapAction, err := ldapfern.NewLdapActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid LDAP action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, ldapAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *LDAPActionParser) GetValidActions() []string {
+	return []string{"auth", "domaindump"}
+}
+
+func (p *LDAPActionParser) ContainsAction(actions []ldapfern.LdapAction, target ldapfern.LdapAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
 // Global parser instances (singletons)
 var (
 	smbParserInstance    *SMBActionParser
 	sshParserInstance    *SSHActionParser
 	telnetParserInstance *TelnetActionParser
+	ldapParserInstance   *LDAPActionParser
 	actionUtilInstance   *ActionUtil
 )
 
@@ -201,6 +243,14 @@ func GetTelnetParser() *TelnetActionParser {
 		telnetParserInstance = &TelnetActionParser{}
 	}
 	return telnetParserInstance
+}
+
+// GetLDAPParser returns the singleton LDAP action parser
+func GetLDAPParser() *LDAPActionParser {
+	if ldapParserInstance == nil {
+		ldapParserInstance = &LDAPActionParser{}
+	}
+	return ldapParserInstance
 }
 
 // GetActionUtil returns the singleton action utility
