@@ -22,7 +22,7 @@ import (
 
 	// Custom fingerprinters
 	grpcfp "github.com/Method-Security/networkscan/internal/discover/plugins/service/grpc"
-	_ "github.com/Method-Security/networkscan/internal/discover/plugins/service/kerberos"
+	_ "github.com/Method-Security/networkscan/internal/discover/plugins/service/kerberos" // Kerberos
 )
 
 /* -------------------------------------------------------------------------- */
