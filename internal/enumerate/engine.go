@@ -12,6 +12,7 @@ import (
 	// Generated
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	// Internal
+	domainEnum "github.com/Method-Security/networkscan/internal/enumerate/domain"
 	ftp "github.com/Method-Security/networkscan/internal/enumerate/ftp"
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
@@ -131,6 +132,8 @@ func getEngine(serviceType enumeratefern.SupportedServiceType) (NetworkApplicati
 		return NetworkApplicationEngine{Library: &grpc.LibraryEnumerateGRPC{}}, nil
 	case enumeratefern.SupportedServiceTypeSmb:
 		return NetworkApplicationEngine{Library: &smb.LibraryEnumerateSMB{}}, nil
+	case enumeratefern.SupportedServiceTypeDomain:
+		return NetworkApplicationEngine{Library: &domainEnum.LibraryEnumerateDomain{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", serviceType)
 	}

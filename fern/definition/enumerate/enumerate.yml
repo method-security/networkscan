@@ -4,6 +4,7 @@ imports:
   smtp: ./smtp/smtp.yml
   grpc: ./grpc/grpc.yml
   smb: ./smb/smb.yml
+  domain: ./domain/domain.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -13,6 +14,7 @@ types:
       - SMTP
       - GRPC
       - SMB
+      - DOMAIN
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -21,6 +23,7 @@ types:
       EnumerateSmtpDetails: smtp.EnumerateSmtpDetails
       EnumerateGrpcDetails: grpc.EnumerateGrpcDetails
       EnumerateSmbDetails: smb.EnumerateSmbDetails
+      EnumerateDomainDetails: domain.EnumerateDomainResult
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>

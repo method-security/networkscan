@@ -1,0 +1,184 @@
+types:
+  # ENUMs
+  DomainObjectType:
+    enum:
+      - USER
+      - GROUP
+      - COMPUTER
+      - DOMAIN_CONTROLLER
+      - ORGANIZATIONAL_UNIT
+      - GPO
+      - CONTAINER
+
+  CollectionMethod:
+    enum:
+      - group
+      - localadmin
+      - session
+      - trusts
+      - default
+      - all
+      - loggedon
+      - objectprops
+      - experimental
+      - acl
+      - dcom
+      - rdp
+      - psremote
+      - dconly
+      - container
+
+  # Common Objects
+  DomainUserProperties:
+    properties:
+      name: string
+      domain: string
+      domainsid: string
+      distinguishedname: string
+      unconstraineddelegation: boolean
+      trustedtoauth: boolean
+      passwordnotreqd: boolean
+      enabled: optional<boolean>
+      lastlogon: optional<string>
+      pwdlastset: optional<string>
+      admincount: optional<integer>
+      displayname: optional<string>
+      description: optional<string>
+      email: optional<string>
+      samaccountname: optional<string>
+      userpassword: optional<string>
+      sensitive: optional<boolean>
+      dontreqpreauth: optional<boolean>
+      serviceprincipalnames: optional<list<string>>
+
+  DomainUser:
+    properties:
+      AllowedToDelegate: list<string>
+      ObjectIdentifier: string
+      PrimaryGroupSID: optional<string>
+      Properties: DomainUserProperties
+      Aces: list<string>
+      SPNTargets: list<string>
+      HasSIDHistory: list<string>
+      IsDeleted: boolean
+      IsACLProtected: optional<boolean>
+
+  DomainGroupProperties:
+    properties:
+      domain: string
+      domainsid: string
+      highvalue: boolean
+      name: string
+      distinguishedname: string
+      admincount: optional<integer>
+      description: optional<string>
+
+  GroupMember:
+    properties:
+      ObjectIdentifier: string
+      ObjectType: string
+
+  DomainGroup:
+    properties:
+      ObjectIdentifier: string
+      Properties: DomainGroupProperties
+      Members: list<GroupMember>
+      Aces: list<string>
+      IsDeleted: boolean
+
+  DomainComputer:
+    properties:
+      distinguishedName: string
+      samAccountName: string
+      dnsHostName: optional<string>
+      description: optional<string>
+      objectSid: string
+      operatingSystem: optional<string>
+      operatingSystemVersion: optional<string>
+      enabled: boolean
+      lastLogon: optional<string>
+      servicePrincipalNames: optional<list<string>>
+      isDomainController: boolean
+
+  DomainController:
+    properties:
+      distinguishedName: string
+      samAccountName: string
+      dnsHostName: string
+      siteName: optional<string>
+      operatingSystem: optional<string>
+      operatingSystemVersion: optional<string>
+      roles: optional<list<string>>
+
+  OrganizationalUnit:
+    properties:
+      distinguishedName: string
+      name: string
+      description: optional<string>
+      gpoLinks: optional<list<string>>
+
+  GroupPolicyObject:
+    properties:
+      distinguishedName: string
+      displayName: string
+      description: optional<string>
+      gpcFileSysPath: optional<string>
+      versionNumber: optional<integer>
+
+  DomainTrust:
+    properties:
+      sourceDomain: string
+      targetDomain: string
+      trustDirection: string
+      trustType: string
+      trustAttributes: optional<string>
+
+  # Config Types
+  EnumerateDomainConfig:
+    properties:
+      target: string
+      domain: string
+      username: optional<string>
+      password: optional<string>
+      ldapPort: optional<integer>
+      useSSL: optional<boolean>
+      timeout: integer
+      collectionMethods: list<CollectionMethod>
+      customLdapFilter: optional<string>
+      maxResults: optional<integer>
+
+  # Result Types - matching reference structure
+  DomainDataMeta:
+    properties:
+      methods: integer
+      type: string
+      count: integer
+      version: integer
+
+  DomainUsersResult:
+    properties:
+      data: list<DomainUser>
+      meta: DomainDataMeta
+
+  DomainGroupsResult:
+    properties:
+      data: list<DomainGroup>
+      meta: DomainDataMeta
+
+  EnumerateDomainResult:
+    properties:
+      users: optional<DomainUsersResult>
+      groups: optional<DomainGroupsResult>
+      computers: optional<list<DomainComputer>>
+      domainControllers: optional<list<DomainController>>
+      organizationalUnits: optional<list<OrganizationalUnit>>
+      groupPolicyObjects: optional<list<GroupPolicyObject>>
+      domainTrusts: optional<list<DomainTrust>>
+      totalObjects: integer
+
+  # Report Types
+  EnumerateDomainReport:
+    properties:
+      config: EnumerateDomainConfig
+      result: EnumerateDomainResult
+      errors: optional<list<string>>
