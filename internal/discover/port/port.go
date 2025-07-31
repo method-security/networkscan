@@ -5,22 +5,34 @@ import (
 	"context"
 	"flag"
 	"os"
+	"strconv"
+	"strings"
 
 	// Generated
 	common "github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 
 	// External
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	goflags "github.com/projectdiscovery/goflags"
 	result "github.com/projectdiscovery/naabu/v2/pkg/result"
 	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
+var requiredPorts = []string{"1", "65535"}
+
 // RunPortScan performs a port scan on the specified target using the provided configuration.
 // It returns a report containing discovered open ports and any errors encountered during the process.
 func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*discoverfern.DiscoverPortReport, error) {
-
+	log := svc1log.FromContext(ctx)
 	errors := []string{}
+
+	log.Info("Running port scan", svc1log.SafeParam("validate", config.Validate))
+
+	// Ensure required ports are included in the scan if validation is enabled
+	if config.Validate {
+		config = ensureRequiredPorts(config, requiredPorts)
+	}
 
 	portscanResult, err := getPortScan(ctx, config)
 	if err != nil {
@@ -29,6 +41,16 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 
 	// Filter ports by service validation if requested
 	if config.Validate {
+		// Check if either of the required ports are open
+		if !hasOpenRequiredPorts(portscanResult, requiredPorts) {
+			log.Info("Required validation ports are closed, skipping validation", svc1log.SafeParam("requiredPorts", requiredPorts))
+			// Required ports are not open, consider everything validated (skip validation)
+			return &discoverfern.DiscoverPortReport{
+				Config: &config, Result: &discoverfern.DiscoverPortResult{Sockets: portscanResult}, Errors: errors}, nil
+		}
+		log.Info("Required validation ports are open, proceeding with validation", svc1log.SafeParam("requiredPorts", requiredPorts))
+
+		// Required ports are open, proceed with validation
 		validatedPorts, validationErrors := validatePortScan(ctx, config, portscanResult)
 		portscanResult = validatedPorts
 		errors = append(errors, validationErrors...)
@@ -110,6 +132,63 @@ func parsePortScanResult(result *result.HostResult) *discoverfern.SocketDetails 
 		Ports: ports,
 	}
 	return &host
+}
+
+// ensureRequiredPorts modifies the scan configuration to include required ports
+func ensureRequiredPorts(config discoverfern.DiscoverPortConfig, requiredPorts []string) discoverfern.DiscoverPortConfig {
+	// If specific ports are already configured, add required ports to them
+	if config.Ports != nil && *config.Ports != "" {
+		existingPorts := *config.Ports
+		for _, port := range requiredPorts {
+			if !strings.Contains(existingPorts, port) {
+				existingPorts += "," + port
+			}
+		}
+		config.Ports = &existingPorts
+	} else if config.TopPorts != nil {
+		// If using top ports, we need to switch to specific ports that include required ports
+		requiredPortsStr := ""
+		for i, port := range requiredPorts {
+			if i > 0 {
+				requiredPortsStr += ","
+			}
+			requiredPortsStr += port
+		}
+		config.Ports = &requiredPortsStr
+		// Keep TopPorts as well, naabu will scan both
+	} else {
+		// No specific ports configured, add required ports
+		requiredPortsStr := ""
+		for i, port := range requiredPorts {
+			if i > 0 {
+				requiredPortsStr += ","
+			}
+			requiredPortsStr += port
+		}
+		config.Ports = &requiredPortsStr
+	}
+
+	return config
+}
+
+// hasOpenRequiredPorts checks if any of the required ports (as strings) are open in the scan results
+func hasOpenRequiredPorts(scanResults []*discoverfern.SocketDetails, requiredPorts []string) bool {
+	requiredPortsMap := make(map[string]bool)
+	for _, port := range requiredPorts {
+		requiredPortsMap[port] = true
+	}
+
+	for _, socket := range scanResults {
+		if socket != nil && socket.Ports != nil {
+			for _, port := range socket.Ports {
+				if port != nil && requiredPortsMap[strconv.Itoa(port.Port)] {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 // hideOsArgsFromNaabu prevents Naabu from processing command line arguments.
