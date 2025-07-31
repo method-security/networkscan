@@ -1,0 +1,22 @@
+types:
+  # LDAP Protocol Common Types
+  
+  # LDAP Server Information
+  LdapServerInfo:
+    properties:
+      serverName: optional<string>
+      domain: optional<string>
+      baseDN: optional<string>
+      supportsTLS: optional<boolean>
+      supportsStartTLS: optional<boolean>
+      supportsSASL: optional<boolean>
+      anonymousBindAllowed: optional<boolean>
+      
+  # Basic LDAP Connection Info
+  LdapConnectionInfo:
+    properties:
+      target: string
+      port: integer
+      useSSL: boolean
+      anonymousBind: boolean
+      bindUsername: optional<string>
