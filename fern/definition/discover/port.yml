@@ -27,6 +27,10 @@ types:
       topPorts: optional<string>
       threads: integer
       scanType: PortScanType
+      validate: boolean
+      validateHostname: optional<string>
+      validateAttemptTimeout: optional<integer>
+      validateThreads: optional<integer>
   # Final report
   DiscoverPortReport:
     properties:

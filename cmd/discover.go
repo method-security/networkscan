@@ -9,6 +9,8 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	// Internal
 	discover "github.com/Method-Security/networkscan/internal/discover"
+	discoverport "github.com/Method-Security/networkscan/internal/discover/port"
+
 	// External
 	privileges "github.com/projectdiscovery/naabu/v2/pkg/privileges"
 	cobra "github.com/spf13/cobra"
@@ -152,12 +154,45 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
+			validate, err := cmd.Flags().GetBool("validate")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			var validateHostname *string
+			var validateAttemptTimeout *int
+			var validateThreads *int
+			if validate {
+				// Validate hostname
+				validateHostnameString, err := cmd.Flags().GetString("validate-hostname")
+				if err != nil {
+					a.OutputSignal.AddError(err)
+					return
+				}
+				if validateHostnameString != "" {
+					validateHostname = &validateHostnameString
+				}
+				// Validate attempt timeout
+				validateAttemptTimeoutInt, err := cmd.Flags().GetInt("validate-attempt-timeout")
+				if err != nil {
+					a.OutputSignal.AddError(err)
+					return
+				}
+				validateAttemptTimeout = &validateAttemptTimeoutInt
+				// Validate threads
+				validateThreadsInt, err := cmd.Flags().GetInt("validate-threads")
+				if err != nil {
+					a.OutputSignal.AddError(err)
+					return
+				}
+				validateThreads = &validateThreadsInt
+			}
 
 			// Set Config
-			config := getDiscoverPortConfig(target, ports, topPorts, threads, scanTypeEnum)
+			config := getDiscoverPortConfig(target, ports, topPorts, threads, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads)
 
 			// Generate the report
-			report, err := discover.RunPortScan(cmd.Context(), config)
+			report, err := discoverport.RunPortScan(cmd.Context(), config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -170,6 +205,10 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().String("top-ports", "", "Scan the top N most common TCP ports (options: full, 100, 1000)")
 	discoverPortCmd.Flags().Int("threads", 25, "Number of concurrent threads to use during port scanning")
 	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN (default, requires root) or CONNECT")
+	discoverPortCmd.Flags().Bool("validate", false, "Validate open ports by using service detection techniques")
+	discoverPortCmd.Flags().String("validate-hostname", "", "Hostname to validate against (e.g., example.com)")
+	discoverPortCmd.Flags().Int("validate-attempt-timeout", 10, "Timeout in seconds for each service detection attempt")
+	discoverPortCmd.Flags().Int("validate-threads", 0, "Number of concurrent threads to use during service detection")
 
 	// Mark Required Flags
 	_ = discoverPortCmd.MarkFlagRequired("target")
@@ -304,14 +343,25 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 // getDiscoverPortConfig creates a configuration for port scanning with the provided parameters.
 // It handles both specific port ranges and top ports scanning modes.
-func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, scanType discoverfern.PortScanType) discoverfern.DiscoverPortConfig {
-	return discoverfern.DiscoverPortConfig{
+func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int) discoverfern.DiscoverPortConfig {
+	config := discoverfern.DiscoverPortConfig{
 		Target:   target,
 		Ports:    &ports,
 		TopPorts: &topPorts,
 		Threads:  threads,
 		ScanType: scanType,
+		Validate: validate,
 	}
+	if validateHostname != nil {
+		config.ValidateHostname = validateHostname
+	}
+	if validateAttemptTimeout != nil {
+		config.ValidateAttemptTimeout = validateAttemptTimeout
+	}
+	if validateThreads != nil {
+		config.ValidateThreads = validateThreads
+	}
+	return config
 }
 
 // getDiscoverServiceConfig creates a configuration for service fingerprinting with the provided parameters.
