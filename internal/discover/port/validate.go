@@ -9,10 +9,8 @@ import (
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-
 	// Internal
 	discover "github.com/Method-Security/networkscan/internal/discover"
-
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )

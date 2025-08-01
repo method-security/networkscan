@@ -1,10 +1,14 @@
+imports:
+  smbProtocol: ../common/protocol/smb.yml
+
 types:
   # Common Objects
   DomainControllerInfo:
     properties:
       hostname: optional<string>
       ipAddress: optional<string>
-      serverVersion: optional<string>
+      # Use common SMB server info for consistency across modules
+      smbServerInfo: optional<smbProtocol.SmbServerInfo>
 
   DomainInfo:
     properties:
