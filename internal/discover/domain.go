@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	ldappentest "github.com/Method-Security/networkscan/internal/pentest/ldap"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
@@ -312,9 +313,9 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 			dcDetails := gatherDomainControllerDetails(ctx, hostname, ipAddress)
 
 			if dcDetails != nil {
-				if dcDetails.serverVersion != "" {
-					dcInfo.ServerVersion = &dcDetails.serverVersion
-				}
+				// Store the complete SMB server info in the new structure
+				dcInfo.SmbServerInfo = dcDetails.smbServerInfo
+
 				// Use the IP from SMB if we didn't get it from DNS resolution
 				if dcInfo.IpAddress == nil && dcDetails.ipAddress != "" {
 					dcInfo.IpAddress = &dcDetails.ipAddress
@@ -322,10 +323,14 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 			}
 
 			domainControllers = append(domainControllers, dcInfo)
+			var serverVersion string
+			if dcInfo.SmbServerInfo != nil && dcInfo.SmbServerInfo.OsVersion != nil {
+				serverVersion = *dcInfo.SmbServerInfo.OsVersion
+			}
 			log.Debug("Found domain controller",
 				svc1log.SafeParam("hostname", hostname),
 				svc1log.SafeParam("ip", dcInfo.IpAddress),
-				svc1log.SafeParam("serverVersion", dcInfo.ServerVersion))
+				svc1log.SafeParam("serverVersion", serverVersion))
 		}
 	}
 
@@ -338,7 +343,7 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 
 // domainControllerDetails holds detailed information about a domain controller
 type domainControllerDetails struct {
-	serverVersion string
+	smbServerInfo *commonprotocolfern.SmbServerInfo
 	ipAddress     string
 }
 
@@ -382,17 +387,24 @@ func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress stri
 			continue // Try next target
 		}
 
+		// Convert the internal server info to the common protocol structure
+		smbServerInfo := convertToSmbServerInfo(serverInfo)
+
 		details := &domainControllerDetails{
-			serverVersion: serverInfo.OSVersion,
+			smbServerInfo: smbServerInfo,
 			ipAddress:     target, // Store the target we used to connect
 		}
 
 		// Close the client
 		_ = client.Close()
 
+		var osVersion string
+		if smbServerInfo.OsVersion != nil {
+			osVersion = *smbServerInfo.OsVersion
+		}
 		log.Debug("Successfully gathered DC details",
 			svc1log.SafeParam("target", target),
-			svc1log.SafeParam("serverVersion", details.serverVersion))
+			svc1log.SafeParam("serverVersion", osVersion))
 
 		return details
 	}
@@ -401,6 +413,30 @@ func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress stri
 		svc1log.SafeParam("hostname", hostname),
 		svc1log.SafeParam("ipAddress", ipAddress))
 	return nil
+}
+
+// convertToSmbServerInfo converts protocol library ServerInfo to common SMB ServerInfo
+func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *commonprotocolfern.SmbServerInfo {
+	if serverInfo == nil {
+		return nil
+	}
+
+	result := &commonprotocolfern.SmbServerInfo{
+		ServerName:        &serverInfo.ServerName,
+		Domain:            &serverInfo.Domain,
+		NetBiosDomainName: &serverInfo.NetBIOSDomainName,
+		Workgroup:         &serverInfo.Domain, // Use domain as workgroup fallback
+		OsVersion:         &serverInfo.OSVersion,
+		Capabilities:      serverInfo.Capabilities,
+		SigningRequired:   &serverInfo.SigningRequired,
+	}
+
+	// Include raw OS version if available
+	if serverInfo.RawOSVersion != "" {
+		result.RawOsVersion = &serverInfo.RawOSVersion
+	}
+
+	return result
 }
 
 // Helper functions

@@ -1,0 +1,119 @@
+types:
+  # SSH Protocol ENUMs
+  SshAuthMethod:
+    enum:
+      - PASSWORD
+      - PUBLIC_KEY
+
+  HostKeyAlgorithm:
+    enum:
+      - SSHDSS
+      - SSHRSA
+      - RSASHA2256
+      - RSASHA2512
+      - ECDSASHA2NISTP256
+      - ECDSASHA2NISTP384
+      - ECDSASHA2NISTP521
+      - SSHED25519
+      - ECDSASHA2NISTP224
+      - ED25519SHA256
+
+  KeyExchangeAlgorithm:
+    enum:
+      - SNTRUP761X25519SHA512OPENSSH
+      - CURVE25519SHA256
+      - CURVE25519SHA256LIBSSH
+      - ECDHSHA2NISTP256
+      - ECDHSHA2NISTP384
+      - ECDHSHA2NISTP521
+      - ECDHSHA2NISTP224
+      - DIFFIEHELLMANGROUPEXCHANGESHA256
+      - DIFFIEHELLMANGROUPEXCHANGESHA512
+      - DIFFIEHELLMANGROUP16SHA512
+      - DIFFIEHELLMANGROUP18SHA512
+      - DIFFIEHELLMANGROUP14SHA256
+      - DIFFIEHELLMANGROUP14SHA512
+      - DIFFIEHELLMANGROUP1SHA1
+      - DIFFIEHELLMANGROUP1SHA256
+      - KEXSTRICTSV00OPENSSH
+      - X25519SHA256LIBSSH
+      - X448SHA512OPENSSH
+      - CURVE25519SHA512OPENSSH
+
+  CipherAlgorithm:
+    enum:
+      - CHACHA20POLY1305OPENSSH
+      - AES128CTR
+      - AES192CTR
+      - AES256CTR
+      - AES128GCMOPENSSH
+      - AES256GCMOPENSSH
+      - AES128CBC
+      - AES192CBC
+      - AES256CBC
+      - THREEDESCBC
+      - BLOWFISHCBC
+      - AES128CBCOPENSSL
+      - AES128GCM
+      - AES256GCM
+
+  MACAlgorithm:
+    enum:
+      - UMAC1
+      - UMAC64ETMOPENSSH
+      - UMAC128ETMOPENSSH
+      - HMACSHA2256ETMOPENSSH
+      - HMACSHA2512ETMOPENSSH
+      - HMACSHA1ETMOPENSSH
+      - UMAC64OPENSSH
+      - UMAC128OPENSSH
+      - HMACSHA2256
+      - HMACSHA2512
+      - HMACSHA1
+      - HMACMD5
+      - HMACRIPEMD160
+      - HMACSHA3256
+      - HMACSHA3512
+
+  # Core SSH Protocol Objects
+  SshServerInfo:
+    properties:
+      # Basic server identification
+      serverVersion: optional<string>
+      target: optional<string>
+      
+      # Protocol capabilities
+      supportedAuthMethods: optional<list<SshAuthMethod>>
+      supportedCiphers: optional<list<CipherAlgorithm>>
+      supportedMacs: optional<list<MACAlgorithm>>
+      supportedKex: optional<list<KeyExchangeAlgorithm>>
+      hostKeyAlgos: optional<list<HostKeyAlgorithm>>
+      
+      # Raw protocol information
+      rawASCII: optional<string>
+
+  # Authentication result for any SSH operation  
+  SshAuthAttempt:
+    properties:
+      username: string
+      password: string
+      success: boolean
+      message: string
+      timestamp: datetime
+
+  # Command execution result
+  SshCommandExecution:
+    properties:
+      command: string
+      output: string
+      exitCode: optional<integer>
+      timestamp: datetime
+
+  # File transfer result (for future use)
+  SshFileTransfer:
+    properties:
+      localPath: string
+      remotePath: string
+      direction: string # "upload" or "download"  
+      success: boolean
+      timestamp: datetime

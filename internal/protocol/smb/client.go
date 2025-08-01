@@ -30,15 +30,15 @@ type Client struct {
 
 // ServerInfo contains basic server information extracted from SMB connection
 type ServerInfo struct {
-	ServerName         string
-	Domain             string
-	NetBIOSDomainName  string
-	OSVersion          string
-	ServerType         string
-	IsDomainController bool
-	Capabilities       []string
-	SigningRequired    bool
-	SupportedVersions  []string
+	ServerName        string
+	Domain            string
+	NetBIOSDomainName string
+	OSVersion         string
+	RawOSVersion      string
+	ServerType        string
+	Capabilities      []string
+	SigningRequired   bool
+	SupportedVersions []string
 }
 
 // ShareInfo represents SMB share information
@@ -155,6 +155,7 @@ func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*ServerInf
 
 	// Parse and enhance the OS version
 	if targetInfo.GuessedOSVersion != "" {
+		serverInfo.RawOSVersion = targetInfo.GuessedOSVersion
 		serverInfo.OSVersion = parseWindowsVersion(targetInfo.GuessedOSVersion)
 	} else {
 		serverInfo.OSVersion = "Windows Server"
@@ -418,6 +419,7 @@ func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
 
 		// Parse and enhance the OS version
 		if targetInfo.GuessedOSVersion != "" {
+			c.serverInfo.RawOSVersion = targetInfo.GuessedOSVersion
 			c.serverInfo.OSVersion = parseWindowsVersion(targetInfo.GuessedOSVersion)
 		} else {
 			c.serverInfo.OSVersion = "Windows Server"

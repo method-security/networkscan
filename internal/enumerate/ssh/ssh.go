@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 
+	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	ssh "github.com/Method-Security/networkscan/generated/go/enumerate/ssh"
 )
@@ -34,7 +35,8 @@ type LibraryEnumerateSSH struct{}
 
 func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
 	var details ssh.EnumerateSshDetails
-	details.Target = target
+	var serverInfo commonprotocolfern.SshServerInfo
+	serverInfo.Target = &target
 	errors := []string{}
 
 	// Create dialer with context
@@ -51,7 +53,7 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 		errors = append(errors, err.Error())
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 	}
-	details.Version = version
+	serverInfo.ServerVersion = version
 
 	// Perform SSH handshake to extract KEX data
 	rawASCII, err := getSSHAlgorithms(ctx, conn)
@@ -64,13 +66,13 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	if versionASCII != nil {
 		fullASCII = *versionASCII + fullASCII
 	}
-	details.RawAscii = &fullASCII
-	details.KeyExchangeAlgos = extractAlgorithms(fullASCII, commonKeyExchangeAlgos)
-	details.HostKeyAlgos = extractAlgorithms(fullASCII, commonHostKeyAlgos)
-	details.Ciphers = extractAlgorithms(fullASCII, commonCiphers)
-	details.Macs = extractAlgorithms(fullASCII, commonMACs)
-	if len(details.HostKeyAlgos) >= 0 {
-		details.AuthMethods = []ssh.AuthMethod{ssh.AuthMethodPublicKey}
+	serverInfo.RawAscii = &fullASCII
+	serverInfo.SupportedKex = extractAlgorithms(fullASCII, commonKeyExchangeAlgos)
+	serverInfo.HostKeyAlgos = extractAlgorithms(fullASCII, commonHostKeyAlgos)
+	serverInfo.SupportedCiphers = extractAlgorithms(fullASCII, commonCiphers)
+	serverInfo.SupportedMacs = extractAlgorithms(fullASCII, commonMACs)
+	if len(serverInfo.HostKeyAlgos) >= 0 {
+		serverInfo.SupportedAuthMethods = []commonprotocolfern.SshAuthMethod{commonprotocolfern.SshAuthMethodPublicKey}
 	}
 
 	// Check if password authentication is supported
@@ -79,13 +81,16 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 		errors = append(errors, err.Error())
 	}
 	if passwordSupported != nil && *passwordSupported {
-		details.AuthMethods = append(details.AuthMethods, ssh.AuthMethodPassword)
+		serverInfo.SupportedAuthMethods = append(serverInfo.SupportedAuthMethods, commonprotocolfern.SshAuthMethodPassword)
 	}
 
 	err = conn.Close()
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
+
+	// Set the server info in the details
+	details.ServerInfo = &serverInfo
 
 	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 }

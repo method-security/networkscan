@@ -1,0 +1,80 @@
+types:
+  # SMB Protocol ENUMs
+  SmbVersion:
+    enum:
+      - SMB1
+      - SMB2_0
+      - SMB2_1
+      - SMB3_0
+      - SMB3_0_2
+      - SMB3_1_1
+
+  AuthMethod:
+    enum:
+      - NTLM
+      - KERBEROS
+
+  ShareType:
+    enum:
+      - DISK
+      - PRINT
+      - DEVICE
+      - IPC
+      - UNKNOWN
+
+  ShareAccess:
+    enum:
+      - READ_ONLY
+      - READ_WRITE
+      - NO_ACCESS
+      - UNKNOWN
+
+  # Core SMB Protocol Objects
+  SmbServerInfo:
+    properties:
+      # Basic server identification
+      serverName: optional<string>
+      domain: optional<string>
+      netBIOSDomainName: optional<string>
+      workgroup: optional<string>
+      
+      # Version information
+      osVersion: optional<string>          # Parsed/human-readable version (e.g., "Windows Server 2019")
+      rawOsVersion: optional<string>       # Raw version from NTLM challenge (e.g., "Windows Server 2019 Build 17763")
+      lanManagerVersion: optional<string>  # LAN Manager version if available
+      
+      # SMB protocol details
+      smbVersion: optional<SmbVersion>             # Primary SMB version in use
+      supportedSmbVersions: optional<list<SmbVersion>>  # All supported SMB versions
+      
+      # Security capabilities
+      signingRequired: optional<boolean>
+      signingEnabled: optional<boolean>
+      encryptionSupported: optional<boolean>
+      encryptionRequired: optional<boolean>
+      
+      # Additional capabilities
+      capabilities: optional<list<string>>
+
+  SmbShare:
+    properties:
+      name: string
+      type: ShareType
+      comment: optional<string>
+      accessible: boolean
+      access: optional<ShareAccess>
+      anonymousAccess: boolean
+      guestAccess: boolean
+      hidden: optional<boolean>
+
+  # Authentication result for any SMB operation
+  SmbAuthAttempt:
+    properties:
+      username: string
+      password: string
+      domain: optional<string>
+      success: boolean
+      message: string
+      isAdmin: optional<boolean>  # For successful auths, indicates admin privileges
+      timestamp: datetime
+      errorCode: optional<string> # SMB/NTLM error code if applicable
