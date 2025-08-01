@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	commonprotocol "github.com/Method-Security/networkscan/generated/go/common/protocol"
+	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	ldappentest "github.com/Method-Security/networkscan/internal/pentest/ldap"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
@@ -343,7 +343,7 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 
 // domainControllerDetails holds detailed information about a domain controller
 type domainControllerDetails struct {
-	smbServerInfo *commonprotocol.SmbServerInfo
+	smbServerInfo *commonprotocolfern.SmbServerInfo
 	ipAddress     string
 }
 
@@ -416,12 +416,12 @@ func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress stri
 }
 
 // convertToSmbServerInfo converts protocol library ServerInfo to common SMB ServerInfo
-func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *commonprotocol.SmbServerInfo {
+func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *commonprotocolfern.SmbServerInfo {
 	if serverInfo == nil {
 		return nil
 	}
 
-	result := &commonprotocol.SmbServerInfo{
+	result := &commonprotocolfern.SmbServerInfo{
 		ServerName:        &serverInfo.ServerName,
 		Domain:            &serverInfo.Domain,
 		NetBiosDomainName: &serverInfo.NetBIOSDomainName,

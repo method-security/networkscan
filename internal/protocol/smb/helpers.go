@@ -3,22 +3,22 @@ package smb
 import (
 	"context"
 
-	commonprotocol "github.com/Method-Security/networkscan/generated/go/common/protocol"
+	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // MapProtocolVersionToEnum maps protocol version strings to Fern enum values
 // This function is shared between enumerate and pentest modules
-func MapProtocolVersionToEnum(version string) (commonprotocol.SmbVersion, bool) {
+func MapProtocolVersionToEnum(version string) (commonprotocolfern.SmbVersion, bool) {
 	switch version {
 	case "SMB3.0.2":
-		return commonprotocol.SmbVersionSmb302, true
+		return commonprotocolfern.SmbVersionSmb302, true
 	case "SMB3.0":
-		return commonprotocol.SmbVersionSmb30, true
+		return commonprotocolfern.SmbVersionSmb30, true
 	case "SMB2.1":
-		return commonprotocol.SmbVersionSmb21, true
+		return commonprotocolfern.SmbVersionSmb21, true
 	case "SMB2.0":
-		return commonprotocol.SmbVersionSmb20, true
+		return commonprotocolfern.SmbVersionSmb20, true
 	default:
 		return "", false // Unknown version
 	}
