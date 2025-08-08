@@ -1,0 +1,7 @@
+types:
+  # Telnet Protocol Objects
+  TelnetServerInfo:
+    properties:
+      target: optional<string>         # Target host:port
+      banner: optional<string>         # Server banner information
+      prompts: optional<list<string>>  # Login prompts observed
