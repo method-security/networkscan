@@ -4,22 +4,25 @@ import (
 	"fmt"
 	"strings"
 
-	pentest "github.com/Method-Security/networkscan/generated/go/pentest"
-	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
+	ldapcommonfern "github.com/Method-Security/networkscan/generated/go/common/ldap"
+	pentestcommonfern "github.com/Method-Security/networkscan/generated/go/common/pentest"
+	smbcommonfern "github.com/Method-Security/networkscan/generated/go/common/smb"
+	sshcommonfern "github.com/Method-Security/networkscan/generated/go/common/ssh"
+	telnetcommonfern "github.com/Method-Security/networkscan/generated/go/common/telnet"
 )
 
 // ServiceActionParser defines the interface for parsing service-specific actions
 type ServiceActionParser interface {
-	ParseActions(actionStrings []string) ([]*pentest.PentestServiceAction, error)
+	ParseActions(actionStrings []string) ([]*pentestcommonfern.PentestServiceAction, error)
 	GetValidActions() []string
-	ContainsAction(actions []*pentest.PentestServiceAction, target interface{}) bool
+	ContainsAction(actions []*pentestcommonfern.PentestServiceAction, target interface{}) bool
 }
 
 // SMBActionParser handles SMB-specific action parsing
 type SMBActionParser struct{}
 
-func (p *SMBActionParser) ParseActions(actionStrings []string) ([]*pentest.PentestServiceAction, error) {
-	var actions []*pentest.PentestServiceAction
+func (p *SMBActionParser) ParseActions(actionStrings []string) ([]*pentestcommonfern.PentestServiceAction, error) {
+	var actions []*pentestcommonfern.PentestServiceAction
 
 	for _, actionStr := range actionStrings {
 		// Handle comma-separated actions in a single flag
@@ -31,11 +34,11 @@ func (p *SMBActionParser) ParseActions(actionStrings []string) ([]*pentest.Pente
 			}
 			// Convert to uppercase for enum matching
 			upperPart := strings.ToUpper(part)
-			smbAction, err := pentest.NewPentestSmbActionFromString(upperPart)
+			smbAction, err := smbcommonfern.NewPentestSmbActionFromString(upperPart)
 			if err != nil {
 				return nil, fmt.Errorf("invalid SMB action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
 			}
-			action := pentest.NewPentestServiceActionFromSmb(smbAction)
+			action := pentestcommonfern.NewPentestServiceActionFromSmb(smbAction)
 			actions = append(actions, action)
 		}
 	}
@@ -47,8 +50,8 @@ func (p *SMBActionParser) GetValidActions() []string {
 	return []string{"auth", "samdump", "lsadump"}
 }
 
-func (p *SMBActionParser) ContainsAction(actions []*pentest.PentestServiceAction, target interface{}) bool {
-	targetAction, ok := target.(pentest.PentestSmbAction)
+func (p *SMBActionParser) ContainsAction(actions []*pentestcommonfern.PentestServiceAction, target interface{}) bool {
+	targetAction, ok := target.(smbcommonfern.PentestSmbAction)
 	if !ok {
 		return false
 	}
@@ -63,8 +66,8 @@ func (p *SMBActionParser) ContainsAction(actions []*pentest.PentestServiceAction
 // SSHActionParser handles SSH-specific action parsing
 type SSHActionParser struct{}
 
-func (p *SSHActionParser) ParseActions(actionStrings []string) ([]*pentest.PentestServiceAction, error) {
-	var actions []*pentest.PentestServiceAction
+func (p *SSHActionParser) ParseActions(actionStrings []string) ([]*pentestcommonfern.PentestServiceAction, error) {
+	var actions []*pentestcommonfern.PentestServiceAction
 
 	for _, actionStr := range actionStrings {
 		// Handle comma-separated actions in a single flag
@@ -76,11 +79,11 @@ func (p *SSHActionParser) ParseActions(actionStrings []string) ([]*pentest.Pente
 			}
 			// Convert to uppercase for enum matching
 			upperPart := strings.ToUpper(part)
-			sshAction, err := pentest.NewPentestSshActionFromString(upperPart)
+			sshAction, err := sshcommonfern.NewPentestSshActionFromString(upperPart)
 			if err != nil {
 				return nil, fmt.Errorf("invalid SSH action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
 			}
-			action := pentest.NewPentestServiceActionFromSsh(sshAction)
+			action := pentestcommonfern.NewPentestServiceActionFromSsh(sshAction)
 			actions = append(actions, action)
 		}
 	}
@@ -92,8 +95,8 @@ func (p *SSHActionParser) GetValidActions() []string {
 	return []string{"auth", "command", "user_enum", "file_transfer"}
 }
 
-func (p *SSHActionParser) ContainsAction(actions []*pentest.PentestServiceAction, target interface{}) bool {
-	targetAction, ok := target.(pentest.PentestSshAction)
+func (p *SSHActionParser) ContainsAction(actions []*pentestcommonfern.PentestServiceAction, target interface{}) bool {
+	targetAction, ok := target.(sshcommonfern.PentestSshAction)
 	if !ok {
 		return false
 	}
@@ -108,8 +111,8 @@ func (p *SSHActionParser) ContainsAction(actions []*pentest.PentestServiceAction
 // TelnetActionParser handles Telnet-specific action parsing
 type TelnetActionParser struct{}
 
-func (p *TelnetActionParser) ParseActions(actionStrings []string) ([]*pentest.PentestServiceAction, error) {
-	var actions []*pentest.PentestServiceAction
+func (p *TelnetActionParser) ParseActions(actionStrings []string) ([]*pentestcommonfern.PentestServiceAction, error) {
+	var actions []*pentestcommonfern.PentestServiceAction
 
 	for _, actionStr := range actionStrings {
 		// Handle comma-separated actions in a single flag
@@ -121,11 +124,11 @@ func (p *TelnetActionParser) ParseActions(actionStrings []string) ([]*pentest.Pe
 			}
 			// Convert to uppercase for enum matching
 			upperPart := strings.ToUpper(part)
-			telnetAction, err := pentest.NewPentestTelnetActionFromString(upperPart)
+			telnetAction, err := telnetcommonfern.NewPentestTelnetActionFromString(upperPart)
 			if err != nil {
 				return nil, fmt.Errorf("invalid Telnet action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
 			}
-			action := pentest.NewPentestServiceActionFromTelnet(telnetAction)
+			action := pentestcommonfern.NewPentestServiceActionFromTelnet(telnetAction)
 			actions = append(actions, action)
 		}
 	}
@@ -137,8 +140,8 @@ func (p *TelnetActionParser) GetValidActions() []string {
 	return []string{"auth", "command"}
 }
 
-func (p *TelnetActionParser) ContainsAction(actions []*pentest.PentestServiceAction, target interface{}) bool {
-	targetAction, ok := target.(pentest.PentestTelnetAction)
+func (p *TelnetActionParser) ContainsAction(actions []*pentestcommonfern.PentestServiceAction, target interface{}) bool {
+	targetAction, ok := target.(telnetcommonfern.PentestTelnetAction)
 	if !ok {
 		return false
 	}
@@ -154,18 +157,18 @@ func (p *TelnetActionParser) ContainsAction(actions []*pentest.PentestServiceAct
 type ActionUtil struct{}
 
 // ContainsAction checks if actions contain a specific target action (generic version)
-func (au *ActionUtil) ContainsAction(actions []*pentest.PentestServiceAction, serviceType string, target interface{}) bool {
+func (au *ActionUtil) ContainsAction(actions []*pentestcommonfern.PentestServiceAction, serviceType string, target interface{}) bool {
 	switch serviceType {
 	case "smb":
-		if targetAction, ok := target.(pentest.PentestSmbAction); ok {
+		if targetAction, ok := target.(smbcommonfern.PentestSmbAction); ok {
 			return GetSMBParser().ContainsAction(actions, targetAction)
 		}
 	case "ssh":
-		if targetAction, ok := target.(pentest.PentestSshAction); ok {
+		if targetAction, ok := target.(sshcommonfern.PentestSshAction); ok {
 			return GetSSHParser().ContainsAction(actions, targetAction)
 		}
 	case "telnet":
-		if targetAction, ok := target.(pentest.PentestTelnetAction); ok {
+		if targetAction, ok := target.(telnetcommonfern.PentestTelnetAction); ok {
 			return GetTelnetParser().ContainsAction(actions, targetAction)
 		}
 	}
@@ -175,8 +178,8 @@ func (au *ActionUtil) ContainsAction(actions []*pentest.PentestServiceAction, se
 // LDAPActionParser handles LDAP-specific action parsing
 type LDAPActionParser struct{}
 
-func (p *LDAPActionParser) ParseActions(actionStrings []string) ([]ldapfern.LdapAction, error) {
-	var actions []ldapfern.LdapAction
+func (p *LDAPActionParser) ParseActions(actionStrings []string) ([]ldapcommonfern.LdapAction, error) {
+	var actions []ldapcommonfern.LdapAction
 
 	for _, actionStr := range actionStrings {
 		// Handle comma-separated actions in a single flag
@@ -188,7 +191,7 @@ func (p *LDAPActionParser) ParseActions(actionStrings []string) ([]ldapfern.Ldap
 			}
 			// Convert to uppercase for enum matching
 			upperPart := strings.ToUpper(part)
-			ldapAction, err := ldapfern.NewLdapActionFromString(upperPart)
+			ldapAction, err := ldapcommonfern.NewLdapActionFromString(upperPart)
 			if err != nil {
 				return nil, fmt.Errorf("invalid LDAP action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
 			}
@@ -203,7 +206,7 @@ func (p *LDAPActionParser) GetValidActions() []string {
 	return []string{"auth", "domaindump"}
 }
 
-func (p *LDAPActionParser) ContainsAction(actions []ldapfern.LdapAction, target ldapfern.LdapAction) bool {
+func (p *LDAPActionParser) ContainsAction(actions []ldapcommonfern.LdapAction, target ldapcommonfern.LdapAction) bool {
 	for _, action := range actions {
 		if action == target {
 			return true
