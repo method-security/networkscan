@@ -1,0 +1,21 @@
+imports:
+  smbProtocol: ../../common/protocol/smb.yml
+  ldapProtocol: ../../common/protocol/ldap.yml
+
+types:
+  # Main LDAP enumeration details
+  EnumerateLdapDetails:
+    properties:
+      target: string
+      serverInfo: optional<smbProtocol.SmbServerInfo>  # NTLM server info extracted from LDAP connection
+      anonymousBindAllowed: optional<boolean>
+      nullBindAllowed: optional<boolean>
+      authMethods: optional<list<ldapProtocol.LdapAuthMethod>>
+      baseDN: optional<string>                         # Base Distinguished Name if discoverable
+      defaultNamingContext: optional<string>           # Default naming context from rootDSE
+      schemaNamingContext: optional<string>            # Schema naming context from rootDSE
+      configurationNamingContext: optional<string>    # Configuration naming context from rootDSE
+      supportedLdapVersion: optional<list<string>>     # Supported LDAP versions
+      supportedSaslMechanisms: optional<list<string>>  # Supported SASL mechanisms
+      supportedCapabilities: optional<list<string>>    # Supported capabilities
+      rawResponse: optional<string>
