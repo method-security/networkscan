@@ -1,5 +1,4 @@
 imports:
-  smbProtocol: ../../common/protocol/smb.yml
   ldapProtocol: ../../common/protocol/ldap.yml
 
 types:
@@ -7,7 +6,6 @@ types:
   EnumerateLdapDetails:
     properties:
       target: string
-      serverInfo: optional<smbProtocol.SmbServerInfo>  # NTLM server info extracted from LDAP connection
       anonymousBindAllowed: optional<boolean>
       nullBindAllowed: optional<boolean>
       authMethods: optional<list<ldapProtocol.LdapAuthMethod>>

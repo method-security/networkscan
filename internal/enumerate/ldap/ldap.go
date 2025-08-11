@@ -7,7 +7,6 @@ import (
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	ldapfern "github.com/Method-Security/networkscan/generated/go/enumerate/ldap"
-	common "github.com/Method-Security/networkscan/internal/common"
 	"github.com/Method-Security/networkscan/utils"
 	ldap "github.com/go-ldap/ldap/v3"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -28,7 +27,6 @@ type authTestResult struct {
 type authenticationState struct {
 	connectionSuccessful bool
 	workingConnection    *ldap.Conn
-	serverInfo           *commonprotocolfern.SmbServerInfo
 	anonymousAllowed     bool
 	nullBindAllowed      bool
 	supportedMethods     []commonprotocolfern.LdapAuthMethod
@@ -131,10 +129,6 @@ func (l *LibraryEnumerateLDAP) performAuthentication(ctx context.Context, host s
 		supportedMethods:     []commonprotocolfern.LdapAuthMethod{},
 	}
 
-	// Extract NTLM server info using shared utility
-	extractor := common.NewNTLMServerInfoExtractor()
-	state.serverInfo = extractor.ExtractServerInfo(ctx, host, target)
-
 	// Test null bind
 	nullResult := l.testNullBind(ctx, host, port, target)
 	if nullResult.success {
@@ -234,9 +228,6 @@ func (l *LibraryEnumerateLDAP) extractLdapInfo(ctx context.Context, conn *ldap.C
 
 // assembleResponse assembles the final response
 func (l *LibraryEnumerateLDAP) assembleResponse(details *ldapfern.EnumerateLdapDetails, state authenticationState) {
-	// Set server info from NTLM extraction
-	details.ServerInfo = state.serverInfo
-
 	// Set authentication results
 	details.NullBindAllowed = &state.nullBindAllowed
 	details.AnonymousBindAllowed = &state.anonymousAllowed
