@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Method-Security/networkscan/internal/common"
 	gosmb "github.com/jfjallid/go-smb/smb"
 	"github.com/jfjallid/go-smb/spnego"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -18,6 +19,7 @@ type Client struct {
 	Port            int
 	Username        string
 	Password        string
+	NTLMHash        string // NTLM hash for pass-the-hash authentication
 	Domain          string
 	UseAnonymous    bool
 	UseNullSession  bool
@@ -70,6 +72,17 @@ func NewClient(host string, port int) *Client {
 func (c *Client) SetCredentials(username, password, domain string) {
 	c.Username = username
 	c.Password = password
+	c.NTLMHash = "" // Clear hash when setting password
+	c.Domain = domain
+	c.UseAnonymous = false
+	c.UseNullSession = false
+}
+
+// SetCredentialsWithHash sets username and NTLM hash for pass-the-hash authentication
+func (c *Client) SetCredentialsWithHash(username, ntlmHash, domain string) {
+	c.Username = username
+	c.Password = "" // Clear password when setting hash
+	c.NTLMHash = ntlmHash
 	c.Domain = domain
 	c.UseAnonymous = false
 	c.UseNullSession = false
@@ -213,14 +226,37 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 			User:     "",
 			Password: "",
 		}
-	} else if c.Username != "" || c.Password != "" {
-		// Match go-secdump configuration more closely
-		options.Initiator = &spnego.NTLMInitiator{
+	} else if c.Username != "" || c.Password != "" || c.NTLMHash != "" {
+		// Set up NTLM authentication with password or hash
+		ntlmInitiator := &spnego.NTLMInitiator{
 			User:      c.Username,
-			Password:  c.Password,
 			Domain:    c.Domain,
 			LocalUser: false, // Don't assume local user
 		}
+
+		// Use hash if available, otherwise use password
+		if c.NTLMHash != "" {
+			processor := common.NewNTLMHashProcessor()
+			ntHash, err := processor.ProcessHashForSMB(c.NTLMHash)
+			if err != nil {
+				return fmt.Errorf("failed to process NTLM hash for SMB: %v", err)
+			}
+
+			// Debug logging
+			log := svc1log.FromContext(ctx)
+			log.Debug("NTLM hash processing",
+				svc1log.SafeParam("originalHash", c.NTLMHash),
+				svc1log.SafeParam("ntHashLength", len(ntHash)),
+				svc1log.SafeParam("username", ntlmInitiator.User),
+				svc1log.SafeParam("domain", ntlmInitiator.Domain))
+
+			// Set only the NT hash (16 bytes)
+			ntlmInitiator.Hash = ntHash
+		} else {
+			ntlmInitiator.Password = c.Password
+		}
+
+		options.Initiator = ntlmInitiator
 	} else {
 		// Default to null session if no credentials provided
 		options.Initiator = &spnego.NTLMInitiator{
