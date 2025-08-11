@@ -9,7 +9,7 @@ require (
 	github.com/Ullaakut/nmap/v3 v3.0.6
 	github.com/go-ldap/ldap/v3 v3.4.11
 	github.com/google/uuid v1.6.0
-	github.com/jfjallid/go-smb v0.6.3
+	github.com/jfjallid/go-smb v0.6.6
 	github.com/jfjallid/gokrb5/v8 v8.5.1
 	github.com/miekg/dns v1.1.58
 	github.com/palantir/pkg/datetime v1.1.0
@@ -58,8 +58,8 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jfjallid/gofork v1.7.6 // indirect
 	github.com/jfjallid/golog v0.3.4 // indirect
-	github.com/jfjallid/mstypes v0.0.0-20250515143745-921e33065feb // indirect
-	github.com/jfjallid/ndr v0.0.0-20250515143046-14ad19ef61a6 // indirect
+	github.com/jfjallid/mstypes v0.0.1 // indirect
+	github.com/jfjallid/ndr v0.0.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.17.8 // indirect
 	github.com/klauspost/pgzip v1.2.5 // indirect

@@ -4,21 +4,20 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	//"io"
 	"reflect"
 	"strings"
 )
 
 // Decoder unmarshals NDR byte stream data into a Go struct representation
 type Encoder struct {
-	w             	*bytes.Buffer // of the data
-	ch            	CommonHeader  // NDR common header
-	ph            	PrivateHeader // NDR private header
-	conformantMax 	[]uint32      // conformant max values that were moved to the beginning of the structure
-	s             	interface{}   // source of data to encode
-	current       	[]string      // keeps track of the current field being populated
-	nextReferentID	uint32
-	includeHeaders	bool
+	w              *bytes.Buffer // of the data
+	ch             CommonHeader  // NDR common header
+	ph             PrivateHeader // NDR private header
+	conformantMax  []uint32      // conformant max values that were moved to the beginning of the structure
+	s              interface{}   // source of data to encode
+	current        []string      // keeps track of the current field being populated
+	nextReferentID uint32
+	includeHeaders bool
 }
 
 // NewDecoder creates a new instance of a NDR Decoder.
@@ -38,10 +37,12 @@ func (enc *Encoder) GetBytes() []byte {
 // Encode marshals the provided structure into NDR encoded bytes.
 func (enc *Encoder) Encode(s interface{}) (buf []byte, err error) {
 	enc.s = s
-	//First write an NDR ptr
-	err = binary.Write(enc.w, binary.LittleEndian, uint32(0xFFFFFFFF))
-	if err != nil {
-		return
+	if enc.includeHeaders {
+		//First write an NDR ptr
+		err = binary.Write(enc.w, binary.LittleEndian, uint32(0xFFFFFFFF))
+		if err != nil {
+			return
+		}
 	}
 
 	// Then serialize the constructed type
@@ -117,6 +118,8 @@ func (enc *Encoder) conformantScan(s interface{}, tag reflect.StructTag) error {
 	ndrTag := parseTags(tag)
 	if ndrTag.HasValue(TagPointer) {
 		return nil
+	} else if ndrTag.HasValue(TagTopLevelPointer) {
+		return nil
 	}
 	v := getReflectValue(s)
 	//fieldName := v.Type().Name()
@@ -135,7 +138,18 @@ func (enc *Encoder) conformantScan(s interface{}, tag reflect.StructTag) error {
 			break
 		}
 		//NOTE Conformant Max should be max num of elements (uint16) not max num of bytes
-		enc.conformantMax = append(enc.conformantMax, uint32(v.Len()))
+		//NOTE does below changes to include null byte break anything?
+		// According to NDR rules, a string should always have a terminator at the end
+		// But RPCUnicodeStrings while handled as strings are not actually strings so need
+		// an extra Tag to avoid adding null byte at the end.
+		maxCount := uint32(v.Len())
+		if !ndrTag.HasValue(TagSkipNull) {
+			if !strings.HasSuffix(v.String(), "\x00") {
+				maxCount++
+			}
+		}
+		enc.conformantMax = append(enc.conformantMax, maxCount)
+		//enc.conformantMax = append(enc.conformantMax, uint32(v.Len()))
 	case reflect.Slice:
 		if !ndrTag.HasValue(TagConformant) {
 			break
@@ -168,7 +182,11 @@ func (enc *Encoder) isPointer(v reflect.Value, tag reflect.StructTag, def *[]def
 			}
 			// if pointer is not zero add to the deferred items at end of stream
 			*def = append(*def, deferedPtr{v: v, tag: ndrTag.StructTag()})
+		} else if v.Kind() == reflect.Invalid {
+			// Nil ptr so no deferrence
+			return false, nil
 		} else {
+			//fmt.Printf("v.Kind: %v\n", v.Kind())
 			zero := reflect.Zero(v.Type())
 			if !reflect.DeepEqual(v.Interface(), zero.Interface()) {
 				//fmt.Println("Found non-zero structure with pointer tag")
@@ -180,7 +198,7 @@ func (enc *Encoder) isPointer(v reflect.Value, tag reflect.StructTag, def *[]def
 				*def = append(*def, deferedPtr{v: v, tag: ndrTag.StructTag()})
 			} else {
 				if v.Kind() == reflect.String {
-					//fmt.Println("Writing pointer for empty string")	
+					//fmt.Println("Writing pointer for empty string")
 					err = enc.writePointer()
 					if err != nil {
 						return true, fmt.Errorf("could not write pointer: %v", err)
@@ -200,9 +218,79 @@ func (enc *Encoder) isPointer(v reflect.Value, tag reflect.StructTag, def *[]def
 	return false, nil
 }
 
+func (enc *Encoder) isTopLevelPointer(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) (topPointer, skipReferent bool, err error) {
+	var fullPointer bool
+	ndrTag := parseTags(tag)
+	if ndrTag.HasValue(TagTopLevelPointer) {
+		topPointer = true
+		if ndrTag.HasValue(TagFullPointer) {
+			fullPointer = true
+		}
+		// If not full pointer, write only referent and no pointer. Also cannot be null
+		if v.Kind() == reflect.Invalid {
+			if !fullPointer {
+				err = fmt.Errorf("A referent pointer cannot be NULL!")
+				return
+			}
+			err = binary.Write(enc.w, enc.ch.Endianness, uint32(0))
+			if err != nil {
+				err = fmt.Errorf("could not write pointer: %v", err)
+				return
+			}
+			// Signal that we move on and do not write the referrent (because it is null)
+			skipReferent = true
+			return
+		} else {
+			//NOTE this might not be the correct way to handle it
+			// If empty struct, just write null ptr?
+			//TODO Is below needed for something to work? Seems to break ms-lsat LsarLookupSids2 if I do the deep equal comparison for topPointer
+			//zero := reflect.Zero(v.Type())
+			//if reflect.DeepEqual(v.Interface(), zero.Interface()) {
+			//	err = binary.Write(enc.w, enc.ch.Endianness, uint32(0))
+			//	if err != nil {
+			//		err = fmt.Errorf("could not write pointer: %v", err)
+			//		return
+			//	}
+			//	// signal that we move on and do not write the referrent
+			//	skipReferent = true
+			//	return
+			//}
+			if fullPointer {
+				err = enc.writePointer()
+				if err != nil {
+					err = fmt.Errorf("could not write pointer: %v", err)
+					return
+				}
+			}
+			return
+		}
+	}
+
+	return false, false, nil
+}
+
 // fill populates fields with values from the NDR byte stream.
 func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]deferedPtr) (err error) {
 	v := getReflectValue(s)
+
+	topPointer, skipReferent, err := enc.isTopLevelPointer(v, tag, localDef)
+	if err != nil {
+		return fmt.Errorf("could not process struct field(%s): %v", strings.Join(enc.current, "/"), err)
+	}
+	if skipReferent {
+		return nil
+	}
+	if topPointer {
+		ndrTags := parseTags(tag)
+		ndrTags.delete(TagTopLevelPointer)
+		tag = ndrTags.StructTag()
+		// Continue below to write the referent
+		err = enc.process(v, ndrTags.StructTag())
+		if err != nil {
+			return fmt.Errorf("could not process struct field(%s): %v", strings.Join(enc.current, "/"), err)
+		}
+		return nil
+	}
 
 	// Pointer so defer filling the referent
 	ptr, err := enc.isPointer(v, tag, localDef)
@@ -213,9 +301,29 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 		//fmt.Printf("Found a ptr so skipping for now: %v\n", enc.current)
 		return nil
 	}
+	/*
+		Top-Level pointers are handled different from embedded pointers in that the data is written directly after the pointer
+		instead of being deferred to later.
+		Only argumens to the RPC call are considered Top-Level pointers, or the top level struct members in case of DCERPC
+		If Top-Level ptr is pointing to nothing, write just 4 null bytes
+		Otherwise, write a 4 byte ptr and then the actual data
+		Have some trouble with LsarGetUserName encoding and decoding...
+		Seems like all the "arguments" e.g., the members of the request struct for each method are top-level pointers.
+		Depending on attributes in the IDL they are either full pointers or ref pointers.
+		A full pointer is marshalled with a ptr and the data directly after. But if the data is a structure containing embedded pointers,
+		the referent data is deferred until later.
+		If it is a ref pointer, the data the pointer points to is marhalled directly inline without any pointers marshalled first.
+		If a paramter has the unique keyword in IDL, that means that the pointer can be null and is considered a full pointer.
+	*/
 
 	// Populate the value from the byte stream
 	switch v.Kind() {
+	case reflect.Invalid:
+		// NIL ptr
+		err = binary.Write(enc.w, enc.ch.Endianness, uint32(0))
+		if err != nil {
+			return fmt.Errorf("could not fill struct field(%s): %v", strings.Join(enc.current, "/"), err)
+		}
 	case reflect.Struct:
 		enc.current = append(enc.current, v.Type().Name()) //Track the current field being filled
 		// in case struct is a union, track this and the selected union field for efficiency
@@ -306,10 +414,19 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 	case reflect.String:
 		ndrTag := parseTags(tag)
 		conformant := ndrTag.HasValue(TagConformant)
+		skipNull := ndrTag.HasValue(TagSkipNull)
 		// strings are always varying so this is assumed without an explicit tag
 		var err error
+		s := v.String()
+		//TODO does this break anything?
+		// According to NDR, strings should always be null-terminated
+		if !strings.HasSuffix(s, "\x00") && !skipNull {
+			s += "\x00"
+		}
+
 		if conformant {
-			err = enc.writeConformantVaryingString(v.String())
+			//err = enc.writeConformantVaryingString(v.String())
+			err = enc.writeConformantVaryingString(s)
 			if err != nil {
 				return fmt.Errorf("could not write with conformant varying string: %v", err)
 			}
@@ -382,20 +499,21 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 			}
 		}
 	default:
+		fmt.Printf("unsupported type: %v\n", v.Kind())
 		return fmt.Errorf("unsupported type")
 	}
 	return nil
 }
 
 func (enc *Encoder) ensureAlignment(n int) {
-    diff := enc.w.Len() % n
-    if diff > 0 {
+	diff := enc.w.Len() % n
+	if diff > 0 {
 		//fmt.Printf("\nUsing %d bytes alignment\n\n", n-diff)
-        enc.w.Write(make([]byte, n - diff))
-    }
+		enc.w.Write(make([]byte, n-diff))
+	}
 }
 
-func (enc *Encoder) writeBool(val bool) (error) {
+func (enc *Encoder) writeBool(val bool) error {
 	return binary.Write(enc.w, enc.ch.Endianness, val)
 }
 
@@ -420,22 +538,22 @@ func (enc *Encoder) writeUint64(val uint64) error {
 	return binary.Write(enc.w, enc.ch.Endianness, val)
 }
 
-func (enc *Encoder) writeInt8(val int8) (error) {
+func (enc *Encoder) writeInt8(val int8) error {
 	//enc.ensureAlignment(SizeUint8)
 	return binary.Write(enc.w, enc.ch.Endianness, val)
 }
 
-func (enc *Encoder) writeInt16(val int16) (error) {
+func (enc *Encoder) writeInt16(val int16) error {
 	enc.ensureAlignment(SizeUint16)
 	return binary.Write(enc.w, enc.ch.Endianness, val)
 }
 
-func (enc *Encoder) writeInt32(val int32) (error) {
+func (enc *Encoder) writeInt32(val int32) error {
 	enc.ensureAlignment(SizeUint32)
 	return binary.Write(enc.w, enc.ch.Endianness, val)
 }
 
-func (enc *Encoder) writeInt64(val int64) (error) {
+func (enc *Encoder) writeInt64(val int64) error {
 	enc.ensureAlignment(SizeUint64)
 	return binary.Write(enc.w, enc.ch.Endianness, val)
 }
@@ -456,5 +574,4 @@ func (enc *Encoder) writePointer() error {
 	enc.nextReferentID += 4
 	//fmt.Printf("Writing pointer with refId: 0x%08x\n", refId)
 	return binary.Write(enc.w, enc.ch.Endianness, refId)
-}	
-
+}

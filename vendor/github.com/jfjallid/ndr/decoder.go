@@ -12,10 +12,13 @@ import (
 
 // Struct tag values
 const (
-	TagConformant = "conformant"
-	TagVarying    = "varying"
-	TagPointer    = "pointer"
-	TagPipe       = "pipe"
+	TagConformant      = "conformant"
+	TagVarying         = "varying"
+	TagPointer         = "pointer"
+	TagTopLevelPointer = "toppointer"
+	TagFullPointer     = "fullpointer"
+	TagPipe            = "pipe"
+	TagSkipNull        = "skipnull"
 )
 
 // Decoder unmarshals NDR byte stream data into a Go struct representation
@@ -33,7 +36,7 @@ type Decoder struct {
 type deferedPtr struct {
 	v   reflect.Value
 	tag reflect.StructTag
-	p	uint32
+	p   uint32
 }
 
 // NewDecoder creates a new instance of a NDR Decoder.
@@ -62,6 +65,9 @@ func (dec *Decoder) Decode(s interface{}) error {
 		if err != nil {
 			return Errorf("unable to process byte stream: %v", err)
 		}
+	}
+	if dec.ch.Endianness == nil {
+		dec.ch.Endianness = binary.LittleEndian
 	}
 
 	return dec.process(s, reflect.StructTag(""))
@@ -171,6 +177,7 @@ func (dec *Decoder) isPointer(v reflect.Value, tag reflect.StructTag, def *[]def
 			// if pointer is not zero add to the deferred items at end of stream
 			*def = append(*def, deferedPtr{v, ndrTag.StructTag(), p})
 		}
+		//fmt.Printf("Found ptr: 0x%08x\n", p)
 		return true, nil
 	}
 	return false, nil
@@ -189,8 +196,8 @@ func getReflectValue(s interface{}) (v reflect.Value) {
 			//fmt.Printf("getReflectedValue input is a ptr\n")
 			v = reflect.ValueOf(s).Elem()
 			//fmt.Printf("getReflectedValue output: %v\n", v.Kind())
-		//} else {
-		//	fmt.Printf("getReflectedValue input is of unknown value\n")
+			//} else {
+			//	fmt.Printf("getReflectedValue input is of unknown value\n")
 		}
 	}
 	return
@@ -200,7 +207,34 @@ func getReflectValue(s interface{}) (v reflect.Value) {
 func (dec *Decoder) fill(s interface{}, tag reflect.StructTag, localDef *[]deferedPtr) error {
 	v := getReflectValue(s)
 
-	//// Pointer so defer filling the referent
+	//TODO Is this correct?
+	ndrTag := parseTags(tag)
+	if ndrTag.HasValue(TagTopLevelPointer) {
+		ndrTag.delete(TagTopLevelPointer)
+		if ndrTag.HasValue(TagFullPointer) {
+			ndrTag.delete(TagFullPointer)
+			//fmt.Printf("reading top-level ptr for field: %v\n", v.Type().Name())
+			p, err := dec.readUint32()
+			if err != nil {
+				return fmt.Errorf("could not read pointer: %v", err)
+			}
+			if p == 0 {
+				// Top-Level null pointer so nothing else to read here
+				return nil
+			}
+			//fmt.Printf("[debug] full ptr value: 0x%08x\n", p)
+		}
+		// recurse down
+		//fmt.Println("Calling process() on struct field")
+		err := dec.process(v, ndrTag.StructTag())
+		if err != nil {
+			return fmt.Errorf("could not process struct field(%s): %v", strings.Join(dec.current, "/"), err)
+		}
+		// Done with this parameter
+		return nil
+	}
+
+	// Pointer so defer filling the referent
 	ptr, err := dec.isPointer(v, tag, localDef)
 	if err != nil {
 		return fmt.Errorf("could not process struct field(%s): %v", strings.Join(dec.current, "/"), err)
@@ -208,10 +242,23 @@ func (dec *Decoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 	if ptr {
 		return nil
 	}
+	/*
+		A bit complex to handle pointers:
+		By default, IDL top-level pointers are [ref] pointers unless there is the [unique] or [ptr] attribute, where top-level means part of the RPC function argument list.
+		For top-level [ref] pointers, there is no pointer representation, only the referent.
+		For top-level [unique] or [ptr] pointers (full pointers), the referent follows directly after the ptr representation.
+		If the top-level pointer points to another pointer such as PRPC_UNICODE_STRING* and is a [ref] pointer,
+		there will be no initial pointer representation due to [ref] but PRPC.. is a pointer in itself (double pointers) so
+		the second pointer gets a 4 byte ref id ptr representation followed by the representation of the referrent (RPC_UNICODE_STRING).
+		Since this contains an embedded pointer, another ref id ptr is written before the string representation.
+		After the entire top-level parameter is completely marshalled we move on to the next.
+		If this is a [unique] pointer (full] we first write a ptr representation, followed by the second ptr representation, followed by the referent.
+	*/
 
 	// Populate the value from the byte stream
 	switch v.Kind() {
 	case reflect.Struct:
+		//fmt.Println("examining struct")
 		dec.current = append(dec.current, v.Type().Name()) //Track the current field being filled
 		// in case struct is a union, track this and the selected union field for efficiency
 		var unionTag reflect.Value
@@ -268,6 +315,7 @@ func (dec *Decoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 					}
 				}
 			} else {
+				//fmt.Printf("filling struct member: %s\n", fieldName)
 				err := dec.fill(v.Field(i), structTag, localDef)
 				if err != nil {
 					return fmt.Errorf("could not fill struct field(%s): %v", strings.Join(dec.current, "/"), err)
@@ -299,7 +347,7 @@ func (dec *Decoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 		if err != nil {
 			return fmt.Errorf("could not fill %s: %v", v.Type().Name(), err)
 		}
-		v.Set(reflect.ValueOf(i))
+		v.Set(reflect.ValueOf(i).Convert(v.Type())) // Support handling of custom types based on uint32
 	case reflect.Uint64:
 		i, err := dec.readUint64()
 		if err != nil {

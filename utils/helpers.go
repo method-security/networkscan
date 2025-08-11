@@ -3,6 +3,7 @@ package utils
 
 import (
 	"bufio"
+	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
@@ -85,4 +86,15 @@ func GetDefaultPortForService(service pentest.SprayTargetService) int {
 	default:
 		return 80
 	}
+}
+
+// GenerateRandomString generates a random string of specified length using alphanumeric characters.
+// This is useful for creating temporary file/directory names for testing purposes.
+func GenerateRandomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
 }

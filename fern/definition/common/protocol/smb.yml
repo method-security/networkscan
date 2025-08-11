@@ -61,10 +61,10 @@ types:
       name: string
       type: ShareType
       comment: optional<string>
-      accessible: boolean
+      accessible: optional<boolean>
       access: optional<ShareAccess>
-      anonymousAccess: boolean
-      guestAccess: boolean
+      anonymousAccess: optional<boolean>
+      guestAccess: optional<boolean>
       hidden: optional<boolean>
 
   # Authentication result for any SMB operation

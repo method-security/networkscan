@@ -80,18 +80,31 @@ func (enc *Encoder) ToUnicode(input string) []byte {
 	return b.Bytes()
 }
 
-func (enc *Encoder) writeConformantVaryingString(s string) (error) {
-	var maxLen, actualLen uint32
+func (enc *Encoder) writeConformantVaryingString(s string) error {
+	var actualLen uint32
 	var unc []byte
-	if s != "" {
-		unc = enc.ToUnicode(s)
-		maxLen = uint32(len(unc)/2)
-		if s[len(s)-1] == '\x00' {
-			actualLen = maxLen - 1 // without the null terminator
-		} else {
-			actualLen = maxLen
-		}
-	}
+	//if s == "" {
+	//	s = "\x00"
+	//} else {
+	//	if !strings.HasSuffix(s, "\x00") {
+	//		// Add null byte
+	//		s += "\x00"
+	//	}
+	//}
+	unc = enc.ToUnicode(s)
+	actualLen = uint32(len(unc) / 2)
+
+	//NOTE according to NDR, strings should always be null terminated
+	// and both maxCount and actualLen should include the null terminator
+	//if s != "" {
+	//	unc = enc.ToUnicode(s)
+	//	maxLen = uint32(len(unc)/2)
+	//	if s[len(s)-1] == '\x00' {
+	//		actualLen = maxLen - 1 // without the null terminator
+	//	} else {
+	//		actualLen = maxLen
+	//	}
+	//}
 	enc.ensureAlignment(SizeUint32)
 	binary.Write(enc.w, enc.ch.Endianness, uint32(0)) // offset
 	binary.Write(enc.w, enc.ch.Endianness, actualLen)

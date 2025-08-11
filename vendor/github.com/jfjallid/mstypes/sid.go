@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"strings"
 )
 
@@ -56,5 +57,39 @@ func (s *RPCSID) ToWriter(w io.Writer) (err error) {
 			return
 		}
 	}
+	return
+}
+
+func ConvertStrToSID(s string) (sid *RPCSID, err error) {
+	sid = &RPCSID{}
+	parts := strings.Split(s, "-")
+	if len(parts) < 4 {
+		err = fmt.Errorf("Invalid SID representation")
+		return
+	}
+	rev, err := strconv.ParseUint(parts[1], 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("could't convert revision to string: %s", err.Error())
+	}
+	sid.Revision = byte(rev)
+	auth, err := strconv.ParseUint(parts[2], 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("could't convert authority to string: %s", err.Error())
+	}
+	authBuf := make([]byte, 2, 6)
+	authBuf = binary.BigEndian.AppendUint32(authBuf, uint32(auth))
+	copy(sid.IdentifierAuthority[:], authBuf)
+	subCount := byte(0)
+	subAuths := make([]uint32, 0)
+	for _, part := range parts[3:] {
+		subA, err := strconv.ParseUint(part, 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("could't convert subauthority to string: %s", err.Error())
+		}
+		subAuths = append(subAuths, uint32(subA))
+		subCount += 1
+	}
+	sid.SubAuthority = subAuths
+	sid.SubAuthorityCount = subCount
 	return
 }
