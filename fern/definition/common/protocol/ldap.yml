@@ -1,6 +1,15 @@
 types:
   # LDAP Protocol Common Types
   
+  # LDAP Authentication Methods
+  LdapAuthMethod:
+    enum:
+      - ANONYMOUS
+      - NULL_BIND  
+      - SIMPLE
+      - NTLM
+      - SASL_GSS_SPNEGO
+  
   # LDAP Server Information
   LdapServerInfo:
     properties:

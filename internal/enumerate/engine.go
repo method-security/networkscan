@@ -14,13 +14,14 @@ import (
 	// Internal
 	ftp "github.com/Method-Security/networkscan/internal/enumerate/ftp"
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
+	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
 )
 
 // NetworkApplicationLibrary defines the interface for service-specific enumeration implementations.
-// Each service type (SSH, FTP, SMTP, gRPC) must implement this interface.
+// Each service type (SSH, FTP, SMTP, gRPC, SMB, LDAP) must implement this interface.
 type NetworkApplicationLibrary interface {
 	EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string)
 }
@@ -131,6 +132,8 @@ func getEngine(serviceType enumeratefern.SupportedServiceType) (NetworkApplicati
 		return NetworkApplicationEngine{Library: &grpc.LibraryEnumerateGRPC{}}, nil
 	case enumeratefern.SupportedServiceTypeSmb:
 		return NetworkApplicationEngine{Library: &smb.LibraryEnumerateSMB{}}, nil
+	case enumeratefern.SupportedServiceTypeLdap:
+		return NetworkApplicationEngine{Library: &ldap.LibraryEnumerateLDAP{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", serviceType)
 	}
