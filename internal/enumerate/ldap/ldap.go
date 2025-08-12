@@ -86,7 +86,15 @@ func (l *LibraryEnumerateLDAP) extractServerInfoFromNTLMChallenge(ctx context.Co
 				}
 				return ""
 			}()),
-			svc1log.SafeParam("serverName", ldapServerInfo.ServerName))
+			svc1log.SafeParam("serverName", func() string {
+				if ldapServerInfo.TargetInfo != nil && ldapServerInfo.TargetInfo.DnsComputerName != nil {
+					return *ldapServerInfo.TargetInfo.DnsComputerName
+				}
+				if ldapServerInfo.TargetInfo != nil && ldapServerInfo.TargetInfo.NetbiosComputerName != nil {
+					return *ldapServerInfo.TargetInfo.NetbiosComputerName
+				}
+				return ""
+			}()))
 		return ldapServerInfo
 	}
 

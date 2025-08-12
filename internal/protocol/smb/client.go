@@ -8,10 +8,39 @@ import (
 
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	"github.com/Method-Security/networkscan/internal/common/ntlm"
+	"github.com/jfjallid/go-smb/gss"
+	"github.com/jfjallid/go-smb/ntlmssp"
 	gosmb "github.com/jfjallid/go-smb/smb"
+	"github.com/jfjallid/go-smb/smb/encoder"
 	"github.com/jfjallid/go-smb/spnego"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
+
+// CapturingNTLM wraps the built-in NTLM initiator and captures the server's challenge
+type CapturingNTLM struct {
+	*spnego.NTLMInitiator
+	LastChallenge     *ntlmssp.Challenge
+	LastChallengeData []byte
+}
+
+func (c *CapturingNTLM) InitSecContext(inputToken []byte) ([]byte, error) {
+	// When the server replies to our first token, inputToken contains a SPNEGO NegTokenResp
+	// whose ResponseToken is the NTLM Type 2 CHALLENGE.
+	if len(inputToken) > 0 {
+		var resp gss.NegTokenResp
+		var meta encoder.Metadata
+		if err := resp.UnmarshalBinary(inputToken, &meta); err == nil && len(resp.ResponseToken) > 0 {
+			// Store the raw challenge data for unified processing
+			c.LastChallengeData = resp.ResponseToken
+
+			ch := ntlmssp.NewChallenge()
+			if err := encoder.Unmarshal(resp.ResponseToken, ch); err == nil {
+				c.LastChallenge = &ch
+			}
+		}
+	}
+	return c.NTLMInitiator.InitSecContext(inputToken)
+}
 
 // Client represents a unified SMB client that provides base functionality
 // for both enumeration and pentest operations
@@ -28,6 +57,7 @@ type Client struct {
 	session         *gosmb.Connection
 	isConnected     bool
 	isAuthenticated bool
+	capturingNTLM   *CapturingNTLM
 	serverInfo      *commonprotocolfern.SmbServerInfo
 	skipServerInfo  bool // If true, skip automatic server info extraction on connect
 }
@@ -90,20 +120,20 @@ func (c *Client) Connect() error {
 // This works even when authentication fails, as the challenge contains server metadata
 func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*commonprotocolfern.SmbServerInfo, error) {
 	log := svc1log.FromContext(ctx)
-	log.Debug("Starting ExtractServerInfoFromChallenge using go-smb NTLM challenge", svc1log.SafeParam("host", c.Host), svc1log.SafeParam("port", c.Port))
+	log.Debug("Starting ExtractServerInfoFromChallenge using unified NTLM challenge parser", svc1log.SafeParam("host", c.Host), svc1log.SafeParam("port", c.Port))
 
-	// If we don't have an existing session, try to establish one with null session
-	if c.session == nil {
-		// Set up null session temporarily
+	// If we don't have captured NTLM challenge, try to establish connection to get it
+	if c.capturingNTLM == nil || c.capturingNTLM.LastChallengeData == nil {
+		// Set up null session temporarily to capture NTLM challenge
 		originalNullSession := c.UseNullSession
 		c.UseNullSession = true
 
 		err := c.ConnectWithContext(ctx)
 		if err != nil {
 			log.Debug("Failed to establish null session for server info extraction", svc1log.SafeParam("error", err.Error()))
-			// Even if connection failed, check if we got a session with target info
-			if c.session == nil {
-				return nil, fmt.Errorf("failed to establish session for server info extraction: %v", err)
+			// Even if connection failed, check if we captured challenge data
+			if c.capturingNTLM == nil || c.capturingNTLM.LastChallengeData == nil {
+				return nil, fmt.Errorf("failed to capture NTLM challenge for server info extraction: %v", err)
 			}
 		}
 
@@ -111,49 +141,31 @@ func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*commonpro
 		c.UseNullSession = originalNullSession
 	}
 
-	// Extract target info from the NTLM challenge in current session
-	targetInfo := c.session.GetTargetInfo()
-	if targetInfo == nil {
-		log.Debug("No target info available from NTLM challenge")
-		return nil, fmt.Errorf("no target info available from NTLM challenge")
+	// Check if we have captured challenge data
+	if c.capturingNTLM == nil || c.capturingNTLM.LastChallengeData == nil {
+		return nil, fmt.Errorf("no NTLM challenge data available for server info extraction")
 	}
 
-	log.Debug("Successfully retrieved target info from NTLM challenge",
-		svc1log.SafeParam("dnsComputer", targetInfo.DnsComputerName),
-		svc1log.SafeParam("dnsDomain", targetInfo.DnsDomainName),
-		svc1log.SafeParam("nbComputer", targetInfo.NBComputerName),
-		svc1log.SafeParam("nbDomain", targetInfo.NBDomainName),
-		svc1log.SafeParam("osValue", fmt.Sprintf("0x%016x", targetInfo.OS)),
-		svc1log.SafeParam("guessedOS", targetInfo.GuessedOSVersion))
-
-	// Use centralized NTLM parsing to convert go-smb TargetInfo to unified server info
-	goSMBTargetInfo := &ntlm.GoSMBTargetInfo{
-		DNSComputerName:  targetInfo.DnsComputerName,
-		DNSDomainName:    targetInfo.DnsDomainName,
-		NBComputerName:   targetInfo.NBComputerName,
-		NBDomainName:     targetInfo.NBDomainName,
-		OS:               targetInfo.OS,
-		GuessedOSVersion: targetInfo.GuessedOSVersion,
-	}
-
-	// Use centralized NTLM parsing to get base server info
-	ntlmInfo, err := ntlm.ExtractServerInfoFromGoSMBTargetInfo(goSMBTargetInfo, log)
+	// Use unified NTLM challenge parser
+	ntlmInfo, err := ntlm.ExtractServerInfoFromChallenge(c.capturingNTLM.LastChallengeData, log)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract server info from go-smb target info: %v", err)
+		return nil, fmt.Errorf("failed to extract server info from NTLM challenge: %v", err)
 	}
 
 	// Convert to SMB-specific server info with additional fields
 	smbInfo := convertNtlmToSmbServerInfo(ntlmInfo)
 
-	// Set signing requirement based on actual session state
-	signingRequired := c.session.IsSigningRequired()
-	smbInfo.SigningRequired = &signingRequired
+	// Set signing requirement based on actual session state if available
+	if c.session != nil {
+		signingRequired := c.session.IsSigningRequired()
+		smbInfo.SigningRequired = &signingRequired
+	}
 
 	// SMB version detection - would need actual negotiation data
 	smbInfo.SmbVersion = nil                                         // Set when we have negotiation info
 	smbInfo.SupportedSmbVersions = []commonprotocolfern.SmbVersion{} // Set when we have negotiation info
 
-	log.Debug("Successfully extracted server info from NTLM challenge",
+	log.Debug("Successfully extracted server info from unified NTLM challenge parser",
 		svc1log.SafeParam("parsedOsVersion", smbInfo.ParsedOsVersion))
 
 	return smbInfo, nil
@@ -162,11 +174,14 @@ func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*commonpro
 // GetDomainFromServerInfo extracts domain information from server info for authentication
 func (c *Client) GetDomainFromServerInfo(ctx context.Context) string {
 	serverInfo, err := c.ExtractServerInfoFromChallenge(ctx)
-	if err != nil || serverInfo == nil {
+	if err != nil || serverInfo == nil || serverInfo.TargetInfo == nil {
 		return ""
 	}
-	if serverInfo.Domain != nil {
-		return *serverInfo.Domain
+	if serverInfo.TargetInfo.DnsDomainName != nil {
+		return *serverInfo.TargetInfo.DnsDomainName
+	}
+	if serverInfo.TargetInfo.NetbiosDomainName != nil {
+		return *serverInfo.TargetInfo.NetbiosDomainName
 	}
 	return ""
 }
@@ -187,18 +202,20 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 	}
 
 	// Set up authentication based on configuration
+	var ntlmInitiator *spnego.NTLMInitiator
+
 	if c.UseNullSession {
-		options.Initiator = &spnego.NTLMInitiator{
+		ntlmInitiator = &spnego.NTLMInitiator{
 			NullSession: true,
 		}
 	} else if c.UseAnonymous {
-		options.Initiator = &spnego.NTLMInitiator{
+		ntlmInitiator = &spnego.NTLMInitiator{
 			User:     "",
 			Password: "",
 		}
 	} else if c.Username != "" || c.Password != "" || c.NTLMHash != "" {
 		// Set up NTLM authentication with password or hash
-		ntlmInitiator := &spnego.NTLMInitiator{
+		ntlmInitiator = &spnego.NTLMInitiator{
 			User:      c.Username,
 			Domain:    c.Domain,
 			LocalUser: false, // Don't assume local user
@@ -225,14 +242,18 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 		} else {
 			ntlmInitiator.Password = c.Password
 		}
-
-		options.Initiator = ntlmInitiator
 	} else {
 		// Default to null session if no credentials provided
-		options.Initiator = &spnego.NTLMInitiator{
+		ntlmInitiator = &spnego.NTLMInitiator{
 			NullSession: true,
 		}
 	}
+
+	// Wrap the NTLM initiator with our capturing wrapper to get raw challenge data
+	c.capturingNTLM = &CapturingNTLM{
+		NTLMInitiator: ntlmInitiator,
+	}
+	options.Initiator = c.capturingNTLM
 
 	// Attempt connection
 	session, err := gosmb.NewConnection(options)
@@ -419,10 +440,6 @@ func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
 	}
 
 	signingRequired := c.session.IsSigningRequired()
-	capabilities := []string{"DFS", "Leasing"}
-	if signingRequired {
-		capabilities = append(capabilities, "Signing")
-	}
 
 	// If we already have server info with nested structures (from ExtractServerInfoFromChallenge),
 	// preserve them and only add/update the connection-specific details
@@ -432,7 +449,6 @@ func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
 
 	// Update connection-specific fields
 	c.serverInfo.SigningRequired = &signingRequired
-	c.serverInfo.Capabilities = capabilities
 	c.serverInfo.SupportedSmbVersions = []commonprotocolfern.SmbVersion{
 		commonprotocolfern.SmbVersionSmb302,
 		commonprotocolfern.SmbVersionSmb30,
@@ -443,44 +459,13 @@ func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
 	// Extract detailed information from NTLM target info using centralized parsing
 	targetInfo := c.session.GetTargetInfo()
 	if targetInfo != nil {
-		// Convert go-smb TargetInfo to our centralized format
-		goSMBTargetInfo := &ntlm.GoSMBTargetInfo{
-			DNSComputerName:  targetInfo.DnsComputerName,
-			DNSDomainName:    targetInfo.DnsDomainName,
-			NBComputerName:   targetInfo.NBComputerName,
-			NBDomainName:     targetInfo.NBDomainName,
-			OS:               targetInfo.OS,
-			GuessedOSVersion: targetInfo.GuessedOSVersion,
-		}
-
 		log := svc1log.FromContext(ctx)
-		log.Debug("Raw TargetInfo from go-smb",
+		log.Debug("TargetInfo available from go-smb session",
 			svc1log.SafeParam("dnsComputer", targetInfo.DnsComputerName),
 			svc1log.SafeParam("dnsDomain", targetInfo.DnsDomainName),
 			svc1log.SafeParam("nbComputer", targetInfo.NBComputerName),
-			svc1log.SafeParam("nbDomain", targetInfo.NBDomainName),
-			svc1log.SafeParam("osValue", fmt.Sprintf("0x%016x", targetInfo.OS)),
-			svc1log.SafeParam("guessedOS", targetInfo.GuessedOSVersion))
-
-		// Use centralized NTLM parsing to get base server info
-		ntlmInfo, err := ntlm.ExtractServerInfoFromGoSMBTargetInfo(goSMBTargetInfo, log)
-		if err != nil {
-			log.Warn("Failed to extract server info from go-smb target info", svc1log.SafeParam("error", err))
-		} else {
-			// Convert to SMB-specific server info and merge with existing info
-			smbInfoFromNtlm := convertNtlmToSmbServerInfo(ntlmInfo)
-
-			// Only set fields if they're not already set (preserving any previously set values)
-			if c.serverInfo.ParsedOsVersion == nil {
-				c.serverInfo.ParsedOsVersion = smbInfoFromNtlm.ParsedOsVersion
-			}
-			if c.serverInfo.TargetInfo == nil {
-				c.serverInfo.TargetInfo = smbInfoFromNtlm.TargetInfo
-			}
-			if c.serverInfo.OsInfo == nil {
-				c.serverInfo.OsInfo = smbInfoFromNtlm.OsInfo
-			}
-		}
+			svc1log.SafeParam("nbDomain", targetInfo.NBDomainName))
+		// Note: Detailed server info extraction is now handled by ExtractServerInfoFromChallenge
 	} else {
 		log := svc1log.FromContext(ctx)
 		log.Warn("NTLM target info not available")

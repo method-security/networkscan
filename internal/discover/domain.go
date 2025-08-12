@@ -124,8 +124,8 @@ func discoverViaSMB(ctx context.Context, host string) *basicDomainInfo {
 	// Extract domain names from server info
 
 	// Set DNS domain name
-	if serverInfo.Domain != nil && *serverInfo.Domain != "" {
-		info.dnsDomainName = *serverInfo.Domain
+	if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.DnsDomainName != nil && *serverInfo.TargetInfo.DnsDomainName != "" {
+		info.dnsDomainName = *serverInfo.TargetInfo.DnsDomainName
 	}
 
 	// Set NetBIOS domain name from the TargetInfo structure
@@ -324,8 +324,8 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 
 			domainControllers = append(domainControllers, dcInfo)
 			var serverVersion string
-			if dcInfo.SmbServerInfo != nil && dcInfo.SmbServerInfo.OsVersion != nil {
-				serverVersion = *dcInfo.SmbServerInfo.OsVersion
+			if dcInfo.SmbServerInfo != nil && dcInfo.SmbServerInfo.ParsedOsVersion != nil {
+				serverVersion = *dcInfo.SmbServerInfo.ParsedOsVersion
 			}
 			log.Debug("Found domain controller",
 				svc1log.SafeParam("hostname", hostname),
@@ -397,8 +397,8 @@ func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress stri
 		_ = client.Close()
 
 		var osVersion string
-		if serverInfo.OsVersion != nil {
-			osVersion = *serverInfo.OsVersion
+		if serverInfo.ParsedOsVersion != nil {
+			osVersion = *serverInfo.ParsedOsVersion
 		}
 		log.Debug("Successfully gathered DC details",
 			svc1log.SafeParam("target", target),

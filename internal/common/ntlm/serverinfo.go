@@ -1,7 +1,6 @@
 package ntlm
 
 import (
-	"encoding/binary"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -100,81 +99,6 @@ func ExtractServerInfoFromChallenge(challengeMessage []byte, log svc1log.Logger)
 		svc1log.SafeParam("dnsDomain", dnsDomain),
 		svc1log.SafeParam("dnsComputer", dnsComputer),
 		svc1log.SafeParam("flags", fmt.Sprintf("0x%08x", c.NegotiateFlags)))
-
-	return result, nil
-}
-
-// GoSMBTargetInfo represents the TargetInfo struct from go-smb library
-// This is defined here to avoid importing the go-smb library directly
-type GoSMBTargetInfo struct {
-	DNSComputerName  string
-	DNSDomainName    string
-	NBComputerName   string
-	NBDomainName     string
-	OS               uint64
-	GuessedOSVersion string
-}
-
-// ExtractServerInfoFromGoSMBTargetInfo extracts unified server information from go-smb TargetInfo
-// This provides a centralized way for SMB client to convert go-smb TargetInfo to unified NtlmServerInfo
-func ExtractServerInfoFromGoSMBTargetInfo(targetInfo *GoSMBTargetInfo, log svc1log.Logger) (*commonprotocolfern.NtlmServerInfo, error) {
-	if targetInfo == nil {
-		return nil, fmt.Errorf("go-smb target info is nil")
-	}
-
-	result := &commonprotocolfern.NtlmServerInfo{}
-
-	// Create and populate the NtlmTargetInfo structure with exact fields from NTLM challenge
-	ntlmTargetInfo := &commonprotocolfern.NtlmTargetInfo{
-		NetbiosDomainName:   stringToPtr(targetInfo.NBDomainName),
-		NetbiosComputerName: stringToPtr(targetInfo.NBComputerName),
-		DnsDomainName:       stringToPtr(targetInfo.DNSDomainName),
-		DnsComputerName:     stringToPtr(targetInfo.DNSComputerName),
-		DnsTreeName:         stringToPtr(targetInfo.DNSDomainName), // Usually same as DNS domain
-	}
-	result.TargetInfo = ntlmTargetInfo
-
-	// Create and populate the NtlmOsInfo structure with version details
-	var ntlmOsInfo *commonprotocolfern.NtlmOsInfo
-	if targetInfo.OS != 0 {
-		// Parse the version information exactly as go-smb does
-		versionBuf := make([]byte, 8)
-		binary.LittleEndian.PutUint64(versionBuf, targetInfo.OS)
-		majorVersion := int(versionBuf[0])
-		minorVersion := int(versionBuf[1])
-		buildNumber := int(binary.LittleEndian.Uint16(versionBuf[2:4]))
-		// Extract NTLM revision from byte 7
-		ntlmRevision := int(versionBuf[7])
-
-		// Create formatted version string matching the NTLM challenge format
-		versionString := fmt.Sprintf("Version %d.%d (Build %d); NTLM Current Revision %d",
-			majorVersion, minorVersion, buildNumber, ntlmRevision)
-
-		ntlmOsInfo = &commonprotocolfern.NtlmOsInfo{
-			MajorVersion:        &majorVersion,
-			MinorVersion:        &minorVersion,
-			BuildNumber:         &buildNumber,
-			NtlmCurrentRevision: &ntlmRevision,
-			VersionString:       &versionString,
-			RawVersionData: stringToPtr(fmt.Sprintf("%02x%02x%02x%02x%02x%02x%02x%02x",
-				versionBuf[0], versionBuf[1], versionBuf[2], versionBuf[3],
-				versionBuf[4], versionBuf[5], versionBuf[6], versionBuf[7])),
-		}
-	}
-	result.OsInfo = ntlmOsInfo
-
-	// Parse and enhance the OS version
-	if targetInfo.GuessedOSVersion != "" {
-		osVersion := ParseWindowsVersion(targetInfo.GuessedOSVersion)
-		result.ParsedOsVersion = &osVersion
-	}
-
-	// Log detailed extraction info
-	log.Info("Extracted unified server info from go-smb TargetInfo",
-		svc1log.SafeParam("nbDomain", targetInfo.NBDomainName),
-		svc1log.SafeParam("nbComputer", targetInfo.NBComputerName),
-		svc1log.SafeParam("dnsDomain", targetInfo.DNSDomainName),
-		svc1log.SafeParam("dnsComputer", targetInfo.DNSComputerName))
 
 	return result, nil
 }

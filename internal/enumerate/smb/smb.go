@@ -175,14 +175,18 @@ func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *commonprotocolfern.S
 		details.ServerInfo = smbServerInfo
 		var serverName, domain, osVersion string
 		var signingRequired bool
-		if serverInfo.ServerName != nil {
-			serverName = *serverInfo.ServerName
+		if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.DnsComputerName != nil {
+			serverName = *serverInfo.TargetInfo.DnsComputerName
+		} else if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.NetbiosComputerName != nil {
+			serverName = *serverInfo.TargetInfo.NetbiosComputerName
 		}
-		if serverInfo.Domain != nil {
-			domain = *serverInfo.Domain
+		if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.DnsDomainName != nil {
+			domain = *serverInfo.TargetInfo.DnsDomainName
+		} else if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.NetbiosDomainName != nil {
+			domain = *serverInfo.TargetInfo.NetbiosDomainName
 		}
-		if serverInfo.OsVersion != nil {
-			osVersion = *serverInfo.OsVersion
+		if serverInfo.ParsedOsVersion != nil {
+			osVersion = *serverInfo.ParsedOsVersion
 		}
 		if serverInfo.SigningRequired != nil {
 			signingRequired = *serverInfo.SigningRequired
