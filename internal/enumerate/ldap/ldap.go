@@ -60,9 +60,9 @@ func (l *LibraryEnumerateLDAP) extractServerInfoFromNTLMChallenge(ctx context.Co
 
 	// Attempt NTLM bind to trigger challenge/response and extract server info
 	req := &ldap.NTLMBindRequest{
-		Domain:     "", // Let the server provide domain info
-		Username:   "", // Empty username for enumeration
-		Password:   "", // Empty password for enumeration
+		Domain:     "",      // Let the server provide domain info
+		Username:   "probe", // Dummy username for enumeration (same as probe)
+		Password:   "probe", // Dummy password for enumeration (same as probe)
 		Negotiator: negotiator,
 	}
 
