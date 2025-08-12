@@ -20,7 +20,7 @@ func getFirstNames() ([]string, error) {
 	return loadNamesFromFile("first_names.txt")
 }
 
-// getLastNames loads last names from file  
+// getLastNames loads last names from file
 func getLastNames() ([]string, error) {
 	return loadNamesFromFile("last_names.txt")
 }
@@ -73,7 +73,7 @@ func GenerateUsernamesWithLimit(scheme pentest.UsernameScheme, limit int) ([]str
 		for _, lastName := range lastNames {
 			username := generateUsername(firstName, lastName, scheme)
 			usernameSet[username] = struct{}{}
-			
+
 			// Stop if we've reached the limit (accounting for deduplication)
 			if len(usernameSet) >= limit {
 				break

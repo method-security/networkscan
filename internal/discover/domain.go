@@ -107,6 +107,12 @@ func discoverViaSMB(ctx context.Context, host string) *basicDomainInfo {
 	// Create SMB client
 	client := smbclient.NewClient(host, 445)
 	client.Timeout = 30 * time.Second
+	client.SkipServerInfoExtraction(true) // We'll extract manually
+
+	// Attempt connection to capture NTLM challenge (authentication will likely fail but that's fine)
+	// We need to attempt connection to get the NTLM challenge which contains server info
+	client.SetAnonymous()              // Use anonymous to avoid authentication issues
+	_ = client.ConnectWithContext(ctx) // Ignore connection errors - we just need the challenge
 
 	// Try to extract server info from NTLM challenge
 	serverInfo, err := client.ExtractServerInfoFromChallenge(ctx)
@@ -370,7 +376,12 @@ func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress stri
 
 		// Create SMB client
 		client := smbclient.NewClient(target, 445)
-		client.Timeout = 10 * time.Second // Shorter timeout for DC probing
+		client.Timeout = 10 * time.Second     // Shorter timeout for DC probing
+		client.SkipServerInfoExtraction(true) // We'll extract manually
+
+		// Attempt connection to capture NTLM challenge (authentication will likely fail but that's fine)
+		client.SetAnonymous()              // Use anonymous to avoid authentication issues
+		_ = client.ConnectWithContext(ctx) // Ignore connection errors - we just need the challenge
 
 		// Try to extract server info from NTLM challenge
 		serverInfo, err := client.ExtractServerInfoFromChallenge(ctx)
