@@ -60,9 +60,9 @@ func (l *LibraryEnumerateLDAP) extractServerInfoFromNTLMChallenge(ctx context.Co
 
 	// Attempt NTLM bind to trigger challenge/response and extract server info
 	req := &ldap.NTLMBindRequest{
-		Domain:     "",          // Let the server provide domain info
-		Username:   "enumerate", // Dummy username for enumeration
-		Password:   "enumerate", // Dummy password for enumeration
+		Domain:     "", // Let the server provide domain info
+		Username:   "", // Empty username for enumeration
+		Password:   "", // Empty password for enumeration
 		Negotiator: negotiator,
 	}
 
@@ -74,27 +74,8 @@ func (l *LibraryEnumerateLDAP) extractServerInfoFromNTLMChallenge(ctx context.Co
 		// Convert unified server info to LDAP-specific format
 		ldapServerInfo := ntlm.ConvertToLDAPServerInfo(negotiator.serverInfo)
 		log.Debug("Successfully extracted server info from NTLM challenge during enumeration",
-			svc1log.SafeParam("dnsDomain", func() string {
-				if ldapServerInfo.TargetInfo != nil && ldapServerInfo.TargetInfo.DnsDomainName != nil {
-					return *ldapServerInfo.TargetInfo.DnsDomainName
-				}
-				return ""
-			}()),
-			svc1log.SafeParam("netbiosDomain", func() string {
-				if ldapServerInfo.TargetInfo != nil && ldapServerInfo.TargetInfo.NetbiosDomainName != nil {
-					return *ldapServerInfo.TargetInfo.NetbiosDomainName
-				}
-				return ""
-			}()),
-			svc1log.SafeParam("serverName", func() string {
-				if ldapServerInfo.TargetInfo != nil && ldapServerInfo.TargetInfo.DnsComputerName != nil {
-					return *ldapServerInfo.TargetInfo.DnsComputerName
-				}
-				if ldapServerInfo.TargetInfo != nil && ldapServerInfo.TargetInfo.NetbiosComputerName != nil {
-					return *ldapServerInfo.TargetInfo.NetbiosComputerName
-				}
-				return ""
-			}()))
+			svc1log.SafeParam("domain", ntlm.GetLDAPDomainName(ldapServerInfo)),
+			svc1log.SafeParam("serverName", ntlm.GetLDAPServerName(ldapServerInfo)))
 		return ldapServerInfo
 	}
 

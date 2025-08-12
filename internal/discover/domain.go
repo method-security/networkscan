@@ -9,6 +9,7 @@ import (
 
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/common/ntlm"
 	ldappentest "github.com/Method-Security/networkscan/internal/pentest/ldap"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
 	"github.com/Method-Security/networkscan/utils"
@@ -124,13 +125,13 @@ func discoverViaSMB(ctx context.Context, host string) *basicDomainInfo {
 	// Extract domain names from server info
 
 	// Set DNS domain name
-	if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.DnsDomainName != nil && *serverInfo.TargetInfo.DnsDomainName != "" {
-		info.dnsDomainName = *serverInfo.TargetInfo.DnsDomainName
+	if domain := ntlm.GetSMBDomainName(serverInfo); domain != "" {
+		info.dnsDomainName = domain
 	}
 
 	// Set NetBIOS domain name from the TargetInfo structure
-	if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.NetbiosDomainName != nil && *serverInfo.TargetInfo.NetbiosDomainName != "" {
-		info.netbiosDomainName = *serverInfo.TargetInfo.NetbiosDomainName
+	if netbiosDomain := ntlm.GetSMBNetbiosDomain(serverInfo); netbiosDomain != "" {
+		info.netbiosDomainName = netbiosDomain
 	}
 
 	// Close the client

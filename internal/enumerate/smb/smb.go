@@ -8,6 +8,7 @@ import (
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	smb "github.com/Method-Security/networkscan/generated/go/enumerate/smb"
+	"github.com/Method-Security/networkscan/internal/common/ntlm"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
 	"github.com/Method-Security/networkscan/utils"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -173,80 +174,16 @@ func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *commonprotocolfern.S
 	if serverInfo != nil {
 		smbServerInfo := convertToSmbServerInfo(serverInfo)
 		details.ServerInfo = smbServerInfo
-		var serverName, domain, osVersion string
-		var signingRequired bool
-		if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.DnsComputerName != nil {
-			serverName = *serverInfo.TargetInfo.DnsComputerName
-		} else if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.NetbiosComputerName != nil {
-			serverName = *serverInfo.TargetInfo.NetbiosComputerName
-		}
-		if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.DnsDomainName != nil {
-			domain = *serverInfo.TargetInfo.DnsDomainName
-		} else if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.NetbiosDomainName != nil {
-			domain = *serverInfo.TargetInfo.NetbiosDomainName
-		}
-		if serverInfo.ParsedOsVersion != nil {
-			osVersion = *serverInfo.ParsedOsVersion
-		}
-		if serverInfo.SigningRequired != nil {
-			signingRequired = *serverInfo.SigningRequired
-		}
 
-		// Log detailed TargetInfo structure
-		var netbiosDomain, dnsDomain, dnsComputer, netbiosComputer string
-		if serverInfo.TargetInfo != nil {
-			if serverInfo.TargetInfo.NetbiosDomainName != nil {
-				netbiosDomain = *serverInfo.TargetInfo.NetbiosDomainName
-			}
-			if serverInfo.TargetInfo.DnsDomainName != nil {
-				dnsDomain = *serverInfo.TargetInfo.DnsDomainName
-			}
-			if serverInfo.TargetInfo.DnsComputerName != nil {
-				dnsComputer = *serverInfo.TargetInfo.DnsComputerName
-			}
-			if serverInfo.TargetInfo.NetbiosComputerName != nil {
-				netbiosComputer = *serverInfo.TargetInfo.NetbiosComputerName
-			}
+		// Use centralized logging function
+		// Convert to base NtlmServerInfo for logging
+		ntlmServerInfo := &commonprotocolfern.NtlmServerInfo{
+			TargetInfo:      serverInfo.TargetInfo,
+			OsInfo:          serverInfo.OsInfo,
+			ParsedOsVersion: serverInfo.ParsedOsVersion,
+			SigningRequired: serverInfo.SigningRequired,
 		}
-
-		// Log detailed OsInfo structure
-		var majorVersion, minorVersion, buildNumber, ntlmRevision int
-		var versionString string
-		if serverInfo.OsInfo != nil {
-			if serverInfo.OsInfo.MajorVersion != nil {
-				majorVersion = *serverInfo.OsInfo.MajorVersion
-			}
-			if serverInfo.OsInfo.MinorVersion != nil {
-				minorVersion = *serverInfo.OsInfo.MinorVersion
-			}
-			if serverInfo.OsInfo.BuildNumber != nil {
-				buildNumber = *serverInfo.OsInfo.BuildNumber
-			}
-			if serverInfo.OsInfo.NtlmCurrentRevision != nil {
-				ntlmRevision = *serverInfo.OsInfo.NtlmCurrentRevision
-			}
-			if serverInfo.OsInfo.VersionString != nil {
-				versionString = *serverInfo.OsInfo.VersionString
-			}
-		}
-
-		log.Info("Extracted detailed server info",
-			svc1log.SafeParam("target", target),
-			svc1log.SafeParam("server", serverName),
-			svc1log.SafeParam("domain", domain),
-			svc1log.SafeParam("os", osVersion),
-			svc1log.SafeParam("signingRequired", signingRequired),
-			// TargetInfo details
-			svc1log.SafeParam("netbiosDomain", netbiosDomain),
-			svc1log.SafeParam("dnsDomain", dnsDomain),
-			svc1log.SafeParam("dnsComputer", dnsComputer),
-			svc1log.SafeParam("netbiosComputer", netbiosComputer),
-			// OsInfo details
-			svc1log.SafeParam("osMajorVersion", majorVersion),
-			svc1log.SafeParam("osMinorVersion", minorVersion),
-			svc1log.SafeParam("osBuildNumber", buildNumber),
-			svc1log.SafeParam("ntlmRevision", ntlmRevision),
-			svc1log.SafeParam("osVersionString", versionString))
+		ntlm.LogServerInfoDetails(ntlmServerInfo, target, log)
 
 		// Set supported versions from server capabilities if available
 		if len(serverInfo.SupportedSmbVersions) > 0 {

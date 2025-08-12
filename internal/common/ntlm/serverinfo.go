@@ -224,6 +224,190 @@ func stringToPtr(s string) *string {
 	return &s
 }
 
+// GetServerName extracts server name from server info, preferring DNS computer name
+func GetServerName(serverInfo *commonprotocolfern.NtlmServerInfo) string {
+	if serverInfo != nil && serverInfo.TargetInfo != nil {
+		if serverInfo.TargetInfo.DnsComputerName != nil && *serverInfo.TargetInfo.DnsComputerName != "" {
+			return *serverInfo.TargetInfo.DnsComputerName
+		}
+		if serverInfo.TargetInfo.NetbiosComputerName != nil && *serverInfo.TargetInfo.NetbiosComputerName != "" {
+			return *serverInfo.TargetInfo.NetbiosComputerName
+		}
+	}
+	return ""
+}
+
+// GetDomainName extracts domain name from server info, preferring DNS domain name
+func GetDomainName(serverInfo *commonprotocolfern.NtlmServerInfo) string {
+	if serverInfo != nil && serverInfo.TargetInfo != nil {
+		if serverInfo.TargetInfo.DnsDomainName != nil && *serverInfo.TargetInfo.DnsDomainName != "" {
+			return *serverInfo.TargetInfo.DnsDomainName
+		}
+		if serverInfo.TargetInfo.NetbiosDomainName != nil && *serverInfo.TargetInfo.NetbiosDomainName != "" {
+			return *serverInfo.TargetInfo.NetbiosDomainName
+		}
+	}
+	return ""
+}
+
+// GetOSVersion extracts parsed OS version from server info
+func GetOSVersion(serverInfo *commonprotocolfern.NtlmServerInfo) string {
+	if serverInfo != nil && serverInfo.ParsedOsVersion != nil {
+		return *serverInfo.ParsedOsVersion
+	}
+	return ""
+}
+
+// GetSigningRequired extracts signing requirement from server info
+func GetSigningRequired(serverInfo *commonprotocolfern.NtlmServerInfo) bool {
+	if serverInfo != nil && serverInfo.SigningRequired != nil {
+		return *serverInfo.SigningRequired
+	}
+	return false
+}
+
+// LogServerInfoDetails logs detailed server info with all available fields
+func LogServerInfoDetails(serverInfo *commonprotocolfern.NtlmServerInfo, target string, log svc1log.Logger) {
+	if serverInfo == nil {
+		log.Debug("No server info available for logging", svc1log.SafeParam("target", target))
+		return
+	}
+
+	// Extract main fields
+	serverName := GetServerName(serverInfo)
+	domain := GetDomainName(serverInfo)
+	osVersion := GetOSVersion(serverInfo)
+	signingRequired := GetSigningRequired(serverInfo)
+
+	// Extract detailed TargetInfo fields
+	var netbiosDomain, dnsDomain, dnsComputer, netbiosComputer string
+	if serverInfo.TargetInfo != nil {
+		if serverInfo.TargetInfo.NetbiosDomainName != nil {
+			netbiosDomain = *serverInfo.TargetInfo.NetbiosDomainName
+		}
+		if serverInfo.TargetInfo.DnsDomainName != nil {
+			dnsDomain = *serverInfo.TargetInfo.DnsDomainName
+		}
+		if serverInfo.TargetInfo.DnsComputerName != nil {
+			dnsComputer = *serverInfo.TargetInfo.DnsComputerName
+		}
+		if serverInfo.TargetInfo.NetbiosComputerName != nil {
+			netbiosComputer = *serverInfo.TargetInfo.NetbiosComputerName
+		}
+	}
+
+	// Extract detailed OsInfo fields
+	var majorVersion, minorVersion, buildNumber, ntlmRevision int
+	var versionString string
+	if serverInfo.OsInfo != nil {
+		if serverInfo.OsInfo.MajorVersion != nil {
+			majorVersion = *serverInfo.OsInfo.MajorVersion
+		}
+		if serverInfo.OsInfo.MinorVersion != nil {
+			minorVersion = *serverInfo.OsInfo.MinorVersion
+		}
+		if serverInfo.OsInfo.BuildNumber != nil {
+			buildNumber = *serverInfo.OsInfo.BuildNumber
+		}
+		if serverInfo.OsInfo.NtlmCurrentRevision != nil {
+			ntlmRevision = *serverInfo.OsInfo.NtlmCurrentRevision
+		}
+		if serverInfo.OsInfo.VersionString != nil {
+			versionString = *serverInfo.OsInfo.VersionString
+		}
+	}
+
+	log.Info("Extracted detailed server info",
+		svc1log.SafeParam("target", target),
+		svc1log.SafeParam("serverName", serverName),
+		svc1log.SafeParam("domain", domain),
+		svc1log.SafeParam("osVersion", osVersion),
+		svc1log.SafeParam("signingRequired", signingRequired),
+		// TargetInfo details
+		svc1log.SafeParam("netbiosDomain", netbiosDomain),
+		svc1log.SafeParam("dnsDomain", dnsDomain),
+		svc1log.SafeParam("dnsComputer", dnsComputer),
+		svc1log.SafeParam("netbiosComputer", netbiosComputer),
+		// OsInfo details
+		svc1log.SafeParam("osMajorVersion", majorVersion),
+		svc1log.SafeParam("osMinorVersion", minorVersion),
+		svc1log.SafeParam("osBuildNumber", buildNumber),
+		svc1log.SafeParam("ntlmRevision", ntlmRevision),
+		svc1log.SafeParam("osVersionString", versionString))
+}
+
+// GetSMBServerName extracts server name from SMB server info, preferring DNS computer name
+func GetSMBServerName(serverInfo *commonprotocolfern.SmbServerInfo) string {
+	if serverInfo != nil && serverInfo.TargetInfo != nil {
+		if serverInfo.TargetInfo.DnsComputerName != nil && *serverInfo.TargetInfo.DnsComputerName != "" {
+			return *serverInfo.TargetInfo.DnsComputerName
+		}
+		if serverInfo.TargetInfo.NetbiosComputerName != nil && *serverInfo.TargetInfo.NetbiosComputerName != "" {
+			return *serverInfo.TargetInfo.NetbiosComputerName
+		}
+	}
+	return ""
+}
+
+func GetSMBDomainName(serverInfo *commonprotocolfern.SmbServerInfo) string {
+	if serverInfo != nil && serverInfo.TargetInfo != nil {
+		if serverInfo.TargetInfo.DnsDomainName != nil && *serverInfo.TargetInfo.DnsDomainName != "" {
+			return *serverInfo.TargetInfo.DnsDomainName
+		}
+		if serverInfo.TargetInfo.NetbiosDomainName != nil && *serverInfo.TargetInfo.NetbiosDomainName != "" {
+			return *serverInfo.TargetInfo.NetbiosDomainName
+		}
+	}
+	return ""
+}
+
+func GetSMBOSVersion(serverInfo *commonprotocolfern.SmbServerInfo) string {
+	if serverInfo != nil && serverInfo.ParsedOsVersion != nil {
+		return *serverInfo.ParsedOsVersion
+	}
+	return ""
+}
+
+func GetSMBSigningRequired(serverInfo *commonprotocolfern.SmbServerInfo) bool {
+	if serverInfo != nil && serverInfo.SigningRequired != nil {
+		return *serverInfo.SigningRequired
+	}
+	return false
+}
+
+// GetLDAPServerName extracts server name from LDAP server info, preferring DNS computer name
+func GetLDAPServerName(serverInfo *commonprotocolfern.LdapServerInfo) string {
+	if serverInfo != nil && serverInfo.TargetInfo != nil {
+		if serverInfo.TargetInfo.DnsComputerName != nil && *serverInfo.TargetInfo.DnsComputerName != "" {
+			return *serverInfo.TargetInfo.DnsComputerName
+		}
+		if serverInfo.TargetInfo.NetbiosComputerName != nil && *serverInfo.TargetInfo.NetbiosComputerName != "" {
+			return *serverInfo.TargetInfo.NetbiosComputerName
+		}
+	}
+	return ""
+}
+
+func GetLDAPDomainName(serverInfo *commonprotocolfern.LdapServerInfo) string {
+	if serverInfo != nil && serverInfo.TargetInfo != nil {
+		if serverInfo.TargetInfo.DnsDomainName != nil && *serverInfo.TargetInfo.DnsDomainName != "" {
+			return *serverInfo.TargetInfo.DnsDomainName
+		}
+		if serverInfo.TargetInfo.NetbiosDomainName != nil && *serverInfo.TargetInfo.NetbiosDomainName != "" {
+			return *serverInfo.TargetInfo.NetbiosDomainName
+		}
+	}
+	return ""
+}
+
+// GetSMBNetbiosDomain extracts NetBIOS domain name from SMB server info
+func GetSMBNetbiosDomain(serverInfo *commonprotocolfern.SmbServerInfo) string {
+	if serverInfo != nil && serverInfo.TargetInfo != nil && serverInfo.TargetInfo.NetbiosDomainName != nil {
+		return *serverInfo.TargetInfo.NetbiosDomainName
+	}
+	return ""
+}
+
 // WindowsBuildMapping maps Windows build numbers to human-readable versions
 var WindowsBuildMapping = map[string]string{
 	// Windows Server builds (prioritized for server environments)
