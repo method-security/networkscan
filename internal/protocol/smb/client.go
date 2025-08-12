@@ -436,7 +436,7 @@ func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
 	if err != nil {
 		// If unified extraction fails, create minimal server info from session
 		log.Debug("Unified server info extraction failed, creating minimal server info", svc1log.SafeParam("error", err))
-		
+
 		if c.session != nil {
 			c.serverInfo = &commonprotocolfern.SmbServerInfo{
 				SupportedSmbVersions: []commonprotocolfern.SmbVersion{
@@ -451,7 +451,7 @@ func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
 		}
 		return nil
 	}
-	
+
 	// Store the extracted server info
 	c.serverInfo = serverInfo
 	return nil
