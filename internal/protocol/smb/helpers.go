@@ -27,7 +27,7 @@ func MapProtocolVersionToEnum(version string) (commonprotocolfern.SmbVersion, bo
 // ConnectionResult holds the result of a connection test
 type ConnectionResult struct {
 	Client     *Client
-	ServerInfo *ServerInfo
+	ServerInfo *commonprotocolfern.SmbServerInfo
 	Success    bool
 	Error      error
 }

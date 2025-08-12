@@ -26,7 +26,7 @@ require (
 
 require (
 	aead.dev/minisign v0.2.0 // indirect
-	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358 // indirect
+	github.com/Azure/go-ntlmssp v0.0.0-20221128193559-754e69321358
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
 	github.com/Mzack9999/gcache v0.0.0-20230410081825-519e28eab057 // indirect
 	github.com/Mzack9999/go-http-digest-auth-client v0.6.1-0.20220414142836-eb8883508809 // indirect
@@ -112,6 +112,7 @@ require (
 	github.com/projectdiscovery/utils v0.0.92 // indirect
 	github.com/projectdiscovery/wappalyzergo v0.0.77 // indirect
 	github.com/quic-go/quic-go v0.48.2 // indirect
+	github.com/rbetts/go-ntlm v0.0.0-20130522135510-f22198915663
 	github.com/refraction-networking/utls v1.5.4 // indirect
 	github.com/remeh/sizedwaitgroup v1.0.0 // indirect
 	github.com/rivo/uniseg v0.4.4 // indirect

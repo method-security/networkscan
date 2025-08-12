@@ -1,10 +1,5 @@
 package smb
 
-import (
-	"fmt"
-	"regexp"
-)
-
 // Windows OS version constants (byte values for crypto operations)
 const (
 	WinUnknown      byte = 0x00
@@ -24,97 +19,6 @@ const (
 	WinServer2019   byte = 0x16
 	WinServer2022   byte = 0x17
 )
-
-// WindowsBuildMapping maps Windows build numbers to human-readable versions
-var WindowsBuildMapping = map[string]string{
-	// Windows Server builds
-	"20348": "Windows Server 2022",
-	"19041": "Windows Server 2022 (Insider)",
-	"17763": "Windows Server 2019",
-	"14393": "Windows Server 2016",
-	"10586": "Windows Server 2016 (Technical Preview)",
-	"9600":  "Windows Server 2012 R2",
-	"9200":  "Windows Server 2012",
-	"7601":  "Windows Server 2008 R2 SP1 / Windows 7 SP1",
-	"6002":  "Windows Server 2008 SP2 / Windows Vista SP2",
-	"6001":  "Windows Server 2008 SP1 / Windows Vista SP1",
-	"6000":  "Windows Server 2008 / Windows Vista",
-
-	// Windows 11 builds
-	"22631": "Windows 11 23H2",
-	"22621": "Windows 11 22H2",
-	"22000": "Windows 11 21H2",
-
-	// Windows 10 builds
-	"19045": "Windows 10 22H2",
-	"19044": "Windows 10 21H2",
-	"19043": "Windows 10 21H1",
-	"19042": "Windows 10 20H2",
-	"18363": "Windows 10 1909",
-	"18362": "Windows 10 1903",
-	"17134": "Windows 10 1803",
-	"16299": "Windows 10 1709",
-	"15063": "Windows 10 1703",
-	"10240": "Windows 10 RTM",
-
-	// Windows 8/8.1
-	"9431": "Windows 8.1 Update 1",
-
-	// Windows 7 (additional builds)
-	"7600": "Windows 7 RTM",
-}
-
-// parseWindowsVersion extracts and enhances Windows version information
-func parseWindowsVersion(rawOSVersion string) string {
-	if rawOSVersion == "" {
-		return "Windows Server"
-	}
-
-	// Extract build number using regex
-	buildRegex := regexp.MustCompile(`Build (\d+)`)
-	matches := buildRegex.FindStringSubmatch(rawOSVersion)
-
-	if len(matches) > 1 {
-		buildNumber := matches[1]
-
-		// Look up human-readable version
-		if readableVersion, exists := WindowsBuildMapping[buildNumber]; exists {
-			return readableVersion
-		}
-
-		// If not found, try to classify by build number ranges
-		return classifyWindowsByBuildNumber(buildNumber, rawOSVersion)
-	}
-
-	// Fallback to original version if no build number found
-	return rawOSVersion
-}
-
-// classifyWindowsByBuildNumber classifies Windows versions by build number ranges
-func classifyWindowsByBuildNumber(buildNumber, rawVersion string) string {
-	build := parseInt(buildNumber)
-
-	switch {
-	case build >= 22000:
-		return fmt.Sprintf("Windows 11 (Build %s)", buildNumber)
-	case build >= 19000:
-		return fmt.Sprintf("Windows 10/Server 2019-2022 (Build %s)", buildNumber)
-	case build >= 17000:
-		return fmt.Sprintf("Windows 10/Server 2016-2019 (Build %s)", buildNumber)
-	case build >= 14000:
-		return fmt.Sprintf("Windows 10/Server 2016 (Build %s)", buildNumber)
-	case build >= 10000:
-		return fmt.Sprintf("Windows 10 (Build %s)", buildNumber)
-	case build >= 9000:
-		return fmt.Sprintf("Windows 8/Server 2012 (Build %s)", buildNumber)
-	case build >= 7000:
-		return fmt.Sprintf("Windows 7/Server 2008 (Build %s)", buildNumber)
-	case build >= 6000:
-		return fmt.Sprintf("Windows Vista/Server 2008 (Build %s)", buildNumber)
-	default:
-		return rawVersion // Return original if can't classify
-	}
-}
 
 // GetOSVersion determines Windows OS version byte constant from build and version info
 func GetOSVersion(currentBuild int, currentVersion float64, server bool) byte {
@@ -164,11 +68,4 @@ func GetOSVersion(currentBuild int, currentVersion float64, server bool) byte {
 // IsWin10After1607 checks if Windows version is Windows 10 Anniversary Update or later
 func IsWin10After1607(build int, version float64) (bool, error) {
 	return build >= 14393, nil
-}
-
-// parseInt safely converts string to int
-func parseInt(s string) int {
-	var result int
-	_, _ = fmt.Sscanf(s, "%d", &result)
-	return result
 }

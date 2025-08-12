@@ -9,6 +9,7 @@ import (
 
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/common/ntlm"
 	ldappentest "github.com/Method-Security/networkscan/internal/pentest/ldap"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
 	"github.com/Method-Security/networkscan/utils"
@@ -124,13 +125,13 @@ func discoverViaSMB(ctx context.Context, host string) *basicDomainInfo {
 	// Extract domain names from server info
 
 	// Set DNS domain name
-	if serverInfo.Domain != "" {
-		info.dnsDomainName = serverInfo.Domain
+	if domain := ntlm.GetSMBDomainName(serverInfo); domain != "" {
+		info.dnsDomainName = domain
 	}
 
-	// Set NetBIOS domain name from the dedicated field
-	if serverInfo.NetBIOSDomainName != "" {
-		info.netbiosDomainName = serverInfo.NetBIOSDomainName
+	// Set NetBIOS domain name from the TargetInfo structure
+	if netbiosDomain := ntlm.GetSMBNetbiosDomain(serverInfo); netbiosDomain != "" {
+		info.netbiosDomainName = netbiosDomain
 	}
 
 	// Close the client
@@ -324,8 +325,8 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 
 			domainControllers = append(domainControllers, dcInfo)
 			var serverVersion string
-			if dcInfo.SmbServerInfo != nil && dcInfo.SmbServerInfo.OsVersion != nil {
-				serverVersion = *dcInfo.SmbServerInfo.OsVersion
+			if dcInfo.SmbServerInfo != nil && dcInfo.SmbServerInfo.ParsedOsVersion != nil {
+				serverVersion = *dcInfo.SmbServerInfo.ParsedOsVersion
 			}
 			log.Debug("Found domain controller",
 				svc1log.SafeParam("hostname", hostname),
@@ -387,11 +388,9 @@ func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress stri
 			continue // Try next target
 		}
 
-		// Convert the internal server info to the common protocol structure
-		smbServerInfo := convertToSmbServerInfo(serverInfo)
-
+		// Use the unified server info directly
 		details := &domainControllerDetails{
-			smbServerInfo: smbServerInfo,
+			smbServerInfo: serverInfo,
 			ipAddress:     target, // Store the target we used to connect
 		}
 
@@ -399,8 +398,8 @@ func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress stri
 		_ = client.Close()
 
 		var osVersion string
-		if smbServerInfo.OsVersion != nil {
-			osVersion = *smbServerInfo.OsVersion
+		if serverInfo.ParsedOsVersion != nil {
+			osVersion = *serverInfo.ParsedOsVersion
 		}
 		log.Debug("Successfully gathered DC details",
 			svc1log.SafeParam("target", target),
@@ -413,30 +412,6 @@ func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress stri
 		svc1log.SafeParam("hostname", hostname),
 		svc1log.SafeParam("ipAddress", ipAddress))
 	return nil
-}
-
-// convertToSmbServerInfo converts protocol library ServerInfo to common SMB ServerInfo
-func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *commonprotocolfern.SmbServerInfo {
-	if serverInfo == nil {
-		return nil
-	}
-
-	result := &commonprotocolfern.SmbServerInfo{
-		ServerName:        &serverInfo.ServerName,
-		Domain:            &serverInfo.Domain,
-		NetBiosDomainName: &serverInfo.NetBIOSDomainName,
-		Workgroup:         &serverInfo.Domain, // Use domain as workgroup fallback
-		OsVersion:         &serverInfo.OSVersion,
-		Capabilities:      serverInfo.Capabilities,
-		SigningRequired:   &serverInfo.SigningRequired,
-	}
-
-	// Include raw OS version if available
-	if serverInfo.RawOSVersion != "" {
-		result.RawOsVersion = &serverInfo.RawOSVersion
-	}
-
-	return result
 }
 
 // Helper functions

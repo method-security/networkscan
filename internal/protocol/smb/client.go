@@ -6,11 +6,54 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Method-Security/networkscan/internal/common"
+	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
+	"github.com/Method-Security/networkscan/internal/common/ntlm"
+	"github.com/jfjallid/go-smb/gss"
+	"github.com/jfjallid/go-smb/ntlmssp"
 	gosmb "github.com/jfjallid/go-smb/smb"
+	"github.com/jfjallid/go-smb/smb/encoder"
 	"github.com/jfjallid/go-smb/spnego"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
+
+// CapturingNTLM wraps the built-in NTLM initiator and captures the server's challenge
+type CapturingNTLM struct {
+	*spnego.NTLMInitiator
+	LastChallenge     *ntlmssp.Challenge
+	LastChallengeData []byte
+}
+
+func (c *CapturingNTLM) InitSecContext(inputToken []byte) ([]byte, error) {
+	// When the server replies to our first token, inputToken contains a SPNEGO NegTokenResp
+	// whose ResponseToken is the NTLM Type 2 CHALLENGE.
+	if len(inputToken) > 0 {
+		// Try to parse as SPNEGO first
+		var resp gss.NegTokenResp
+		var meta encoder.Metadata
+		if err := resp.UnmarshalBinary(inputToken, &meta); err == nil && len(resp.ResponseToken) > 0 {
+			// Store the raw challenge data for unified processing
+			c.LastChallengeData = resp.ResponseToken
+		} else {
+			// If SPNEGO parsing fails, check if this is a direct NTLM challenge
+			// NTLM Type 2 messages start with "NTLMSSP\x00" (signature) followed by type 02
+			if len(inputToken) >= 12 && string(inputToken[:8]) == "NTLMSSP\x00" {
+				// Check for Type 2 message (challenge)
+				if inputToken[8] == 0x02 && inputToken[9] == 0x00 && inputToken[10] == 0x00 && inputToken[11] == 0x00 {
+					c.LastChallengeData = inputToken
+				}
+			}
+		}
+
+		// Try to parse the challenge for validation
+		if len(c.LastChallengeData) > 0 {
+			ch := ntlmssp.NewChallenge()
+			if err := encoder.Unmarshal(c.LastChallengeData, &ch); err == nil {
+				c.LastChallenge = &ch
+			}
+		}
+	}
+	return c.NTLMInitiator.InitSecContext(inputToken)
+}
 
 // Client represents a unified SMB client that provides base functionality
 // for both enumeration and pentest operations
@@ -27,32 +70,9 @@ type Client struct {
 	session         *gosmb.Connection
 	isConnected     bool
 	isAuthenticated bool
-	serverInfo      *ServerInfo
-}
-
-// ServerInfo contains basic server information extracted from SMB connection
-type ServerInfo struct {
-	ServerName        string
-	Domain            string
-	NetBIOSDomainName string
-	OSVersion         string
-	RawOSVersion      string
-	ServerType        string
-	Capabilities      []string
-	SigningRequired   bool
-	SupportedVersions []string
-}
-
-// ShareInfo represents SMB share information
-type ShareInfo struct {
-	Name            string
-	Type            string
-	Accessible      bool
-	Access          string
-	AnonymousAccess bool
-	GuestAccess     bool
-	Hidden          bool
-	Comment         string
+	capturingNTLM   *CapturingNTLM
+	serverInfo      *commonprotocolfern.SmbServerInfo
+	skipServerInfo  bool // If true, skip automatic server info extraction on connect
 }
 
 // NewClient creates a new SMB client with the given configuration
@@ -111,94 +131,53 @@ func (c *Client) Connect() error {
 
 // ExtractServerInfoFromChallenge attempts to extract server information from NTLM challenge
 // This works even when authentication fails, as the challenge contains server metadata
-func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*ServerInfo, error) {
+func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*commonprotocolfern.SmbServerInfo, error) {
 	log := svc1log.FromContext(ctx)
-	log.Debug("Starting ExtractServerInfoFromChallenge using go-smb NTLM challenge", svc1log.SafeParam("host", c.Host), svc1log.SafeParam("port", c.Port))
+	log.Debug("Starting ExtractServerInfoFromChallenge using unified NTLM challenge parser", svc1log.SafeParam("host", c.Host), svc1log.SafeParam("port", c.Port))
 
-	// If we don't have an existing session, try to establish one with null session
-	if c.session == nil {
-		// Set up null session temporarily
-		originalNullSession := c.UseNullSession
-		c.UseNullSession = true
-
-		err := c.ConnectWithContext(ctx)
-		if err != nil {
-			log.Debug("Failed to establish null session for server info extraction", svc1log.SafeParam("error", err.Error()))
-			// Even if connection failed, check if we got a session with target info
-			if c.session == nil {
-				return nil, fmt.Errorf("failed to establish session for server info extraction: %v", err)
-			}
-		}
-
-		// Restore original null session setting
-		c.UseNullSession = originalNullSession
+	// Check if we have captured challenge data from a previous connection attempt
+	if c.capturingNTLM == nil || c.capturingNTLM.LastChallengeData == nil {
+		return nil, fmt.Errorf("no NTLM challenge data available for server info extraction")
 	}
 
-	// Extract target info from the NTLM challenge in current session
-	targetInfo := c.session.GetTargetInfo()
-	if targetInfo == nil {
-		log.Debug("No target info available from NTLM challenge")
-		return nil, fmt.Errorf("no target info available from NTLM challenge")
+	// Use unified NTLM challenge parser
+	ntlmInfo, err := ntlm.ExtractServerInfoFromChallenge(c.capturingNTLM.LastChallengeData, log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract server info from NTLM challenge: %v", err)
 	}
 
-	log.Debug("Successfully retrieved target info from NTLM challenge")
+	// Convert to SMB-specific server info with additional fields
+	smbInfo := convertNtlmToSmbServerInfo(ntlmInfo)
 
-	// Convert go-smb TargetInfo to our ServerInfo structure
-	serverInfo := &ServerInfo{
-		SigningRequired: c.session.IsSigningRequired(),
+	// Set signing requirement based on actual session state if available
+	if c.session != nil {
+		signingRequired := c.session.IsSigningRequired()
+		smbInfo.SigningRequired = &signingRequired
 	}
 
-	// Extract server information from target info
-	if targetInfo.DnsComputerName != "" {
-		serverInfo.ServerName = targetInfo.DnsComputerName
-	} else if targetInfo.NBComputerName != "" {
-		serverInfo.ServerName = targetInfo.NBComputerName
-	}
+	// SMB version detection - would need actual negotiation data
+	smbInfo.SmbVersion = nil                                         // Set when we have negotiation info
+	smbInfo.SupportedSmbVersions = []commonprotocolfern.SmbVersion{} // Set when we have negotiation info
 
-	if targetInfo.DnsDomainName != "" {
-		serverInfo.Domain = targetInfo.DnsDomainName
-	} else if targetInfo.NBDomainName != "" {
-		serverInfo.Domain = targetInfo.NBDomainName
-	}
+	log.Debug("Successfully extracted server info from unified NTLM challenge parser",
+		svc1log.SafeParam("parsedOsVersion", smbInfo.ParsedOsVersion))
 
-	// Always set NetBIOS domain name if available
-	if targetInfo.NBDomainName != "" {
-		serverInfo.NetBIOSDomainName = targetInfo.NBDomainName
-	}
-
-	// Parse and enhance the OS version
-	if targetInfo.GuessedOSVersion != "" {
-		serverInfo.RawOSVersion = targetInfo.GuessedOSVersion
-		serverInfo.OSVersion = parseWindowsVersion(targetInfo.GuessedOSVersion)
-	} else {
-		serverInfo.OSVersion = "Windows Server"
-	}
-
-	// Set capabilities based on actual server state
-	var capabilities []string
-	if serverInfo.SigningRequired {
-		capabilities = append(capabilities, "Signing")
-	}
-	serverInfo.Capabilities = capabilities
-
-	// SupportedVersions should be extracted from actual SMB negotiation, not hardcoded
-	serverInfo.SupportedVersions = []string{}
-
-	log.Debug("Successfully extracted server info from NTLM challenge",
-		svc1log.SafeParam("serverName", serverInfo.ServerName),
-		svc1log.SafeParam("domain", serverInfo.Domain),
-		svc1log.SafeParam("osVersion", serverInfo.OSVersion))
-
-	return serverInfo, nil
+	return smbInfo, nil
 }
 
 // GetDomainFromServerInfo extracts domain information from server info for authentication
 func (c *Client) GetDomainFromServerInfo(ctx context.Context) string {
 	serverInfo, err := c.ExtractServerInfoFromChallenge(ctx)
-	if err != nil || serverInfo == nil {
+	if err != nil || serverInfo == nil || serverInfo.TargetInfo == nil {
 		return ""
 	}
-	return serverInfo.Domain
+	if serverInfo.TargetInfo.DnsDomainName != nil {
+		return *serverInfo.TargetInfo.DnsDomainName
+	}
+	if serverInfo.TargetInfo.NetbiosDomainName != nil {
+		return *serverInfo.TargetInfo.NetbiosDomainName
+	}
+	return ""
 }
 
 // ConnectWithContext establishes connection to SMB server and performs authentication with context
@@ -217,18 +196,20 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 	}
 
 	// Set up authentication based on configuration
+	var ntlmInitiator *spnego.NTLMInitiator
+
 	if c.UseNullSession {
-		options.Initiator = &spnego.NTLMInitiator{
+		ntlmInitiator = &spnego.NTLMInitiator{
 			NullSession: true,
 		}
 	} else if c.UseAnonymous {
-		options.Initiator = &spnego.NTLMInitiator{
+		ntlmInitiator = &spnego.NTLMInitiator{
 			User:     "",
 			Password: "",
 		}
 	} else if c.Username != "" || c.Password != "" || c.NTLMHash != "" {
 		// Set up NTLM authentication with password or hash
-		ntlmInitiator := &spnego.NTLMInitiator{
+		ntlmInitiator = &spnego.NTLMInitiator{
 			User:      c.Username,
 			Domain:    c.Domain,
 			LocalUser: false, // Don't assume local user
@@ -236,7 +217,7 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 
 		// Use hash if available, otherwise use password
 		if c.NTLMHash != "" {
-			processor := common.NewNTLMHashProcessor()
+			processor := ntlm.NewHashProcessor()
 			ntHash, err := processor.ProcessHashForSMB(c.NTLMHash)
 			if err != nil {
 				return fmt.Errorf("failed to process NTLM hash for SMB: %v", err)
@@ -255,20 +236,24 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 		} else {
 			ntlmInitiator.Password = c.Password
 		}
-
-		options.Initiator = ntlmInitiator
 	} else {
 		// Default to null session if no credentials provided
-		options.Initiator = &spnego.NTLMInitiator{
+		ntlmInitiator = &spnego.NTLMInitiator{
 			NullSession: true,
 		}
 	}
 
+	// Wrap the NTLM initiator with our capturing wrapper to get raw challenge data
+	c.capturingNTLM = &CapturingNTLM{
+		NTLMInitiator: ntlmInitiator,
+	}
+	options.Initiator = c.capturingNTLM
+
 	// Attempt connection
 	session, err := gosmb.NewConnection(options)
 	if err != nil {
-		// Even if connection failed, try to extract server info from NTLM challenge
-		if session != nil {
+		// Even if connection failed, try to extract server info from NTLM challenge (unless skipped)
+		if session != nil && !c.skipServerInfo {
 			c.session = session
 			// Use the existing server info extraction logic
 			if err := c.extractServerInfoWithContext(ctx); err != nil {
@@ -289,9 +274,11 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 		svc1log.SafeParam("port", c.Port),
 		svc1log.SafeParam("authenticated", c.isAuthenticated))
 
-	// Extract server information
-	if err := c.extractServerInfoWithContext(ctx); err != nil {
-		log.Warn("Failed to extract server info", svc1log.SafeParam("error", err))
+	// Extract server information (unless skipped)
+	if !c.skipServerInfo {
+		if err := c.extractServerInfoWithContext(ctx); err != nil {
+			log.Warn("Failed to extract server info", svc1log.SafeParam("error", err))
+		}
 	}
 
 	return nil
@@ -308,8 +295,18 @@ func (c *Client) IsAuthenticated() bool {
 }
 
 // GetServerInfo returns extracted server information
-func (c *Client) GetServerInfo() *ServerInfo {
+func (c *Client) GetServerInfo() *commonprotocolfern.SmbServerInfo {
 	return c.serverInfo
+}
+
+// SetServerInfo sets server info from external source (to avoid redundant extraction)
+func (c *Client) SetServerInfo(serverInfo *commonprotocolfern.SmbServerInfo) {
+	c.serverInfo = serverInfo
+}
+
+// SkipServerInfoExtraction configures whether to skip automatic server info extraction on connect
+func (c *Client) SkipServerInfoExtraction(skip bool) {
+	c.skipServerInfo = skip
 }
 
 // TestCredentials tests if the provided credentials are valid
@@ -354,49 +351,64 @@ func (c *Client) TestCredentials(username, password, domain string) (bool, strin
 }
 
 // EnumerateShares lists available shares using TreeConnect testing
-func (c *Client) EnumerateShares() ([]*ShareInfo, error) {
+func (c *Client) EnumerateShares() ([]*commonprotocolfern.SmbShare, error) {
 	return c.EnumerateSharesWithContext(context.Background())
 }
 
 // EnumerateSharesWithContext lists available shares using TreeConnect testing with context
-func (c *Client) EnumerateSharesWithContext(ctx context.Context) ([]*ShareInfo, error) {
+func (c *Client) EnumerateSharesWithContext(ctx context.Context) ([]*commonprotocolfern.SmbShare, error) {
 	if !c.isConnected {
 		return nil, fmt.Errorf("not connected to SMB server")
 	}
 
 	commonShares := []string{"C$", "D$", "E$", "ADMIN$", "IPC$", "PRINT$", "FAX$", "SYSVOL", "NETLOGON", "Users", "Public", "Share", "Data", "Files", "Shared", "Transfer", "Backup", "Archive", "Home", "Homes"}
-	var shares []*ShareInfo
+	var shares []*commonprotocolfern.SmbShare
 
 	log := svc1log.FromContext(ctx)
 	log.Info("Testing common share names for accessibility", svc1log.SafeParam("shareCount", len(commonShares)))
 
 	for _, shareName := range commonShares {
-		shareInfo := &ShareInfo{
+		shareType := c.determineShareType(shareName)
+		accessible := false
+		access := commonprotocolfern.ShareAccessNoAccess
+		anonymousAccess := c.UseAnonymous || c.UseNullSession
+		guestAccess := false
+		hidden := strings.HasSuffix(shareName, "$")
+
+		shareInfo := &commonprotocolfern.SmbShare{
 			Name:            shareName,
-			Type:            c.determineShareType(shareName),
-			Accessible:      false,
-			Access:          "No Access",
-			AnonymousAccess: c.UseAnonymous || c.UseNullSession,
-			GuestAccess:     false,
-			Hidden:          strings.HasSuffix(shareName, "$"),
+			Type:            shareType,
+			Accessible:      &accessible,
+			Access:          &access,
+			AnonymousAccess: &anonymousAccess,
+			GuestAccess:     &guestAccess,
+			Hidden:          &hidden,
 		}
 
 		// Test share accessibility
 		err := c.session.TreeConnect(shareName)
 		if err == nil {
 			// Share is accessible
-			shareInfo.Accessible = true
-			shareInfo.Access = "Read" // Assume read access if TreeConnect succeeded
+			accessible = true
+			access = commonprotocolfern.ShareAccessReadOnly // Assume read access if TreeConnect succeeded
+			shareInfo.Accessible = &accessible
+			shareInfo.Access = &access
 			_ = c.session.TreeDisconnect(shareName)
-
 		}
 
 		shares = append(shares, shareInfo)
 	}
 
+	accessibleCount := 0
+	for _, share := range shares {
+		if share.Accessible != nil && *share.Accessible {
+			accessibleCount++
+		}
+	}
+
 	log.Info("Share enumeration completed",
 		svc1log.SafeParam("totalShares", len(shares)),
-		svc1log.SafeParam("accessibleShares", c.countAccessibleShares(shares)))
+		svc1log.SafeParam("accessibleShares", accessibleCount))
 	return shares, nil
 }
 
@@ -417,83 +429,53 @@ func (c *Client) extractServerInfo() error {
 
 // extractServerInfoWithContext extracts server information from the SMB session with context
 func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
-	if c.session == nil {
-		return fmt.Errorf("no active session")
-	}
+	log := svc1log.FromContext(ctx)
 
-	c.serverInfo = &ServerInfo{
-		SigningRequired:   c.session.IsSigningRequired(),
-		Capabilities:      []string{"DFS", "Leasing"},
-		SupportedVersions: []string{"SMB3.0.2", "SMB3.0", "SMB2.1", "SMB2.0"},
-	}
-
-	if c.session.IsSigningRequired() {
-		c.serverInfo.Capabilities = append(c.serverInfo.Capabilities, "Signing")
-	}
-
-	// Extract detailed information from NTLM target info
-	targetInfo := c.session.GetTargetInfo()
-	if targetInfo != nil {
-		// Use DNS domain name if available, fallback to NetBIOS domain
-		if targetInfo.DnsDomainName != "" {
-			c.serverInfo.Domain = targetInfo.DnsDomainName
-		} else if targetInfo.NBDomainName != "" {
-			c.serverInfo.Domain = targetInfo.NBDomainName
+	// Use the unified challenge-based extraction method
+	serverInfo, err := c.ExtractServerInfoFromChallenge(ctx)
+	if err != nil {
+		// If unified extraction fails, create minimal server info from session
+		log.Debug("Unified server info extraction failed, creating minimal server info", svc1log.SafeParam("error", err))
+		
+		if c.session != nil {
+			c.serverInfo = &commonprotocolfern.SmbServerInfo{
+				SupportedSmbVersions: []commonprotocolfern.SmbVersion{
+					commonprotocolfern.SmbVersionSmb302,
+					commonprotocolfern.SmbVersionSmb30,
+					commonprotocolfern.SmbVersionSmb21,
+					commonprotocolfern.SmbVersionSmb20,
+				},
+			}
+			signingRequired := c.session.IsSigningRequired()
+			c.serverInfo.SigningRequired = &signingRequired
 		}
-
-		// Always set NetBIOS domain name if available
-		if targetInfo.NBDomainName != "" {
-			c.serverInfo.NetBIOSDomainName = targetInfo.NBDomainName
-		}
-
-		// Use DNS computer name if available, fallback to NetBIOS computer name
-		if targetInfo.DnsComputerName != "" {
-			c.serverInfo.ServerName = targetInfo.DnsComputerName
-		} else if targetInfo.NBComputerName != "" {
-			c.serverInfo.ServerName = targetInfo.NBComputerName
-		}
-
-		// Parse and enhance the OS version
-		if targetInfo.GuessedOSVersion != "" {
-			c.serverInfo.RawOSVersion = targetInfo.GuessedOSVersion
-			c.serverInfo.OSVersion = parseWindowsVersion(targetInfo.GuessedOSVersion)
-		} else {
-			c.serverInfo.OSVersion = "Windows Server"
-		}
-
-		log := svc1log.FromContext(ctx)
-		log.Info("Extracted server info",
-			svc1log.SafeParam("server", c.serverInfo.ServerName),
-			svc1log.SafeParam("domain", c.serverInfo.Domain),
-			svc1log.SafeParam("os", c.serverInfo.OSVersion))
-	} else {
-		c.serverInfo.OSVersion = "Windows Server"
-		log := svc1log.FromContext(ctx)
-		log.Warn("NTLM target info not available")
+		return nil
 	}
-
+	
+	// Store the extracted server info
+	c.serverInfo = serverInfo
 	return nil
 }
 
 // determineShareType determines the share type based on share name patterns
-func (c *Client) determineShareType(shareName string) string {
+func (c *Client) determineShareType(shareName string) commonprotocolfern.ShareType {
 	switch {
 	case shareName == "IPC$":
-		return "IPC"
+		return commonprotocolfern.ShareTypeIpc
 	case shareName == "PRINT$" || shareName == "FAX$":
-		return "Print"
+		return commonprotocolfern.ShareTypePrint
 	case strings.HasSuffix(shareName, "$"):
-		return "Disk" // Administrative shares
+		return commonprotocolfern.ShareTypeDisk // Administrative shares
 	default:
-		return "Disk" // Regular disk shares
+		return commonprotocolfern.ShareTypeDisk // Regular disk shares
 	}
 }
 
 // countAccessibleShares counts the number of accessible shares
-func (c *Client) countAccessibleShares(shares []*ShareInfo) int {
+func (c *Client) countAccessibleShares(shares []*commonprotocolfern.SmbShare) int {
 	count := 0
 	for _, share := range shares {
-		if share.Accessible {
+		if share.Accessible != nil && *share.Accessible {
 			count++
 		}
 	}
@@ -506,4 +488,20 @@ func (c *Client) GetSMBSession() (*gosmb.Connection, error) {
 		return nil, fmt.Errorf("no active SMB session")
 	}
 	return c.session, nil
+}
+
+// convertNtlmToSmbServerInfo converts NtlmServerInfo to SmbServerInfo, preserving nested structures
+func convertNtlmToSmbServerInfo(ntlmInfo *commonprotocolfern.NtlmServerInfo) *commonprotocolfern.SmbServerInfo {
+	return &commonprotocolfern.SmbServerInfo{
+		ParsedOsVersion:      ntlmInfo.ParsedOsVersion,
+		SigningRequired:      ntlmInfo.SigningRequired,
+		TargetInfo:           ntlmInfo.TargetInfo,
+		OsInfo:               ntlmInfo.OsInfo,
+		SmbVersion:           nil,                               // SMB-specific field, set separately
+		SupportedSmbVersions: []commonprotocolfern.SmbVersion{}, // SMB-specific field, set separately
+		SigningEnabled:       nil,                               // SMB-specific field, set separately
+		EncryptionSupported:  nil,                               // SMB-specific field, set separately
+		EncryptionRequired:   nil,                               // SMB-specific field, set separately
+		LanManagerVersion:    nil,                               // SMB-specific field, set separately
+	}
 }

@@ -1,3 +1,6 @@
+imports:
+  ntlmProtocol: ./ntlm.yml
+
 types:
   # SMB Protocol ENUMs
   SmbVersion:
@@ -31,30 +34,19 @@ types:
 
   # Core SMB Protocol Objects
   SmbServerInfo:
+    extends: ntlmProtocol.NtlmServerInfo
     properties:
-      # Basic server identification
-      serverName: optional<string>
-      domain: optional<string>
-      netBIOSDomainName: optional<string>
-      workgroup: optional<string>
-      
-      # Version information
-      osVersion: optional<string>          # Parsed/human-readable version (e.g., "Windows Server 2019")
-      rawOsVersion: optional<string>       # Raw version from NTLM challenge (e.g., "Windows Server 2019 Build 17763")
-      lanManagerVersion: optional<string>  # LAN Manager version if available
-      
-      # SMB protocol details
+      # SMB-specific protocol details
       smbVersion: optional<SmbVersion>             # Primary SMB version in use
       supportedSmbVersions: optional<list<SmbVersion>>  # All supported SMB versions
       
-      # Security capabilities
-      signingRequired: optional<boolean>
+      # SMB-specific security capabilities
       signingEnabled: optional<boolean>
       encryptionSupported: optional<boolean>
       encryptionRequired: optional<boolean>
       
-      # Additional capabilities
-      capabilities: optional<list<string>>
+      # SMB-specific version information
+      lanManagerVersion: optional<string>         # LAN Manager version if available
 
   SmbShare:
     properties:
