@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 
-	pentest "github.com/Method-Security/networkscan/generated/go/pentest"
+	pentestfern "github.com/Method-Security/networkscan/generated/go/pentest"
 )
 
 // GetEntriesFromTXTFiles reads and combines entries from multiple text files.
@@ -69,19 +69,19 @@ func ParseHostPort(target string, defaultPort int) (string, int) {
 }
 
 // GetDefaultPortForService returns the default port for a given service type
-func GetDefaultPortForService(service pentest.SprayTargetService) int {
+func GetDefaultPortForService(service pentestfern.SprayTargetService) int {
 	switch service {
-	case pentest.SprayTargetServiceSsh:
+	case pentestfern.SprayTargetServiceSsh:
 		return 22
-	case pentest.SprayTargetServiceSmb:
+	case pentestfern.SprayTargetServiceSmb:
 		return 445
-	case pentest.SprayTargetServiceTelnet:
+	case pentestfern.SprayTargetServiceTelnet:
 		return 23
-	case pentest.SprayTargetServiceFtp:
+	case pentestfern.SprayTargetServiceFtp:
 		return 21
-	case pentest.SprayTargetServiceLdap:
+	case pentestfern.SprayTargetServiceLdap:
 		return 389
-	case pentest.SprayTargetServiceKerberos:
+	case pentestfern.SprayTargetServiceKerberos:
 		return 88
 	default:
 		return 80
