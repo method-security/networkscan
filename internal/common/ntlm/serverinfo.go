@@ -1,0 +1,337 @@
+package ntlm
+
+import (
+	"encoding/binary"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+
+	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
+	"github.com/rbetts/go-ntlm/ntlm/messages"
+)
+
+// ExtractServerInfoFromChallenge extracts server information from NTLM Type 2 challenge message
+func ExtractServerInfoFromChallenge(challengeMessage []byte, log svc1log.Logger) (*commonprotocolfern.NtlmServerInfo, error) {
+	// Parse the NTLM Type 2 challenge message
+	c, err := messages.ParseChallengeMessage(challengeMessage)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse NTLM challenge message: %v", err)
+	}
+
+	if c.TargetInfo == nil {
+		return nil, fmt.Errorf("no target info in NTLM challenge message")
+	}
+
+	ti := c.TargetInfo
+	result := &commonprotocolfern.NtlmServerInfo{}
+
+	// Extract target info fields
+	var nbDomain, nbComputer, dnsDomain, dnsComputer string
+	if nb := ti.StringValue(messages.MsvAvNbDomainName); nb != "" {
+		nbDomain = nb
+	}
+
+	if nb := ti.StringValue(messages.MsvAvNbComputerName); nb != "" {
+		nbComputer = nb
+	}
+
+	if dns := ti.StringValue(messages.MsvAvDnsDomainName); dns != "" {
+		dnsDomain = dns
+	}
+
+	if dns := ti.StringValue(messages.MsvAvDnsComputerName); dns != "" {
+		dnsComputer = dns
+	}
+
+	// Create and populate the NtlmTargetInfo structure
+	ntlmTargetInfo := &commonprotocolfern.NtlmTargetInfo{
+		NetbiosDomainName:   stringToPtr(nbDomain),
+		NetbiosComputerName: stringToPtr(nbComputer),
+		DnsDomainName:       stringToPtr(dnsDomain),
+		DnsComputerName:     stringToPtr(dnsComputer),
+		DnsTreeName:         stringToPtr(dnsDomain), // Usually same as DNS domain
+	}
+	result.TargetInfo = ntlmTargetInfo
+
+	// Extract OS version information from NTLM Version struct if available
+	var rawOSVersion, osVersion string
+	var ntlmOsInfo *commonprotocolfern.NtlmOsInfo
+	if c.Version != nil {
+		// Build raw OS version string from version struct
+		rawOSVersion = fmt.Sprintf("Windows NT %d.%d Build %d",
+			c.Version.ProductMajorVersion,
+			c.Version.ProductMinorVersion,
+			c.Version.ProductBuild)
+
+		// Parse to human-readable version
+		osVersion = ParseWindowsVersion(rawOSVersion)
+
+		// Create formatted version string matching the NTLM challenge format
+		majorVersion := int(c.Version.ProductMajorVersion)
+		minorVersion := int(c.Version.ProductMinorVersion)
+		buildNumber := int(c.Version.ProductBuild)
+		ntlmRevision := int(c.Version.NTLMRevisionCurrent)
+		versionString := fmt.Sprintf("Version %d.%d (Build %d); NTLM Current Revision %d",
+			majorVersion, minorVersion, buildNumber, ntlmRevision)
+
+		ntlmOsInfo = &commonprotocolfern.NtlmOsInfo{
+			MajorVersion:        &majorVersion,
+			MinorVersion:        &minorVersion,
+			BuildNumber:         &buildNumber,
+			NtlmCurrentRevision: &ntlmRevision,
+			VersionString:       &versionString,
+			RawVersionData:      &rawOSVersion,
+		}
+
+		result.ParsedOsVersion = &osVersion
+	}
+	result.OsInfo = ntlmOsInfo
+
+	// Set signing requirement based on NTLM flags
+	signingRequired := (c.NegotiateFlags & 0x00040000) != 0 // NTLMSSP_NEGOTIATE_SIGN
+	result.SigningRequired = &signingRequired
+
+	// Log detailed extraction info
+	log.Info("Extracted unified server info from NTLM challenge",
+		svc1log.SafeParam("nbDomain", nbDomain),
+		svc1log.SafeParam("nbComputer", nbComputer),
+		svc1log.SafeParam("dnsDomain", dnsDomain),
+		svc1log.SafeParam("dnsComputer", dnsComputer),
+		svc1log.SafeParam("flags", fmt.Sprintf("0x%08x", c.NegotiateFlags)))
+
+	return result, nil
+}
+
+// GoSMBTargetInfo represents the TargetInfo struct from go-smb library
+// This is defined here to avoid importing the go-smb library directly
+type GoSMBTargetInfo struct {
+	DNSComputerName  string
+	DNSDomainName    string
+	NBComputerName   string
+	NBDomainName     string
+	OS               uint64
+	GuessedOSVersion string
+}
+
+// ExtractServerInfoFromGoSMBTargetInfo extracts unified server information from go-smb TargetInfo
+// This provides a centralized way for SMB client to convert go-smb TargetInfo to unified NtlmServerInfo
+func ExtractServerInfoFromGoSMBTargetInfo(targetInfo *GoSMBTargetInfo, log svc1log.Logger) (*commonprotocolfern.NtlmServerInfo, error) {
+	if targetInfo == nil {
+		return nil, fmt.Errorf("go-smb target info is nil")
+	}
+
+	result := &commonprotocolfern.NtlmServerInfo{}
+
+	// Create and populate the NtlmTargetInfo structure with exact fields from NTLM challenge
+	ntlmTargetInfo := &commonprotocolfern.NtlmTargetInfo{
+		NetbiosDomainName:   stringToPtr(targetInfo.NBDomainName),
+		NetbiosComputerName: stringToPtr(targetInfo.NBComputerName),
+		DnsDomainName:       stringToPtr(targetInfo.DNSDomainName),
+		DnsComputerName:     stringToPtr(targetInfo.DNSComputerName),
+		DnsTreeName:         stringToPtr(targetInfo.DNSDomainName), // Usually same as DNS domain
+	}
+	result.TargetInfo = ntlmTargetInfo
+
+	// Create and populate the NtlmOsInfo structure with version details
+	var ntlmOsInfo *commonprotocolfern.NtlmOsInfo
+	if targetInfo.OS != 0 {
+		// Parse the version information exactly as go-smb does
+		versionBuf := make([]byte, 8)
+		binary.LittleEndian.PutUint64(versionBuf, targetInfo.OS)
+		majorVersion := int(versionBuf[0])
+		minorVersion := int(versionBuf[1])
+		buildNumber := int(binary.LittleEndian.Uint16(versionBuf[2:4]))
+		// Extract NTLM revision from byte 7
+		ntlmRevision := int(versionBuf[7])
+
+		// Create formatted version string matching the NTLM challenge format
+		versionString := fmt.Sprintf("Version %d.%d (Build %d); NTLM Current Revision %d",
+			majorVersion, minorVersion, buildNumber, ntlmRevision)
+
+		ntlmOsInfo = &commonprotocolfern.NtlmOsInfo{
+			MajorVersion:        &majorVersion,
+			MinorVersion:        &minorVersion,
+			BuildNumber:         &buildNumber,
+			NtlmCurrentRevision: &ntlmRevision,
+			VersionString:       &versionString,
+			RawVersionData: stringToPtr(fmt.Sprintf("%02x%02x%02x%02x%02x%02x%02x%02x",
+				versionBuf[0], versionBuf[1], versionBuf[2], versionBuf[3],
+				versionBuf[4], versionBuf[5], versionBuf[6], versionBuf[7])),
+		}
+	}
+	result.OsInfo = ntlmOsInfo
+
+	// Parse and enhance the OS version
+	if targetInfo.GuessedOSVersion != "" {
+		osVersion := ParseWindowsVersion(targetInfo.GuessedOSVersion)
+		result.ParsedOsVersion = &osVersion
+	}
+
+	// Log detailed extraction info
+	log.Info("Extracted unified server info from go-smb TargetInfo",
+		svc1log.SafeParam("nbDomain", targetInfo.NBDomainName),
+		svc1log.SafeParam("nbComputer", targetInfo.NBComputerName),
+		svc1log.SafeParam("dnsDomain", targetInfo.DNSDomainName),
+		svc1log.SafeParam("dnsComputer", targetInfo.DNSComputerName))
+
+	return result, nil
+}
+
+// ConvertToLDAPServerInfo converts common NTLM server info to LDAP-specific format
+func ConvertToLDAPServerInfo(ntlmInfo *commonprotocolfern.NtlmServerInfo) *commonprotocolfern.LdapServerInfo {
+	result := &commonprotocolfern.LdapServerInfo{}
+
+	// Copy core fields that exist in cleaned structure
+	if ntlmInfo.ParsedOsVersion != nil {
+		result.ParsedOsVersion = ntlmInfo.ParsedOsVersion
+	}
+	if ntlmInfo.SigningRequired != nil {
+		result.SigningRequired = ntlmInfo.SigningRequired
+	}
+
+	// Copy nested structures
+	if ntlmInfo.TargetInfo != nil {
+		result.TargetInfo = ntlmInfo.TargetInfo
+	}
+	if ntlmInfo.OsInfo != nil {
+		result.OsInfo = ntlmInfo.OsInfo
+	}
+
+	// Generate LDAP-specific base DN from nested TargetInfo
+	if ntlmInfo.TargetInfo != nil {
+		if ntlmInfo.TargetInfo.DnsDomainName != nil && *ntlmInfo.TargetInfo.DnsDomainName != "" {
+			baseDN := convertDNSDomainToBaseDN(*ntlmInfo.TargetInfo.DnsDomainName)
+			result.BaseDn = &baseDN
+		} else if ntlmInfo.TargetInfo.NetbiosDomainName != nil && *ntlmInfo.TargetInfo.NetbiosDomainName != "" {
+			baseDN := fmt.Sprintf("DC=%s", *ntlmInfo.TargetInfo.NetbiosDomainName)
+			result.BaseDn = &baseDN
+		}
+	}
+
+	// Set LDAP-specific capabilities
+	supportsTLS := false          // Default - would need more sophisticated detection
+	supportsStartTLS := true      // Most modern servers support StartTLS
+	supportsSASL := true          // NTLM is a SASL mechanism
+	anonymousBindAllowed := false // Default for AD
+
+	result.SupportsTls = &supportsTLS
+	result.SupportsStartTls = &supportsStartTLS
+	result.SupportsSasl = &supportsSASL
+	result.AnonymousBindAllowed = &anonymousBindAllowed
+
+	return result
+}
+
+// convertDNSDomainToBaseDN converts a DNS domain name to LDAP base DN format
+// e.g., corp.auric-dynamics.com -> DC=corp,DC=auric-dynamics,DC=com
+func convertDNSDomainToBaseDN(dnsDomain string) string {
+	if dnsDomain == "" {
+		return ""
+	}
+
+	parts := strings.Split(dnsDomain, ".")
+	dcParts := make([]string, len(parts))
+	for i, part := range parts {
+		dcParts[i] = "DC=" + part
+	}
+	return strings.Join(dcParts, ",")
+}
+
+// ParseWindowsVersion extracts and enhances Windows version information
+func ParseWindowsVersion(rawOSVersion string) string {
+	if rawOSVersion == "" {
+		return ""
+	}
+
+	// Extract build number using regex
+	buildRegex := regexp.MustCompile(`Build (\d+)`)
+	matches := buildRegex.FindStringSubmatch(rawOSVersion)
+
+	if len(matches) > 1 {
+		buildNumber := matches[1]
+
+		// Look up human-readable version
+		if readableVersion, exists := WindowsBuildMapping[buildNumber]; exists {
+			return readableVersion
+		}
+
+		// If not found, try to classify by build number ranges
+		return classifyWindowsByBuildNumber(buildNumber, rawOSVersion)
+	}
+
+	// Fallback to original version if no build number found
+	return rawOSVersion
+}
+
+// classifyWindowsByBuildNumber classifies Windows versions by build number ranges
+func classifyWindowsByBuildNumber(buildNumber, rawVersion string) string {
+	build, err := strconv.Atoi(buildNumber)
+	if err != nil {
+		return rawVersion
+	}
+
+	switch {
+	case build >= 22000:
+		return fmt.Sprintf("Windows 11 (Build %s)", buildNumber)
+	case build >= 19000:
+		return fmt.Sprintf("Windows 10 (Build %s)", buildNumber)
+	case build >= 10000:
+		return fmt.Sprintf("Windows 10 (Build %s)", buildNumber)
+	case build >= 9600:
+		return fmt.Sprintf("Windows 8.1 (Build %s)", buildNumber)
+	case build >= 9200:
+		return fmt.Sprintf("Windows 8 (Build %s)", buildNumber)
+	case build >= 7600:
+		return fmt.Sprintf("Windows 7 (Build %s)", buildNumber)
+	case build >= 6000:
+		return fmt.Sprintf("Windows Vista (Build %s)", buildNumber)
+	default:
+		return fmt.Sprintf("Windows (Build %s)", buildNumber)
+	}
+}
+
+// stringToPtr converts a string to a pointer, returning nil for empty strings
+func stringToPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// WindowsBuildMapping maps Windows build numbers to human-readable versions
+var WindowsBuildMapping = map[string]string{
+	// Windows Server builds (prioritized for server environments)
+	"20348": "Windows Server 2022",
+	"17763": "Windows Server 2019",
+	"14393": "Windows Server 2016",
+	"9600":  "Windows Server 2012 R2",
+	"9200":  "Windows Server 2012",
+	"7601":  "Windows Server 2008 R2 SP1",
+	"6002":  "Windows Server 2008 SP2",
+	"6001":  "Windows Server 2008 SP1",
+	"6000":  "Windows Server 2008",
+
+	// Windows 11 builds
+	"22631": "Windows 11 23H2",
+	"22621": "Windows 11 22H2",
+	"22000": "Windows 11 21H2",
+
+	// Windows 10 builds (client builds that don't conflict with server)
+	"19045": "Windows 10 22H2",
+	"19044": "Windows 10 21H2",
+	"19043": "Windows 10 21H1",
+	"19042": "Windows 10 20H2",
+	"19041": "Windows 10 2004",
+	"18363": "Windows 10 1909",
+	"18362": "Windows 10 1903",
+	"17134": "Windows 10 1803",
+	"16299": "Windows 10 1709",
+	"15063": "Windows 10 1703",
+	"10586": "Windows 10 1511",
+	"10240": "Windows 10 1507",
+
+	// Older Windows versions
+	"7600": "Windows 7",
+}

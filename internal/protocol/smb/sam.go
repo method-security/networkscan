@@ -17,7 +17,7 @@ import (
 	"unicode/utf16"
 
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
-	"github.com/Method-Security/networkscan/internal/common"
+	"github.com/Method-Security/networkscan/internal/common/ntlm"
 	"github.com/jfjallid/go-smb/smb/dcerpc/msrrp"
 	"github.com/jfjallid/go-smb/smb/encoder"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -504,7 +504,7 @@ func DumpSAM(ctx context.Context, rpccon *msrrp.RPCCon, hKey []byte, modifyDacl 
 				continue
 			}
 			samSecret.NtHash = fmt.Sprintf("%x", hash)
-			lmHash := common.StandardLMHash // Standard empty LM hash
+			lmHash := ntlm.StandardLMHash // Standard empty LM hash
 			samSecret.LmHash = &lmHash
 		}
 

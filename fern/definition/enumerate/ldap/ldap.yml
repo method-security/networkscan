@@ -6,6 +6,7 @@ types:
   EnumerateLdapDetails:
     properties:
       target: string
+      serverInfo: optional<ldapProtocol.LdapServerInfo>  # Server information extracted from NTLM challenge
       anonymousBindAllowed: optional<boolean>
       nullBindAllowed: optional<boolean>
       authMethods: optional<list<ldapProtocol.LdapAuthMethod>>

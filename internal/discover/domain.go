@@ -124,13 +124,13 @@ func discoverViaSMB(ctx context.Context, host string) *basicDomainInfo {
 	// Extract domain names from server info
 
 	// Set DNS domain name
-	if serverInfo.Domain != "" {
-		info.dnsDomainName = serverInfo.Domain
+	if serverInfo.Domain != nil && *serverInfo.Domain != "" {
+		info.dnsDomainName = *serverInfo.Domain
 	}
 
-	// Set NetBIOS domain name from the dedicated field
-	if serverInfo.NetBIOSDomainName != "" {
-		info.netbiosDomainName = serverInfo.NetBIOSDomainName
+	// Set NetBIOS domain name from the TargetInfo structure
+	if serverInfo.TargetInfo != nil && serverInfo.TargetInfo.NetbiosDomainName != nil && *serverInfo.TargetInfo.NetbiosDomainName != "" {
+		info.netbiosDomainName = *serverInfo.TargetInfo.NetbiosDomainName
 	}
 
 	// Close the client
@@ -387,11 +387,9 @@ func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress stri
 			continue // Try next target
 		}
 
-		// Convert the internal server info to the common protocol structure
-		smbServerInfo := convertToSmbServerInfo(serverInfo)
-
+		// Use the unified server info directly
 		details := &domainControllerDetails{
-			smbServerInfo: smbServerInfo,
+			smbServerInfo: serverInfo,
 			ipAddress:     target, // Store the target we used to connect
 		}
 
@@ -399,8 +397,8 @@ func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress stri
 		_ = client.Close()
 
 		var osVersion string
-		if smbServerInfo.OsVersion != nil {
-			osVersion = *smbServerInfo.OsVersion
+		if serverInfo.OsVersion != nil {
+			osVersion = *serverInfo.OsVersion
 		}
 		log.Debug("Successfully gathered DC details",
 			svc1log.SafeParam("target", target),
@@ -413,30 +411,6 @@ func gatherDomainControllerDetails(ctx context.Context, hostname, ipAddress stri
 		svc1log.SafeParam("hostname", hostname),
 		svc1log.SafeParam("ipAddress", ipAddress))
 	return nil
-}
-
-// convertToSmbServerInfo converts protocol library ServerInfo to common SMB ServerInfo
-func convertToSmbServerInfo(serverInfo *smbclient.ServerInfo) *commonprotocolfern.SmbServerInfo {
-	if serverInfo == nil {
-		return nil
-	}
-
-	result := &commonprotocolfern.SmbServerInfo{
-		ServerName:        &serverInfo.ServerName,
-		Domain:            &serverInfo.Domain,
-		NetBiosDomainName: &serverInfo.NetBIOSDomainName,
-		Workgroup:         &serverInfo.Domain, // Use domain as workgroup fallback
-		OsVersion:         &serverInfo.OSVersion,
-		Capabilities:      serverInfo.Capabilities,
-		SigningRequired:   &serverInfo.SigningRequired,
-	}
-
-	// Include raw OS version if available
-	if serverInfo.RawOSVersion != "" {
-		result.RawOsVersion = &serverInfo.RawOSVersion
-	}
-
-	return result
 }
 
 // Helper functions

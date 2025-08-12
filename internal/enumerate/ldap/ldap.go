@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Azure/go-ntlmssp"
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	ldapfern "github.com/Method-Security/networkscan/generated/go/enumerate/ldap"
+	"github.com/Method-Security/networkscan/internal/common/ntlm"
 	"github.com/Method-Security/networkscan/utils"
 	ldap "github.com/go-ldap/ldap/v3"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -15,12 +17,90 @@ import (
 // LibraryEnumerateLDAP implements NetworkApplicationLibrary for LDAP enumeration.
 type LibraryEnumerateLDAP struct{}
 
+// enumerateNegotiator implements NTLM negotiation for server info extraction during enumeration
+type enumerateNegotiator struct {
+	serverInfo *commonprotocolfern.NtlmServerInfo
+	log        svc1log.Logger
+}
+
+func (en *enumerateNegotiator) Negotiate(domain, workstation string) ([]byte, error) {
+	return ntlmssp.NewNegotiateMessage(domain, workstation)
+}
+
+func (en *enumerateNegotiator) ChallengeResponse(chal []byte, user, hash string) ([]byte, error) {
+	// Use unified NTLM extractor
+	serverInfo, err := ntlm.ExtractServerInfoFromChallenge(chal, en.log)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract server info from NTLM challenge: %v", err)
+	}
+
+	en.serverInfo = serverInfo
+
+	// We don't actually want to complete the authentication, just extract server info
+	// Return an empty response to avoid actually authenticating
+	return []byte{}, fmt.Errorf("enumeration server info extraction completed, authentication not required")
+}
+
+// extractServerInfoFromNTLMChallenge extracts server information via NTLM challenge during enumeration
+func (l *LibraryEnumerateLDAP) extractServerInfoFromNTLMChallenge(ctx context.Context, host string, port int, target string) *commonprotocolfern.LdapServerInfo {
+	log := svc1log.FromContext(ctx)
+	log.Debug("Extracting LDAP server info via NTLM challenge for enumeration", svc1log.SafeParam("target", target))
+
+	conn, err := ldap.DialURL(fmt.Sprintf("ldap://%s:%d", host, port))
+	if err != nil {
+		log.Debug("Failed to connect to LDAP server for server info extraction", svc1log.SafeParam("error", err.Error()))
+		return nil
+	}
+	defer func() { _ = conn.Close() }()
+
+	// Create enumeration negotiator to capture server info
+	negotiator := &enumerateNegotiator{
+		log: log,
+	}
+
+	// Attempt NTLM bind to trigger challenge/response and extract server info
+	req := &ldap.NTLMBindRequest{
+		Domain:     "",          // Let the server provide domain info
+		Username:   "enumerate", // Dummy username for enumeration
+		Password:   "enumerate", // Dummy password for enumeration
+		Negotiator: negotiator,
+	}
+
+	// We expect this to fail, but we should capture the server info from the challenge
+	_, err = conn.NTLMChallengeBind(req)
+
+	// Check if we successfully extracted server info even if bind failed
+	if negotiator.serverInfo != nil {
+		// Convert unified server info to LDAP-specific format
+		ldapServerInfo := ntlm.ConvertToLDAPServerInfo(negotiator.serverInfo)
+		log.Debug("Successfully extracted server info from NTLM challenge during enumeration",
+			svc1log.SafeParam("dnsDomain", func() string {
+				if ldapServerInfo.TargetInfo != nil && ldapServerInfo.TargetInfo.DnsDomainName != nil {
+					return *ldapServerInfo.TargetInfo.DnsDomainName
+				}
+				return ""
+			}()),
+			svc1log.SafeParam("netbiosDomain", func() string {
+				if ldapServerInfo.TargetInfo != nil && ldapServerInfo.TargetInfo.NetbiosDomainName != nil {
+					return *ldapServerInfo.TargetInfo.NetbiosDomainName
+				}
+				return ""
+			}()),
+			svc1log.SafeParam("serverName", ldapServerInfo.ServerName))
+		return ldapServerInfo
+	}
+
+	log.Debug("Could not extract server info from NTLM challenge during enumeration")
+	return nil
+}
+
 // authTestResult holds the result of an authentication test
 type authTestResult struct {
 	success       bool
 	conn          *ldap.Conn
 	allowedMethod bool
 	authMethod    commonprotocolfern.LdapAuthMethod
+	serverInfo    *commonprotocolfern.LdapServerInfo
 }
 
 // authenticationState holds the overall state of authentication testing
@@ -30,6 +110,7 @@ type authenticationState struct {
 	anonymousAllowed     bool
 	nullBindAllowed      bool
 	supportedMethods     []commonprotocolfern.LdapAuthMethod
+	serverInfo           *commonprotocolfern.LdapServerInfo
 }
 
 // testNullBind tests null bind (no credentials)
@@ -128,6 +209,9 @@ func (l *LibraryEnumerateLDAP) performAuthentication(ctx context.Context, host s
 		connectionSuccessful: false,
 		supportedMethods:     []commonprotocolfern.LdapAuthMethod{},
 	}
+
+	// Extract server info first using NTLM challenge
+	state.serverInfo = l.extractServerInfoFromNTLMChallenge(ctx, host, port, target)
 
 	// Test null bind
 	nullResult := l.testNullBind(ctx, host, port, target)
@@ -228,6 +312,11 @@ func (l *LibraryEnumerateLDAP) extractLdapInfo(ctx context.Context, conn *ldap.C
 
 // assembleResponse assembles the final response
 func (l *LibraryEnumerateLDAP) assembleResponse(details *ldapfern.EnumerateLdapDetails, state authenticationState) {
+	// Set server info
+	if state.serverInfo != nil {
+		details.ServerInfo = state.serverInfo
+	}
+
 	// Set authentication results
 	details.NullBindAllowed = &state.nullBindAllowed
 	details.AnonymousBindAllowed = &state.anonymousAllowed

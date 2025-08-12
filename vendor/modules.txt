@@ -534,6 +534,9 @@ github.com/projectdiscovery/wappalyzergo
 # github.com/quic-go/quic-go v0.48.2
 ## explicit; go 1.22
 github.com/quic-go/quic-go/quicvarint
+# github.com/rbetts/go-ntlm v0.0.0-20130522135510-f22198915663
+## explicit
+github.com/rbetts/go-ntlm/ntlm/messages
 # github.com/refraction-networking/utls v1.5.4
 ## explicit; go 1.20
 github.com/refraction-networking/utls

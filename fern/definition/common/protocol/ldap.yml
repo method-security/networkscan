@@ -1,3 +1,6 @@
+imports:
+  ntlmProtocol: ./ntlm.yml
+
 types:
   # LDAP Protocol Common Types
   
@@ -12,10 +15,10 @@ types:
   
   # LDAP Server Information
   LdapServerInfo:
+    extends: ntlmProtocol.NtlmServerInfo
     properties:
-      serverName: optional<string>
-      domain: optional<string>
-      baseDN: optional<string>
+      # LDAP-specific properties
+      baseDN: optional<string>               # LDAP-specific base DN
       supportsTLS: optional<boolean>
       supportsStartTLS: optional<boolean>
       supportsSASL: optional<boolean>

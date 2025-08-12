@@ -1,0 +1,36 @@
+types:
+  # NTLM Target Info structure - extracted from NTLM challenge TargetInfo
+  NtlmTargetInfo:
+    properties:
+      netbiosDomainName: optional<string>      # Attribute: NetBIOS domain name (e.g., ADICORP)
+      netbiosComputerName: optional<string>    # Attribute: NetBIOS computer name (e.g., NYC-DC01)
+      dnsDomainName: optional<string>          # Attribute: DNS domain name (e.g., corp.auric-dynamics.com)
+      dnsComputerName: optional<string>        # Attribute: DNS computer name (e.g., NYC-DC01.corp.auric-dynamics.com)
+      dnsTreeName: optional<string>            # Attribute: DNS tree name (e.g., corp.auric-dynamics.com)
+      timestamp: optional<datetime>            # Attribute: Timestamp from NTLM challenge
+      length: optional<integer>                # Target Info length
+      maxLength: optional<integer>             # Target Info max length
+      offset: optional<integer>                # Target Info offset
+
+  # NTLM OS Information structure - extracted from NTLM challenge Version block
+  NtlmOsInfo:
+    properties:
+      majorVersion: optional<integer>          # Major Version (e.g., 10)
+      minorVersion: optional<integer>          # Minor Version (e.g., 0)
+      buildNumber: optional<integer>           # Build Number (e.g., 20348)
+      ntlmCurrentRevision: optional<integer>   # NTLM Current Revision (e.g., 15)
+      versionString: optional<string>          # Formatted version string (e.g., "Version 10.0 (Build 20348)")
+      rawVersionData: optional<string>         # Raw version data from NTLM
+
+  # Common NTLM Server Information extracted from NTLM challenge
+  NtlmServerInfo:
+    properties:
+      # Parsed OS version (derived from OsInfo)
+      parsedOsVersion: optional<string>        # Parsed OS version (e.g., "Windows Server 2022")
+      
+      # Protocol-specific fields
+      signingRequired: optional<boolean>       # Whether SMB signing is required
+      
+      # Detailed NTLM structures
+      targetInfo: optional<NtlmTargetInfo>     # Detailed TargetInfo from NTLM challenge
+      osInfo: optional<NtlmOsInfo>             # Detailed OS/Version info from NTLM challenge
