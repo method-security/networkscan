@@ -339,10 +339,10 @@ func convertToSmbShares(shares []*smbclient.ShareInfo) []*commonprotocolfern.Smb
 		smbShare := &commonprotocolfern.SmbShare{
 			Name:            share.Name,
 			Type:            shareType,
-			Accessible:      share.Accessible,
+			Accessible:      &share.Accessible,
 			Access:          &shareAccess,
-			AnonymousAccess: share.AnonymousAccess,
-			GuestAccess:     share.GuestAccess,
+			AnonymousAccess: &share.AnonymousAccess,
+			GuestAccess:     &share.GuestAccess,
 			Hidden:          &share.Hidden,
 		}
 

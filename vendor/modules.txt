@@ -191,7 +191,7 @@ github.com/gorilla/css/scanner
 # github.com/inconshreveable/mousetrap v1.1.0
 ## explicit; go 1.18
 github.com/inconshreveable/mousetrap
-# github.com/jfjallid/go-smb v0.6.3
+# github.com/jfjallid/go-smb v0.6.6
 ## explicit; go 1.24
 github.com/jfjallid/go-smb/gss
 github.com/jfjallid/go-smb/krb5ssp
@@ -202,6 +202,7 @@ github.com/jfjallid/go-smb/smb/crypto/ccm
 github.com/jfjallid/go-smb/smb/crypto/cmac
 github.com/jfjallid/go-smb/smb/dcerpc
 github.com/jfjallid/go-smb/smb/dcerpc/msrrp
+github.com/jfjallid/go-smb/smb/dcerpc/mssrvs
 github.com/jfjallid/go-smb/smb/encoder
 github.com/jfjallid/go-smb/spnego
 # github.com/jfjallid/gofork v1.7.6
@@ -245,10 +246,10 @@ github.com/jfjallid/gokrb5/v8/types
 # github.com/jfjallid/golog v0.3.4
 ## explicit; go 1.17
 github.com/jfjallid/golog
-# github.com/jfjallid/mstypes v0.0.0-20250515143745-921e33065feb
+# github.com/jfjallid/mstypes v0.0.1
 ## explicit; go 1.24
 github.com/jfjallid/mstypes
-# github.com/jfjallid/ndr v0.0.0-20250515143046-14ad19ef61a6
+# github.com/jfjallid/ndr v0.0.1
 ## explicit; go 1.24
 github.com/jfjallid/ndr
 # github.com/json-iterator/go v1.1.12
