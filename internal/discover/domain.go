@@ -62,16 +62,11 @@ func RunDomainDiscovery(ctx context.Context, config discoverfern.DiscoverDomainC
 
 		// Step 3: Build the domain info with discovered information
 		domainInfo = &discoverfern.DomainInfo{
-			DnsDomainName:     &domainName,
-			ForestName:        &domainName,
 			DomainControllers: domainControllers,
 		}
 
 		// Add extracted info if available
 		if extractedInfo != nil {
-			if extractedInfo.netbiosDomainName != "" {
-				domainInfo.NetBiosDomainName = &extractedInfo.netbiosDomainName
-			}
 			// Include the full server info from the initial target
 			if extractedInfo.serverInfo != nil {
 				domainInfo.ServerInfo = extractedInfo.serverInfo
