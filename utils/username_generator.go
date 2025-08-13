@@ -37,22 +37,7 @@ func GenerateUsernamesByScheme(scheme pentest.UsernameScheme) ([]string, error) 
 		return nil, err
 	}
 
-	// Use a set to deduplicate usernames
-	usernameSet := make(map[string]struct{})
-	for _, firstName := range firstNames {
-		for _, lastName := range lastNames {
-			username := generateUsername(firstName, lastName, scheme)
-			usernameSet[username] = struct{}{}
-		}
-	}
-
-	// Convert set to slice
-	var usernames []string
-	for username := range usernameSet {
-		usernames = append(usernames, username)
-	}
-
-	return usernames, nil
+	return generateUsernamesOptimized(firstNames, lastNames, scheme, 0), nil
 }
 
 // GenerateUsernamesWithLimit generates a limited number of usernames based on the scheme
@@ -67,20 +52,68 @@ func GenerateUsernamesWithLimit(scheme pentest.UsernameScheme, limit int) ([]str
 		return nil, err
 	}
 
-	// Use a set to deduplicate usernames
-	usernameSet := make(map[string]struct{})
-	for _, firstName := range firstNames {
-		for _, lastName := range lastNames {
-			username := generateUsername(firstName, lastName, scheme)
-			usernameSet[username] = struct{}{}
+	return generateUsernamesOptimized(firstNames, lastNames, scheme, limit), nil
+}
 
-			// Stop if we've reached the limit (accounting for deduplication)
-			if len(usernameSet) >= limit {
+// generateUsernamesOptimized generates usernames with scheme-specific optimizations
+func generateUsernamesOptimized(firstNames, lastNames []string, scheme pentest.UsernameScheme, limit int) []string {
+	usernameSet := make(map[string]struct{})
+
+	switch scheme {
+	case pentest.UsernameSchemeFlast, pentest.UsernameSchemeFLast:
+		// For schemes that only use first letter, generate a-z + last names
+		for letter := 'a'; letter <= 'z'; letter++ {
+			for _, lastName := range lastNames {
+				var username string
+				if scheme == pentest.UsernameSchemeFLast {
+					username = string(letter) + "_" + strings.ToLower(lastName)
+				} else {
+					username = string(letter) + strings.ToLower(lastName)
+				}
+				usernameSet[username] = struct{}{}
+
+				if limit > 0 && len(usernameSet) >= limit {
+					break
+				}
+			}
+			if limit > 0 && len(usernameSet) >= limit {
 				break
 			}
 		}
-		if len(usernameSet) >= limit {
-			break
+	case pentest.UsernameSchemeLast:
+		// For last name only, just use last names
+		for _, lastName := range lastNames {
+			username := strings.ToLower(lastName)
+			usernameSet[username] = struct{}{}
+
+			if limit > 0 && len(usernameSet) >= limit {
+				break
+			}
+		}
+	case pentest.UsernameSchemeFirst:
+		// For first name only, just use first names
+		for _, firstName := range firstNames {
+			username := strings.ToLower(firstName)
+			usernameSet[username] = struct{}{}
+
+			if limit > 0 && len(usernameSet) >= limit {
+				break
+			}
+		}
+	default:
+		// For other schemes, use the full Cartesian product
+		for _, firstName := range firstNames {
+			for _, lastName := range lastNames {
+				username := generateUsername(firstName, lastName, scheme)
+				usernameSet[username] = struct{}{}
+
+				if limit > 0 && len(usernameSet) >= limit {
+					break
+				}
+			}
+			if limit > 0 && len(usernameSet) >= limit {
+				break
+			}
 		}
 	}
 
@@ -90,7 +123,7 @@ func GenerateUsernamesWithLimit(scheme pentest.UsernameScheme, limit int) ([]str
 		usernames = append(usernames, username)
 	}
 
-	return usernames, nil
+	return usernames
 }
 
 // generateUsername creates a username based on the naming scheme
