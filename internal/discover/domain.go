@@ -72,6 +72,10 @@ func RunDomainDiscovery(ctx context.Context, config discoverfern.DiscoverDomainC
 			if extractedInfo.netbiosDomainName != "" {
 				domainInfo.NetBiosDomainName = &extractedInfo.netbiosDomainName
 			}
+			// Include the full server info from the initial target
+			if extractedInfo.serverInfo != nil {
+				domainInfo.ServerInfo = extractedInfo.serverInfo
+			}
 		}
 
 		log.Info("Domain discovery completed",
@@ -96,6 +100,7 @@ func RunDomainDiscovery(ctx context.Context, config discoverfern.DiscoverDomainC
 type basicDomainInfo struct {
 	netbiosDomainName string
 	dnsDomainName     string
+	serverInfo        *commonprotocolfern.SmbServerInfo // Full server info from initial target
 }
 
 // discoverViaSMB attempts to discover domain information via SMB
@@ -126,9 +131,11 @@ func discoverViaSMB(ctx context.Context, host string) *basicDomainInfo {
 		return nil
 	}
 
-	info := &basicDomainInfo{}
+	info := &basicDomainInfo{
+		serverInfo: serverInfo, // Store the full server info
+	}
 
-	// Extract domain names from server info
+	// Extract domain names from server info for convenience
 
 	// Set DNS domain name
 	if domain := ntlm.GetSMBDomainName(serverInfo); domain != "" {
@@ -143,9 +150,15 @@ func discoverViaSMB(ctx context.Context, host string) *basicDomainInfo {
 	// Close the client
 	_ = client.Close()
 
+	var dnsComputer string
+	if info.serverInfo != nil && info.serverInfo.TargetInfo != nil && info.serverInfo.TargetInfo.DnsComputerName != nil {
+		dnsComputer = *info.serverInfo.TargetInfo.DnsComputerName
+	}
+
 	log.Debug("SMB domain discovery successful",
 		svc1log.SafeParam("dnsDomain", info.dnsDomainName),
-		svc1log.SafeParam("netbiosDomain", info.netbiosDomainName))
+		svc1log.SafeParam("netbiosDomain", info.netbiosDomainName),
+		svc1log.SafeParam("dnsComputer", dnsComputer))
 
 	return info
 }
