@@ -12,10 +12,6 @@ types:
 
   DomainInfo:
     properties:
-      netBIOSDomainName: optional<string>
-      dnsDomainName: optional<string>
-      forestName: optional<string>
-      # Include full server info from initial target for complete NTLM information
       serverInfo: optional<smbProtocol.SmbServerInfo>
       domainControllers: optional<list<DomainControllerInfo>>
 
