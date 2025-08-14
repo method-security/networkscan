@@ -43,7 +43,7 @@ var bufferSize = 2048
 type LibraryEnumerateFTP struct{}
 
 // EnumerateTarget connects to the target and extracts FTP details.
-func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
+func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string, config enumeratefern.EnumerateServiceConfig) (*enumeratefern.EnumerateServiceDetails, []string) {
 	var details ftp.EnumerateFtpDetails
 	details.Target = target
 	errors := []string{}

@@ -66,12 +66,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 		Verbose:        true,
 	}
 
-	for i, ip := range ips {
-		// Apply attempt delay if configured (except for first attempt)
-		if config.AttemptDelay != nil && *config.AttemptDelay > 0 && i > 0 {
-			time.Sleep(time.Duration(*config.AttemptDelay) * time.Second)
-		}
-
+	for _, ip := range ips {
 		addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(config.Port))
 		fingerprintTarget := plugins.Target{Address: addrPort, Host: config.Target}
 

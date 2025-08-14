@@ -30,7 +30,7 @@ type LibraryEnumerateSMTP struct{}
 //     a. Parse data returned from 'AUTH' command
 //  4. Test unauthenticated email
 //     a. If unauthenticated email is not allowed, set AllowsUnauthenticatedEmail to false
-func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
+func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target string, config enumeratefern.EnumerateServiceConfig) (*enumeratefern.EnumerateServiceDetails, []string) {
 	// Initialize
 	log := svc1log.FromContext(ctx)
 
@@ -46,7 +46,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 		errors = append(errors, fmt.Sprintf("invalid target format: %v", err))
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
 	}
-	config := &tls.Config{
+	tlsConfig := &tls.Config{
 		ServerName:         hostname,
 		InsecureSkipVerify: true,
 	}
@@ -90,7 +90,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	// Try STARTTLS if TLS connection established above
 	if detail.TlsSupported == nil {
 		log.Debug("Attempting STARTTLS")
-		err = client.StartTLS(config)
+		err = client.StartTLS(tlsConfig)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("TLS upgrade failed: %v", err))
 			TLSSupported := false

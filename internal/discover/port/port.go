@@ -70,16 +70,10 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 	hosts := []*discoverfern.SocketDetails{}
 	// These settings mimic naabu's default settings
 	rate := runner.DefaultRateConnectScan
-	if config.AttemptDelay != nil && *config.AttemptDelay > 0 {
-		// Convert attempt delay to rate: attemptDelay=2s means 1/2 = 0.5 attempts/second
-		// But naabu's rate is packets per second, so for 2s delay = 0.5 packets/second
-		rate = 1000 / *config.AttemptDelay // Scale to milliseconds for naabu
-		if rate < 1 {
-			rate = 1 // Minimum rate of 1 to avoid division by zero
-		}
-		log.Info("Using custom rate for stealth scanning",
-			svc1log.SafeParam("attemptDelay", *config.AttemptDelay),
-			svc1log.SafeParam("rate", rate),
+	if config.Pps != nil && *config.Pps > 0 {
+		rate = *config.Pps
+		log.Info("Using custom packets per second rate",
+			svc1log.SafeParam("pps", *config.Pps),
 			svc1log.SafeParam("defaultRate", runner.DefaultRateConnectScan))
 	}
 

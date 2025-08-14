@@ -23,7 +23,7 @@ import (
 // NetworkApplicationLibrary defines the interface for service-specific enumeration implementations.
 // Each service type (SSH, FTP, SMTP, gRPC, SMB, LDAP) must implement this interface.
 type NetworkApplicationLibrary interface {
-	EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string)
+	EnumerateTarget(ctx context.Context, target string, config enumeratefern.EnumerateServiceConfig) (*enumeratefern.EnumerateServiceDetails, []string)
 }
 
 // NetworkApplicationEngine provides a wrapper around service-specific enumeration libraries.
@@ -66,7 +66,7 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 			}, 1)
 
 			go func() {
-				detail, errs := engine.Library.EnumerateTarget(targetCtx, target)
+				detail, errs := engine.Library.EnumerateTarget(targetCtx, target, config)
 				resultChan <- struct {
 					detail *enumeratefern.EnumerateServiceDetails
 					errs   []string

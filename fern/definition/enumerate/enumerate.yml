@@ -33,6 +33,13 @@ types:
       targets: list<string>
       service: SupportedServiceType
       timeout: integer
+      
+      # Stealth configuration
+      attemptDelay: optional<integer> # Delay in seconds between enumeration attempts
+      
+      # SMB-specific configuration (only applies when service is SMB)
+      noGuest: optional<boolean> # Disable guest authentication attempts for SMB
+      noAnonymous: optional<boolean> # Disable anonymous authentication attempts for SMB
   # Final report
   EnumerateServiceReport:
     properties:

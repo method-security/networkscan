@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	// Generated
@@ -50,11 +51,41 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
+			attemptDelay, err := cmd.Flags().GetInt("attempt-delay")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			if attemptDelay < 0 {
+				a.OutputSignal.AddError(fmt.Errorf("attempt-delay must be non-negative"))
+				return
+			}
+
+			// Extract SMB-specific flags
+			noGuest, err := cmd.Flags().GetBool("no-guest")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			noAnonymous, err := cmd.Flags().GetBool("no-anonymous")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
 
 			config := enumeratefern.EnumerateServiceConfig{
 				Targets: targets,
 				Service: serviceEnum,
 				Timeout: timeout,
+			}
+			if attemptDelay > 0 {
+				config.AttemptDelay = &attemptDelay
+			}
+			if noGuest {
+				config.NoGuest = &noGuest
+			}
+			if noAnonymous {
+				config.NoAnonymous = &noAnonymous
 			}
 
 			// Generate the report
@@ -69,6 +100,11 @@ func (a *NetworkScan) InitEnumerateCommand() {
 	enumerateServiceCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to enumerate")
 	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, ldap, smb, smtp, ssh)")
 	enumerateServiceCmd.Flags().Int("timeout", 30, "Timeout in seconds for enumerating each target")
+	enumerateServiceCmd.Flags().Int("attempt-delay", 0, "Delay in seconds between enumeration attempts (0 = no delay)")
+	
+	// SMB-specific flags
+	enumerateServiceCmd.Flags().Bool("no-guest", false, "Disable guest authentication attempts (SMB only)")
+	enumerateServiceCmd.Flags().Bool("no-anonymous", false, "Disable anonymous authentication attempts (SMB only)")
 
 	// Mark Required Flags
 	_ = enumerateServiceCmd.MarkFlagRequired("targets")

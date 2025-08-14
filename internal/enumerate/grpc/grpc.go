@@ -24,7 +24,7 @@ import (
 type LibraryEnumerateGRPC struct{}
 
 // EnumerateTarget performs a gRPC scan against a target URL and returns the report.
-func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
+func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target string, config enumeratefern.EnumerateServiceConfig) (*enumeratefern.EnumerateServiceDetails, []string) {
 	var details grpc.EnumerateGrpcDetails
 	details.Target = target
 	errors := []string{}

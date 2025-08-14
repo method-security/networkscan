@@ -313,7 +313,7 @@ func (l *LibraryEnumerateLDAP) assembleResponse(details *ldapfern.EnumerateLdapD
 }
 
 // EnumerateTarget performs LDAP enumeration for the given target
-func (l *LibraryEnumerateLDAP) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
+func (l *LibraryEnumerateLDAP) EnumerateTarget(ctx context.Context, target string, config enumeratefern.EnumerateServiceConfig) (*enumeratefern.EnumerateServiceDetails, []string) {
 	var details ldapfern.EnumerateLdapDetails
 	details.Target = target
 	var errors []string

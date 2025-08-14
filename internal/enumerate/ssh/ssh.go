@@ -33,7 +33,7 @@ type LibraryEnumerateSSH struct{}
 //   e. MACs
 //   f. Auth Methods (Public Key, Password)
 
-func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
+func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string, config enumeratefern.EnumerateServiceConfig) (*enumeratefern.EnumerateServiceDetails, []string) {
 	var details ssh.EnumerateSshDetails
 	var serverInfo commonprotocolfern.SshServerInfo
 	serverInfo.Target = &target

@@ -100,7 +100,7 @@ type authenticationState struct {
 }
 
 // performAuthentication tests all authentication methods and returns the collective state
-func (s *LibraryEnumerateSMB) performAuthentication(ctx context.Context, host string, port int, target string) authenticationState {
+func (s *LibraryEnumerateSMB) performAuthentication(ctx context.Context, host string, port int, target string, config enumeratefern.EnumerateServiceConfig) authenticationState {
 	var state authenticationState
 
 	// Test null session first
@@ -121,8 +121,8 @@ func (s *LibraryEnumerateSMB) performAuthentication(ctx context.Context, host st
 		_ = nullResult.client.Close()
 	}
 
-	// Test anonymous connection if null session failed
-	if !state.connectionSuccessful {
+	// Test anonymous connection if null session failed (skip if --no-anonymous is set)
+	if !state.connectionSuccessful && !(config.NoAnonymous != nil && *config.NoAnonymous) {
 		anonResult := s.testAnonymousSession(ctx, host, port, target)
 		state.anonymousAllowed = anonResult.allowedMethod
 
@@ -142,28 +142,30 @@ func (s *LibraryEnumerateSMB) performAuthentication(ctx context.Context, host st
 	}
 
 	// Test guest authentication (this is a real credential-based auth attempt)
-	// We test this separately to record the auth attempt
-	guestResult := s.testGuestAuthentication(ctx, host, port, target)
-	state.guestAllowed = guestResult.allowedMethod
-	state.authAttempts = append(state.authAttempts, guestResult.authAttempt)
+	// We test this separately to record the auth attempt (skip if --no-guest is set)
+	if !(config.NoGuest != nil && *config.NoGuest) {
+		guestResult := s.testGuestAuthentication(ctx, host, port, target)
+		state.guestAllowed = guestResult.allowedMethod
+		state.authAttempts = append(state.authAttempts, guestResult.authAttempt)
 
-	if guestResult.success {
-		// If no other connection succeeded, use guest connection
-		if !state.connectionSuccessful {
-			state.connectionSuccessful = true
-			state.workingClient = guestResult.client
-			if guestResult.serverInfo != nil {
-				state.serverInfo = guestResult.serverInfo
+		if guestResult.success {
+			// If no other connection succeeded, use guest connection
+			if !state.connectionSuccessful {
+				state.connectionSuccessful = true
+				state.workingClient = guestResult.client
+				if guestResult.serverInfo != nil {
+					state.serverInfo = guestResult.serverInfo
+				}
+			} else {
+				_ = guestResult.client.Close() // Close guest connection since we have a working one
 			}
 		} else {
-			_ = guestResult.client.Close() // Close guest connection since we have a working one
+			// Extract server info even if connection failed (from NTLM challenge)
+			if state.serverInfo == nil && guestResult.serverInfo != nil {
+				state.serverInfo = guestResult.serverInfo
+			}
+			_ = guestResult.client.Close()
 		}
-	} else {
-		// Extract server info even if connection failed (from NTLM challenge)
-		if state.serverInfo == nil && guestResult.serverInfo != nil {
-			state.serverInfo = guestResult.serverInfo
-		}
-		_ = guestResult.client.Close()
 	}
 
 	return state
@@ -262,7 +264,7 @@ func (s *LibraryEnumerateSMB) assembleResponse(details *smb.EnumerateSmbDetails,
 }
 
 // EnumerateTarget performs comprehensive SMB enumeration using the shared SMB protocol library
-func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
+func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string, config enumeratefern.EnumerateServiceConfig) (*enumeratefern.EnumerateServiceDetails, []string) {
 	var details smb.EnumerateSmbDetails
 	details.Target = target
 	var errors []string
@@ -276,7 +278,7 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	client := smbclient.NewClient(host, port)
 
 	// Perform all authentication tests
-	authState := s.performAuthentication(ctx, host, port, target)
+	authState := s.performAuthentication(ctx, host, port, target, config)
 
 	// Set the working client as our primary client for share enumeration
 	if authState.connectionSuccessful && authState.workingClient != nil {
