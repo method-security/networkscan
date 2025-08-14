@@ -188,8 +188,15 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				validateThreads = &validateThreadsInt
 			}
 
+			// Attempt delay
+			attemptDelay, err := cmd.Flags().GetInt("attempt-delay")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
 			// Set Config
-			config := getDiscoverPortConfig(target, ports, topPorts, threads, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads)
+			config := getDiscoverPortConfig(target, ports, topPorts, threads, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads, attemptDelay)
 
 			// Generate the report
 			report, err := discoverport.RunPortScan(cmd.Context(), config)
@@ -209,6 +216,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().String("validate-hostname", "", "Hostname to validate against (e.g., example.com)")
 	discoverPortCmd.Flags().Int("validate-attempt-timeout", 10, "Timeout in seconds for each service detection attempt")
 	discoverPortCmd.Flags().Int("validate-threads", 0, "Number of concurrent threads to use during service detection")
+	discoverPortCmd.Flags().Int("attempt-delay", 0, "Delay in seconds between port scan attempts (0 = no delay)")
 
 	// Mark Required Flags
 	_ = discoverPortCmd.MarkFlagRequired("target")
@@ -237,9 +245,14 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
+			attemptDelay, err := cmd.Flags().GetInt("attempt-delay")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
 
 			// Set Config
-			config := getDiscoverServiceConfig(target, port, timeout)
+			config := getDiscoverServiceConfig(target, port, timeout, attemptDelay)
 
 			// Generate the report
 			report, err := discover.RunServiceFingerprint(cmd.Context(), config)
@@ -253,6 +266,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverServiceCmd.Flags().String("target", "", "Target IP address or hostname where the service is running")
 	discoverServiceCmd.Flags().Int("port", 0, "Port number of the service to fingerprint (e.g., 443)")
 	discoverServiceCmd.Flags().Int("timeout", 5, "Timeout in seconds for each service fingerprinting attempt")
+	discoverServiceCmd.Flags().Int("attempt-delay", 0, "Delay in seconds between service fingerprint attempts (0 = no delay)")
 
 	// Mark Required Flags
 	_ = discoverServiceCmd.MarkFlagRequired("target")
@@ -343,7 +357,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 // getDiscoverPortConfig creates a configuration for port scanning with the provided parameters.
 // It handles both specific port ranges and top ports scanning modes.
-func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int) discoverfern.DiscoverPortConfig {
+func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int, attemptDelay int) discoverfern.DiscoverPortConfig {
 	config := discoverfern.DiscoverPortConfig{
 		Target:   target,
 		Ports:    &ports,
@@ -351,6 +365,9 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 		Threads:  threads,
 		ScanType: scanType,
 		Validate: validate,
+	}
+	if attemptDelay > 0 {
+		config.AttemptDelay = &attemptDelay
 	}
 	if validateHostname != nil {
 		config.ValidateHostname = validateHostname
@@ -366,12 +383,16 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 
 // getDiscoverServiceConfig creates a configuration for service fingerprinting with the provided parameters.
 // It sets up the target, port, and timeout for service discovery.
-func getDiscoverServiceConfig(target string, port int, timeout int) discoverfern.DiscoverServiceConfig {
-	return discoverfern.DiscoverServiceConfig{
+func getDiscoverServiceConfig(target string, port int, timeout int, attemptDelay int) discoverfern.DiscoverServiceConfig {
+	config := discoverfern.DiscoverServiceConfig{
 		Target:  target,
 		Port:    port,
 		Timeout: timeout,
 	}
+	if attemptDelay > 0 {
+		config.AttemptDelay = &attemptDelay
+	}
+	return config
 }
 
 // getDiscoverTLSConfig creates a configuration for TLS scanning with the provided parameters.

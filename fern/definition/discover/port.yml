@@ -31,6 +31,9 @@ types:
       validateHostname: optional<string>
       validateAttemptTimeout: optional<integer>
       validateThreads: optional<integer>
+      
+      # Stealth configuration
+      attemptDelay: optional<integer> # Delay in seconds between port scan attempts
   # Final report
   DiscoverPortReport:
     properties:

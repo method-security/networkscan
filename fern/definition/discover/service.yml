@@ -21,6 +21,9 @@ types:
       target: string
       port: integer
       timeout: integer
+      
+      # Stealth configuration
+      attemptDelay: optional<integer> # Delay in seconds between service fingerprint attempts
   # Final report
   DiscoverServiceReport:
     properties:
