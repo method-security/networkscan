@@ -26,6 +26,11 @@ func GetDefaultWordlistResolver() *WordlistResolver {
 	return NewWordlistResolver("/opt/method/networkscan/var/conf")
 }
 
+// GetConfigFilePath returns the full path for a file within the config directory
+func (wr *WordlistResolver) GetConfigFilePath(relativePath string) string {
+	return filepath.Join(wr.baseConfigDir, relativePath)
+}
+
 // ResolveWordlistPaths takes wordlist types and resolves them to actual file paths
 func (wr *WordlistResolver) ResolveWordlistPaths(wordlistTypes []pentestfern.WordlistType) ([]string, error) {
 	if len(wordlistTypes) == 0 {
