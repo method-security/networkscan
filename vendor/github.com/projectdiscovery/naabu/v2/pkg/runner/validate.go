@@ -119,7 +119,7 @@ func (options *Options) ValidateOptions() error {
 		return errors.New("IP Version must be 4 and/or 6")
 	}
 	// Return error if any host discovery releated option is provided but host discovery is disabled
-	if options.SkipHostDiscovery && options.hasProbes() {
+	if !options.WithHostDiscovery && options.hasProbes() {
 		return errors.New("discovery probes were provided but host discovery is disabled")
 	}
 
@@ -143,6 +143,10 @@ func (options *Options) ValidateOptions() error {
 	if options.ScanType == SynScan && scan.PkgRouter == nil {
 		gologger.Warning().Msgf("Routing could not be determined (are you using a VPN?).falling back to connect scan")
 		options.ScanType = ConnectScan
+	}
+
+	if options.ServiceDiscovery || options.ServiceVersion {
+		return errors.New("service discovery feature is not implemented")
 	}
 
 	return nil
@@ -170,7 +174,7 @@ func (options *Options) configureHostDiscovery(ports []*port.Port) {
 	// if less than two ports are specified as input, reduce time and scan directly
 	if len(ports) <= 2 {
 		gologger.Info().Msgf("Host discovery disabled: less than two ports were specified")
-		options.SkipHostDiscovery = true
+		options.WithHostDiscovery = false
 	}
 	if options.shouldDiscoverHosts() && !options.hasProbes() {
 		// if no options were defined enable

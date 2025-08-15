@@ -106,11 +106,12 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		return nil, err
 	}
 
-	defer portscan.Close()
 	err = portscan.RunEnumeration(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	defer portscan.Close()
 
 	return hosts, nil
 

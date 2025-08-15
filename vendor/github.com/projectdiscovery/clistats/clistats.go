@@ -117,56 +117,63 @@ func NewWithOptions(ctx context.Context, options *Options) (*Statistics, error) 
 	return statistics, nil
 }
 
+func (s *Statistics) metricsHandler(w http.ResponseWriter, req *http.Request) {
+	items := make(map[string]interface{})
+	for k, v := range s.counters {
+		items[k] = v.Load()
+	}
+	for k, v := range s.static {
+		items[k] = v
+	}
+	for k, v := range s.dynamic {
+		items[k] = v(s)
+	}
+
+	// Common fields
+	requests, hasRequests := s.GetCounter("requests")
+	startedAt, hasStartedAt := s.GetStatic("startedAt")
+	total, hasTotal := s.GetCounter("total")
+	var (
+		duration    time.Duration
+		hasDuration bool
+	)
+	// duration
+	if hasStartedAt {
+		if stAt, ok := startedAt.(time.Time); ok {
+			duration = time.Since(stAt)
+			items["duration"] = FmtDuration(duration)
+			hasDuration = true
+		}
+	}
+	// rps
+	if hasRequests && hasDuration {
+		items["rps"] = String(uint64(float64(requests) / duration.Seconds()))
+	}
+	// percent
+	if hasRequests && hasTotal {
+		percentData := (float64(requests) * float64(100)) / float64(total)
+		percent := String(uint64(percentData))
+		items["percent"] = percent
+	}
+
+	data, err := jsoniter.Marshal(items)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"error":"%s"}`, err)))
+		return
+	}
+	_, _ = w.Write(data)
+}
+
 // Start starts the event loop of the stats client.
 func (s *Statistics) Start() error {
+	if s.httpServer != nil {
+		return errorutil.New("server already started")
+	}
+
 	if s.Options.Web {
-		http.HandleFunc("/metrics", func(w http.ResponseWriter, req *http.Request) {
-			items := make(map[string]interface{})
-			for k, v := range s.counters {
-				items[k] = v.Load()
-			}
-			for k, v := range s.static {
-				items[k] = v
-			}
-			for k, v := range s.dynamic {
-				items[k] = v(s)
-			}
-
-			// Common fields
-			requests, hasRequests := s.GetCounter("requests")
-			startedAt, hasStartedAt := s.GetStatic("startedAt")
-			total, hasTotal := s.GetCounter("total")
-			var (
-				duration    time.Duration
-				hasDuration bool
-			)
-			// duration
-			if hasStartedAt {
-				if stAt, ok := startedAt.(time.Time); ok {
-					duration = time.Since(stAt)
-					items["duration"] = FmtDuration(duration)
-					hasDuration = true
-				}
-			}
-			// rps
-			if hasRequests && hasDuration {
-				items["rps"] = String(uint64(float64(requests) / duration.Seconds()))
-			}
-			// percent
-			if hasRequests && hasTotal {
-				percentData := (float64(requests) * float64(100)) / float64(total)
-				percent := String(uint64(percentData))
-				items["percent"] = percent
-			}
-
-			data, err := jsoniter.Marshal(items)
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte(fmt.Sprintf(`{"error":"%s"}`, err)))
-				return
-			}
-			_, _ = w.Write(data)
-		})
+		mux := http.NewServeMux()
+		mux.HandleFunc("/metrics", s.metricsHandler)
 
 		// check if the default port is available
 		port, err := freeport.GetPort(freeport.TCP, "127.0.0.1", s.Options.ListenPort)
@@ -181,13 +188,42 @@ func (s *Statistics) Start() error {
 
 		s.httpServer = &http.Server{
 			Addr:    fmt.Sprintf("%s:%d", port.Address, port.Port),
-			Handler: http.DefaultServeMux,
+			Handler: mux,
 		}
 
+		errChan := make(chan error, 1)
+		var done atomic.Bool
+
 		go func() {
-			_ = s.httpServer.ListenAndServe()
+			if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed && !done.Load() {
+				errChan <- err
+			}
 		}()
+
+		// catch initial fatal errors
+		select {
+		case err := <-errChan:
+			return err
+		case <-time.After(250 * time.Millisecond):
+			done.Store(true)
+			close(errChan)
+		}
+
 	}
+	return nil
+}
+
+// Stop stops the event loop of the stats client
+func (s *Statistics) Stop() error {
+	defer s.cancel()
+
+	if s.httpServer != nil {
+		if err := s.httpServer.Shutdown(s.ctx); err != nil {
+			return err
+		}
+	}
+	s.httpServer = nil
+
 	return nil
 }
 
@@ -223,15 +259,4 @@ func (s *Statistics) GetStatResponse(interval time.Duration, callback func(strin
 			}
 		}
 	}()
-}
-
-// Stop stops the event loop of the stats client
-func (s *Statistics) Stop() error {
-	s.cancel()
-	if s.httpServer != nil {
-		if err := s.httpServer.Shutdown(context.Background()); err != nil {
-			return err
-		}
-	}
-	return nil
 }
