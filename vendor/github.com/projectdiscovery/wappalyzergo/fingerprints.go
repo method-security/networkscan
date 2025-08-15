@@ -2,9 +2,6 @@ package wappalyzer
 
 import (
 	"fmt"
-	"regexp"
-	"strconv"
-	"strings"
 )
 
 // Fingerprints contains a map of fingerprints for tech detection
@@ -15,14 +12,21 @@ type Fingerprints struct {
 
 // Fingerprint is a single piece of information about a tech validated and normalized
 type Fingerprint struct {
-	Cookies map[string]string   `json:"cookies"`
-	JS      []string            `json:"js"`
-	Headers map[string]string   `json:"headers"`
-	HTML    []string            `json:"html"`
-	CSS     []string            `json:"css"`
-	Script  []string            `json:"scripts"`
-	Meta    map[string][]string `json:"meta"`
-	Implies []string            `json:"implies"`
+	Cats        []int                             `json:"cats"`
+	CSS         []string                          `json:"css"`
+	Cookies     map[string]string                 `json:"cookies"`
+	Dom         map[string]map[string]interface{} `json:"dom"`
+	JS          map[string]string                 `json:"js"`
+	Headers     map[string]string                 `json:"headers"`
+	HTML        []string                          `json:"html"`
+	Script      []string                          `json:"scripts"`
+	ScriptSrc   []string                          `json:"scriptSrc"`
+	Meta        map[string][]string               `json:"meta"`
+	Implies     []string                          `json:"implies"`
+	Description string                            `json:"description"`
+	Website     string                            `json:"website"`
+	CPE         string                            `json:"cpe"`
+	Icon        string                            `json:"icon"`
 }
 
 // CompiledFingerprints contains a map of fingerprints for tech detection
@@ -33,73 +37,56 @@ type CompiledFingerprints struct {
 
 // CompiledFingerprint contains the compiled fingerprints from the tech json
 type CompiledFingerprint struct {
+	// cats contain categories that are implicit with this tech
+	cats []int
 	// implies contains technologies that are implicit with this tech
 	implies []string
+	// description contains fingerprint description
+	description string
+	// website contains a URL associated with the fingerprint
+	website string
+	// icon contains a Icon associated with the fingerprint
+	icon string
 	// cookies contains fingerprints for target cookies
-	cookies map[string]*versionRegex
+	cookies map[string]*ParsedPattern
 	// js contains fingerprints for the js file
-	js []*versionRegex
+	js map[string]*ParsedPattern
+	// dom contains fingerprints for the target dom
+	dom map[string]map[string]*ParsedPattern
 	// headers contains fingerprints for target headers
-	headers map[string]*versionRegex
+	headers map[string]*ParsedPattern
 	// html contains fingerprints for the target HTML
-	html []*versionRegex
-	// script contains fingerprints for script tags
-	script []*versionRegex
+	html []*ParsedPattern
+	// script contains fingerprints for scripts
+	script []*ParsedPattern
+	// scriptSrc contains fingerprints for script srcs
+	scriptSrc []*ParsedPattern
 	// meta contains fingerprints for meta tags
-	meta map[string][]*versionRegex
+	meta map[string][]*ParsedPattern
+	// cpe contains the cpe for a fingerpritn
+	cpe string
 }
 
-type versionRegex struct {
-	regex     *regexp.Regexp
-	skipRegex bool
-	group     int
+func (f *CompiledFingerprint) GetJSRules() map[string]*ParsedPattern {
+	return f.js
 }
 
-const versionPrefix = "version:\\"
-
-// newVersionRegex creates a new version matching regex
-// TODO: handles simple group cases only as of now (no ternary)
-func newVersionRegex(value string) (*versionRegex, error) {
-	splitted := strings.Split(value, "\\;")
-	if len(splitted) == 0 {
-		return nil, nil
-	}
-
-	compiled, err := regexp.Compile(splitted[0])
-	if err != nil {
-		return nil, err
-	}
-	skipRegex := splitted[0] == ""
-	regex := &versionRegex{regex: compiled, skipRegex: skipRegex}
-	for _, part := range splitted {
-		if strings.HasPrefix(part, versionPrefix) {
-			group := strings.TrimPrefix(part, versionPrefix)
-			if parsed, err := strconv.Atoi(group); err == nil {
-				regex.group = parsed
-			}
-		}
-	}
-	return regex, nil
+func (f *CompiledFingerprint) GetDOMRules() map[string]map[string]*ParsedPattern {
+	return f.dom
 }
 
-// MatchString returns true if a version regex matched.
-// The found version is also returned if any.
-func (v *versionRegex) MatchString(value string) (bool, string) {
-	if v.skipRegex {
-		return true, ""
-	}
-	matches := v.regex.FindAllStringSubmatch(value, -1)
-	if len(matches) == 0 {
-		return false, ""
-	}
+// AppInfo contains basic information about an App.
+type AppInfo struct {
+	Description string
+	Website     string
+	CPE         string
+	Icon        string
+	Categories  []string
+}
 
-	var version string
-	if v.group > 0 {
-		for _, match := range matches {
-			version = match[v.group]
-		}
-	}
-	return true, version
+// CatsInfo contains basic information about an App.
+type CatsInfo struct {
+	Cats []int
 }
 
 // part is the part of the fingerprint to match
@@ -118,33 +105,68 @@ const (
 // loadPatterns loads the fingerprint patterns and compiles regexes
 func compileFingerprint(fingerprint *Fingerprint) *CompiledFingerprint {
 	compiled := &CompiledFingerprint{
-		implies: fingerprint.Implies,
-		cookies: make(map[string]*versionRegex),
-		js:      make([]*versionRegex, 0, len(fingerprint.JS)),
-		headers: make(map[string]*versionRegex),
-		html:    make([]*versionRegex, 0, len(fingerprint.HTML)),
-		script:  make([]*versionRegex, 0, len(fingerprint.Script)),
-		meta:    make(map[string][]*versionRegex),
+		cats:        fingerprint.Cats,
+		implies:     fingerprint.Implies,
+		description: fingerprint.Description,
+		website:     fingerprint.Website,
+		icon:        fingerprint.Icon,
+		dom:         make(map[string]map[string]*ParsedPattern),
+		cookies:     make(map[string]*ParsedPattern),
+		js:          make(map[string]*ParsedPattern),
+		headers:     make(map[string]*ParsedPattern),
+		html:        make([]*ParsedPattern, 0, len(fingerprint.HTML)),
+		script:      make([]*ParsedPattern, 0, len(fingerprint.Script)),
+		scriptSrc:   make([]*ParsedPattern, 0, len(fingerprint.ScriptSrc)),
+		meta:        make(map[string][]*ParsedPattern),
+		cpe:         fingerprint.CPE,
+	}
+
+	for dom, patterns := range fingerprint.Dom {
+		compiled.dom[dom] = make(map[string]*ParsedPattern)
+
+		for attr, value := range patterns {
+			switch attr {
+			case "exists", "text":
+				pattern, err := ParsePattern(value.(string))
+				if err != nil {
+					continue
+				}
+				compiled.dom[dom]["main"] = pattern
+			case "attributes":
+				attrMap, ok := value.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				compiled.dom[dom] = make(map[string]*ParsedPattern)
+				for attrName, value := range attrMap {
+					pattern, err := ParsePattern(value.(string))
+					if err != nil {
+						continue
+					}
+					compiled.dom[dom][attrName] = pattern
+				}
+			}
+		}
 	}
 
 	for header, pattern := range fingerprint.Cookies {
-		fingerprint, err := newVersionRegex(pattern)
+		fingerprint, err := ParsePattern(pattern)
 		if err != nil {
 			continue
 		}
 		compiled.cookies[header] = fingerprint
 	}
 
-	for _, pattern := range fingerprint.JS {
-		fingerprint, err := newVersionRegex(pattern)
+	for k, pattern := range fingerprint.JS {
+		fingerprint, err := ParsePattern(pattern)
 		if err != nil {
 			continue
 		}
-		compiled.js = append(compiled.js, fingerprint)
+		compiled.js[k] = fingerprint
 	}
 
 	for header, pattern := range fingerprint.Headers {
-		fingerprint, err := newVersionRegex(pattern)
+		fingerprint, err := ParsePattern(pattern)
 		if err != nil {
 			continue
 		}
@@ -152,7 +174,7 @@ func compileFingerprint(fingerprint *Fingerprint) *CompiledFingerprint {
 	}
 
 	for _, pattern := range fingerprint.HTML {
-		fingerprint, err := newVersionRegex(pattern)
+		fingerprint, err := ParsePattern(pattern)
 		if err != nil {
 			continue
 		}
@@ -160,18 +182,26 @@ func compileFingerprint(fingerprint *Fingerprint) *CompiledFingerprint {
 	}
 
 	for _, pattern := range fingerprint.Script {
-		fingerprint, err := newVersionRegex(pattern)
+		fingerprint, err := ParsePattern(pattern)
 		if err != nil {
 			continue
 		}
 		compiled.script = append(compiled.script, fingerprint)
 	}
 
+	for _, pattern := range fingerprint.ScriptSrc {
+		fingerprint, err := ParsePattern(pattern)
+		if err != nil {
+			continue
+		}
+		compiled.scriptSrc = append(compiled.scriptSrc, fingerprint)
+	}
+
 	for meta, patterns := range fingerprint.Meta {
-		var compiledList []*versionRegex
+		var compiledList []*ParsedPattern
 
 		for _, pattern := range patterns {
-			fingerprint, err := newVersionRegex(pattern)
+			fingerprint, err := ParsePattern(pattern)
 			if err != nil {
 				continue
 			}
@@ -183,33 +213,43 @@ func compileFingerprint(fingerprint *Fingerprint) *CompiledFingerprint {
 }
 
 // matchString matches a string for the fingerprints
-func (f *CompiledFingerprints) matchString(data string, part part) []string {
+func (f *CompiledFingerprints) matchString(data string, part part) []matchPartResult {
 	var matched bool
-	var technologies []string
+	var technologies []matchPartResult
 
 	for app, fingerprint := range f.Apps {
 		var version string
+		confidence := 100
 
 		switch part {
 		case jsPart:
 			for _, pattern := range fingerprint.js {
-				if valid, versionString := pattern.MatchString(data); valid {
+				if valid, versionString := pattern.Evaluate(data); valid {
 					matched = true
-					version = versionString
+					if version == "" && versionString != "" {
+						version = versionString
+					}
+					confidence = pattern.Confidence
 				}
 			}
 		case scriptPart:
-			for _, pattern := range fingerprint.script {
-				if valid, versionString := pattern.MatchString(data); valid {
+			for _, pattern := range fingerprint.scriptSrc {
+				if valid, versionString := pattern.Evaluate(data); valid {
 					matched = true
-					version = versionString
+					if version == "" && versionString != "" {
+						version = versionString
+					}
+					confidence = pattern.Confidence
 				}
 			}
 		case htmlPart:
 			for _, pattern := range fingerprint.html {
-				if valid, versionString := pattern.MatchString(data); valid {
+				if valid, versionString := pattern.Evaluate(data); valid {
 					matched = true
-					version = versionString
+					if version == "" && versionString != "" {
+						version = versionString
+					}
+					confidence = pattern.Confidence
 				}
 			}
 		}
@@ -219,13 +259,19 @@ func (f *CompiledFingerprints) matchString(data string, part part) []string {
 			continue
 		}
 
-		if version != "" {
-			app = formatAppVersion(app, version)
-		}
 		// Append the technologies as well as implied ones
-		technologies = append(technologies, app)
+		technologies = append(technologies, matchPartResult{
+			application: app,
+			version:     version,
+			confidence:  confidence,
+		})
 		if len(fingerprint.implies) > 0 {
-			technologies = append(technologies, fingerprint.implies...)
+			for _, implies := range fingerprint.implies {
+				technologies = append(technologies, matchPartResult{
+					application: implies,
+					confidence:  confidence,
+				})
+			}
 		}
 		matched = false
 	}
@@ -233,12 +279,13 @@ func (f *CompiledFingerprints) matchString(data string, part part) []string {
 }
 
 // matchKeyValue matches a key-value store map for the fingerprints
-func (f *CompiledFingerprints) matchKeyValueString(key, value string, part part) []string {
+func (f *CompiledFingerprints) matchKeyValueString(key, value string, part part) []matchPartResult {
 	var matched bool
-	var technologies []string
+	var technologies []matchPartResult
 
 	for app, fingerprint := range f.Apps {
 		var version string
+		confidence := 100
 
 		switch part {
 		case cookiesPart:
@@ -247,9 +294,12 @@ func (f *CompiledFingerprints) matchKeyValueString(key, value string, part part)
 					continue
 				}
 
-				if valid, versionString := pattern.MatchString(value); valid {
+				if valid, versionString := pattern.Evaluate(value); valid {
 					matched = true
-					version = versionString
+					if version == "" && versionString != "" {
+						version = versionString
+					}
+					confidence = pattern.Confidence
 					break
 				}
 			}
@@ -259,9 +309,12 @@ func (f *CompiledFingerprints) matchKeyValueString(key, value string, part part)
 					continue
 				}
 
-				if valid, versionString := pattern.MatchString(value); valid {
+				if valid, versionString := pattern.Evaluate(value); valid {
 					matched = true
-					version = versionString
+					if version == "" && versionString != "" {
+						version = versionString
+					}
+					confidence = pattern.Confidence
 					break
 				}
 			}
@@ -272,9 +325,12 @@ func (f *CompiledFingerprints) matchKeyValueString(key, value string, part part)
 				}
 
 				for _, pattern := range patterns {
-					if valid, versionString := pattern.MatchString(value); valid {
+					if valid, versionString := pattern.Evaluate(value); valid {
 						matched = true
-						version = versionString
+						if version == "" && versionString != "" {
+							version = versionString
+						}
+						confidence = pattern.Confidence
 						break
 					}
 				}
@@ -286,13 +342,18 @@ func (f *CompiledFingerprints) matchKeyValueString(key, value string, part part)
 			continue
 		}
 
-		// Append the technologies as well as implied ones
-		if version != "" {
-			app = formatAppVersion(app, version)
-		}
-		technologies = append(technologies, app)
+		technologies = append(technologies, matchPartResult{
+			application: app,
+			version:     version,
+			confidence:  confidence,
+		})
 		if len(fingerprint.implies) > 0 {
-			technologies = append(technologies, fingerprint.implies...)
+			for _, implies := range fingerprint.implies {
+				technologies = append(technologies, matchPartResult{
+					application: implies,
+					confidence:  confidence,
+				})
+			}
 		}
 		matched = false
 	}
@@ -300,12 +361,13 @@ func (f *CompiledFingerprints) matchKeyValueString(key, value string, part part)
 }
 
 // matchMapString matches a key-value store map for the fingerprints
-func (f *CompiledFingerprints) matchMapString(keyValue map[string]string, part part) []string {
+func (f *CompiledFingerprints) matchMapString(keyValue map[string]string, part part) []matchPartResult {
 	var matched bool
-	var technologies []string
+	var technologies []matchPartResult
 
 	for app, fingerprint := range f.Apps {
 		var version string
+		confidence := 100
 
 		switch part {
 		case cookiesPart:
@@ -317,9 +379,12 @@ func (f *CompiledFingerprints) matchMapString(keyValue map[string]string, part p
 				if pattern == nil {
 					matched = true
 				}
-				if valid, versionString := pattern.MatchString(value); valid {
+				if valid, versionString := pattern.Evaluate(value); valid {
 					matched = true
-					version = versionString
+					if version == "" && versionString != "" {
+						version = versionString
+					}
+					confidence = pattern.Confidence
 					break
 				}
 			}
@@ -330,9 +395,12 @@ func (f *CompiledFingerprints) matchMapString(keyValue map[string]string, part p
 					continue
 				}
 
-				if valid, versionString := pattern.MatchString(value); valid {
+				if valid, versionString := pattern.Evaluate(value); valid {
 					matched = true
-					version = versionString
+					if version == "" && versionString != "" {
+						version = versionString
+					}
+					confidence = pattern.Confidence
 					break
 				}
 			}
@@ -344,9 +412,12 @@ func (f *CompiledFingerprints) matchMapString(keyValue map[string]string, part p
 				}
 
 				for _, pattern := range patterns {
-					if valid, versionString := pattern.MatchString(value); valid {
+					if valid, versionString := pattern.Evaluate(value); valid {
 						matched = true
-						version = versionString
+						if version == "" && versionString != "" {
+							version = versionString
+						}
+						confidence = pattern.Confidence
 						break
 					}
 				}
@@ -358,20 +429,28 @@ func (f *CompiledFingerprints) matchMapString(keyValue map[string]string, part p
 			continue
 		}
 
-		// Append the technologies as well as implied ones
-		if version != "" {
-			app = formatAppVersion(app, version)
-		}
-		technologies = append(technologies, app)
+		technologies = append(technologies, matchPartResult{
+			application: app,
+			version:     version,
+			confidence:  confidence,
+		})
 		if len(fingerprint.implies) > 0 {
-			technologies = append(technologies, fingerprint.implies...)
+			for _, implies := range fingerprint.implies {
+				technologies = append(technologies, matchPartResult{
+					application: implies,
+					confidence:  confidence,
+				})
+			}
 		}
 		matched = false
 	}
 	return technologies
 }
 
-func formatAppVersion(app, version string) string {
+func FormatAppVersion(app, version string) string {
+	if version == "" {
+		return app
+	}
 	return fmt.Sprintf("%s:%s", app, version)
 }
 

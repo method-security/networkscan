@@ -78,7 +78,6 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverfern.H
 		return hostDetails, err
 	}
 
-	defer hostdiscover.Close()
 	err = hostdiscover.RunEnumeration(ctx)
 	if err != nil {
 		return hostDetails, err
@@ -94,6 +93,8 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverfern.H
 	for _, hd := range unique {
 		result = append(result, hd)
 	}
+
+	defer hostdiscover.Close()
 
 	return result, nil
 }
