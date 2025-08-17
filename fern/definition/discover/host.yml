@@ -7,13 +7,29 @@ types:
       - ICMP_TIMESTAMP
       - ARP
       - ICMP_ADDRESS_MASK
+  # Stealth config
+  HostStealthConfig:
+    properties:
+      sleep: optional<integer>          # Sleep delay in milliseconds between hosts
+      reverseLookup: optional<boolean>  # Perform reverse DNS lookup sweep first
   # Report structs
   HostDetails:
     properties:
       ip: string
       host: string
+  # Config
+  DiscoverHostConfig:
+    properties:
+      target: string
+      scanType: optional<HostScanType>
+      stealth: optional<HostStealthConfig>
+  # Result
+  DiscoverHostResult:
+    properties:
+      hosts: optional<list<HostDetails>>
   # Final report
   DiscoverHostReport:
     properties:
-      hosts: list<HostDetails>
-      errors: list<string>
+      config: DiscoverHostConfig
+      result: DiscoverHostResult
+      errors: optional<list<string>>

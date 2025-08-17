@@ -10,6 +10,7 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	// Internal
 	discover "github.com/Method-Security/networkscan/internal/discover"
+	discoverhost "github.com/Method-Security/networkscan/internal/discover/host"
 	discoverport "github.com/Method-Security/networkscan/internal/discover/port"
 
 	// External
@@ -32,11 +33,6 @@ func (a *NetworkScan) InitDiscoverCommand() {
 		Short: "Identify live hosts within a given IP, hostname, or CIDR range using various discovery techniques.",
 		Long:  `Identify live hosts within a given IP, hostname, or CIDR range using various discovery techniques.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if !privileges.IsPrivileged {
-				a.OutputSignal.AddError(errors.New("discover host can only be run as a privileged user"))
-				return
-			}
-
 			// Target flags
 			target, err := cmd.Flags().GetString("target")
 			if err != nil {
@@ -45,19 +41,56 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Config flags
+			var scanTypeEnum *discoverfern.HostScanType
 			scanType, err := cmd.Flags().GetString("scan-type")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			scanTypeEnum, err := discoverfern.NewHostScanTypeFromString(scanType)
+			if scanType != "" {
+				scanTypeEnumValue, err := discoverfern.NewHostScanTypeFromString(scanType)
+				if err != nil {
+					a.OutputSignal.AddError(err)
+					return
+				}
+				scanTypeEnum = &scanTypeEnumValue
+			}
+
+			// Check privileges for stealth scan
+			stealth, err := cmd.Flags().GetBool("stealth")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
 
+			// Validate that either stealth or scan-type is specified
+			if !stealth && scanTypeEnum == nil {
+				a.OutputSignal.AddError(errors.New("either --stealth or --scan-type must be specified"))
+				return
+			}
+
+			if !privileges.IsPrivileged && stealth {
+				a.OutputSignal.AddError(errors.New("stealth host discovery requires root privileges for ICMP ping"))
+				return
+			}
+
+			// Stealth flags
+			sleep, err := cmd.Flags().GetInt("sleep")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			reverseLookup, err := cmd.Flags().GetBool("reverse-lookup")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			// Set Config
+			config := getDiscoverHostConfig(target, scanTypeEnum, stealth, sleep, reverseLookup)
+
 			// Generate the report
-			report, err := discover.RunHostDiscovery(cmd.Context(), target, scanTypeEnum)
+			report, err := discoverhost.RunHostDiscovery(cmd.Context(), config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -66,7 +99,10 @@ func (a *NetworkScan) InitDiscoverCommand() {
 		},
 	}
 	discoverHostCmd.Flags().String("target", "", "Target IP address, hostname, or CIDR range to scan for live hosts")
-	discoverHostCmd.Flags().String("scan-type", "ICMP_ECHO", "Discovery scan type: TCP_SYN, TCP_ACK, ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK")
+	discoverHostCmd.Flags().String("scan-type", "", "Discovery scan type: TCP_SYN, TCP_ACK, ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (not needed for stealth mode)")
+	discoverHostCmd.Flags().Bool("stealth", false, "Enable stealth host discovery using custom ICMP ping implementation")
+	discoverHostCmd.Flags().Int("sleep", 100, "Sleep delay in milliseconds between hosts for stealth scan")
+	discoverHostCmd.Flags().Bool("reverse-lookup", false, "Perform reverse DNS lookup sweep first to identify potential targets")
 
 	// Mark Required Flags
 	_ = discoverHostCmd.MarkFlagRequired("target")
@@ -190,6 +226,11 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Stealth flags
+			stealth, err := cmd.Flags().GetBool("stealth")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
 			sleep, err := cmd.Flags().GetInt("sleep")
 			if err != nil {
 				a.OutputSignal.AddError(err)
@@ -203,7 +244,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Set Config
-			config := getDiscoverPortConfig(target, ports, topPorts, threads, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads, sleep)
+			config := getDiscoverPortConfig(target, ports, topPorts, threads, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads, stealth, sleep)
 
 			// Generate the report
 			report, err := discoverport.RunPortScan(cmd.Context(), config)
@@ -218,12 +259,13 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().String("ports", "", "Comma-separated list or range of TCP ports to scan (e.g., 22,80,443 or 1-1024)")
 	discoverPortCmd.Flags().String("top-ports", "", "Scan the top N most common TCP ports (options: full, 100, 1000)")
 	discoverPortCmd.Flags().Int("threads", 25, "Number of concurrent threads to use during port scanning")
-	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN (default, requires root), CONNECT, or STEALTH")
+	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN (default, requires root) or CONNECT")
 	discoverPortCmd.Flags().Bool("validate", false, "Validate open ports by using service detection techniques")
 	discoverPortCmd.Flags().String("validate-hostname", "", "Hostname to validate against (e.g., example.com)")
 	discoverPortCmd.Flags().Int("validate-attempt-timeout", 10, "Timeout in seconds for each service detection attempt")
 	discoverPortCmd.Flags().Int("validate-threads", 0, "Number of concurrent threads to use during service detection")
-	discoverPortCmd.Flags().Int("sleep", 100, "Sleep delay in milliseconds between port scans for STEALTH scan type")
+	discoverPortCmd.Flags().Bool("stealth", false, "Enable stealth port scanning with custom delay control")
+	discoverPortCmd.Flags().Int("sleep", 100, "Sleep delay in milliseconds between port scans for stealth scan")
 
 	// Mark Required Flags
 	_ = discoverPortCmd.MarkFlagRequired("target")
@@ -358,7 +400,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 // getDiscoverPortConfig creates a configuration for port scanning with the provided parameters.
 // It handles both specific port ranges and top ports scanning modes.
-func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int, sleep int) discoverfern.DiscoverPortConfig {
+func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int, stealth bool, sleep int) discoverfern.DiscoverPortConfig {
 	config := discoverfern.DiscoverPortConfig{
 		Target:   target,
 		Ports:    &ports,
@@ -376,8 +418,10 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 	if validateThreads != nil {
 		config.ValidateThreads = validateThreads
 	}
-	if sleep > 0 {
-		config.Sleep = &sleep
+	if stealth {
+		config.Stealth = &discoverfern.PortStealthConfig{
+			Sleep: &sleep,
+		}
 	}
 	return config
 }
@@ -399,6 +443,24 @@ func getDiscoverTLSConfig(targets []string, timeout int, verifyTLS bool) discove
 		Targets:   targets,
 		Timeout:   timeout,
 		VerifyTls: verifyTLS,
+	}
+	return config
+}
+
+// getDiscoverHostConfig creates a configuration for host discovery with the provided parameters.
+// It sets up the target, scan type, and stealth-specific options.
+func getDiscoverHostConfig(target string, scanType *discoverfern.HostScanType, stealth bool, sleep int, reverseLookup bool) discoverfern.DiscoverHostConfig {
+	config := discoverfern.DiscoverHostConfig{
+		Target: target,
+	}
+	if scanType != nil {
+		config.ScanType = scanType
+	}
+	if stealth {
+		config.Stealth = &discoverfern.HostStealthConfig{
+			Sleep:         &sleep,
+			ReverseLookup: &reverseLookup,
+		}
 	}
 	return config
 }

@@ -42,8 +42,8 @@ func getStealthPortScan(ctx context.Context, config discoverfern.DiscoverPortCon
 
 	// Default delay of 100ms between port scans if not specified
 	delay := time.Duration(100) * time.Millisecond
-	if config.Sleep != nil {
-		delay = time.Duration(*config.Sleep) * time.Millisecond
+	if config.Stealth != nil && config.Stealth.Sleep != nil {
+		delay = time.Duration(*config.Stealth.Sleep) * time.Millisecond
 	}
 
 	// Get target ports to scan
