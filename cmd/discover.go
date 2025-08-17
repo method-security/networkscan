@@ -188,8 +188,15 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				validateThreads = &validateThreadsInt
 			}
 
+			// Stealth flags
+			sleep, err := cmd.Flags().GetInt("sleep")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
 			// Set Config
-			config := getDiscoverPortConfig(target, ports, topPorts, threads, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads)
+			config := getDiscoverPortConfig(target, ports, topPorts, threads, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads, sleep)
 
 			// Generate the report
 			report, err := discoverport.RunPortScan(cmd.Context(), config)
@@ -204,11 +211,12 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().String("ports", "", "Comma-separated list or range of TCP ports to scan (e.g., 22,80,443 or 1-1024)")
 	discoverPortCmd.Flags().String("top-ports", "", "Scan the top N most common TCP ports (options: full, 100, 1000)")
 	discoverPortCmd.Flags().Int("threads", 25, "Number of concurrent threads to use during port scanning")
-	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN (default, requires root) or CONNECT")
+	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN (default, requires root), CONNECT, or STEALTH")
 	discoverPortCmd.Flags().Bool("validate", false, "Validate open ports by using service detection techniques")
 	discoverPortCmd.Flags().String("validate-hostname", "", "Hostname to validate against (e.g., example.com)")
 	discoverPortCmd.Flags().Int("validate-attempt-timeout", 10, "Timeout in seconds for each service detection attempt")
 	discoverPortCmd.Flags().Int("validate-threads", 0, "Number of concurrent threads to use during service detection")
+	discoverPortCmd.Flags().Int("sleep", 100, "Sleep delay in milliseconds between port scans for STEALTH scan type")
 
 	// Mark Required Flags
 	_ = discoverPortCmd.MarkFlagRequired("target")
@@ -343,7 +351,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 // getDiscoverPortConfig creates a configuration for port scanning with the provided parameters.
 // It handles both specific port ranges and top ports scanning modes.
-func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int) discoverfern.DiscoverPortConfig {
+func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int, sleep int) discoverfern.DiscoverPortConfig {
 	config := discoverfern.DiscoverPortConfig{
 		Target:   target,
 		Ports:    &ports,
@@ -360,6 +368,9 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 	}
 	if validateThreads != nil {
 		config.ValidateThreads = validateThreads
+	}
+	if sleep > 0 {
+		config.Sleep = &sleep
 	}
 	return config
 }

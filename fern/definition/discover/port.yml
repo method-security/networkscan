@@ -6,6 +6,7 @@ types:
     enum:
       - SYN
       - CONNECT
+      - STEALTH
   # Report structs
   PortDetails:
     properties:
@@ -31,6 +32,7 @@ types:
       validateHostname: optional<string>
       validateAttemptTimeout: optional<integer>
       validateThreads: optional<integer>
+      sleep: optional<integer>
   # Final report
   DiscoverPortReport:
     properties:

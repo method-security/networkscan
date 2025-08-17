@@ -34,7 +34,14 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 		config = ensureRequiredPorts(config, requiredPorts)
 	}
 
-	portscanResult, err := getPortScan(ctx, config)
+	var portscanResult []*discoverfern.SocketDetails
+	var err error
+
+	if config.ScanType == discoverfern.PortScanTypeStealth {
+		portscanResult, err = getStealthPortScan(ctx, config)
+	} else {
+		portscanResult, err = getPortScan(ctx, config)
+	}
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
