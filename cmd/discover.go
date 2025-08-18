@@ -237,9 +237,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				return
 			}
 
-			// Validate that sleep can only be set when using STEALTH scan type
-			if sleep > 0 && scanTypeEnum != discoverfern.PortScanTypeStealth {
-				a.OutputSignal.AddError(fmt.Errorf("sleep parameter can only be used with STEALTH scan type"))
+			// Validate that sleep can only be set when using stealth mode
+			if sleep > 0 && !stealth {
+				a.OutputSignal.AddError(fmt.Errorf("sleep parameter can only be used with stealth mode (--stealth flag)"))
 				return
 			}
 
