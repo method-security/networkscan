@@ -152,6 +152,7 @@ func convertToTLSInfo(state *tls.ConnectionState) *discoverfern.TlsDetails {
 		})
 		certString := string(certPEM)
 		signatureHex := hex.EncodeToString(cert.Signature)
+		dnsNames := cert.DNSNames
 		certificate := &discoverfern.Certificate{
 			Certificate:             certString,
 			SerialNumber:            serialNumber,
@@ -161,7 +162,7 @@ func convertToTLSInfo(state *tls.ConnectionState) *discoverfern.TlsDetails {
 			ValidFrom:               cert.NotBefore,
 			ValidTo:                 cert.NotAfter,
 			Version:                 cert.Version,
-			SubjectAlternativeNames: cert.DNSNames,
+			SubjectAlternativeNames: dnsNames,
 		}
 
 		// Signature names defined in `signatureAlgorithmDetails` in the `x509` package have a hyphen

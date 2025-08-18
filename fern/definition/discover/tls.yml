@@ -58,7 +58,7 @@ types:
       version: integer
       issuerCommonName: optional<string> # Can be empty
       subjectCommonName: optional<string> # Can be empty
-      subjectAlternativeNames: list<string>
+      subjectAlternativeNames: optional<list<string>> # Can be empty
   TlsDetails:
     properties:
       version: TlsVersion
