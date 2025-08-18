@@ -42,10 +42,6 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.KerberosFingerprinter{},
 }
 
-/* -------------------------------------------------------------------------- */
-/*  Public entry-point                                                        */
-/* -------------------------------------------------------------------------- */
-
 // RunServiceFingerprint fingerprints the service at target:port.
 //  1. If stealth mode is enabled, use targeted fingerprinting for the specified service type.
 //  2. Otherwise, let fingerprintx try first.
