@@ -6,11 +6,8 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"net"
-	"net/netip"
-	"strings"
 	"time"
 
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
@@ -19,18 +16,7 @@ import (
 	"github.com/jfjallid/gokrb5/v8/iana/nametype"
 	"github.com/jfjallid/gokrb5/v8/messages"
 	"github.com/jfjallid/gokrb5/v8/types"
-	plugins "github.com/praetorian-inc/fingerprintx/pkg/plugins"
-	utils_fx "github.com/praetorian-inc/fingerprintx/pkg/plugins/pluginutils"
 )
-
-/* ---------- metadata types ---------- */
-
-type Metadata struct {
-	KRBMessage string `json:"krbMessage"`          // AS_REP or KRB_ERROR
-	ErrorCode  int32  `json:"errorCode,omitempty"` // if KRB_ERROR
-}
-
-func (Metadata) Type() string { return "kerberos" }
 
 /* ---------- stealth mode fingerprinter ---------- */
 
@@ -46,11 +32,7 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 	addr := fmt.Sprintf("%s:%d", ip, port)
 	timeoutDuration := time.Duration(timeout) * time.Second
 
-	// Create fingerprintx target
-	addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(port))
-	fxTarget := plugins.Target{Address: addrPort, Host: host}
-
-	// Try plaintext connection
+	// Try plaintext connection first
 	var d net.Dialer
 	conn, err := d.DialContext(timeoutCtx, "tcp", addr)
 	if err != nil {
@@ -59,8 +41,8 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 	defer func() { _ = conn.Close() }()
 
 	// Try Kerberos detection on plaintext connection
-	fxResult, err := detectKerberos(conn, fxTarget, timeoutDuration, false)
-	if err != nil || fxResult == nil {
+	result, tlsUsed, err := detectKerberos(conn, host, timeoutDuration, false)
+	if err != nil || !result {
 		// Try with TLS if plaintext failed
 		_ = conn.Close()
 		conn, err = d.DialContext(timeoutCtx, "tcp", addr)
@@ -69,64 +51,94 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 		}
 		defer func() { _ = conn.Close() }()
 
-		fxResult, err = detectKerberos(conn, fxTarget, timeoutDuration, true)
-		if err != nil || fxResult == nil {
+		result, tlsUsed, err = detectKerberos(conn, host, timeoutDuration, true)
+		if err != nil || !result {
 			return nil, fmt.Errorf("no Kerberos service detected")
 		}
 	}
 
-	// Convert fingerprintx result to stealth format
+	// Build service details
+	transport := utils.GetTransportTypeEnum("TCP")
+	if tlsUsed {
+		transport = utils.GetTransportTypeEnum("TCPTLS")
+	}
+
 	return &discoverfern.ServiceDetails{
-		Host:      fxResult.Host,
-		Ip:        fxResult.IP,
-		Port:      fxResult.Port,
-		Tls:       fxResult.TLS,
-		Transport: utils.GetTransportTypeEnum(strings.ToUpper(fxResult.Transport)),
-		Protocol:  utils.GetProtocolTypeEnum(strings.ToUpper(fxResult.Protocol)),
-		Version:   &fxResult.Version,
-		Metadata:  convertFxMetadata(fxResult.Raw),
+		Host:      host,
+		Ip:        ip.String(),
+		Port:      port,
+		Tls:       tlsUsed,
+		Transport: transport,
+		Protocol:  utils.GetProtocolTypeEnum("KERBEROS"),
+		Version:   nil,
+		Metadata:  map[string]string{"detected": "kerberos"},
 	}, nil
 }
 
-/* ---------- detector (same as fingerprintx) ---------- */
+/* ---------- detection logic ---------- */
 
-func detectKerberos(conn net.Conn, tgt plugins.Target, timeout time.Duration, tlsMode bool) (*plugins.Service, error) {
+func detectKerberos(conn net.Conn, realm string, timeout time.Duration, tlsMode bool) (bool, bool, error) {
 	if tlsMode {
 		tc := tls.Client(conn, &tls.Config{
 			InsecureSkipVerify: true,
-			ServerName:         tgt.Host,
+			ServerName:         realm,
 		})
 		if err := tc.Handshake(); err != nil {
-			return nil, nil
+			return false, false, err
 		}
 		conn = tc
 	}
 
-	packet, err := buildASReq(tgt.Host)
+	packet, err := buildASReq(realm)
 	if err != nil {
-		return nil, err
+		return false, tlsMode, err
 	}
 
-	reply, err := utils_fx.SendRecv(conn, packet, timeout)
-	if err != nil || len(reply) < 5 {
-		return nil, nil
+	// Send the packet
+	if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
+		return false, tlsMode, err
+	}
+	_, err = conn.Write(packet)
+	if err != nil {
+		return false, tlsMode, err
 	}
 
-	tag := reply[4]                 // first ASN.1 tag after 4‑byte length
-	if tag != 0x6A && tag != 0x7E { // 0x6A AS_REP, 0x7E KRB_ERROR
-		return nil, nil
+	// Read response
+	if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+		return false, tlsMode, err
 	}
 
-	meta := Metadata{KRBMessage: map[byte]string{0x6A: "AS_REP", 0x7E: "KRB_ERROR"}[tag]}
-	if tag == 0x7E && len(reply) > 9 {
-		meta.ErrorCode = int32(binary.BigEndian.Uint32(reply[len(reply)-4:]))
+	// Read the 4-byte length header first
+	lengthBuf := make([]byte, 4)
+	_, err = conn.Read(lengthBuf)
+	if err != nil {
+		return false, tlsMode, err
 	}
 
-	transport := plugins.TCP
-	if tlsMode {
-		transport = plugins.TCPTLS
+	// Read the actual response
+	length := binary.BigEndian.Uint32(lengthBuf)
+	if length == 0 || length > 65535 { // reasonable bounds
+		return false, tlsMode, fmt.Errorf("invalid response length")
 	}
-	return plugins.CreateServiceFrom(tgt, meta, tlsMode, "", transport), nil
+
+	response := make([]byte, length)
+	_, err = conn.Read(response)
+	if err != nil {
+		return false, tlsMode, err
+	}
+
+	// Check if it's a valid Kerberos response
+	if len(response) < 1 {
+		return false, tlsMode, fmt.Errorf("response too short")
+	}
+
+	// Look for Kerberos ASN.1 tags (AS_REP: 0x6A, KRB_ERROR: 0x7E)
+	tag := response[0]
+	if tag == 0x6A || tag == 0x7E {
+		return true, tlsMode, nil
+	}
+
+	return false, tlsMode, fmt.Errorf("not a Kerberos response")
 }
 
 /* ---------- helper: minimal anonymous AS‑REQ ---------- */
@@ -158,31 +170,11 @@ func buildASReq(realm string) ([]byte, error) {
 		return nil, err
 	}
 
+	// Prepend 4-byte length header (TCP format)
 	buf := new(bytes.Buffer)
 	if err := binary.Write(buf, binary.BigEndian, uint32(len(raw))); err != nil {
 		return nil, err
 	}
 	buf.Write(raw)
 	return buf.Bytes(), nil
-}
-
-/* ---------- helper functions ---------- */
-
-// convertFxMetadata converts fingerprintx raw JSON to map[string]string
-func convertFxMetadata(raw []byte) map[string]string {
-	if len(raw) == 0 {
-		return nil
-	}
-	
-	// Parse the JSON metadata from fingerprintx
-	var metadata map[string]interface{}
-	if err := json.Unmarshal(raw, &metadata); err != nil {
-		return nil
-	}
-	
-	result := make(map[string]string)
-	for k, v := range metadata {
-		result[k] = fmt.Sprintf("%v", v)
-	}
-	return result
 }

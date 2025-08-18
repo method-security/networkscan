@@ -12,11 +12,11 @@ import (
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	// External
-	fingerprintx "github.com/praetorian-inc/fingerprintx/pkg/plugins"
+	plugins "github.com/praetorian-inc/fingerprintx/pkg/plugins"
 	scan "github.com/praetorian-inc/fingerprintx/pkg/scan"
 
 	// Custom fingerprinters (includes fingerprintx plugin registration)
-	"github.com/Method-Security/networkscan/internal/discover/service/plugins"
+	localPlugins "github.com/Method-Security/networkscan/internal/discover/service/plugins"
 	// Fingerprintx plugins
 	_ "github.com/Method-Security/networkscan/internal/discover/service/plugins/fingerprintx"
 	// Utilities
@@ -38,7 +38,8 @@ type Fingerprinter interface {
 
 // List the modules you want to run after fingerprintx fails.
 var customFingerprintModules = []Fingerprinter{
-	&plugins.GrpcFingerprinter{},
+	&localPlugins.GrpcFingerprinter{},
+	&localPlugins.KerberosFingerprinter{},
 }
 
 /* -------------------------------------------------------------------------- */
@@ -76,7 +77,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 
 	for _, ip := range ips {
 		addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(port))
-		fingerprintTarget := fingerprintx.Target{Address: addrPort, Host: host}
+		fingerprintTarget := plugins.Target{Address: addrPort, Host: host}
 
 		/* --- 1. fingerprintx ------------------------------------------------- */
 		if fingerprintResult, fingerprintError := fingerprintConfig.SimpleScanTarget(fingerprintTarget); fingerprintError == nil && fingerprintResult != nil && fingerprintResult.Protocol != "" {
@@ -103,7 +104,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 }
 
 // fxToServiceDetails converts fingerprintx result to ServiceDetails
-func fxToServiceDetails(result *fingerprintx.Service) *discoverfern.ServiceDetails {
+func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 	return &discoverfern.ServiceDetails{
 		Host:      result.Host,
 		Ip:        result.IP,

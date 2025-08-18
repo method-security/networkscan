@@ -18,10 +18,6 @@ type SSHFingerprinter struct{}
 func (SSHFingerprinter) Name() string { return "ssh" }
 
 func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	// Create a context with 10-second timeout
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
 	addr := fmt.Sprintf("%s:%d", ip, port)
 
 	// Create SSH client config with no auth methods (connection-only)
