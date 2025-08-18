@@ -3,6 +3,7 @@ package cmd
 import (
 	// Standard
 	"errors"
+	"fmt"
 	"os/exec"
 
 	// Generated
@@ -192,6 +193,12 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			sleep, err := cmd.Flags().GetInt("sleep")
 			if err != nil {
 				a.OutputSignal.AddError(err)
+				return
+			}
+
+			// Validate that sleep can only be set when using STEALTH scan type
+			if sleep > 0 && scanTypeEnum != discoverfern.PortScanTypeStealth {
+				a.OutputSignal.AddError(fmt.Errorf("sleep parameter can only be used with STEALTH scan type"))
 				return
 			}
 

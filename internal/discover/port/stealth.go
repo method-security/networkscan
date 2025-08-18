@@ -3,19 +3,36 @@ package discover
 import (
 	// Standard
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	// Generated
 	common "github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 
+	// Internal
+	"github.com/Method-Security/networkscan/utils"
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
+)
+
+// TopPortsConfig represents the structure of the top_ports.json configuration file
+type TopPortsConfig struct {
+	Description string `json:"description"`
+	Source      string `json:"source"`
+	Ports       []int  `json:"ports"`
+}
+
+var (
+	topPortsCache     []int
+	topPortsCacheLock sync.RWMutex
 )
 
 // getStealthPortScan performs a stealth port scan using native Go networking capabilities.
@@ -162,48 +179,70 @@ func isPortOpen(ctx context.Context, host string, port int) bool {
 	return true
 }
 
-// getTopNPorts returns the most commonly used TCP ports up to N ports
-// Based on nmap's default top ports and IANA port assignments
-func getTopNPorts(n int) []int {
-	// Curated list based on nmap frequency data and security research
-	// Source: nmap default ports, SANS top ports, common enterprise services
-	topPorts := []int{
-		// Web services (most common)
-		80, 443, 8080, 8443, 8000, 8888,
-		// Remote access
-		22, 3389, 5985, 5986,
-		// File/Directory services
-		21, 139, 445, 2049, 111,
-		// Mail services
-		25, 110, 143, 993, 995, 587,
-		// DNS and DHCP
-		53, 67, 68,
-		// Database services
-		1433, 3306, 5432, 6379, 27017,
-		// Directory services
-		389, 636, 88, 464,
-		// Legacy/Telnet
-		23, 513, 514, 515,
-		// SNMP and management
-		161, 162, 623,
-		// Development and APIs
-		3000, 4000, 5000, 6000, 7000, 8001, 9000, 9090,
-		// Windows services
-		135, 1025, 1026, 1027, 1028, 1029,
-		// High/dynamic ports
-		32768, 49152, 49153, 49154, 49155,
+// loadTopPortsFromConfig loads the top ports configuration from the JSON file
+func loadTopPortsFromConfig() ([]int, error) {
+	resolver := utils.GetDefaultWordlistResolver()
+	filePath := resolver.GetConfigFilePath("discover/port/top_ports.json")
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read top ports config: %w", err)
 	}
 
-	if n <= len(topPorts) {
-		return topPorts[:n]
+	var config TopPortsConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse top ports config: %w", err)
+	}
+
+	return config.Ports, nil
+}
+
+// getTopNPorts returns the most commonly used TCP ports up to N ports
+// Loads port data from configs/discover/port/top_ports.json configuration file
+func getTopNPorts(n int) []int {
+	// Use cached ports if available
+	topPortsCacheLock.RLock()
+	if len(topPortsCache) > 0 {
+		topPortsCacheLock.RUnlock()
+		return getTopNFromCache(n)
+	}
+	topPortsCacheLock.RUnlock()
+
+	// Load ports from configuration file
+	topPortsCacheLock.Lock()
+	defer topPortsCacheLock.Unlock()
+
+	// Double-check after acquiring write lock
+	if len(topPortsCache) > 0 {
+		return getTopNFromCache(n)
+	}
+
+	ports, err := loadTopPortsFromConfig()
+	if err != nil {
+		// Return empty cache and the getTopNFromCache function will handle the error
+		topPortsCache = []int{}
+		return []int{}
+	}
+
+	topPortsCache = ports
+
+	return getTopNFromCache(n)
+}
+
+// getTopNFromCache returns the top N ports from the cached port list
+func getTopNFromCache(n int) []int {
+	if n <= len(topPortsCache) {
+		result := make([]int, n)
+		copy(result, topPortsCache[:n])
+		return result
 	}
 
 	// For requests beyond our curated list, add ports sequentially
-	result := make([]int, len(topPorts))
-	copy(result, topPorts)
+	result := make([]int, len(topPortsCache))
+	copy(result, topPortsCache)
 
 	used := make(map[int]bool)
-	for _, p := range topPorts {
+	for _, p := range topPortsCache {
 		used[p] = true
 	}
 

@@ -1,0 +1,18 @@
+{
+  "description": "Most commonly used TCP ports based on nmap frequency data and IANA port assignments",
+  "source": "nmap default ports, SANS top ports, common enterprise services",
+  "ports": [
+    80, 443, 8080, 8443, 8000, 8888,
+    22, 3389, 5985, 5986,
+    21, 139, 445, 2049, 111,
+    25, 110, 143, 993, 995, 587,
+    53, 67, 68,
+    1433, 3306, 5432, 6379, 27017,
+    389, 636, 88, 464,
+    23, 513, 514, 515,
+    161, 162, 623,
+    3000, 4000, 5000, 6000, 7000, 8001, 9000, 9090,
+    135, 1025, 1026, 1027, 1028, 1029,
+    32768, 49152, 49153, 49154, 49155
+  ]
+}
