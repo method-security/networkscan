@@ -1,5 +1,5 @@
-// Package kerberos provides Kerberos service fingerprinting for fingerprintx
-package kerberos
+// Package fingerprintx provides Kerberos service fingerprinting for fingerprintx
+package fingerprintx
 
 import (
 	"bytes"

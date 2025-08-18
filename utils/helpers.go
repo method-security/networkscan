@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Method-Security/networkscan/generated/go/common"
 	pentestfern "github.com/Method-Security/networkscan/generated/go/pentest"
 )
 
@@ -163,4 +164,38 @@ func IncIP(ip net.IP) {
 			break
 		}
 	}
+}
+
+// GetTransportTypeEnum converts a string to TransportType using the generated enum parser
+func GetTransportTypeEnum(input string) common.TransportType {
+	enumValue, err := common.NewTransportTypeFromString(strings.ToUpper(input))
+	if err != nil {
+		enumValue, _ = common.NewTransportTypeFromString("UNKNOWN")
+	}
+	return enumValue
+}
+
+// GetProtocolTypeEnum converts a string to ProtocolType using the generated enum parser
+func GetProtocolTypeEnum(input string) common.ProtocolType {
+	enumValue, err := common.NewProtocolTypeFromString(strings.ToUpper(input))
+	if err != nil {
+		enumValue, _ = common.NewProtocolTypeFromString("UNKNOWN")
+	}
+	return enumValue
+}
+
+// GetIPs resolves a hostname to IP addresses
+func GetIPs(host string) ([]net.IP, error) {
+	// Try to parse as IP first
+	if ip := net.ParseIP(host); ip != nil {
+		return []net.IP{ip}, nil
+	}
+
+	// Resolve hostname
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve host %s: %v", host, err)
+	}
+
+	return ips, nil
 }

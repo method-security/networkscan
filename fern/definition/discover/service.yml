@@ -1,6 +1,19 @@
 imports:
   common: ../common/common.yml
 types:
+  # Stealth service types
+  StealthServiceType:
+    enum:
+      - SSH         # SSH protocol fingerprinting
+      - HTTP        # HTTP/HTTPS protocol fingerprinting  
+      - GRPC        # gRPC protocol fingerprinting
+      - KERBEROS    # Kerberos protocol fingerprinting
+      - LDAP        # LDAP protocol fingerprinting
+      - SMB         # SMB protocol fingerprinting
+  # Stealth config
+  ServiceStealthConfig:
+    properties:
+      serviceType: StealthServiceType  # Specific service to fingerprint
   # Report structs
   ServiceDetails:
     properties:
@@ -18,9 +31,9 @@ types:
   # Config
   DiscoverServiceConfig:
     properties:
-      target: string
-      port: integer
+      target: string  # Format: IP:port or hostname:port
       timeout: integer
+      stealth: optional<ServiceStealthConfig>
   # Final report
   DiscoverServiceReport:
     properties:

@@ -3,6 +3,7 @@ package discover
 import (
 	// Standard
 	"context"
+	"fmt"
 	"runtime"
 	"strings"
 	"sync"
@@ -10,7 +11,7 @@ import (
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	// Internal
-	discover "github.com/Method-Security/networkscan/internal/discover"
+	discoverservice "github.com/Method-Security/networkscan/internal/discover/service"
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -63,17 +64,16 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 					// Use RunServiceFingerprint to check if there's a service on this port
 					var targetStr string
 					if config.ValidateHostname != nil {
-						targetStr = *config.ValidateHostname
+						targetStr = fmt.Sprintf("%s:%d", *config.ValidateHostname, port.Port)
 					} else {
-						targetStr = socket.Ip
+						targetStr = fmt.Sprintf("%s:%d", socket.Ip, port.Port)
 					}
 					serviceConfig := discoverfern.DiscoverServiceConfig{
 						Target:  targetStr,
-						Port:    port.Port,
 						Timeout: *config.ValidateAttemptTimeout,
 					}
 
-					serviceReport, err := discover.RunServiceFingerprint(ctx, serviceConfig)
+					serviceReport, err := discoverservice.RunServiceFingerprint(ctx, serviceConfig)
 					if err != nil {
 						// Don't fail validation on errors, just log them
 						errorsMutex.Lock()

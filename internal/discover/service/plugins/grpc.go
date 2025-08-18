@@ -1,8 +1,8 @@
-// Package grpc fingerprints gRPC services by issuing a Server-Reflection
+// Package plugins provides gRPC service fingerprinting by issuing a Server-Reflection
 // ListServices request.  It avoids HTTP/2 false-positives because only a
 // genuine gRPC server can speak the reflection protocol or return a proper
 // gRPC UNIMPLEMENTED status.
-package grpc
+package plugins
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	"net"
 	"time"
 
-	common "github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -25,19 +25,23 @@ import (
 /*  Exported fingerprinter                                                    */
 /* -------------------------------------------------------------------------- */
 
-type Fingerprinter struct{}
+type GrpcFingerprinter struct{}
 
-func (Fingerprinter) Name() string { return "grpc" }
+func (GrpcFingerprinter) Name() string { return "grpc" }
 
-func (Fingerprinter) Detect(ctx context.Context, ip net.IP, cfg discoverfern.DiscoverServiceConfig) (*discoverfern.ServiceDetails, error) {
-	addr := fmt.Sprintf("%s:%d", ip, cfg.Port)
-	timeout := time.Duration(cfg.Timeout) * time.Second
+func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+	// Create a context with 10-second timeout
+	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	addr := fmt.Sprintf("%s:%d", ip, port)
+	timeoutDuration := 10 * time.Second // Fixed 10-second timeout
 
 	/* ---- try plaintext first --------------------------------------------- */
-	conn, tlsUsed, err := dial(ctx, addr, timeout, false)
+	conn, tlsUsed, err := dial(timeoutCtx, addr, timeoutDuration, false)
 	if err != nil {
 		/* ---- fallback to opportunistic TLS -------------------------------- */
-		conn, tlsUsed, err = dial(ctx, addr, timeout, true)
+		conn, tlsUsed, err = dial(timeoutCtx, addr, timeoutDuration, true)
 		if err != nil {
 			return nil, nil // neither path worked → not gRPC
 		}
@@ -45,7 +49,7 @@ func (Fingerprinter) Detect(ctx context.Context, ip net.IP, cfg discoverfern.Dis
 	defer func() { _ = conn.Close() }()
 
 	/* ---- Server-reflection ListServices ---------------------------------- */
-	rctx, cancel := context.WithTimeout(ctx, timeout/2)
+	rctx, cancel := context.WithTimeout(timeoutCtx, timeoutDuration/2)
 	defer cancel()
 
 	refClient, err := reflectionpb.NewServerReflectionClient(conn).ServerReflectionInfo(rctx)
@@ -66,11 +70,11 @@ func (Fingerprinter) Detect(ctx context.Context, ip net.IP, cfg discoverfern.Dis
 	switch {
 	//   1. Successful list → definite gRPC
 	case err == nil && resp.GetListServicesResponse() != nil:
-		return buildResult(cfg, ip, tlsUsed, "LIST_OK"), nil
+		return buildResult(host, ip, port, tlsUsed, "LIST_OK"), nil
 
 	//   2. gRPC status UNIMPLEMENTED → still gRPC (reflection disabled)
 	case err != nil && status.Code(err) == codes.Unimplemented:
-		return buildResult(cfg, ip, tlsUsed, "UNIMPLEMENTED"), nil
+		return buildResult(host, ip, port, tlsUsed, "UNIMPLEMENTED"), nil
 
 	//   otherwise → not gRPC
 	default:
@@ -101,7 +105,7 @@ func dial(ctx context.Context, addr string, to time.Duration, useTLS bool) (*grp
 	return conn, useTLS, nil
 }
 
-func buildResult(cfg discoverfern.DiscoverServiceConfig, ip net.IP, tlsUsed bool, statusStr string) *discoverfern.ServiceDetails {
+func buildResult(host string, ip net.IP, port int, tlsUsed bool, statusStr string) *discoverfern.ServiceDetails {
 	transport := "TCP"
 	if tlsUsed {
 		transport = "TCPTLS"
@@ -109,29 +113,13 @@ func buildResult(cfg discoverfern.DiscoverServiceConfig, ip net.IP, tlsUsed bool
 	meta := map[string]string{"reflection": statusStr}
 
 	return &discoverfern.ServiceDetails{
-		Host:      cfg.Target,
+		Host:      host,
 		Ip:        ip.String(),
-		Port:      cfg.Port,
+		Port:      port,
 		Tls:       tlsUsed,
 		Version:   nil,
-		Transport: enumTransport(transport),
-		Protocol:  enumProtocol("GRPC"),
+		Transport: utils.GetTransportTypeEnum(transport),
+		Protocol:  utils.GetProtocolTypeEnum("GRPC"),
 		Metadata:  meta,
 	}
-}
-
-func enumTransport(s string) common.TransportType {
-	e, err := common.NewTransportTypeFromString(s)
-	if err != nil {
-		e, _ = common.NewTransportTypeFromString("UNKNOWN")
-	}
-	return e
-}
-
-func enumProtocol(s string) common.ProtocolType {
-	e, err := common.NewProtocolTypeFromString(s)
-	if err != nil {
-		e, _ = common.NewProtocolTypeFromString("UNKNOWN")
-	}
-	return e
 }

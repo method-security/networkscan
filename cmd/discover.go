@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
@@ -12,6 +13,7 @@ import (
 	discover "github.com/Method-Security/networkscan/internal/discover"
 	discoverhost "github.com/Method-Security/networkscan/internal/discover/host"
 	discoverport "github.com/Method-Security/networkscan/internal/discover/port"
+	discoverservice "github.com/Method-Security/networkscan/internal/discover/service"
 
 	// External
 	privileges "github.com/projectdiscovery/naabu/v2/pkg/privileges"
@@ -284,22 +286,35 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			port, err := cmd.Flags().GetInt("port")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
 			timeout, err := cmd.Flags().GetInt("timeout")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
 
+			// Stealth flags
+			stealth, err := cmd.Flags().GetBool("stealth")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			serviceType, err := cmd.Flags().GetString("service-type")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			// Validate stealth mode requirements
+			if stealth && serviceType == "" {
+				a.OutputSignal.AddError(errors.New("--service-type must be specified when using --stealth"))
+				return
+			}
+
 			// Set Config
-			config := getDiscoverServiceConfig(target, port, timeout)
+			config := getDiscoverServiceConfig(target, timeout, stealth, serviceType)
 
 			// Generate the report
-			report, err := discover.RunServiceFingerprint(cmd.Context(), config)
+			report, err := discoverservice.RunServiceFingerprint(cmd.Context(), config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -307,13 +322,13 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	discoverServiceCmd.Flags().String("target", "", "Target IP address or hostname where the service is running")
-	discoverServiceCmd.Flags().Int("port", 0, "Port number of the service to fingerprint (e.g., 443)")
+	discoverServiceCmd.Flags().String("target", "", "Target address in format IP:port or hostname:port (e.g., 192.168.1.1:443)")
 	discoverServiceCmd.Flags().Int("timeout", 5, "Timeout in seconds for each service fingerprinting attempt")
+	discoverServiceCmd.Flags().Bool("stealth", false, "Enable stealth service fingerprinting for specific protocols")
+	discoverServiceCmd.Flags().String("service-type", "", "Service type to fingerprint in stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB")
 
 	// Mark Required Flags
 	_ = discoverServiceCmd.MarkFlagRequired("target")
-	_ = discoverServiceCmd.MarkFlagRequired("port")
 
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverServiceCmd)
@@ -427,13 +442,22 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 }
 
 // getDiscoverServiceConfig creates a configuration for service fingerprinting with the provided parameters.
-// It sets up the target, port, and timeout for service discovery.
-func getDiscoverServiceConfig(target string, port int, timeout int) discoverfern.DiscoverServiceConfig {
-	return discoverfern.DiscoverServiceConfig{
+// It sets up the target (in IP:port format), timeout, and stealth-specific options.
+func getDiscoverServiceConfig(target string, timeout int, stealth bool, serviceType string) discoverfern.DiscoverServiceConfig {
+	config := discoverfern.DiscoverServiceConfig{
 		Target:  target,
-		Port:    port,
 		Timeout: timeout,
 	}
+	if stealth && serviceType != "" {
+		// Convert to uppercase for enum parsing
+		serviceTypeEnum, err := discoverfern.NewStealthServiceTypeFromString(strings.ToUpper(serviceType))
+		if err == nil {
+			config.Stealth = &discoverfern.ServiceStealthConfig{
+				ServiceType: serviceTypeEnum,
+			}
+		}
+	}
+	return config
 }
 
 // getDiscoverTLSConfig creates a configuration for TLS scanning with the provided parameters.
