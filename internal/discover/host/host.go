@@ -14,19 +14,30 @@ import (
 	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
-// RunHostDiscovery performs host discovery on the specified target using the given scan type.
+// RunHostDiscovery performs host discovery on the specified target using the provided configuration.
 // It returns a report containing discovered hosts and any errors encountered during the process.
 // The target can be a single IP, hostname, or CIDR range.
-func RunHostDiscovery(ctx context.Context, target string, scantype discoverfern.HostScanType) (discoverfern.DiscoverHostReport, error) {
+func RunHostDiscovery(ctx context.Context, config discoverfern.DiscoverHostConfig) (*discoverfern.DiscoverHostReport, error) {
 	errors := []string{}
 
-	hostDiscoverResult, err := getHostDiscover(ctx, target, scantype)
+	var hostDiscoverResult []*discoverfern.HostDetails
+	var err error
+
+	if config.Stealth != nil {
+		hostDiscoverResult, err = getStealthHostDiscovery(ctx, config)
+	} else if config.ScanType != nil {
+		hostDiscoverResult, err = getHostDiscover(ctx, config.Target, *config.ScanType)
+	} else {
+		return nil, fmt.Errorf("either scan-type or stealth mode must be specified")
+	}
+
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
-	return discoverfern.DiscoverHostReport{
-		Hosts:  hostDiscoverResult,
+	return &discoverfern.DiscoverHostReport{
+		Config: &config,
+		Result: &discoverfern.DiscoverHostResult{Hosts: hostDiscoverResult},
 		Errors: errors,
 	}, nil
 }

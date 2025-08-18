@@ -3,11 +3,13 @@ package utils
 
 import (
 	"bufio"
+	"fmt"
 	"math/rand"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	pentestfern "github.com/Method-Security/networkscan/generated/go/pentest"
 )
@@ -97,4 +99,68 @@ func GenerateRandomString(length int) string {
 		b[i] = charset[rand.Intn(len(charset))]
 	}
 	return string(b)
+}
+
+// ParseTargetHosts expands CIDR ranges and hostnames into individual IP addresses
+func ParseTargetHosts(target string) ([]string, error) {
+	var hosts []string
+
+	if strings.Contains(target, "/") {
+		// Must be a valid CIDR - no smart parsing
+		ip, ipnet, err := net.ParseCIDR(target)
+		if err != nil {
+			return nil, fmt.Errorf("invalid CIDR: %s", target)
+		}
+
+		// Verify the IP is actually the network address
+		if !ip.Equal(ipnet.IP) {
+			return nil, fmt.Errorf("invalid CIDR: %s is not a network address", target)
+		}
+
+		// Generate all IPs in the CIDR range
+		for ip := ipnet.IP.Mask(ipnet.Mask); ipnet.Contains(ip); IncIP(ip) {
+			hosts = append(hosts, ip.String())
+		}
+
+		// Remove network and broadcast addresses for /24 and smaller
+		ones, _ := ipnet.Mask.Size()
+		if ones >= 24 && len(hosts) > 2 {
+			hosts = hosts[1 : len(hosts)-1]
+		}
+	} else if strings.Contains(target, "-") {
+		// IP range like 192.168.1.1-192.168.1.10
+		parts := strings.Split(target, "-")
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid IP range: %s", target)
+		}
+
+		startIP := net.ParseIP(strings.TrimSpace(parts[0]))
+		endIP := net.ParseIP(strings.TrimSpace(parts[1]))
+		if startIP == nil || endIP == nil {
+			return nil, fmt.Errorf("invalid IP range: %s", target)
+		}
+
+		// Generate IPs in range
+		for ip := make(net.IP, len(startIP)); copy(ip, startIP) > 0; IncIP(ip) {
+			hosts = append(hosts, ip.String())
+			if ip.Equal(endIP) {
+				break
+			}
+		}
+	} else {
+		// Single host or hostname
+		hosts = append(hosts, target)
+	}
+
+	return hosts, nil
+}
+
+// IncIP increments an IP address
+func IncIP(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
+	}
 }

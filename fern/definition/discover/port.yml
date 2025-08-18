@@ -6,7 +6,10 @@ types:
     enum:
       - SYN
       - CONNECT
-      - STEALTH
+  # Stealth config
+  PortStealthConfig:
+    properties:
+      sleep: optional<integer>  # Sleep delay in milliseconds between ports
   # Report structs
   PortDetails:
     properties:
@@ -32,7 +35,7 @@ types:
       validateHostname: optional<string>
       validateAttemptTimeout: optional<integer>
       validateThreads: optional<integer>
-      sleep: optional<integer>
+      stealth: optional<PortStealthConfig>
   # Final report
   DiscoverPortReport:
     properties:
