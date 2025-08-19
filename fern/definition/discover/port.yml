@@ -9,7 +9,8 @@ types:
   # Stealth config
   PortStealthConfig:
     properties:
-      sleep: optional<integer>  # Sleep delay in milliseconds between ports
+      sleep: integer # Sleep delay in seconds between ports
+      jitter: optional<integer> # Jitter percentage (0-100) to randomize sleep
   # Report structs
   PortDetails:
     properties:

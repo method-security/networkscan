@@ -23,27 +23,28 @@ import (
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
-// TopPortsConfig represents the structure of the top_ports.json configuration file
+// TopPortsConfig represents the simple JSON structure for port lists
 type TopPortsConfig struct {
-	Description string `json:"description"`
-	Source      string `json:"source"`
-	Ports       []int  `json:"ports"`
+	Description string            `json:"description"`
+	PortLists   map[string]string `json:"port_lists"`
 }
 
 var (
-	topPortsCache     []int
-	topPortsCacheLock sync.RWMutex
+	topPortsConfig     *TopPortsConfig
+	topPortsConfigLock sync.RWMutex
 )
+
 
 // getStealthPortScan performs a stealth port scan using native Go networking capabilities.
 // It provides delay control and top-N port targeting for more covert scanning.
 func getStealthPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([]*discoverfern.SocketDetails, error) {
 	log := svc1log.FromContext(ctx)
 
-	// Default delay of 100ms between port scans if not specified
-	delay := time.Duration(100) * time.Millisecond
-	if config.Stealth != nil && config.Stealth.Sleep != nil {
-		delay = time.Duration(*config.Stealth.Sleep) * time.Millisecond
+	// Get stealth delay configuration (but don't calculate delay yet - do it per attempt)
+	var sleepPtr, jitterPtr *int
+	if config.Stealth != nil {
+		sleepPtr = &config.Stealth.Sleep
+		jitterPtr = config.Stealth.Jitter
 	}
 
 	// Get target ports to scan
@@ -52,16 +53,26 @@ func getStealthPortScan(ctx context.Context, config discoverfern.DiscoverPortCon
 		return nil, err
 	}
 
+	// Calculate initial delay for logging purposes
+	initialDelay := utils.CalculateStealthDelay(sleepPtr, jitterPtr)
+	
 	log.Info("Starting stealth port scan",
 		svc1log.SafeParam("target", config.Target),
 		svc1log.SafeParam("ports", len(targetPorts)),
-		svc1log.SafeParam("delay_ms", delay.Milliseconds()))
+		svc1log.SafeParam("base_delay_ms", initialDelay.Milliseconds()))
 
 	var openPorts []*discoverfern.PortDetails
 
-	// Scan each port with delay
+	// Scan each port with jittered delay
 	for i, port := range targetPorts {
 		if i > 0 {
+			// Calculate a new jittered delay for each attempt
+			delay := utils.CalculateStealthDelay(sleepPtr, jitterPtr)
+			
+			log.Info("Applying stealth delay before scanning port",
+				svc1log.SafeParam("port", port),
+				svc1log.SafeParam("delay_ms", delay.Milliseconds()))
+			
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -89,40 +100,135 @@ func getStealthPortScan(ctx context.Context, config discoverfern.DiscoverPortCon
 
 // getStealthTargetPorts determines which ports to scan based on the stealth configuration
 func getStealthTargetPorts(config discoverfern.DiscoverPortConfig) ([]int, error) {
-	var ports []int
+	var portString string
 
 	// If specific ports are provided, use those
 	if config.Ports != nil && *config.Ports != "" {
-		var err error
-		ports, err = parsePortList(*config.Ports)
-		if err != nil {
-			return nil, fmt.Errorf("invalid port specification: %w", err)
-		}
+		portString = *config.Ports
 	} else if config.TopPorts != nil {
-		// Fall back to standard top ports configuration
+		// Load port lists from JSON config
+		portLists, err := getTopPortsConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load port lists: %w", err)
+		}
+
+		// Use predefined port lists
 		switch *config.TopPorts {
+		case "10":
+			if ports, ok := portLists["10"]; ok {
+				portString = ports
+			} else {
+				return nil, fmt.Errorf("top-10 port list not found in config")
+			}
 		case "100":
-			ports = getTopNPorts(100)
+			if ports, ok := portLists["100"]; ok {
+				portString = ports
+			} else {
+				return nil, fmt.Errorf("top-100 port list not found in config")
+			}
 		case "1000":
-			ports = getTopNPorts(1000)
+			if ports, ok := portLists["1000"]; ok {
+				portString = ports
+			} else {
+				return nil, fmt.Errorf("top-1000 port list not found in config")
+			}
 		case "full":
-			ports = getTopNPorts(65535)
+			if ports, ok := portLists["full"]; ok {
+				portString = ports
+			} else {
+				portString = "1-65535" // Fallback
+			}
 		default:
-			// Try to parse as number
+			// Try to parse as number and map to closest predefined list
 			if topN, err := strconv.Atoi(*config.TopPorts); err == nil {
-				ports = getTopNPorts(topN)
+				switch {
+				case topN <= 10:
+					if ports, ok := portLists["10"]; ok {
+						portString = ports
+					} else {
+						return nil, fmt.Errorf("top-10 port list not found in config")
+					}
+				case topN <= 100:
+					if ports, ok := portLists["100"]; ok {
+						portString = ports
+					} else {
+						return nil, fmt.Errorf("top-100 port list not found in config")
+					}
+				case topN <= 1000:
+					if ports, ok := portLists["1000"]; ok {
+						portString = ports
+					} else {
+						return nil, fmt.Errorf("top-1000 port list not found in config")
+					}
+				default:
+					if ports, ok := portLists["full"]; ok {
+						portString = ports
+					} else {
+						portString = "1-65535" // Fallback
+					}
+				}
 			} else {
 				return nil, fmt.Errorf("invalid top-ports value: %s", *config.TopPorts)
 			}
 		}
 	} else {
-		// Default to top 100 ports for stealth (smaller default for covert ops)
-		ports = getTopNPorts(100)
+		// Default to top 100 ports for stealth
+		portLists, err := getTopPortsConfig()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load port lists: %w", err)
+		}
+		if ports, ok := portLists["100"]; ok {
+			portString = ports
+		} else {
+			return nil, fmt.Errorf("default top-100 port list not found in config")
+		}
+	}
+
+	// Parse the port string into individual ports
+	ports, err := parsePortList(portString)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse port list: %w", err)
 	}
 
 	// Sort ports for consistent scanning order
 	sort.Ints(ports)
 	return ports, nil
+}
+
+// getTopPortsConfig loads and caches the top ports configuration
+func getTopPortsConfig() (map[string]string, error) {
+	// Check if already loaded
+	topPortsConfigLock.RLock()
+	if topPortsConfig != nil {
+		defer topPortsConfigLock.RUnlock()
+		return topPortsConfig.PortLists, nil
+	}
+	topPortsConfigLock.RUnlock()
+
+	// Load the config
+	topPortsConfigLock.Lock()
+	defer topPortsConfigLock.Unlock()
+
+	// Double-check after acquiring write lock
+	if topPortsConfig != nil {
+		return topPortsConfig.PortLists, nil
+	}
+
+	resolver := utils.GetDefaultWordlistResolver()
+	filePath := resolver.GetConfigFilePath("discover/port/top_ports.json")
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read top ports config: %w", err)
+	}
+
+	var config TopPortsConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse top ports config: %w", err)
+	}
+
+	topPortsConfig = &config
+	return topPortsConfig.PortLists, nil
 }
 
 // parsePortList parses a comma-separated port list with support for ranges
@@ -179,79 +285,3 @@ func isPortOpen(ctx context.Context, host string, port int) bool {
 	return true
 }
 
-// loadTopPortsFromConfig loads the top ports configuration from the JSON file
-func loadTopPortsFromConfig() ([]int, error) {
-	resolver := utils.GetDefaultWordlistResolver()
-	filePath := resolver.GetConfigFilePath("discover/port/top_ports.json")
-
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read top ports config: %w", err)
-	}
-
-	var config TopPortsConfig
-	if err := json.Unmarshal(data, &config); err != nil {
-		return nil, fmt.Errorf("failed to parse top ports config: %w", err)
-	}
-
-	return config.Ports, nil
-}
-
-// getTopNPorts returns the most commonly used TCP ports up to N ports
-// Loads port data from configs/discover/port/top_ports.json configuration file
-func getTopNPorts(n int) []int {
-	// Use cached ports if available
-	topPortsCacheLock.RLock()
-	if len(topPortsCache) > 0 {
-		topPortsCacheLock.RUnlock()
-		return getTopNFromCache(n)
-	}
-	topPortsCacheLock.RUnlock()
-
-	// Load ports from configuration file
-	topPortsCacheLock.Lock()
-	defer topPortsCacheLock.Unlock()
-
-	// Double-check after acquiring write lock
-	if len(topPortsCache) > 0 {
-		return getTopNFromCache(n)
-	}
-
-	ports, err := loadTopPortsFromConfig()
-	if err != nil {
-		// Return empty cache and the getTopNFromCache function will handle the error
-		topPortsCache = []int{}
-		return []int{}
-	}
-
-	topPortsCache = ports
-
-	return getTopNFromCache(n)
-}
-
-// getTopNFromCache returns the top N ports from the cached port list
-func getTopNFromCache(n int) []int {
-	if n <= len(topPortsCache) {
-		result := make([]int, n)
-		copy(result, topPortsCache[:n])
-		return result
-	}
-
-	// For requests beyond our curated list, add ports sequentially
-	result := make([]int, len(topPortsCache))
-	copy(result, topPortsCache)
-
-	used := make(map[int]bool)
-	for _, p := range topPortsCache {
-		used[p] = true
-	}
-
-	// Add remaining ports in order
-	for port := 1; port <= 65535 && len(result) < n; port++ {
-		if !used[port] {
-			result = append(result, port)
-		}
-	}
-
-	return result[:n]
-}

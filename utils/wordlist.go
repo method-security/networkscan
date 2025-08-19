@@ -3,6 +3,7 @@ package utils
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	pentestfern "github.com/Method-Security/networkscan/generated/go/pentest"
@@ -27,7 +28,22 @@ func GetDefaultWordlistResolver() *WordlistResolver {
 }
 
 // GetConfigFilePath returns the full path for a file within the config directory
+// It automatically handles container vs development environment paths
 func (wr *WordlistResolver) GetConfigFilePath(relativePath string) string {
+	// Try multiple possible config paths (container vs local development)
+	possiblePaths := []string{
+		filepath.Join(wr.baseConfigDir, relativePath), // Configured base path (container)
+		filepath.Join("configs", relativePath),        // Local development path
+	}
+
+	// Return the first path that exists
+	for _, path := range possiblePaths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	// If none exist, return the configured path (original behavior)
 	return filepath.Join(wr.baseConfigDir, relativePath)
 }
 
