@@ -104,11 +104,11 @@ func getStealthHostDiscovery(ctx context.Context, config discoverfern.DiscoverHo
 		if i > 0 {
 			// Calculate a new jittered delay for each attempt
 			delay := utils.CalculateStealthDelay(sleepPtr, jitterPtr)
-			
+
 			log.Info("Applying stealth delay before scanning host",
 				svc1log.SafeParam("host", host),
 				svc1log.SafeParam("delay_ms", delay.Milliseconds()))
-			
+
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()

@@ -186,8 +186,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	// Port Command
 	discoverPortCmd := &cobra.Command{
 		Use:   "port",
-		Short: "Scan a target host for open TCP ports using customizable scan types and port ranges.",
-		Long:  `Scan a target host for open TCP ports using customizable scan types and port ranges.`,
+		Short: "Scan target hosts for open TCP ports using customizable scan types and port ranges.",
+		Long:  `Scan target hosts for open TCP ports using customizable scan types and port ranges. Supports single IPs, hostnames, CIDR ranges, and IP ranges.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			// Target flags
 			target, err := cmd.Flags().GetString("target")
@@ -307,7 +307,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	discoverPortCmd.Flags().String("target", "", "Target IP address or FQDN to scan for open ports")
+	discoverPortCmd.Flags().String("target", "", "Target IP address, FQDN, CIDR range, or IP range to scan for open ports")
 	discoverPortCmd.Flags().String("ports", "", "Comma-separated list or range of TCP ports to scan (e.g., 22,80,443 or 1-1024)")
 	discoverPortCmd.Flags().String("top-ports", "", "Scan the top N most common TCP ports (options: full, 100, 1000)")
 	discoverPortCmd.Flags().Int("threads", 25, "Number of concurrent threads to use during port scanning")
@@ -473,7 +473,7 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 		Ports:    &ports,
 		TopPorts: &topPorts,
 	}
-	
+
 	if stealth && sleep > 0 {
 		// Stealth mode - only set stealth-specific config
 		stealthConfig := &discoverfern.PortStealthConfig{
@@ -488,7 +488,7 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 		config.Threads = threads
 		config.ScanType = scanType
 		config.Validate = validate
-		
+
 		// Validation-related fields only apply to regular scans
 		if validateHostname != nil {
 			config.ValidateHostname = validateHostname
@@ -500,7 +500,7 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 			config.ValidateThreads = validateThreads
 		}
 	}
-	
+
 	return config
 }
 
