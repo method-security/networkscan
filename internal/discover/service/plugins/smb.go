@@ -6,10 +6,10 @@ import (
 	"net"
 	"time"
 
+	"github.com/Method-Security/networkscan/generated/go/common"
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
-	"github.com/Method-Security/networkscan/utils"
 )
 
 type SMBFingerprinter struct{}
@@ -80,8 +80,8 @@ func detectSMBService(ctx context.Context, ip net.IP, port int, host string) (*d
 			Ip:        ip.String(),
 			Port:      port,
 			Tls:       false, // SMB over 445 is not TLS by default
-			Transport: utils.GetTransportTypeEnum("TCP"),
-			Protocol:  utils.GetProtocolTypeEnum("SMB"),
+			Transport: common.TransportTypeTcp,
+			Protocol:  common.ProtocolTypeSmb,
 			Metadata:  map[string]string{"detection": "smb_challenge_only"},
 		}
 
@@ -155,8 +155,8 @@ func detectSMBService(ctx context.Context, ip net.IP, port int, host string) (*d
 		Ip:        ip.String(),
 		Port:      port,
 		Tls:       false,
-		Transport: utils.GetTransportTypeEnum("TCP"),
-		Protocol:  utils.GetProtocolTypeEnum("SMB"),
+		Transport: common.TransportTypeTcp,
+		Protocol:  common.ProtocolTypeSmb,
 		Metadata:  map[string]string{"detection": "smb_client_connection"},
 	}
 

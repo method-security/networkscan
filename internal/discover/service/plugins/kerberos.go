@@ -10,8 +10,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-	"github.com/Method-Security/networkscan/utils"
 	"github.com/jfjallid/gokrb5/v8/config"
 	"github.com/jfjallid/gokrb5/v8/iana/nametype"
 	"github.com/jfjallid/gokrb5/v8/messages"
@@ -58,9 +58,9 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 	}
 
 	// Build service details
-	transport := utils.GetTransportTypeEnum("TCP")
+	transport := common.TransportTypeTcp
 	if tlsUsed {
-		transport = utils.GetTransportTypeEnum("TCPTLS")
+		transport = common.TransportTypeTcptls
 	}
 
 	return &discoverfern.ServiceDetails{
@@ -69,7 +69,7 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 		Port:      port,
 		Tls:       tlsUsed,
 		Transport: transport,
-		Protocol:  utils.GetProtocolTypeEnum("KERBEROS"),
+		Protocol:  common.ProtocolTypeKerberos,
 		Version:   nil,
 		Metadata:  map[string]string{"detected": "kerberos"},
 	}, nil

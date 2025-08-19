@@ -11,8 +11,8 @@ import (
 	"net"
 	"time"
 
+	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-	"github.com/Method-Security/networkscan/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -113,13 +113,18 @@ func buildResult(host string, ip net.IP, port int, tlsUsed bool, statusStr strin
 	meta := map[string]string{"reflection": statusStr}
 
 	return &discoverfern.ServiceDetails{
-		Host:      host,
-		Ip:        ip.String(),
-		Port:      port,
-		Tls:       tlsUsed,
-		Version:   nil,
-		Transport: utils.GetTransportTypeEnum(transport),
-		Protocol:  utils.GetProtocolTypeEnum("GRPC"),
-		Metadata:  meta,
+		Host:    host,
+		Ip:      ip.String(),
+		Port:    port,
+		Tls:     tlsUsed,
+		Version: nil,
+		Transport: func() common.TransportType {
+			if transport == "TCPTLS" {
+				return common.TransportTypeTcptls
+			}
+			return common.TransportTypeTcp
+		}(),
+		Protocol: common.ProtocolTypeGrpc,
+		Metadata: meta,
 	}
 }

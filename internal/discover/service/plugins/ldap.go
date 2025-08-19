@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-	"github.com/Method-Security/networkscan/utils"
 	"github.com/go-ldap/ldap/v3"
 )
 
@@ -43,8 +43,8 @@ func (LDAPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 				Ip:        ip.String(),
 				Port:      port,
 				Tls:       false,
-				Transport: utils.GetTransportTypeEnum("TCP"),
-				Protocol:  utils.GetProtocolTypeEnum("LDAP"),
+				Transport: common.TransportTypeTcp,
+				Protocol:  common.ProtocolTypeLdap,
 				Metadata:  map[string]string{"detection": "ldap_bind_error", "error": err.Error()},
 			}, nil
 		}
@@ -57,8 +57,8 @@ func (LDAPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Ip:        ip.String(),
 		Port:      port,
 		Tls:       false,
-		Transport: utils.GetTransportTypeEnum("TCP"),
-		Protocol:  utils.GetProtocolTypeEnum("LDAP"),
+		Transport: common.TransportTypeTcp,
+		Protocol:  common.ProtocolTypeLdap,
 		Metadata:  map[string]string{"detection": "ldap_anonymous_bind_success"},
 	}, nil
 }

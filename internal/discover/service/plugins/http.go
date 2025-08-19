@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-	"github.com/Method-Security/networkscan/utils"
 )
 
 type HTTPFingerprinter struct{}
@@ -69,8 +70,13 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 			Port:      port,
 			Tls:       proto.isTLS,
 			Version:   &server,
-			Transport: utils.GetTransportTypeEnum("TCP"),
-			Protocol:  utils.GetProtocolTypeEnum(protocolName),
+			Transport: common.TransportTypeTcp,
+			Protocol: func() common.ProtocolType {
+				if protocol, err := common.NewProtocolTypeFromString(strings.ToUpper(protocolName)); err == nil {
+					return protocol
+				}
+				return common.ProtocolTypeUnknown
+			}(),
 			Metadata: map[string]string{
 				"status": fmt.Sprintf("%d %s", resp.StatusCode, resp.Status),
 				"server": server,

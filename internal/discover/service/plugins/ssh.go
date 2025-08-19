@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-	"github.com/Method-Security/networkscan/utils"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -48,8 +48,8 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 				Ip:        ip.String(),
 				Port:      port,
 				Tls:       false,
-				Transport: utils.GetTransportTypeEnum("TCP"),
-				Protocol:  utils.GetProtocolTypeEnum("SSH"),
+				Transport: common.TransportTypeTcp,
+				Protocol:  common.ProtocolTypeSsh,
 				Metadata: map[string]string{
 					"detection":     "ssh_no_auth_handshake",
 					"auth_required": "true",
@@ -76,8 +76,8 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Ip:        ip.String(),
 		Port:      port,
 		Tls:       false,
-		Transport: utils.GetTransportTypeEnum("TCP"),
-		Protocol:  utils.GetProtocolTypeEnum("SSH"),
+		Transport: common.TransportTypeTcp,
+		Protocol:  common.ProtocolTypeSsh,
 		Version:   &serverVersion,
 		Metadata: map[string]string{
 			"detection":      "ssh_no_auth_success",

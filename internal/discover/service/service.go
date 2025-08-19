@@ -7,10 +7,13 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 	"time"
 
 	// Generated
+	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+
 	// External
 	plugins "github.com/praetorian-inc/fingerprintx/pkg/plugins"
 	scan "github.com/praetorian-inc/fingerprintx/pkg/scan"
@@ -102,13 +105,23 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 // fxToServiceDetails converts fingerprintx result to ServiceDetails
 func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 	return &discoverfern.ServiceDetails{
-		Host:      result.Host,
-		Ip:        result.IP,
-		Port:      result.Port,
-		Tls:       result.TLS,
-		Transport: utils.GetTransportTypeEnum(result.Transport),
-		Protocol:  utils.GetProtocolTypeEnum(result.Protocol),
-		Version:   &result.Version,
+		Host: result.Host,
+		Ip:   result.IP,
+		Port: result.Port,
+		Tls:  result.TLS,
+		Transport: func() common.TransportType {
+			if transport, err := common.NewTransportTypeFromString(strings.ToUpper(result.Transport)); err == nil {
+				return transport
+			}
+			return common.TransportTypeUnknown
+		}(),
+		Protocol: func() common.ProtocolType {
+			if protocol, err := common.NewProtocolTypeFromString(strings.ToUpper(result.Protocol)); err == nil {
+				return protocol
+			}
+			return common.ProtocolTypeUnknown
+		}(),
+		Version: &result.Version,
 		Metadata: map[string]string{
 			"raw": string(result.Raw),
 		},
