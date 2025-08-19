@@ -34,11 +34,16 @@ var (
 	topPortsConfigLock sync.RWMutex
 )
 
-
 // getStealthPortScan performs a stealth port scan using native Go networking capabilities.
 // It provides delay control and top-N port targeting for more covert scanning.
 func getStealthPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([]*discoverfern.SocketDetails, error) {
 	log := svc1log.FromContext(ctx)
+
+	// Expand target hosts (handles CIDR ranges, IP ranges, and single hosts)
+	targetHosts, err := utils.ParseTargetHosts(config.Target)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse target hosts: %w", err)
+	}
 
 	// Get stealth delay configuration (but don't calculate delay yet - do it per attempt)
 	var sleepPtr, jitterPtr *int
@@ -55,47 +60,58 @@ func getStealthPortScan(ctx context.Context, config discoverfern.DiscoverPortCon
 
 	// Calculate initial delay for logging purposes
 	initialDelay := utils.CalculateStealthDelay(sleepPtr, jitterPtr)
-	
+
 	log.Info("Starting stealth port scan",
 		svc1log.SafeParam("target", config.Target),
+		svc1log.SafeParam("hosts", len(targetHosts)),
 		svc1log.SafeParam("ports", len(targetPorts)),
 		svc1log.SafeParam("base_delay_ms", initialDelay.Milliseconds()))
 
-	var openPorts []*discoverfern.PortDetails
+	var allSocketDetails []*discoverfern.SocketDetails
 
-	// Scan each port with jittered delay
-	for i, port := range targetPorts {
-		if i > 0 {
-			// Calculate a new jittered delay for each attempt
-			delay := utils.CalculateStealthDelay(sleepPtr, jitterPtr)
-			
-			log.Info("Applying stealth delay before scanning port",
-				svc1log.SafeParam("port", port),
-				svc1log.SafeParam("delay_ms", delay.Milliseconds()))
-			
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(delay):
+	// Scan each host
+	for _, host := range targetHosts {
+		var openPorts []*discoverfern.PortDetails
+
+		// Scan each port on this host with jittered delay
+		for i, port := range targetPorts {
+			if i > 0 || len(allSocketDetails) > 0 {
+				// Calculate a new jittered delay for each attempt (skip first port of first host)
+				delay := utils.CalculateStealthDelay(sleepPtr, jitterPtr)
+
+				log.Debug("Applying stealth delay before scanning",
+					svc1log.SafeParam("host", host),
+					svc1log.SafeParam("port", port),
+					svc1log.SafeParam("delay_ms", delay.Milliseconds()))
+
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(delay):
+				}
+			}
+
+			if isPortOpen(ctx, host, port) {
+				openPorts = append(openPorts, &discoverfern.PortDetails{
+					Port:     port,
+					Protocol: common.TransportTypeTcp,
+				})
+				log.Debug("Found open port",
+					svc1log.SafeParam("host", host),
+					svc1log.SafeParam("port", port))
 			}
 		}
 
-		if isPortOpen(ctx, config.Target, port) {
-			openPorts = append(openPorts, &discoverfern.PortDetails{
-				Port:     port,
-				Protocol: common.TransportTypeTcp,
-			})
-			log.Debug("Found open port", svc1log.SafeParam("port", port))
+		socketDetails := &discoverfern.SocketDetails{
+			Host:  host,
+			Ip:    host, // For stealth scan, we'll use host as IP for simplicity
+			Ports: openPorts,
 		}
+
+		allSocketDetails = append(allSocketDetails, socketDetails)
 	}
 
-	socketDetails := &discoverfern.SocketDetails{
-		Host:  config.Target,
-		Ip:    config.Target, // For stealth scan, we'll use target as IP for simplicity
-		Ports: openPorts,
-	}
-
-	return []*discoverfern.SocketDetails{socketDetails}, nil
+	return allSocketDetails, nil
 }
 
 // getStealthTargetPorts determines which ports to scan based on the stealth configuration
@@ -284,4 +300,3 @@ func isPortOpen(ctx context.Context, host string, port int) bool {
 	_ = conn.Close()
 	return true
 }
-

@@ -4,6 +4,7 @@ import (
 	// Standard
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	common "github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 
+	// Internal
+	"github.com/Method-Security/networkscan/utils"
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	goflags "github.com/projectdiscovery/goflags"
@@ -72,6 +75,13 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([]*discoverfern.SocketDetails, error) {
 	// Hide OS args from Naabu
 	hideOsArgsFromNaabu()
+
+	// Expand target hosts (handles CIDR ranges, IP ranges, and single hosts)
+	targetHosts, err := utils.ParseTargetHosts(config.Target)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse target hosts: %w", err)
+	}
+
 	output := result.HostResult{}
 	hosts := []*discoverfern.SocketDetails{}
 	// These settings mimic naabu's default settings
@@ -83,7 +93,7 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		Retries:           runner.DefaultRetriesConnectScan,
 		Threads:           config.Threads,
 		Timeout:           runner.DefaultPortTimeoutConnectScan,
-		Host:              goflags.StringSlice{config.Target},
+		Host:              goflags.StringSlice(targetHosts), // Use expanded hosts
 		SkipHostDiscovery: true,
 		WarmUpTime:        2,
 		InputReadTimeout:  180000000000, // This is their default
