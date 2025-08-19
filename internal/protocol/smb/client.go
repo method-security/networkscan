@@ -23,6 +23,14 @@ type CapturingNTLM struct {
 	LastChallengeData []byte
 }
 
+// ChallengeOnlyNTLM only performs the challenge exchange and then stops
+type ChallengeOnlyNTLM struct {
+	*spnego.NTLMInitiator
+	LastChallenge     *ntlmssp.Challenge
+	LastChallengeData []byte
+	challengeReceived bool
+}
+
 func (c *CapturingNTLM) InitSecContext(inputToken []byte) ([]byte, error) {
 	// When the server replies to our first token, inputToken contains a SPNEGO NegTokenResp
 	// whose ResponseToken is the NTLM Type 2 CHALLENGE.
@@ -55,6 +63,47 @@ func (c *CapturingNTLM) InitSecContext(inputToken []byte) ([]byte, error) {
 	return c.NTLMInitiator.InitSecContext(inputToken)
 }
 
+func (c *ChallengeOnlyNTLM) InitSecContext(inputToken []byte) ([]byte, error) {
+	// When the server replies to our first token, inputToken contains a SPNEGO NegTokenResp
+	// whose ResponseToken is the NTLM Type 2 CHALLENGE.
+	if len(inputToken) > 0 && !c.challengeReceived {
+		// Try to parse as SPNEGO first
+		var resp gss.NegTokenResp
+		var meta encoder.Metadata
+		if err := resp.UnmarshalBinary(inputToken, &meta); err == nil && len(resp.ResponseToken) > 0 {
+			// Store the raw challenge data for unified processing
+			c.LastChallengeData = resp.ResponseToken
+			c.challengeReceived = true
+		} else {
+			// If SPNEGO parsing fails, check if this is a direct NTLM challenge
+			// NTLM Type 2 messages start with "NTLMSSP\x00" (signature) followed by type 02
+			if len(inputToken) >= 12 && string(inputToken[:8]) == "NTLMSSP\x00" {
+				// Check for Type 2 message (challenge)
+				if inputToken[8] == 0x02 && inputToken[9] == 0x00 && inputToken[10] == 0x00 && inputToken[11] == 0x00 {
+					c.LastChallengeData = inputToken
+					c.challengeReceived = true
+				}
+			}
+		}
+
+		// Try to parse the challenge for validation
+		if len(c.LastChallengeData) > 0 {
+			ch := ntlmssp.NewChallenge()
+			if err := encoder.Unmarshal(c.LastChallengeData, &ch); err == nil {
+				c.LastChallenge = &ch
+			}
+		}
+
+		// If we've received a challenge, stop the authentication process
+		if c.challengeReceived {
+			return nil, fmt.Errorf("challenge_received") // Special error to signal we got what we wanted
+		}
+	}
+
+	// For the initial request, proceed normally
+	return c.NTLMInitiator.InitSecContext(inputToken)
+}
+
 // Client represents a unified SMB client that provides base functionality
 // for both enumeration and pentest operations
 type Client struct {
@@ -66,6 +115,7 @@ type Client struct {
 	Domain          string
 	UseAnonymous    bool
 	UseNullSession  bool
+	ChallengeOnly   bool // If true, only get NTLM challenge and exit without authentication
 	Timeout         time.Duration
 	session         *gosmb.Connection
 	isConnected     bool
@@ -120,6 +170,15 @@ func (c *Client) SetAnonymous() {
 func (c *Client) SetNullSession() {
 	c.UseNullSession = true
 	c.UseAnonymous = false
+	c.Username = ""
+	c.Password = ""
+}
+
+// SetChallengeOnly configures client to only retrieve NTLM challenge without authentication
+func (c *Client) SetChallengeOnly() {
+	c.ChallengeOnly = true
+	c.UseAnonymous = true // Use anonymous for challenge retrieval
+	c.UseNullSession = false
 	c.Username = ""
 	c.Password = ""
 }
@@ -243,14 +302,53 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 		}
 	}
 
-	// Wrap the NTLM initiator with our capturing wrapper to get raw challenge data
-	c.capturingNTLM = &CapturingNTLM{
-		NTLMInitiator: ntlmInitiator,
+	// Wrap the NTLM initiator with appropriate wrapper to get raw challenge data
+	var challengeOnlyWrapper *ChallengeOnlyNTLM
+	if c.ChallengeOnly {
+		// Use challenge-only wrapper for stealth mode
+		challengeOnlyWrapper = &ChallengeOnlyNTLM{
+			NTLMInitiator: ntlmInitiator,
+		}
+		options.Initiator = challengeOnlyWrapper
+	} else {
+		// Use regular capturing wrapper
+		c.capturingNTLM = &CapturingNTLM{
+			NTLMInitiator: ntlmInitiator,
+		}
+		options.Initiator = c.capturingNTLM
 	}
-	options.Initiator = c.capturingNTLM
 
 	// Attempt connection
 	session, err := gosmb.NewConnection(options)
+
+	// For challenge-only mode, transfer data and handle the expected error
+	if c.ChallengeOnly && challengeOnlyWrapper != nil {
+		// Create capturing NTLM with the challenge data from challenge-only wrapper
+		c.capturingNTLM = &CapturingNTLM{
+			NTLMInitiator:     ntlmInitiator,
+			LastChallenge:     challengeOnlyWrapper.LastChallenge,
+			LastChallengeData: challengeOnlyWrapper.LastChallengeData,
+		}
+
+		// Check if we got the expected "challenge_received" error, which means success for us
+		if err != nil && strings.Contains(err.Error(), "challenge_received") {
+			log := svc1log.FromContext(ctx)
+			log.Debug("Successfully received NTLM challenge in stealth mode")
+
+			// Extract server info and return success
+			if !c.skipServerInfo {
+				if extractErr := c.extractServerInfoWithContext(ctx); extractErr != nil {
+					log.Debug("Failed to extract server info from challenge", svc1log.SafeParam("error", extractErr))
+				}
+			}
+
+			// For challenge-only mode, getting the challenge is success
+			c.isConnected = false     // We didn't actually establish a connection
+			c.isAuthenticated = false // We didn't authenticate
+			return nil                // Success - we got what we wanted
+		}
+	}
+
 	if err != nil {
 		// Even if connection failed, try to extract server info from NTLM challenge (unless skipped)
 		if session != nil && !c.skipServerInfo {

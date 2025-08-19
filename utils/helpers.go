@@ -164,3 +164,19 @@ func IncIP(ip net.IP) {
 		}
 	}
 }
+
+// GetIPs resolves a hostname to IP addresses
+func GetIPs(host string) ([]net.IP, error) {
+	// Try to parse as IP first
+	if ip := net.ParseIP(host); ip != nil {
+		return []net.IP{ip}, nil
+	}
+
+	// Resolve hostname
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve host %s: %v", host, err)
+	}
+
+	return ips, nil
+}
