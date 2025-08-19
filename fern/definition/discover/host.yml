@@ -10,7 +10,8 @@ types:
   # Stealth config
   HostStealthConfig:
     properties:
-      sleep: optional<integer>          # Sleep delay in milliseconds between hosts
+      sleep: integer # Sleep delay in seconds between hosts
+      jitter: optional<integer>         # Jitter percentage (0-100) to randomize sleep
       reverseLookup: optional<boolean>  # Perform reverse DNS lookup sweep first
   # Report structs
   HostDetails:

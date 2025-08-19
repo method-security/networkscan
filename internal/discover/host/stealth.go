@@ -52,10 +52,11 @@ func performReverseLookupSweep(target string) ([]string, error) {
 func getStealthHostDiscovery(ctx context.Context, config discoverfern.DiscoverHostConfig) ([]*discoverfern.HostDetails, error) {
 	log := svc1log.FromContext(ctx)
 
-	// Default delay of 100ms between hosts if not specified
-	delay := time.Duration(100) * time.Millisecond
-	if config.Stealth != nil && config.Stealth.Sleep != nil {
-		delay = time.Duration(*config.Stealth.Sleep) * time.Millisecond
+	// Get stealth delay configuration (but don't calculate delay yet - do it per attempt)
+	var sleepPtr, jitterPtr *int
+	if config.Stealth != nil {
+		sleepPtr = &config.Stealth.Sleep
+		jitterPtr = config.Stealth.Jitter
 	}
 
 	// Determine target hosts based on reverse lookup setting
@@ -88,16 +89,26 @@ func getStealthHostDiscovery(ctx context.Context, config discoverfern.DiscoverHo
 		}
 	}
 
+	// Calculate initial delay for logging purposes
+	initialDelay := utils.CalculateStealthDelay(sleepPtr, jitterPtr)
+
 	log.Debug("Starting stealth host discovery",
 		svc1log.SafeParam("target", config.Target),
 		svc1log.SafeParam("hosts", len(targetHosts)),
-		svc1log.SafeParam("delay_ms", delay.Milliseconds()))
+		svc1log.SafeParam("base_delay_ms", initialDelay.Milliseconds()))
 
 	var liveHosts []*discoverfern.HostDetails
 
-	// Scan each host with delay
+	// Scan each host with jittered delay
 	for i, host := range targetHosts {
 		if i > 0 {
+			// Calculate a new jittered delay for each attempt
+			delay := utils.CalculateStealthDelay(sleepPtr, jitterPtr)
+			
+			log.Info("Applying stealth delay before scanning host",
+				svc1log.SafeParam("host", host),
+				svc1log.SafeParam("delay_ms", delay.Milliseconds()))
+			
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
