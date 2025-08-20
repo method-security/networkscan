@@ -58,18 +58,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				scanTypeEnum = &scanTypeEnumValue
 			}
 
-			// Check privileges for stealth scan
-			stealth, err := cmd.Flags().GetBool("stealth")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-
-			// Validate that either stealth or scan-type is specified
-			if !stealth && scanTypeEnum == nil {
-				a.OutputSignal.AddError(errors.New("either --stealth or --scan-type must be specified"))
-				return
-			}
+			// Determine if stealth mode should be used (when sleep is specified)
+			stealth := false
 
 			// Stealth flags - get these early for validation
 			sleep, err := cmd.Flags().GetInt("sleep")
@@ -88,19 +78,12 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				return
 			}
 
-			// Validate that sleep and jitter can only be set when using stealth mode
-			if sleep > 0 && !stealth {
-				a.OutputSignal.AddError(fmt.Errorf("sleep parameter can only be used with stealth mode (--stealth flag)"))
-				return
-			}
-			if jitter > 0 && !stealth {
-				a.OutputSignal.AddError(fmt.Errorf("jitter parameter can only be used with stealth mode (--stealth flag)"))
-				return
-			}
+			// Determine if stealth mode should be used (when sleep > 0)
+			stealth = sleep > 0 || reverseLookup
 
-			// Validate stealth mode requirements
-			if stealth && sleep == 0 {
-				a.OutputSignal.AddError(errors.New("--sleep must be specified (> 0) when using --stealth"))
+			// Validate that if not stealth mode, we need a scan type
+			if !stealth && scanTypeEnum == nil {
+				a.OutputSignal.AddError(errors.New("--scan-type must be specified when not using stealth mode (sleep > 0)"))
 				return
 			}
 
@@ -130,8 +113,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	discoverHostCmd.Flags().String("target", "", "Target IP address, hostname, or CIDR range to scan for live hosts")
 	discoverHostCmd.Flags().String("scan-type", "", "Discovery scan type: TCP_SYN, TCP_ACK, ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (not needed for stealth mode)")
-	discoverHostCmd.Flags().Bool("stealth", false, "Enable stealth host discovery using custom ICMP ping implementation")
-	discoverHostCmd.Flags().Int("sleep", 0, "Sleep delay in seconds between hosts for stealth scan (required when using --stealth)")
+	discoverHostCmd.Flags().Int("sleep", 0, "Sleep delay in seconds between hosts for stealth scan (stealth mode enabled when sleep > 0)")
 	discoverHostCmd.Flags().Int("jitter", 0, "Jitter percentage (0-100) to randomize sleep delay for stealth scan")
 	discoverHostCmd.Flags().Bool("reverse-lookup", false, "Perform reverse DNS lookup sweep first to identify potential targets")
 
@@ -257,11 +239,6 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Stealth flags
-			stealth, err := cmd.Flags().GetBool("stealth")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
 			sleep, err := cmd.Flags().GetInt("sleep")
 			if err != nil {
 				a.OutputSignal.AddError(err)
@@ -273,21 +250,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				return
 			}
 
-			// Validate that sleep and jitter can only be set when using stealth mode
-			if sleep > 0 && !stealth {
-				a.OutputSignal.AddError(fmt.Errorf("sleep parameter can only be used with stealth mode (--stealth flag)"))
-				return
-			}
-			if jitter > 0 && !stealth {
-				a.OutputSignal.AddError(fmt.Errorf("jitter parameter can only be used with stealth mode (--stealth flag)"))
-				return
-			}
-
-			// Validate stealth mode requirements
-			if stealth && sleep == 0 {
-				a.OutputSignal.AddError(errors.New("--sleep must be specified (> 0) when using --stealth"))
-				return
-			}
+			// Determine if stealth mode should be used (when sleep > 0)
+			stealth := sleep > 0
 
 			// Validate jitter range
 			if jitter < 0 || jitter > 100 {
@@ -316,8 +280,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().String("validate-hostname", "", "Hostname to validate against (e.g., example.com)")
 	discoverPortCmd.Flags().Int("validate-attempt-timeout", 10, "Timeout in seconds for each service detection attempt")
 	discoverPortCmd.Flags().Int("validate-threads", 0, "Number of concurrent threads to use during service detection")
-	discoverPortCmd.Flags().Bool("stealth", false, "Enable stealth port scanning with custom delay control")
-	discoverPortCmd.Flags().Int("sleep", 0, "Sleep delay in seconds between port scans for stealth scan (required when using --stealth)")
+	discoverPortCmd.Flags().Int("sleep", 0, "Sleep delay in seconds between port scans for stealth scan (stealth mode enabled when sleep > 0)")
 	discoverPortCmd.Flags().Int("jitter", 0, "Jitter percentage (0-100) to randomize sleep delay for stealth scan")
 
 	// Mark Required Flags
@@ -344,22 +307,14 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Stealth flags
-			stealth, err := cmd.Flags().GetBool("stealth")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
 			serviceType, err := cmd.Flags().GetString("service-type")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
 
-			// Validate stealth mode requirements
-			if stealth && serviceType == "" {
-				a.OutputSignal.AddError(errors.New("--service-type must be specified when using --stealth"))
-				return
-			}
+			// Determine if stealth mode should be used (when service-type is specified)
+			stealth := serviceType != ""
 
 			// Set Config
 			config := getDiscoverServiceConfig(target, timeout, stealth, serviceType)
@@ -375,8 +330,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	discoverServiceCmd.Flags().String("target", "", "Target address in format IP:port or hostname:port (e.g., 192.168.1.1:443)")
 	discoverServiceCmd.Flags().Int("timeout", 5, "Timeout in seconds for each service fingerprinting attempt")
-	discoverServiceCmd.Flags().Bool("stealth", false, "Enable stealth service fingerprinting for specific protocols")
-	discoverServiceCmd.Flags().String("service-type", "", "Service type to fingerprint in stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB")
+	discoverServiceCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
 
 	// Mark Required Flags
 	_ = discoverServiceCmd.MarkFlagRequired("target")
