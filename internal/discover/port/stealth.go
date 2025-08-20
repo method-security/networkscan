@@ -48,7 +48,7 @@ func getStealthPortScan(ctx context.Context, config discoverfern.DiscoverPortCon
 	// Get stealth delay configuration (but don't calculate delay yet - do it per attempt)
 	var sleepPtr, jitterPtr *int
 	if config.Stealth != nil {
-		sleepPtr = &config.Stealth.Sleep
+		sleepPtr = config.Stealth.Sleep
 		jitterPtr = config.Stealth.Jitter
 	}
 
