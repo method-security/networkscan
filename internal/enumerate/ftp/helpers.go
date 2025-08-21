@@ -25,7 +25,7 @@ func attemptConnection(ctx context.Context, target string) (net.Conn, error) {
 		log.Error("Initial connection failed", svc1log.SafeParam("error", err.Error()))
 		// Retry once if it was a broken pipe error
 		if strings.Contains(err.Error(), "broken pipe") {
-			log.Info("Retrying connection to %s", svc1log.SafeParam("target", target))
+			log.Info("Retrying connection due to broken pipe", svc1log.SafeParam("target", target))
 			conn, err = dialer.DialContext(ctx, "tcp", target)
 		}
 	}
@@ -197,7 +197,7 @@ readLoop: // Label for the outer loop
 		}
 	}
 
-	fmt.Println("[DEBUG] featResponse: ", featResponse) // Ensure this is outside the loop
+	log.Debug("FEAT response received", svc1log.SafeParam("response", featResponse))
 
 	// RFC 2228 and 4217 both enable TLS commands
 	if strings.Contains(featResponse, "TLS") || strings.Contains(featResponse, "SSL") || (strings.Contains(featResponse, "RFC") && (strings.Contains(featResponse, "2228") || strings.Contains(featResponse, "4217"))) {

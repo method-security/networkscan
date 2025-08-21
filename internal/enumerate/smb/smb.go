@@ -264,13 +264,13 @@ func (s *LibraryEnumerateSMB) assembleResponse(details *smb.EnumerateSmbDetails,
 // EnumerateTarget performs comprehensive SMB enumeration using the shared SMB protocol library
 func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
 	var details smb.EnumerateSmbDetails
-	details.Target = target
 	var errors []string
 
 	log := svc1log.FromContext(ctx)
 	log.Info("Starting SMB enumeration for target", svc1log.SafeParam("target", target))
 
 	host, port := utils.ParseHostPort(target, 445)
+	details.Target = fmt.Sprintf("%s:%d", host, port)
 
 	// Create SMB client using shared protocol library
 	client := smbclient.NewClient(host, port)

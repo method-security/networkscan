@@ -4,11 +4,13 @@ import (
 	// Standard
 	"context"
 	"fmt"
-	"log"
 
 	// Generated
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	ftp "github.com/Method-Security/networkscan/generated/go/enumerate/ftp"
+
+	// External
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 var bufferSize = 2048
@@ -45,17 +47,22 @@ type LibraryEnumerateFTP struct{}
 // EnumerateTarget connects to the target and extracts FTP details.
 func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
 	var details ftp.EnumerateFtpDetails
+	// Set the actual connection target (the target parameter is already in host:port format for FTP)
 	details.Target = target
 	errors := []string{}
-	log.Printf("[INFO] Enumerating target: %s", target)
+
+	log := svc1log.FromContext(ctx)
+	log.Info("Starting FTP enumeration for target", svc1log.SafeParam("target", target))
 
 	// Attempt to connect to the target
 	conn, err := attemptConnection(ctx, target)
 	if err != nil {
-		log.Printf("[ERROR] Failed to connect to %s: %v", target, err)
+		log.Error("Failed to connect to FTP target", svc1log.SafeParam("target", target), svc1log.SafeParam("error", err))
 		errors = append(errors, fmt.Sprintf("Failed to connect to %s: %v", target, err))
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateFtpDetails(&details), errors
 	}
+
+	log.Debug("FTP connection established", svc1log.SafeParam("target", target))
 
 	// Grab the FTP banner
 	bannerStr, err := grabBanner(ctx, conn)
@@ -66,6 +73,8 @@ func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string
 	details.Banner = &bannerStr
 	successFulConnection := true
 	details.SuccessfulConnection = &successFulConnection
+
+	log.Debug("FTP banner retrieved", svc1log.SafeParam("target", target), svc1log.SafeParam("banner", bannerStr))
 
 	// Check TLS implemented
 	if err := checkTLSImplemented(ctx, conn, &details); err != nil {
@@ -95,5 +104,6 @@ func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string
 		errors = append(errors, fmt.Sprintf("failed to close connection: %v", err))
 	}
 
+	log.Info("FTP enumeration completed", svc1log.SafeParam("target", target))
 	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateFtpDetails(&details), errors
 }

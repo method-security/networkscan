@@ -42,7 +42,6 @@ type Fingerprinter interface {
 // List the modules you want to run after fingerprintx fails.
 var customFingerprintModules = []Fingerprinter{
 	&localPlugins.GrpcFingerprinter{},
-	&localPlugins.KerberosFingerprinter{},
 }
 
 // RunServiceFingerprint fingerprints the service at target:port.
