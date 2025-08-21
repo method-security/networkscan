@@ -485,10 +485,12 @@ func getDiscoverHostConfig(target string, scanType *discoverfern.HostScanType, s
 	config := discoverfern.DiscoverHostConfig{
 		Target: target,
 	}
-	if scanType != nil {
-		config.ScanType = scanType
-	}
-	if sleep > 0 || jitter > 0 || reverseLookup {
+
+	// Check if stealth mode is enabled
+	stealthEnabled := sleep > 0 || jitter > 0 || reverseLookup
+
+	if stealthEnabled {
+		// In stealth mode, configure stealth settings and don't set scanType
 		stealthConfig := &discoverfern.HostStealthConfig{
 			ReverseLookup: &reverseLookup,
 		}
@@ -499,6 +501,11 @@ func getDiscoverHostConfig(target string, scanType *discoverfern.HostScanType, s
 			stealthConfig.Jitter = &jitter
 		}
 		config.Stealth = stealthConfig
+	} else {
+		// In non-stealth mode, set scanType if provided
+		if scanType != nil {
+			config.ScanType = scanType
+		}
 	}
 
 	return config

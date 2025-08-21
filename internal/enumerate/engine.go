@@ -5,7 +5,6 @@ import (
 	// Standard
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -18,6 +17,9 @@ import (
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
+
+	// External
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // NetworkApplicationLibrary defines the interface for service-specific enumeration implementations.
@@ -36,7 +38,10 @@ type NetworkApplicationEngine struct {
 // It manages timeouts, error handling, and result collection for each target.
 // Returns a report containing enumeration details and any errors encountered.
 func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServiceConfig) (enumeratefern.EnumerateServiceReport, error) {
-	log.Printf("[INFO] Starting enumeration for %d targets with a timeout of %ds", len(config.Targets), config.Timeout)
+	log := svc1log.FromContext(ctx)
+	log.Info("Starting enumeration for targets",
+		svc1log.SafeParam("targets", len(config.Targets)),
+		svc1log.SafeParam("timeout", config.Timeout))
 	resource := enumeratefern.EnumerateServiceReport{Config: &config}
 
 	engine, err := getEngine(config.Service)
@@ -79,16 +84,18 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 				if targetCtx.Err() == context.DeadlineExceeded {
 					errMsg := fmt.Sprintf("Timeout (%ds) while enumerating %s", config.Timeout, target)
 					errorsChan <- errMsg
-					log.Printf("[ERROR] %s", errMsg)
+					log.Error("Enumeration timeout",
+						svc1log.SafeParam("target", target),
+						svc1log.SafeParam("timeout", config.Timeout))
 				}
 			case result := <-resultChan:
 				if result.detail != nil {
 					detailsChan <- result.detail
-					log.Printf("[INFO] Collected enumeration details for target %s", target)
+					log.Info("Collected enumeration details for target", svc1log.SafeParam("target", target))
 				}
 				for _, err := range result.errs {
 					errorsChan <- err
-					log.Printf("[ERROR] %s", err)
+					log.Error("Enumeration error", svc1log.SafeParam("error", err))
 				}
 			}
 		}(target)
@@ -112,7 +119,9 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 		errors = append(errors, err)
 	}
 
-	log.Printf("[INFO] Enumeration complete. Processed %d targets with %d errors", len(config.Targets), len(errors))
+	log.Info("Enumeration complete",
+		svc1log.SafeParam("targets", len(config.Targets)),
+		svc1log.SafeParam("errors", len(errors)))
 	resource.Result = &enumeratefern.EnumerateServiceResult{Details: details}
 	resource.Errors = errors
 	return resource, nil
