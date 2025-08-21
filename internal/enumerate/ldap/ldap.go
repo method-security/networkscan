@@ -315,13 +315,14 @@ func (l *LibraryEnumerateLDAP) assembleResponse(details *ldapfern.EnumerateLdapD
 // EnumerateTarget performs LDAP enumeration for the given target
 func (l *LibraryEnumerateLDAP) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
 	var details ldapfern.EnumerateLdapDetails
-	details.Target = target
 	var errors []string
 
 	log := svc1log.FromContext(ctx)
 	log.Info("Starting LDAP enumeration for target", svc1log.SafeParam("target", target))
 
 	host, port := utils.ParseHostPort(target, 389)
+	// Set the actual connection target (ip:port)
+	details.Target = fmt.Sprintf("%s:%d", host, port)
 
 	// Perform all authentication tests
 	authState := l.performAuthentication(ctx, host, port, target)
