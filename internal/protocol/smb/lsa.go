@@ -381,11 +381,18 @@ func parseSecret(rpccon *msrrp.RPCCon, base []byte, name string, secretItem []by
 	} else if strings.HasPrefix(upperName, "$MACHINE.ACC") {
 		h := md4.New()
 		h.Write(secretItem)
-		printname := "$MACHINE.ACC"
-		secret = fmt.Sprintf("$MACHINE.ACC (NT Hash): %x", h.Sum(nil))
+		// Get hostname and format as HOSTNAME$ instead of $MACHINE.ACC
+		hostname, domain, err := GetHostnameAndDomain(rpccon, base)
+		var printname string
+		if err != nil || hostname == "" {
+			// Fallback to original format if hostname retrieval fails
+			printname = "$MACHINE.ACC"
+		} else {
+			printname = strings.ToUpper(hostname) + "$"
+		}
+		secret = fmt.Sprintf("%s (NT Hash): %x", printname, h.Sum(nil))
 		result.secrets = append(result.secrets, secret)
 		// Calculate AES128 and AES256 keys from plaintext passwords
-		hostname, domain, err := GetHostnameAndDomain(rpccon, base)
 		if err != nil {
 			// Skip calculation of AES Keys if request failed or if domain is empty
 		} else if domain != "" {
