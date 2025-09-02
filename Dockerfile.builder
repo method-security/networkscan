@@ -28,3 +28,6 @@ RUN \
   tar -xvzf goreleaser-pro_Linux_arm64.tar.gz && \
   mv goreleaser /usr/local/bin/goreleaser && \
   rm -rf goreleaser-pro_Linux_arm64.tar.gz LICENSE.md README.md completions manpages
+
+# Select the appropriate stage based on target architecture
+FROM ${TARGETARCH} as final
