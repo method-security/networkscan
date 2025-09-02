@@ -47,8 +47,6 @@ jobs:
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
           GOOS: linux
           GOARCH: arm64
-      - name: View ARM64 dist structure
-        run: ls -laR dist/ || echo "dist not found"
       - uses: actions/upload-artifact@v4
         with:
           name: linux-arm64-dist
@@ -61,8 +59,6 @@ jobs:
     env:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
     steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@v3
@@ -93,8 +89,6 @@ jobs:
             -e GORELEASER_KEY=${{ secrets.GORELEASER_KEY }} \
             --rm amdbuilder goreleaser build --single-target \
             -f .goreleaser/goreleaser-build.yml ${{ inputs.goreleaser_options }}
-      - name: View AMD64 dist structure
-        run: ls -laR dist/ || echo "dist not found"
       - uses: actions/upload-artifact@v4
         with:
           name: linux-amd64-dist
@@ -248,35 +242,13 @@ jobs:
 
       - name: Arrange Artifacts
         run: |
-          echo "=== Listing all artifacts ==="
-          ls -laR artifacts/ || echo "artifacts not found"
-
-          echo "=== Creating output directories ==="
           mkdir -p output/build-linux_arm64/
           mkdir -p output/build-linux_amd64/
           mkdir -p output/build-darwin_arm64/
           mkdir -p output/build-windows_amd64/
-
-          echo "=== Moving ARM64 Linux binary ==="
-          if [ -d "artifacts/linux-arm64-dist/linux_arm64/build-linux-arm64_linux_arm64_v8.0" ]; then
-            echo "Found v8.0 variant"
-            mv artifacts/linux-arm64-dist/linux_arm64/build-linux-arm64_linux_arm64_v8.0/* output/build-linux_arm64/
-          elif [ -d "artifacts/linux-arm64-dist/linux_arm64/build-linux-arm64_linux_arm64" ]; then
-            echo "Found non-versioned variant"
-            mv artifacts/linux-arm64-dist/linux_arm64/build-linux-arm64_linux_arm64/* output/build-linux_arm64/
-          else
-            echo "ERROR: Could not find ARM64 binary in expected locations"
-            ls -la artifacts/linux-arm64-dist/linux_arm64/ || echo "linux_arm64 dir not found"
-            exit 1
-          fi
-
-          echo "=== Moving AMD64 Linux binary ==="
+          mv artifacts/linux-arm64-dist/linux_arm64/build-linux-arm64_linux_arm64_v8.0/* output/build-linux_arm64/
           mv artifacts/linux-amd64-dist/linux_amd64/build-linux-amd64_linux_amd64_v1/* output/build-linux_amd64/
-
-          echo "=== Moving Windows binary ==="
           mv artifacts/windows-latest-dist/windows_amd64/build-windows_windows_amd64_v1/* output/build-windows_amd64/
-
-          echo "=== Moving macOS binary ==="
           mv artifacts/macos-latest-dist/darwin_arm64/build-macos_darwin_arm64_v8.0/* output/build-darwin_arm64/
         shell: bash
 
