@@ -9,7 +9,7 @@ partial:
   by: target
 
 builds:
-  - id: build-linux-amd64
+  - id: build-linux
     main: .
     binary: networkscan
     ldflags:
@@ -21,21 +21,10 @@ builds:
     goos:
       - linux
     goarch:
+      - arm64
       - amd64
     goarm:
       - "7"
-  - id: build-linux-arm64
-    main: .
-    binary: networkscan
-    ldflags:
-      - -s -w
-      - -X github.com/method-security/networkscan/main.version={{.Version}}
-    env:
-      - CGO_ENABLED=1
-    goos:
-      - linux
-    goarch:
-      - arm64
   - id: build-macos
     main: .
     binary: networkscan
