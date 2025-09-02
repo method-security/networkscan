@@ -5,7 +5,7 @@ ARG CLI_NAME="networkscan"
 ARG TARGETARCH
 
 RUN \
-  apk add --no-cache git gcc build-base libpcap-dev bash wget && \
+  apk add --no-cache git gcc build-base libpcap-dev dbus-dev bash wget && \
   mkdir -p /app/${CLI_NAME} && \
   git config --global --add safe.directory /app/${CLI_NAME}
 
