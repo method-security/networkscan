@@ -36,6 +36,8 @@ builds:
       - linux
     goarch:
       - arm64
+    goarm:
+      - "7"
   - id: build-macos
     main: .
     binary: networkscan
