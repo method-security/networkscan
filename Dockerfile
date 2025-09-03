@@ -7,6 +7,9 @@ ARG NMAP_VERSION="7.95-r0"
 # nmap is a dependency for multiple commands
 RUN apk update && apk --no-cache add ca-certificates bash git nmap=$NMAP_VERSION nmap-scripts=$NMAP_VERSION sudo
 
+# Create symlink for libpcap version compatibility
+RUN ln -sf /usr/lib/libpcap.so.1 /usr/lib/libpcap.so.0.8
+
 # Setup Method Directory Structure
 RUN \
   mkdir -p /opt/method/${CLI_NAME}/ && \
