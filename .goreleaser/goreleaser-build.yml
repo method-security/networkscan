@@ -14,7 +14,7 @@ builds:
     binary: networkscan
     ldflags:
       - -s -w
-      - "-extldflags '-static -lm -ldl -lpthread -ldbus-1 -lsystemd'"
+      - "-extldflags '-static -lm -ldl -lpthread -ldbus-1 -ludev'"
       - -X github.com/method-security/networkscan/main.version={{.Version}}
     env:
       - CGO_ENABLED=1
