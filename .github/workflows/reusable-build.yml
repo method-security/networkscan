@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-22.04-arm
     steps:
       - name: Install Dependencies
-        run: sudo apt update && sudo apt install -y libpcap-dev libdbus-1-dev
+        run: sudo apt update && sudo apt install -y libpcap-dev libdbus-1-dev libsystemd-dev
       - uses: actions/checkout@v4.1.6
         with:
           fetch-depth: 0
