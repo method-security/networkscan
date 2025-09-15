@@ -76,8 +76,8 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 	// Hide OS args from Naabu
 	hideOsArgsFromNaabu()
 
-	// Expand target hosts (handles CIDR ranges, IP ranges, and single hosts)
-	targetHosts, err := utils.ParseTargetHosts(config.Target)
+	// Parse target hosts and create IP-to-hostname mapping
+	targetHosts, ipToHostname, err := utils.ParseTargetHostsWithMapping(config.Target)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse target hosts: %w", err)
 	}
@@ -93,13 +93,13 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		Retries:           runner.DefaultRetriesConnectScan,
 		Threads:           config.Threads,
 		Timeout:           runner.DefaultPortTimeoutConnectScan,
-		Host:              goflags.StringSlice(targetHosts), // Use expanded hosts
+		Host:              goflags.StringSlice(targetHosts), // Use resolved IPs
 		SkipHostDiscovery: true,
 		WarmUpTime:        2,
 		InputReadTimeout:  180000000000, // This is their default
 		OnResult: func(hr *result.HostResult) {
 			output = *hr
-			hosts = append(hosts, parsePortScanResult(&output))
+			hosts = append(hosts, parsePortScanResult(&output, ipToHostname))
 		},
 	}
 
@@ -136,7 +136,8 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 
 // parsePortScanResult converts a Naabu port scan result into our internal SocketDetails format.
 // It extracts host information and open ports from the scan result.
-func parsePortScanResult(result *result.HostResult) *discoverfern.SocketDetails {
+// If the IP was resolved from a hostname, it uses the original hostname as the host field.
+func parsePortScanResult(result *result.HostResult, ipToHostname map[string]string) *discoverfern.SocketDetails {
 	ports := []*discoverfern.PortDetails{}
 	for _, p := range result.Ports {
 		ports = append(ports, &discoverfern.PortDetails{
@@ -144,8 +145,15 @@ func parsePortScanResult(result *result.HostResult) *discoverfern.SocketDetails 
 			Protocol: common.TransportType(p.Protocol.String()),
 		})
 	}
+
+	// Use original hostname if available, otherwise use the IP as host
+	hostField := result.IP
+	if originalHostname, exists := ipToHostname[result.IP]; exists {
+		hostField = originalHostname
+	}
+
 	host := discoverfern.SocketDetails{
-		Host:  result.Host,
+		Host:  hostField,
 		Ip:    result.IP,
 		Ports: ports,
 	}

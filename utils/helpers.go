@@ -101,58 +101,117 @@ func GenerateRandomString(length int) string {
 	return string(b)
 }
 
-// ParseTargetHosts expands CIDR ranges and hostnames into individual IP addresses
-func ParseTargetHosts(target string) ([]string, error) {
-	var hosts []string
-
-	if strings.Contains(target, "/") {
-		// Must be a valid CIDR - no smart parsing
-		ip, ipnet, err := net.ParseCIDR(target)
-		if err != nil {
-			return nil, fmt.Errorf("invalid CIDR: %s", target)
-		}
-
-		// Verify the IP is actually the network address
-		if !ip.Equal(ipnet.IP) {
-			return nil, fmt.Errorf("invalid CIDR: %s is not a network address", target)
-		}
-
-		// Generate all IPs in the CIDR range
-		for ip := ipnet.IP.Mask(ipnet.Mask); ipnet.Contains(ip); IncIP(ip) {
-			hosts = append(hosts, ip.String())
-		}
-
-		// Remove network and broadcast addresses for /24 and smaller
-		ones, _ := ipnet.Mask.Size()
-		if ones >= 24 && len(hosts) > 2 {
-			hosts = hosts[1 : len(hosts)-1]
-		}
-	} else if strings.Contains(target, "-") {
-		// IP range like 192.168.1.1-192.168.1.10
-		parts := strings.Split(target, "-")
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid IP range: %s", target)
-		}
-
-		startIP := net.ParseIP(strings.TrimSpace(parts[0]))
-		endIP := net.ParseIP(strings.TrimSpace(parts[1]))
-		if startIP == nil || endIP == nil {
-			return nil, fmt.Errorf("invalid IP range: %s", target)
-		}
-
-		// Generate IPs in range
-		for ip := make(net.IP, len(startIP)); copy(ip, startIP) > 0; IncIP(ip) {
-			hosts = append(hosts, ip.String())
-			if ip.Equal(endIP) {
-				break
-			}
-		}
-	} else {
-		// Single host or hostname
-		hosts = append(hosts, target)
+// parseTargetInternal is the core logic for parsing different target formats
+func parseTargetInternal(target string, trackMapping bool) ([]string, map[string]string, error) {
+	var ipToHostname map[string]string
+	if trackMapping {
+		ipToHostname = make(map[string]string)
 	}
 
-	return hosts, nil
+	if strings.Contains(target, "/") {
+		// CIDR range (e.g., 192.168.1.0/24)
+		return expandCIDR(target)
+	} else if isIPRange(target) {
+		// IP range (e.g., 192.168.1.1-192.168.1.10)
+		return expandIPRange(target)
+	} else {
+		// Single IP or hostname
+		return parseSingleTarget(target, trackMapping, ipToHostname)
+	}
+}
+
+// expandCIDR handles CIDR notation like 192.168.1.0/24
+func expandCIDR(target string) ([]string, map[string]string, error) {
+	ip, ipnet, err := net.ParseCIDR(target)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid CIDR: %s", target)
+	}
+
+	// Verify the IP is actually the network address
+	if !ip.Equal(ipnet.IP) {
+		return nil, nil, fmt.Errorf("invalid CIDR: %s is not a network address", target)
+	}
+
+	var hosts []string
+	// Generate all IPs in the CIDR range
+	for ip := ipnet.IP.Mask(ipnet.Mask); ipnet.Contains(ip); IncIP(ip) {
+		hosts = append(hosts, ip.String())
+	}
+
+	// Remove network and broadcast addresses for /24 and smaller
+	ones, _ := ipnet.Mask.Size()
+	if ones >= 24 && len(hosts) > 2 {
+		hosts = hosts[1 : len(hosts)-1]
+	}
+
+	return hosts, nil, nil
+}
+
+// isIPRange checks if target is an IP range like 192.168.1.1-192.168.1.10
+func isIPRange(target string) bool {
+	if !strings.Contains(target, "-") {
+		return false
+	}
+	parts := strings.Split(target, "-")
+	if len(parts) != 2 {
+		return false
+	}
+	startIP := net.ParseIP(strings.TrimSpace(parts[0]))
+	endIP := net.ParseIP(strings.TrimSpace(parts[1]))
+	return startIP != nil && endIP != nil
+}
+
+// expandIPRange handles IP ranges like 192.168.1.1-192.168.1.10
+func expandIPRange(target string) ([]string, map[string]string, error) {
+	parts := strings.Split(target, "-")
+	startIP := net.ParseIP(strings.TrimSpace(parts[0]))
+	endIP := net.ParseIP(strings.TrimSpace(parts[1]))
+
+	var hosts []string
+	for ip := make(net.IP, len(startIP)); copy(ip, startIP) > 0; IncIP(ip) {
+		hosts = append(hosts, ip.String())
+		if ip.Equal(endIP) {
+			break
+		}
+	}
+	return hosts, nil, nil
+}
+
+// parseSingleTarget handles single IPs or hostnames
+func parseSingleTarget(target string, trackMapping bool, ipToHostname map[string]string) ([]string, map[string]string, error) {
+	if ip := net.ParseIP(target); ip != nil {
+		// Already an IP address
+		return []string{target}, ipToHostname, nil
+	}
+
+	// It's a hostname/FQDN, resolve to IP addresses
+	ips, err := GetIPs(target)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to resolve hostname %s: %v", target, err)
+	}
+
+	var hosts []string
+	for _, ip := range ips {
+		ipStr := ip.String()
+		hosts = append(hosts, ipStr)
+		if trackMapping {
+			ipToHostname[ipStr] = target
+		}
+	}
+
+	return hosts, ipToHostname, nil
+}
+
+// ParseTargetHosts expands CIDR ranges and hostnames into individual IP addresses
+func ParseTargetHosts(target string) ([]string, error) {
+	hosts, _, err := parseTargetInternal(target, false)
+	return hosts, err
+}
+
+// ParseTargetHostsWithMapping expands CIDR ranges and hostnames into individual IP addresses
+// and returns a mapping from IP addresses back to their original hostnames (if resolved from FQDNs)
+func ParseTargetHostsWithMapping(target string) ([]string, map[string]string, error) {
+	return parseTargetInternal(target, true)
 }
 
 // IncIP increments an IP address
