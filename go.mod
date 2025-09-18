@@ -20,7 +20,7 @@ require (
 	github.com/projectdiscovery/naabu/v2 v2.3.3
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/crypto v0.41.0
+	golang.org/x/crypto v0.42.0
 	google.golang.org/grpc v1.74.2
 	google.golang.org/protobuf v1.36.7
 )
@@ -34,7 +34,7 @@ require (
 	github.com/charmbracelet/x/exp/slice v0.0.0-20250814162307-57b675fecd71 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/gaissmai/bart v0.24.0 // indirect
-	github.com/geoffgarside/ber v1.1.0 // indirect
+	github.com/geoffgarside/ber v1.2.0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/gopacket/gopacket v1.4.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
@@ -170,12 +170,12 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20250813145105-42675adae3e6 // indirect
 	golang.org/x/mod v0.27.0 // indirect
-	golang.org/x/net v0.43.0
+	golang.org/x/net v0.44.0
 	golang.org/x/oauth2 v0.30.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
-	golang.org/x/sys v0.35.0 // indirect
-	golang.org/x/term v0.34.0 // indirect
-	golang.org/x/text v0.28.0 // indirect
+	golang.org/x/sync v0.17.0 // indirect
+	golang.org/x/sys v0.36.0 // indirect
+	golang.org/x/term v0.35.0 // indirect
+	golang.org/x/text v0.29.0 // indirect
 	golang.org/x/tools v0.36.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250811230008-5f3141c8851a // indirect
 	gopkg.in/djherbis/times.v1 v1.3.0 // indirect

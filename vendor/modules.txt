@@ -119,7 +119,7 @@ github.com/gaissmai/bart/internal/art
 github.com/gaissmai/bart/internal/bitset
 github.com/gaissmai/bart/internal/lpm
 github.com/gaissmai/bart/internal/sparse
-# github.com/geoffgarside/ber v1.1.0
+# github.com/geoffgarside/ber v1.2.0
 ## explicit; go 1.13
 github.com/geoffgarside/ber
 # github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667
@@ -344,7 +344,8 @@ github.com/oiweiwei/go-msrpc/midl/uuid
 github.com/oiweiwei/go-msrpc/msrpc/dcetypes
 github.com/oiweiwei/go-msrpc/msrpc/drsr/drsuapi/v4
 github.com/oiweiwei/go-msrpc/msrpc/dtyp
-github.com/oiweiwei/go-msrpc/msrpc/epm
+github.com/oiweiwei/go-msrpc/msrpc/epm/epm/v3
+github.com/oiweiwei/go-msrpc/msrpc/well_known
 github.com/oiweiwei/go-msrpc/ndr
 github.com/oiweiwei/go-msrpc/ndr/math
 github.com/oiweiwei/go-msrpc/smb2
@@ -787,8 +788,8 @@ go.etcd.io/bbolt/internal/freelist
 go.uber.org/multierr
 # go.uber.org/zap v1.27.0
 ## explicit; go 1.19
-# golang.org/x/crypto v0.41.0
-## explicit; go 1.23.0
+# golang.org/x/crypto v0.42.0
+## explicit; go 1.24.0
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/cast5
@@ -822,8 +823,8 @@ golang.org/x/exp/slices
 # golang.org/x/mod v0.27.0
 ## explicit; go 1.23.0
 golang.org/x/mod/semver
-# golang.org/x/net v0.43.0
-## explicit; go 1.23.0
+# golang.org/x/net v0.44.0
+## explicit; go 1.24.0
 golang.org/x/net/bpf
 golang.org/x/net/html
 golang.org/x/net/html/atom
@@ -845,22 +846,22 @@ golang.org/x/net/trace
 ## explicit; go 1.23.0
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.16.0
-## explicit; go 1.23.0
+# golang.org/x/sync v0.17.0
+## explicit; go 1.24.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.35.0
-## explicit; go 1.23.0
+# golang.org/x/sys v0.36.0
+## explicit; go 1.24.0
 golang.org/x/sys/cpu
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.34.0
-## explicit; go 1.23.0
+# golang.org/x/term v0.35.0
+## explicit; go 1.24.0
 golang.org/x/term
-# golang.org/x/text v0.28.0
-## explicit; go 1.23.0
+# golang.org/x/text v0.29.0
+## explicit; go 1.24.0
 golang.org/x/text/cases
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
