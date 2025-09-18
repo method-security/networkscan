@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
+	msrpcfern "github.com/Method-Security/networkscan/generated/go/pentest/msrpc"
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	sshfern "github.com/Method-Security/networkscan/generated/go/pentest/ssh"
 	telnetfern "github.com/Method-Security/networkscan/generated/go/pentest/telnet"
@@ -170,12 +171,53 @@ func (p *LDAPActionParser) ContainsAction(actions []ldapfern.PentestLdapAction, 
 	return false
 }
 
+// MSRPCActionParser handles MSRPC-specific action parsing
+type MSRPCActionParser struct{}
+
+func (p *MSRPCActionParser) ParseActions(actionStrings []string) ([]msrpcfern.PentestMsrpcAction, error) {
+	var actions []msrpcfern.PentestMsrpcAction
+
+	for _, actionStr := range actionStrings {
+		// Handle comma-separated actions in a single flag
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue // Skip empty parts
+			}
+			// Convert to uppercase for enum matching
+			upperPart := strings.ToUpper(part)
+			msrpcAction, err := msrpcfern.NewPentestMsrpcActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid MSRPC action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, msrpcAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *MSRPCActionParser) GetValidActions() []string {
+	return []string{"DCSYNC"}
+}
+
+func (p *MSRPCActionParser) ContainsAction(actions []msrpcfern.PentestMsrpcAction, target msrpcfern.PentestMsrpcAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
 // Global parser instances (singletons)
 var (
 	smbParserInstance    *SMBActionParser
 	sshParserInstance    *SSHActionParser
 	telnetParserInstance *TelnetActionParser
 	ldapParserInstance   *LDAPActionParser
+	msrpcParserInstance  *MSRPCActionParser
 )
 
 // GetSMBParser returns the singleton SMB action parser
@@ -208,4 +250,12 @@ func GetLDAPParser() *LDAPActionParser {
 		ldapParserInstance = &LDAPActionParser{}
 	}
 	return ldapParserInstance
+}
+
+// GetMSRPCParser returns the singleton MSRPC action parser
+func GetMSRPCParser() *MSRPCActionParser {
+	if msrpcParserInstance == nil {
+		msrpcParserInstance = &MSRPCActionParser{}
+	}
+	return msrpcParserInstance
 }

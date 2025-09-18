@@ -119,6 +119,9 @@ github.com/gaissmai/bart/internal/art
 github.com/gaissmai/bart/internal/bitset
 github.com/gaissmai/bart/internal/lpm
 github.com/gaissmai/bart/internal/sparse
+# github.com/geoffgarside/ber v1.2.0
+## explicit; go 1.13
+github.com/geoffgarside/ber
 # github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667
 ## explicit; go 1.13
 github.com/go-asn1-ber/asn1-ber
@@ -152,11 +155,55 @@ github.com/gopacket/gopacket/pcap
 # github.com/gorilla/css v1.0.1
 ## explicit; go 1.20
 github.com/gorilla/css/scanner
+# github.com/hashicorp/go-uuid v1.0.3
+## explicit
+github.com/hashicorp/go-uuid
 # github.com/hashicorp/golang-lru/v2 v2.0.7
 ## explicit; go 1.18
 # github.com/inconshreveable/mousetrap v1.1.0
 ## explicit; go 1.18
 github.com/inconshreveable/mousetrap
+# github.com/indece-official/go-ebcdic v1.2.0
+## explicit; go 1.18
+github.com/indece-official/go-ebcdic
+# github.com/jcmturner/aescts/v2 v2.0.0
+## explicit; go 1.13
+github.com/jcmturner/aescts/v2
+# github.com/jcmturner/dnsutils/v2 v2.0.0
+## explicit; go 1.13
+github.com/jcmturner/dnsutils/v2
+# github.com/jcmturner/gofork v1.7.6
+## explicit; go 1.7
+github.com/jcmturner/gofork/encoding/asn1
+github.com/jcmturner/gofork/x/crypto/pbkdf2
+# github.com/jcmturner/goidentity/v6 v6.0.1
+## explicit; go 1.13
+github.com/jcmturner/goidentity/v6
+# github.com/jcmturner/gokrb5/v8 v8.4.4
+## explicit; go 1.16
+github.com/jcmturner/gokrb5/v8/asn1tools
+github.com/jcmturner/gokrb5/v8/config
+github.com/jcmturner/gokrb5/v8/credentials
+github.com/jcmturner/gokrb5/v8/crypto
+github.com/jcmturner/gokrb5/v8/crypto/common
+github.com/jcmturner/gokrb5/v8/crypto/etype
+github.com/jcmturner/gokrb5/v8/crypto/rfc3961
+github.com/jcmturner/gokrb5/v8/crypto/rfc3962
+github.com/jcmturner/gokrb5/v8/crypto/rfc4757
+github.com/jcmturner/gokrb5/v8/crypto/rfc8009
+github.com/jcmturner/gokrb5/v8/iana
+github.com/jcmturner/gokrb5/v8/iana/addrtype
+github.com/jcmturner/gokrb5/v8/iana/asnAppTag
+github.com/jcmturner/gokrb5/v8/iana/chksumtype
+github.com/jcmturner/gokrb5/v8/iana/etypeID
+github.com/jcmturner/gokrb5/v8/iana/nametype
+github.com/jcmturner/gokrb5/v8/iana/patype
+github.com/jcmturner/gokrb5/v8/keytab
+github.com/jcmturner/gokrb5/v8/types
+# github.com/jcmturner/rpc/v2 v2.0.3
+## explicit; go 1.13
+github.com/jcmturner/rpc/v2/mstypes
+github.com/jcmturner/rpc/v2/ndr
 # github.com/jfjallid/go-smb v0.6.6
 ## explicit; go 1.24
 github.com/jfjallid/go-smb/gss
@@ -289,6 +336,81 @@ github.com/muesli/termenv
 # github.com/nwaples/rardecode v1.1.3
 ## explicit
 github.com/nwaples/rardecode
+# github.com/oiweiwei/go-msrpc v1.2.7
+## explicit; go 1.24.1
+github.com/oiweiwei/go-msrpc/dcerpc
+github.com/oiweiwei/go-msrpc/dcerpc/errors
+github.com/oiweiwei/go-msrpc/midl/uuid
+github.com/oiweiwei/go-msrpc/msrpc/dcetypes
+github.com/oiweiwei/go-msrpc/msrpc/drsr/drsuapi/v4
+github.com/oiweiwei/go-msrpc/msrpc/dtyp
+github.com/oiweiwei/go-msrpc/msrpc/epm/epm/v3
+github.com/oiweiwei/go-msrpc/msrpc/erref/ntstatus
+github.com/oiweiwei/go-msrpc/msrpc/samr/samr/v1
+github.com/oiweiwei/go-msrpc/msrpc/well_known
+github.com/oiweiwei/go-msrpc/ndr
+github.com/oiweiwei/go-msrpc/ndr/math
+github.com/oiweiwei/go-msrpc/smb2
+github.com/oiweiwei/go-msrpc/ssp
+github.com/oiweiwei/go-msrpc/ssp/credential
+github.com/oiweiwei/go-msrpc/ssp/crypto
+github.com/oiweiwei/go-msrpc/ssp/gssapi
+github.com/oiweiwei/go-msrpc/ssp/krb5
+github.com/oiweiwei/go-msrpc/ssp/krb5/crypto
+github.com/oiweiwei/go-msrpc/ssp/krb5/crypto/rfc1964
+github.com/oiweiwei/go-msrpc/ssp/krb5/crypto/rfc4757
+github.com/oiweiwei/go-msrpc/ssp/netlogon
+github.com/oiweiwei/go-msrpc/ssp/netlogon/crypto
+github.com/oiweiwei/go-msrpc/ssp/ntlm
+github.com/oiweiwei/go-msrpc/ssp/ntlm/internal
+github.com/oiweiwei/go-msrpc/ssp/spnego
+github.com/oiweiwei/go-msrpc/text/encoding/oem
+github.com/oiweiwei/go-msrpc/text/encoding/utf16le
+# github.com/oiweiwei/go-smb2.fork v1.0.0
+## explicit; go 1.21.5
+github.com/oiweiwei/go-smb2.fork
+github.com/oiweiwei/go-smb2.fork/internal/crypto/ccm
+github.com/oiweiwei/go-smb2.fork/internal/crypto/cmac
+github.com/oiweiwei/go-smb2.fork/internal/erref
+github.com/oiweiwei/go-smb2.fork/internal/msrpc
+github.com/oiweiwei/go-smb2.fork/internal/ntlm
+github.com/oiweiwei/go-smb2.fork/internal/smb2
+github.com/oiweiwei/go-smb2.fork/internal/spnego
+github.com/oiweiwei/go-smb2.fork/internal/utf16le
+# github.com/oiweiwei/gokrb5.fork/v9 v9.0.4
+## explicit; go 1.23
+github.com/oiweiwei/gokrb5.fork/v9/asn1tools
+github.com/oiweiwei/gokrb5.fork/v9/client
+github.com/oiweiwei/gokrb5.fork/v9/config
+github.com/oiweiwei/gokrb5.fork/v9/credentials
+github.com/oiweiwei/gokrb5.fork/v9/crypto
+github.com/oiweiwei/gokrb5.fork/v9/crypto/common
+github.com/oiweiwei/gokrb5.fork/v9/crypto/etype
+github.com/oiweiwei/gokrb5.fork/v9/crypto/rfc3961
+github.com/oiweiwei/gokrb5.fork/v9/crypto/rfc3962
+github.com/oiweiwei/gokrb5.fork/v9/crypto/rfc4757
+github.com/oiweiwei/gokrb5.fork/v9/crypto/rfc8009
+github.com/oiweiwei/gokrb5.fork/v9/gssapi
+github.com/oiweiwei/gokrb5.fork/v9/iana
+github.com/oiweiwei/gokrb5.fork/v9/iana/addrtype
+github.com/oiweiwei/gokrb5.fork/v9/iana/adtype
+github.com/oiweiwei/gokrb5.fork/v9/iana/asnAppTag
+github.com/oiweiwei/gokrb5.fork/v9/iana/chksumtype
+github.com/oiweiwei/gokrb5.fork/v9/iana/errorcode
+github.com/oiweiwei/gokrb5.fork/v9/iana/etypeID
+github.com/oiweiwei/gokrb5.fork/v9/iana/flags
+github.com/oiweiwei/gokrb5.fork/v9/iana/keyusage
+github.com/oiweiwei/gokrb5.fork/v9/iana/msgtype
+github.com/oiweiwei/gokrb5.fork/v9/iana/nametype
+github.com/oiweiwei/gokrb5.fork/v9/iana/patype
+github.com/oiweiwei/gokrb5.fork/v9/kadmin
+github.com/oiweiwei/gokrb5.fork/v9/keytab
+github.com/oiweiwei/gokrb5.fork/v9/krberror
+github.com/oiweiwei/gokrb5.fork/v9/messages
+github.com/oiweiwei/gokrb5.fork/v9/pac
+github.com/oiweiwei/gokrb5.fork/v9/service
+github.com/oiweiwei/gokrb5.fork/v9/spnego
+github.com/oiweiwei/gokrb5.fork/v9/types
 # github.com/palantir/pkg v1.1.0
 ## explicit; go 1.19
 github.com/palantir/pkg
@@ -524,6 +646,11 @@ github.com/remeh/sizedwaitgroup
 github.com/rivo/uniseg
 # github.com/rogpeppe/go-internal v1.13.1
 ## explicit; go 1.22
+# github.com/rs/zerolog v1.34.0
+## explicit; go 1.15
+github.com/rs/zerolog
+github.com/rs/zerolog/internal/cbor
+github.com/rs/zerolog/internal/json
 # github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d
 ## explicit
 github.com/saintfish/chardet
@@ -663,8 +790,8 @@ go.etcd.io/bbolt/internal/freelist
 go.uber.org/multierr
 # go.uber.org/zap v1.27.0
 ## explicit; go 1.19
-# golang.org/x/crypto v0.41.0
-## explicit; go 1.23.0
+# golang.org/x/crypto v0.42.0
+## explicit; go 1.24.0
 golang.org/x/crypto/blake2b
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/cast5
@@ -698,8 +825,8 @@ golang.org/x/exp/slices
 # golang.org/x/mod v0.27.0
 ## explicit; go 1.23.0
 golang.org/x/mod/semver
-# golang.org/x/net v0.43.0
-## explicit; go 1.23.0
+# golang.org/x/net v0.44.0
+## explicit; go 1.24.0
 golang.org/x/net/bpf
 golang.org/x/net/html
 golang.org/x/net/html/atom
@@ -721,28 +848,39 @@ golang.org/x/net/trace
 ## explicit; go 1.23.0
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.16.0
-## explicit; go 1.23.0
+# golang.org/x/sync v0.17.0
+## explicit; go 1.24.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.35.0
-## explicit; go 1.23.0
+# golang.org/x/sys v0.36.0
+## explicit; go 1.24.0
 golang.org/x/sys/cpu
 golang.org/x/sys/plan9
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/term v0.34.0
-## explicit; go 1.23.0
+# golang.org/x/term v0.35.0
+## explicit; go 1.24.0
 golang.org/x/term
-# golang.org/x/text v0.28.0
-## explicit; go 1.23.0
+# golang.org/x/text v0.29.0
+## explicit; go 1.24.0
 golang.org/x/text/cases
+golang.org/x/text/encoding
+golang.org/x/text/encoding/charmap
+golang.org/x/text/encoding/internal
+golang.org/x/text/encoding/internal/identifier
+golang.org/x/text/encoding/japanese
+golang.org/x/text/encoding/korean
+golang.org/x/text/encoding/simplifiedchinese
+golang.org/x/text/encoding/traditionalchinese
+golang.org/x/text/encoding/unicode
 golang.org/x/text/internal
 golang.org/x/text/internal/language
 golang.org/x/text/internal/language/compact
 golang.org/x/text/internal/tag
+golang.org/x/text/internal/utf8internal
 golang.org/x/text/language
+golang.org/x/text/runes
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
