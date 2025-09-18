@@ -22,8 +22,13 @@ RUN \
 
 FROM base as arm64
 ARG CLI_NAME
+ARG GORELEASER_VERSION
 RUN \
   wget https://github.com/goreleaser/goreleaser-pro/releases/download/${GORELEASER_VERSION}-pro/goreleaser-pro_Linux_arm64.tar.gz && \
   tar -xvzf goreleaser-pro_Linux_arm64.tar.gz && \
   mv goreleaser /usr/local/bin/goreleaser && \
   rm -rf goreleaser-pro_Linux_arm64.tar.gz LICENSE.md README.md completions manpages
+
+# Final stage that selects the correct architecture
+FROM ${TARGETARCH}
+ARG CLI_NAME
