@@ -277,7 +277,7 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 		// Use hash if available, otherwise use password
 		if c.NTLMHash != "" {
 			processor := ntlm.NewHashProcessor()
-			ntHash, err := processor.ProcessHashForSMB(c.NTLMHash)
+			ntHash, err := processor.ParseNTLMHash(c.NTLMHash)
 			if err != nil {
 				return fmt.Errorf("failed to process NTLM hash for SMB: %v", err)
 			}

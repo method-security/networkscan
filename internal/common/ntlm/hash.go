@@ -20,8 +20,8 @@ func NewHashProcessor() *HashProcessor {
 	return &HashProcessor{}
 }
 
-// ProcessHashForSMB processes an NTLM hash for SMB authentication (returns only NT portion as bytes)
-func (p *HashProcessor) ProcessHashForSMB(ntlmHash string) ([]byte, error) {
+// ParseNTLMHash parses an NTLM hash and returns the NT portion as bytes
+func (p *HashProcessor) ParseNTLMHash(ntlmHash string) ([]byte, error) {
 	if len(ntlmHash) == 32 {
 		// Only NT hash provided (32 hex chars), use directly
 		return hex.DecodeString(ntlmHash)
