@@ -71,7 +71,7 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 	if err != nil {
 		return fmt.Errorf("connect to SMB server: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Create NTLM initiator
 	initiator := &smb2.NTLMInitiator{
@@ -89,17 +89,17 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 	if err != nil {
 		return fmt.Errorf("create SMB session: %w", err)
 	}
-	defer session.Logoff()
+	defer func() { _ = session.Logoff() }()
 
 	// Mount share
 	share, err := session.Mount(o.Share)
 	if err != nil {
 		return fmt.Errorf("mount share %s: %w", o.Share, err)
 	}
-	defer share.Umount()
+	defer func() { _ = share.Umount() }()
 
 	// Poll for file availability with timeout
-	if reader, err := func() (io.ReadCloser, error) {
+	reader, err := func() (io.ReadCloser, error) {
 		timer := time.NewTimer(timeout)
 		defer timer.Stop()
 		poll := time.NewTicker(pollInterval)
@@ -120,18 +120,18 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 				log.Debug("File not yet available, continuing to poll", svc1log.SafeParam("error", err.Error()))
 			}
 		}
-	}(); err != nil {
+	}()
+	if err != nil {
 		return err
-	} else {
-		defer reader.Close()
-		if _, err := io.Copy(writer, reader); err != nil {
-			return fmt.Errorf("copy file contents: %w", err)
-		}
-		// Delete temporary file if requested
-		if o.DeleteOutputFile {
-			if removeErr := share.Remove(o.relativePath); removeErr != nil {
-				log.Debug("Failed to delete output file", svc1log.SafeParam("error", removeErr.Error()))
-			}
+	}
+	defer func() { _ = reader.Close() }()
+	if _, err := io.Copy(writer, reader); err != nil {
+		return fmt.Errorf("copy file contents: %w", err)
+	}
+	// Delete temporary file if requested
+	if o.DeleteOutputFile {
+		if removeErr := share.Remove(o.relativePath); removeErr != nil {
+			log.Debug("Failed to delete output file", svc1log.SafeParam("error", removeErr.Error()))
 		}
 	}
 

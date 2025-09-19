@@ -8,11 +8,11 @@ import (
 	"time"
 )
 
-// Context options for timeout handling
+// ContextKey represents context option keys for timeout handling
 type ContextKey string
 
 const (
-	ContextOptionOutputTimeout     ContextKey = "output_timeout"
+	ContextOptionOutputTimeout      ContextKey = "output_timeout"
 	ContextOptionOutputPollInterval ContextKey = "output_poll_interval"
 )
 
@@ -77,9 +77,8 @@ func (execIO *ExecutionIO) String() string {
 	// Ensure that executable paths are quoted
 	if strings.Contains(cmd[0], " ") {
 		return fmt.Sprintf(`%q %s`, cmd[0], strings.Join(cmd[1:], " "))
-	} else {
-		return strings.Join(cmd, " ")
 	}
+	return strings.Join(cmd, " ")
 }
 
 // CommandLine returns command line array

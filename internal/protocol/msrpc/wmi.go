@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/internal/protocol/smb"
+	"github.com/google/uuid"
 	"github.com/oiweiwei/go-msrpc/dcerpc"
 	"github.com/oiweiwei/go-msrpc/msrpc/dcom"
 	"github.com/oiweiwei/go-msrpc/msrpc/dcom/iactivation/v0"
@@ -18,8 +19,6 @@ import (
 	"github.com/oiweiwei/go-msrpc/ssp"
 	"github.com/oiweiwei/go-msrpc/ssp/credential"
 	"github.com/oiweiwei/go-msrpc/ssp/gssapi"
-
-	"github.com/google/uuid"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
@@ -89,7 +88,7 @@ func NewWMIExecutor(ctx context.Context, host, username, password, domain string
 
 	// Initialize WMI connection
 	if err := executor.initialize(ctx); err != nil {
-		conn.Close(ctx)
+		_ = conn.Close(ctx)
 		return nil, fmt.Errorf("failed to initialize WMI: %w", err)
 	}
 
@@ -143,7 +142,7 @@ func (w *WMIExecutor) initialize(ctx context.Context) error {
 	if len(newOpts) > 0 {
 		log.Info("Reconnecting to WMI interface with new endpoints")
 		// Close the old connection first
-		w.conn.Close(ctx)
+		_ = w.conn.Close(ctx)
 
 		// Create new connection with discovered endpoints
 		var credStr string
