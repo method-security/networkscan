@@ -70,3 +70,11 @@ types:
       isAdmin: optional<boolean>  # For successful auths, indicates admin privileges
       timestamp: datetime
       errorCode: optional<string> # SMB/NTLM error code if applicable
+
+  # Command execution via SMB (WMI/MSRPC)
+  SmbCommandExecution:
+    properties:
+      command: string
+      output: string
+      exitCode: optional<integer>
+      timestamp: datetime

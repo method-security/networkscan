@@ -12,7 +12,7 @@ require (
 	github.com/jfjallid/go-smb v0.6.6
 	github.com/jfjallid/gokrb5/v8 v8.5.1
 	github.com/miekg/dns v1.1.68
-	github.com/oiweiwei/go-msrpc v1.2.7
+	github.com/oiweiwei/go-msrpc v1.2.8
 	github.com/palantir/pkg/datetime v1.2.0
 	github.com/palantir/witchcraft-go-logging v1.61.0
 	github.com/praetorian-inc/fingerprintx v1.1.15
