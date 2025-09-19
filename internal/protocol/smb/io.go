@@ -81,10 +81,10 @@ func (execIO *ExecutionIO) String() string {
 	return strings.Join(cmd, " ")
 }
 
-// CommandLine returns command line array
+// CommandLine returns command line array where cmd[0] is the executable and cmd[1] is the arguments
 func (i *ExecutionInput) CommandLine() []string {
 	cmd := make([]string, 2)
-	cmd[1] = i.Arguments
+	cmd[1] = i.Arguments // cmd[1] is the arguments portion of the command
 
 	switch {
 	case i.Command != "":

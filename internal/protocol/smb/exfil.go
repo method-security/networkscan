@@ -24,17 +24,23 @@ var (
 
 // OutputFileFetcher handles retrieval of command output via SMB file access
 type OutputFileFetcher struct {
-	Host             string
-	Username         string
-	Password         string
-	Domain           string
-	Share            string
-	SharePath        string
-	File             string
-	DeleteOutputFile bool
-	ForceReconnect   bool
+	// SMB Connection Configuration
+	Host     string // SMB server hostname or IP address
+	Username string // Username for authentication
+	Password string // Password for authentication
+	Domain   string // Domain for authentication (optional)
 
-	relativePath string
+	// SMB Share Configuration
+	Share     string // SMB share name (e.g., "ADMIN$", "C$")
+	SharePath string // Base path within the share (e.g., `C:\Windows`)
+	File      string // Full path to the output file to retrieve
+
+	// Behavior Configuration
+	DeleteOutputFile bool // Whether to delete the output file after retrieval
+	ForceReconnect   bool // Whether to force reconnection for each operation
+
+	// Internal state
+	relativePath string // computed relative path for SMB access
 }
 
 // GetOutput implements OutputProvider interface
