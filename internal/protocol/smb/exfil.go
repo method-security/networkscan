@@ -19,10 +19,10 @@ import (
 var (
 	DefaultOutputPollInterval = 500 * time.Millisecond
 	DefaultOutputPollTimeout  = 60 * time.Second
-	pathPrefix                = regexp.MustCompile(`^([a-zA-Z]:)?[\\/]*`)
+	pathPrefix                = regexp.MustCompile(`^([a-zA-Z]:)?[\\\\/]*`)
 )
 
-// OutputFileFetcher exactly like goexec's implementation
+// OutputFileFetcher handles retrieval of command output via SMB file access
 type OutputFileFetcher struct {
 	Host             string
 	Username         string
@@ -37,13 +37,13 @@ type OutputFileFetcher struct {
 	relativePath string
 }
 
-// GetOutput implements OutputProvider interface exactly like goexec
+// GetOutput implements OutputProvider interface
 func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) error {
 	log := svc1log.FromContext(ctx)
 	timeout := DefaultOutputPollTimeout
 	pollInterval := DefaultOutputPollInterval
 
-	// Handle context timeout like goexec does
+	// Handle context timeout configuration
 	if v := ctx.Value(ContextOptionOutputTimeout); v != nil {
 		if t, ok := v.(time.Duration); ok {
 			timeout = t
@@ -55,7 +55,7 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 		}
 	}
 
-	// Calculate relative path exactly like goexec does
+	// Calculate relative path for SMB share access
 	shp := pathPrefix.ReplaceAllString(strings.ToLower(strings.ReplaceAll(o.SharePath, `\`, "/")), "")
 	fp := pathPrefix.ReplaceAllString(strings.ToLower(strings.ReplaceAll(o.File, `\`, "/")), "")
 
@@ -66,7 +66,7 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 
 	log.Info("Fetching output file", svc1log.SafeParam("path", o.relativePath))
 
-	// Create TCP connection like goexec
+	// Create TCP connection to SMB server
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:445", o.Host))
 	if err != nil {
 		return fmt.Errorf("connect to SMB server: %w", err)
@@ -98,7 +98,7 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 	}
 	defer share.Umount()
 
-	// Poll for file exactly like goexec does with nested function pattern
+	// Poll for file availability with timeout
 	if reader, err := func() (io.ReadCloser, error) {
 		timer := time.NewTimer(timeout)
 		defer timer.Stop()
@@ -112,10 +112,10 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 			case <-timer.C:
 				return nil, errors.New("execution output timeout")
 			case <-poll.C:
-				// Open the remote file as RW; otherwise the output may be returned before the remote process exits
+				// Open the remote file with read/write access to ensure process completion
 				reader, err := share.OpenFile(o.relativePath, os.O_RDWR, 0)
 				if err == nil {
-					return reader, nil // success
+					return reader, nil
 				}
 				log.Debug("File not yet available, continuing to poll", svc1log.SafeParam("error", err.Error()))
 			}
@@ -127,7 +127,7 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 		if _, err := io.Copy(writer, reader); err != nil {
 			return fmt.Errorf("copy file contents: %w", err)
 		}
-		// Delete file if requested (cleanup after copy)
+		// Delete temporary file if requested
 		if o.DeleteOutputFile {
 			if removeErr := share.Remove(o.relativePath); removeErr != nil {
 				log.Debug("Failed to delete output file", svc1log.SafeParam("error", removeErr.Error()))
@@ -140,6 +140,6 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 
 // Clean implements OutputProvider interface
 func (o *OutputFileFetcher) Clean(ctx context.Context) error {
-	// Cleanup is handled in GetOutput for now
+	// Cleanup is handled in GetOutput method
 	return nil
 }

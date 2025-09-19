@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Context options for timeout handling like goexec
+// Context options for timeout handling
 type ContextKey string
 
 const (
@@ -16,13 +16,13 @@ const (
 	ContextOptionOutputPollInterval ContextKey = "output_poll_interval"
 )
 
-// OutputProvider interface like goexec
+// OutputProvider interface for command output retrieval
 type OutputProvider interface {
 	GetOutput(ctx context.Context, writer io.Writer) error
 	Clean(ctx context.Context) error
 }
 
-// ExecutionIO exactly like goexec's ExecutionIO structure
+// ExecutionIO handles command execution and output collection
 type ExecutionIO struct {
 	Input  *ExecutionInput
 	Output *ExecutionOutput
@@ -43,7 +43,7 @@ type ExecutionOutput struct {
 	Writer     io.WriteCloser
 }
 
-// GetOutput calls the output provider to collect output exactly like goexec
+// GetOutput calls the output provider to collect output
 func (execIO *ExecutionIO) GetOutput(ctx context.Context) error {
 	if execIO.Output.Provider != nil {
 		ctx = context.WithValue(ctx, ContextOptionOutputTimeout, execIO.Output.Timeout)
@@ -52,7 +52,7 @@ func (execIO *ExecutionIO) GetOutput(ctx context.Context) error {
 	return nil
 }
 
-// Clean cleans up the output provider exactly like goexec
+// Clean cleans up the output provider
 func (execIO *ExecutionIO) Clean(ctx context.Context) error {
 	if execIO.Output.Provider != nil {
 		return execIO.Output.Provider.Clean(ctx)
@@ -60,7 +60,7 @@ func (execIO *ExecutionIO) Clean(ctx context.Context) error {
 	return nil
 }
 
-// CommandLine generates the command line for execution exactly like goexec
+// CommandLine generates the command line for execution
 func (execIO *ExecutionIO) CommandLine() []string {
 	if execIO.Output.Provider != nil && execIO.Output.RemotePath != "" {
 		return []string{
@@ -71,7 +71,7 @@ func (execIO *ExecutionIO) CommandLine() []string {
 	return execIO.Input.CommandLine()
 }
 
-// String returns the full command line as string exactly like goexec
+// String returns the full command line as string
 func (execIO *ExecutionIO) String() string {
 	cmd := execIO.CommandLine()
 	// Ensure that executable paths are quoted
@@ -82,7 +82,7 @@ func (execIO *ExecutionIO) String() string {
 	}
 }
 
-// CommandLine returns command line array exactly like goexec
+// CommandLine returns command line array
 func (i *ExecutionInput) CommandLine() []string {
 	cmd := make([]string, 2)
 	cmd[1] = i.Arguments
@@ -99,7 +99,16 @@ func (i *ExecutionInput) CommandLine() []string {
 	return cmd
 }
 
-// String returns the input command as string exactly like goexec
+// String returns the input command as string
 func (i *ExecutionInput) String() string {
 	return strings.Join(i.CommandLine(), " ")
+}
+
+// WriteCloserWrapper wraps an io.Writer to implement io.WriteCloser
+type WriteCloserWrapper struct {
+	io.Writer
+}
+
+func (w *WriteCloserWrapper) Close() error {
+	return nil
 }
