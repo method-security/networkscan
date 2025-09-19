@@ -56,22 +56,22 @@ func SetupKerberosTicketWithHostname(ticketBase64 string) (string, func(), error
 
 	// Verify file was created
 	if _, err := os.Stat(ccacheFile); err != nil {
-		os.Remove(ccacheFile)
+		_ = os.Remove(ccacheFile) // Best effort cleanup
 		return "", nil, fmt.Errorf("ccache file not created: %w", err)
 	}
 
 	// Set environment variable so adauth can find it automatically
 	originalKRB5CCNAME := os.Getenv("KRB5CCNAME")
-	os.Setenv("KRB5CCNAME", ccacheFile)
+	_ = os.Setenv("KRB5CCNAME", ccacheFile) // Environment setting errors are rare
 
 	// Return cleanup function that restores environment and removes file
 	cleanup := func() {
 		if originalKRB5CCNAME != "" {
-			os.Setenv("KRB5CCNAME", originalKRB5CCNAME)
+			_ = os.Setenv("KRB5CCNAME", originalKRB5CCNAME) // Best effort restore
 		} else {
-			os.Unsetenv("KRB5CCNAME")
+			_ = os.Unsetenv("KRB5CCNAME") // Best effort restore
 		}
-		os.Remove(ccacheFile)
+		_ = os.Remove(ccacheFile) // Best effort cleanup
 	}
 
 	return extractedHostname, cleanup, nil
