@@ -10,7 +10,6 @@ import (
 	epm "github.com/oiweiwei/go-msrpc/msrpc/epm/epm/v3"
 	"github.com/oiweiwei/go-msrpc/msrpc/erref/ntstatus"
 	samr "github.com/oiweiwei/go-msrpc/msrpc/samr/samr/v1"
-	"github.com/oiweiwei/go-msrpc/ssp/credential"
 	"github.com/oiweiwei/go-msrpc/ssp/gssapi"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -30,14 +29,14 @@ type DomainInfo struct {
 // SAMRClient provides functionality for interacting with the SAM Remote protocol
 type SAMRClient struct {
 	Host        string
-	Credentials credential.Credential
+	AuthOptions []dcerpc.Option
 }
 
-// NewSAMRClient creates a new SAMR client
-func NewSAMRClient(host string, creds credential.Credential) *SAMRClient {
+// NewSAMRClient creates a new SAMR client with dcerpc auth options
+func NewSAMRClient(host string, authOptions []dcerpc.Option) *SAMRClient {
 	return &SAMRClient{
 		Host:        host,
-		Credentials: creds,
+		AuthOptions: authOptions,
 	}
 }
 
@@ -48,8 +47,12 @@ func (c *SAMRClient) EnumerateDomainUsers(ctx context.Context, domain string) (*
 	// Reuse existing GSSAPI context (credentials and mechanisms already set up)
 	secCtx := gssapi.NewSecurityContext(ctx)
 
+	// Use auth options for connection
+	connOptions := c.AuthOptions
+
 	// Connect to SAMR service using EPM endpoint mapper
-	conn, err := dcerpc.Dial(secCtx, c.Host, epm.EndpointMapper(secCtx, c.Host))
+	endpointOpts := append(connOptions, epm.EndpointMapper(secCtx, c.Host))
+	conn, err := dcerpc.Dial(secCtx, c.Host, endpointOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SAMR service: %w", err)
 	}
