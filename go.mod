@@ -15,7 +15,6 @@ require (
 	github.com/miekg/dns v1.1.68
 	github.com/oiweiwei/go-msrpc v1.2.8
 	github.com/oiweiwei/go-smb2.fork v1.0.0
-	github.com/oiweiwei/go-msrpc v1.2.7
 	github.com/oiweiwei/gokrb5.fork/v9 v9.0.4
 	github.com/palantir/pkg/datetime v1.2.0
 	github.com/palantir/witchcraft-go-logging v1.61.0
@@ -52,8 +51,6 @@ require (
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/mholt/archiver/v3 v3.5.1 // indirect
 	github.com/nwaples/rardecode v1.1.3 // indirect
-	github.com/oiweiwei/gokrb5.fork/v9 v9.0.4 // indirect
-	github.com/oiweiwei/go-smb2.fork v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
