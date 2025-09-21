@@ -96,8 +96,8 @@ func detectSMBService(ctx context.Context, ip net.IP, port int, host string) (*d
 		result.Metadata["authenticated"] = "false"
 
 		// Add available server info to metadata and version
-		if serverInfo.GetParsedOsVersion() != nil {
-			version := *serverInfo.GetParsedOsVersion()
+		if serverInfo.GetMappedOsVersion() != nil {
+			version := *serverInfo.GetMappedOsVersion()
 			result.Version = &version
 			result.Metadata["os_version"] = version
 		}

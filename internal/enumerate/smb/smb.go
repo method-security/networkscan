@@ -180,7 +180,7 @@ func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *commonprotocolfern.S
 		ntlmServerInfo := &commonprotocolfern.NtlmServerInfo{
 			TargetInfo:      serverInfo.TargetInfo,
 			OsInfo:          serverInfo.OsInfo,
-			ParsedOsVersion: serverInfo.ParsedOsVersion,
+			MappedOsVersion: serverInfo.MappedOsVersion,
 			SigningRequired: serverInfo.SigningRequired,
 		}
 		ntlm.LogServerInfoDetails(ntlmServerInfo, target, log)

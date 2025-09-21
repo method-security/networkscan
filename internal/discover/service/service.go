@@ -4,6 +4,7 @@ package service
 import (
 	// Standard
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/netip"
@@ -22,6 +23,8 @@ import (
 	localPlugins "github.com/Method-Security/networkscan/internal/discover/service/plugins"
 	// Fingerprintx plugins
 	_ "github.com/Method-Security/networkscan/internal/discover/service/plugins/fingerprintx"
+	// Internal
+	"github.com/Method-Security/networkscan/internal/common/ntlm"
 	// Utilities
 	"github.com/Method-Security/networkscan/utils"
 )
@@ -103,7 +106,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 
 // fxToServiceDetails converts fingerprintx result to ServiceDetails
 func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
-	return &discoverfern.ServiceDetails{
+	serviceDetails := &discoverfern.ServiceDetails{
 		Host: result.Host,
 		Ip:   result.IP,
 		Port: result.Port,
@@ -125,4 +128,21 @@ func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 			"raw": string(result.Raw),
 		},
 	}
+
+	// Parse Windows OS version from NTLM metadata if available
+	var rawData map[string]interface{}
+	if err := json.Unmarshal(result.Raw, &rawData); err == nil {
+		if osVersion, exists := rawData["osVersion"]; exists {
+			if osVersionStr, ok := osVersion.(string); ok && osVersionStr != "" {
+				// Extract build number from version like "10.0.20348" -> "Build 20348"
+				parts := strings.Split(osVersionStr, ".")
+				if len(parts) >= 3 {
+					buildVersion := fmt.Sprintf("Build %s", parts[2])
+					serviceDetails.Metadata["mappedOsVersion"] = ntlm.ParseWindowsVersion(buildVersion)
+				}
+			}
+		}
+	}
+
+	return serviceDetails
 }

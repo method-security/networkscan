@@ -23,7 +23,7 @@ types:
   NtlmServerInfo:
     properties:
       # Parsed OS version (derived from OsInfo)
-      parsedOsVersion: optional<string> # Parsed OS version (e.g., "Windows Server 2022")
+      mappedOsVersion: optional<string> # Mapped OS version (e.g., "Windows Server 2022")
 
       # Protocol-specific fields
       signingRequired: optional<boolean> # Whether SMB signing is required
