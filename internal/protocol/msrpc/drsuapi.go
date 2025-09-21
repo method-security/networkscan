@@ -13,24 +13,24 @@ import (
 	"github.com/oiweiwei/go-msrpc/msrpc/dtyp"
 	samr "github.com/oiweiwei/go-msrpc/msrpc/samr/samr/v1"
 	"github.com/oiweiwei/go-msrpc/ndr"
-	"github.com/oiweiwei/go-msrpc/ssp/credential"
+	"github.com/oiweiwei/go-msrpc/ssp/gssapi"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // DRSUAPIClient provides functionality for interacting with the Directory Replication Service API
 type DRSUAPIClient struct {
 	Host        string
-	Credentials credential.Credential
+	AuthOptions []dcerpc.Option
 	client      drsuapi.DrsuapiClient
 	handle      *drsuapi.Handle
 	conn        dcerpc.Conn
 }
 
-// NewDRSUAPIClient creates a new DRSUAPI client
-func NewDRSUAPIClient(host string, creds credential.Credential) *DRSUAPIClient {
+// NewDRSUAPIClient creates a new DRSUAPI client with dcerpc auth options
+func NewDRSUAPIClient(host string, authOptions []dcerpc.Option) *DRSUAPIClient {
 	return &DRSUAPIClient{
 		Host:        host,
-		Credentials: creds,
+		AuthOptions: authOptions,
 	}
 }
 
@@ -38,15 +38,16 @@ func NewDRSUAPIClient(host string, creds credential.Credential) *DRSUAPIClient {
 func (c *DRSUAPIClient) Connect(ctx context.Context, drsuapiBinding dcerpc.StringBinding) error {
 	log := svc1log.FromContext(ctx)
 
+	// Use GSSAPI security context like SAMR (required for Kerberos auth)
+	secCtx := gssapi.NewSecurityContext(ctx)
+
 	// Create connection to DRSUAPI port
 	drsuapiTarget := fmt.Sprintf("ncacn_ip_tcp:%s[%s]", c.Host, drsuapiBinding.Endpoint)
 
-	conn, err := dcerpc.Dial(ctx, drsuapiTarget,
-		dcerpc.WithCredentials(c.Credentials),
-		dcerpc.WithSign(),
-		dcerpc.WithSeal(),
-		dcerpc.WithTargetName(c.Host),
-	)
+	// Use auth options for connection
+	connOptions := c.AuthOptions
+
+	conn, err := dcerpc.Dial(secCtx, drsuapiTarget, connOptions...)
 	if err != nil {
 		log.Error("Failed to establish connection to DRSUAPI",
 			svc1log.SafeParam("target", drsuapiTarget),
@@ -57,8 +58,8 @@ func (c *DRSUAPIClient) Connect(ctx context.Context, drsuapiBinding dcerpc.Strin
 
 	log.Info("Successfully established connection to DRSUAPI", svc1log.SafeParam("target", drsuapiTarget))
 
-	// Create DRSUAPI client
-	client, err := drsuapi.NewDrsuapiClient(ctx, conn, dcerpc.WithSeal(), dcerpc.WithTargetName(c.Host))
+	// Create DRSUAPI client using secCtx like SAMR
+	client, err := drsuapi.NewDrsuapiClient(secCtx, conn, dcerpc.WithSeal())
 	if err != nil {
 		log.Error("Failed to create DRSUAPI client", svc1log.SafeParam("error", err.Error()))
 		return fmt.Errorf("failed to create DRSUAPI client: %w", err)

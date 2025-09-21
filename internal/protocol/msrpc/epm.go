@@ -10,22 +10,20 @@ import (
 	drsuapi "github.com/oiweiwei/go-msrpc/msrpc/drsr/drsuapi/v4"
 	epm "github.com/oiweiwei/go-msrpc/msrpc/epm/epm/v3"
 	"github.com/oiweiwei/go-msrpc/msrpc/well_known"
-	"github.com/oiweiwei/go-msrpc/ssp/credential"
-	"github.com/oiweiwei/go-msrpc/ssp/gssapi"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // EndpointMapper provides functionality for discovering RPC endpoints via EPM
 type EndpointMapper struct {
 	Host        string
-	Credentials credential.Credential
+	AuthOptions []dcerpc.Option
 }
 
-// NewEndpointMapper creates a new endpoint mapper client
-func NewEndpointMapper(host string, creds credential.Credential) *EndpointMapper {
+// NewEndpointMapper creates a new endpoint mapper client with dcerpc auth options
+func NewEndpointMapper(host string, authOptions []dcerpc.Option) *EndpointMapper {
 	return &EndpointMapper{
 		Host:        host,
-		Credentials: creds,
+		AuthOptions: authOptions,
 	}
 }
 
@@ -34,29 +32,45 @@ func (m *EndpointMapper) DiscoverDRSUAPIEndpoints(ctx context.Context) ([]dcerpc
 	log := svc1log.FromContext(ctx)
 	log.Debug("EndpointMapper: querying EPM for DRSUAPI endpoints", svc1log.SafeParam("host", m.Host))
 
-	// Add credentials to GSSAPI context (following the example pattern)
-	gssapi.AddCredential(m.Credentials)
-	secCtx := gssapi.NewSecurityContext(ctx)
+	var epmConn dcerpc.Conn
+	var epmClient epm.EpmClient
+	var err error
 
-	// Connect to EPM service using well_known.EndpointMapper() like the example
-	epmConn, err := dcerpc.Dial(secCtx, m.Host, well_known.EndpointMapper())
-	if err != nil {
-		log.Error("Failed to connect to EPM service", svc1log.SafeParam("error", err.Error()))
-		return nil, fmt.Errorf("failed to connect to EPM service: %w", err)
-	}
-	defer func() {
-		if closeErr := epmConn.Close(secCtx); closeErr != nil {
-			log.Warn("Failed to close EPM connection", svc1log.SafeParam("error", closeErr.Error()))
+	if len(m.AuthOptions) > 0 {
+		// Use provided dcerpc auth options (like SAMR and DRSUAPI clients)
+		log.Debug("EndpointMapper: using dcerpc auth options")
+		// Combine endpoint mapper binding with auth options
+		opts := append([]dcerpc.Option{well_known.EndpointMapper()}, m.AuthOptions...)
+		epmConn, err = dcerpc.Dial(ctx, m.Host, opts...)
+		if err != nil {
+			log.Error("Failed to connect to EPM service with auth", svc1log.SafeParam("error", err.Error()))
+			return nil, fmt.Errorf("failed to connect to EPM service: %w", err)
 		}
-	}()
+		defer func() {
+			if closeErr := epmConn.Close(ctx); closeErr != nil {
+				log.Warn("Failed to close EPM connection", svc1log.SafeParam("error", closeErr.Error()))
+			}
+		}()
 
-	// Create EPM client with proper options like the example
-	epmClient, err := epm.NewEpmClient(secCtx, epmConn,
-		dcerpc.WithSeal(),
-		dcerpc.WithTargetName(m.Host),
-		dcerpc.WithVerifyBitMask(true),
-		dcerpc.WithVerifyPresentation(true),
-		dcerpc.WithVerifyHeader2(true))
+		// Create EPM client
+		epmClient, err = epm.NewEpmClient(ctx, epmConn)
+	} else {
+		// Connect anonymously to EPM service (no authentication like impacket)
+		log.Debug("EndpointMapper: connecting anonymously to EPM service")
+		epmConn, err = dcerpc.Dial(ctx, m.Host, well_known.EndpointMapper())
+		if err != nil {
+			log.Error("Failed to connect to EPM service", svc1log.SafeParam("error", err.Error()))
+			return nil, fmt.Errorf("failed to connect to EPM service: %w", err)
+		}
+		defer func() {
+			if closeErr := epmConn.Close(ctx); closeErr != nil {
+				log.Warn("Failed to close EPM connection", svc1log.SafeParam("error", closeErr.Error()))
+			}
+		}()
+
+		// Create anonymous EPM client (with insecure flag for no authentication)
+		epmClient, err = epm.NewEpmClient(ctx, epmConn, dcerpc.WithInsecure())
+	}
 	if err != nil {
 		log.Error("Failed to create EPM client", svc1log.SafeParam("error", err.Error()))
 		return nil, fmt.Errorf("failed to create EPM client: %w", err)
@@ -66,7 +80,7 @@ func (m *EndpointMapper) DiscoverDRSUAPIEndpoints(ctx context.Context) ([]dcerpc
 	tower := buildDRSUAPITower()
 
 	// Query EPM using library's ept_map operation
-	mapResp, err := epmClient.Map(secCtx, &epm.MapRequest{
+	mapResp, err := epmClient.Map(ctx, &epm.MapRequest{
 		MapTower:    tower,
 		EntryHandle: &epm.LookupHandle{}, // Empty entry handle
 		MaxTowers:   4,                   // Request up to 4 towers

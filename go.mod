@@ -6,6 +6,7 @@ toolchain go1.24.7
 
 require (
 	github.com/Method-Security/pkg v0.0.6
+	github.com/RedTeamPentesting/adauth v0.5.0
 	github.com/Ullaakut/nmap/v3 v3.0.6
 	github.com/go-ldap/ldap/v3 v3.4.11
 	github.com/google/uuid v1.6.0
@@ -14,6 +15,7 @@ require (
 	github.com/miekg/dns v1.1.68
 	github.com/oiweiwei/go-msrpc v1.2.8
 	github.com/oiweiwei/go-smb2.fork v1.0.0
+	github.com/oiweiwei/gokrb5.fork/v9 v9.0.4
 	github.com/palantir/pkg/datetime v1.2.0
 	github.com/palantir/witchcraft-go-logging v1.61.0
 	github.com/praetorian-inc/fingerprintx v1.1.15
@@ -49,13 +51,13 @@ require (
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/mholt/archiver/v3 v3.5.1 // indirect
 	github.com/nwaples/rardecode v1.1.3 // indirect
-	github.com/oiweiwei/gokrb5.fork/v9 v9.0.4 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/zmap/rc2 v0.0.0-20190804163417-abaa70531248 // indirect
 	golang.org/x/time v0.12.0 // indirect
+	software.sslmate.com/src/go-pkcs12 v0.6.0 // indirect
 )
 
 require (
@@ -145,7 +147,7 @@ require (
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
-	github.com/spf13/pflag v1.0.7 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/tidwall/btree v1.8.1 // indirect
 	github.com/tidwall/buntdb v1.3.2 // indirect
