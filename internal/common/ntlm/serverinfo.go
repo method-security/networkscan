@@ -84,7 +84,7 @@ func ExtractServerInfoFromChallenge(challengeMessage []byte, log svc1log.Logger)
 			RawVersionData:      &rawOSVersion,
 		}
 
-		result.ParsedOsVersion = &osVersion
+		result.MappedOsVersion = &osVersion
 	}
 	result.OsInfo = ntlmOsInfo
 
@@ -108,8 +108,8 @@ func ConvertToLDAPServerInfo(ntlmInfo *commonprotocolfern.NtlmServerInfo) *commo
 	result := &commonprotocolfern.LdapServerInfo{}
 
 	// Copy core fields that exist in cleaned structure
-	if ntlmInfo.ParsedOsVersion != nil {
-		result.ParsedOsVersion = ntlmInfo.ParsedOsVersion
+	if ntlmInfo.MappedOsVersion != nil {
+		result.MappedOsVersion = ntlmInfo.MappedOsVersion
 	}
 	if ntlmInfo.SigningRequired != nil {
 		result.SigningRequired = ntlmInfo.SigningRequired
@@ -252,8 +252,8 @@ func GetDomainName(serverInfo *commonprotocolfern.NtlmServerInfo) string {
 
 // GetOSVersion extracts parsed OS version from server info
 func GetOSVersion(serverInfo *commonprotocolfern.NtlmServerInfo) string {
-	if serverInfo != nil && serverInfo.ParsedOsVersion != nil {
-		return *serverInfo.ParsedOsVersion
+	if serverInfo != nil && serverInfo.MappedOsVersion != nil {
+		return *serverInfo.MappedOsVersion
 	}
 	return ""
 }
@@ -362,8 +362,8 @@ func GetSMBDomainName(serverInfo *commonprotocolfern.SmbServerInfo) string {
 }
 
 func GetSMBOSVersion(serverInfo *commonprotocolfern.SmbServerInfo) string {
-	if serverInfo != nil && serverInfo.ParsedOsVersion != nil {
-		return *serverInfo.ParsedOsVersion
+	if serverInfo != nil && serverInfo.MappedOsVersion != nil {
+		return *serverInfo.MappedOsVersion
 	}
 	return ""
 }

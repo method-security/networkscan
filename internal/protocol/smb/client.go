@@ -219,7 +219,7 @@ func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*commonpro
 	smbInfo.SupportedSmbVersions = []commonprotocolfern.SmbVersion{} // Set when we have negotiation info
 
 	log.Debug("Successfully extracted server info from unified NTLM challenge parser",
-		svc1log.SafeParam("parsedOsVersion", smbInfo.ParsedOsVersion))
+		svc1log.SafeParam("mappedOsVersion", smbInfo.MappedOsVersion))
 
 	return smbInfo, nil
 }
@@ -591,7 +591,7 @@ func (c *Client) GetSMBSession() (*gosmb.Connection, error) {
 // convertNtlmToSmbServerInfo converts NtlmServerInfo to SmbServerInfo, preserving nested structures
 func convertNtlmToSmbServerInfo(ntlmInfo *commonprotocolfern.NtlmServerInfo) *commonprotocolfern.SmbServerInfo {
 	return &commonprotocolfern.SmbServerInfo{
-		ParsedOsVersion:      ntlmInfo.ParsedOsVersion,
+		MappedOsVersion:      ntlmInfo.MappedOsVersion,
 		SigningRequired:      ntlmInfo.SigningRequired,
 		TargetInfo:           ntlmInfo.TargetInfo,
 		OsInfo:               ntlmInfo.OsInfo,
