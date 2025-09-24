@@ -15,6 +15,13 @@ import (
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
+// TicketInfo contains information extracted from a Kerberos ticket
+type TicketInfo struct {
+	Base64    string
+	Principal string
+	Realm     string
+}
+
 // TicketManager handles Kerberos ticket operations
 type TicketManager struct {
 	Client *client.Client
@@ -30,13 +37,13 @@ func NewTicketManager(client *client.Client, config *config.Config) *TicketManag
 }
 
 // RequestServiceTicket performs service ticket acquisition (with optional S4U2Self and S4U2Proxy for impersonation)
-func (tm *TicketManager) RequestServiceTicket(ctx context.Context, requestingUser, userDomain, impersonateUser, spn string) (string, error) {
+func (tm *TicketManager) RequestServiceTicket(ctx context.Context, requestingUser, userDomain, impersonateUser, spn string) (*TicketInfo, error) {
 	log := svc1log.FromContext(ctx)
 
 	// Step 1: Get TGT for delegation user
 	tgt, sessionKey, err := tm.Client.GetTGT(strings.ToUpper(userDomain))
 	if err != nil {
-		return "", fmt.Errorf("failed to get TGT: %v", err)
+		return nil, fmt.Errorf("failed to get TGT: %v", err)
 	}
 
 	log.Debug("Successfully obtained TGT for requesting user")
@@ -47,7 +54,7 @@ func (tm *TicketManager) RequestServiceTicket(ctx context.Context, requestingUse
 
 		s4u2SelfTicket, err := s4uManager.PerformS4U2Self(ctx, requestingUser, userDomain, impersonateUser, tgt, sessionKey)
 		if err != nil {
-			return "", fmt.Errorf("S4U2Self failed: %v", err)
+			return nil, fmt.Errorf("S4U2Self failed: %v", err)
 		}
 
 		log.Debug("Successfully performed S4U2Self")
@@ -55,7 +62,7 @@ func (tm *TicketManager) RequestServiceTicket(ctx context.Context, requestingUse
 		// Step 3: Perform S4U2Proxy to get service ticket for target SPN
 		err = s4uManager.PerformS4U2Proxy(ctx, requestingUser, userDomain, impersonateUser, tgt, s4u2SelfTicket, sessionKey, spn)
 		if err != nil {
-			return "", fmt.Errorf("S4U2Proxy failed: %v", err)
+			return nil, fmt.Errorf("S4U2Proxy failed: %v", err)
 		}
 
 		log.Debug("Successfully performed S4U2Proxy")
@@ -63,7 +70,7 @@ func (tm *TicketManager) RequestServiceTicket(ctx context.Context, requestingUse
 		// Regular service ticket request without impersonation
 		_, _, err := tm.Client.GetServiceTicket(spn)
 		if err != nil {
-			return "", fmt.Errorf("failed to get service ticket: %v", err)
+			return nil, fmt.Errorf("failed to get service ticket: %v", err)
 		}
 
 		log.Debug("Successfully obtained service ticket")
@@ -79,10 +86,14 @@ func (tm *TicketManager) RequestServiceTicket(ctx context.Context, requestingUse
 
 	ticketBase64, err := tm.GenerateTicketBase64(ticketPrincipal, strings.ToUpper(userDomain), spn)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate ticket: %v", err)
+		return nil, fmt.Errorf("failed to generate ticket: %v", err)
 	}
 
-	return ticketBase64, nil
+	return &TicketInfo{
+		Base64:    ticketBase64,
+		Principal: ticketPrincipal,
+		Realm:     strings.ToUpper(userDomain),
+	}, nil
 }
 
 // GenerateTicketBase64 generates the acquired ticket as a base64-encoded ccache
