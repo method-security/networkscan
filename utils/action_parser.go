@@ -39,7 +39,7 @@ func (p *SMBActionParser) ParseActions(actionStrings []string) ([]smbfern.Pentes
 }
 
 func (p *SMBActionParser) GetValidActions() []string {
-	return []string{"PROBE", "AUTH", "SAMDUMP", "LSADUMP", "SHARES", "EXEC"}
+	return []string{"PROBE", "AUTH", "SAMDUMP", "LSADUMP", "SHARES_MAP", "SHARE_DOWNLOAD", "EXEC"}
 }
 
 func (p *SMBActionParser) ContainsAction(actions []smbfern.PentestSmbAction, target smbfern.PentestSmbAction) bool {

@@ -68,7 +68,7 @@ func (kcm *ClientManager) CreateConfiguration() *config.Config {
 }
 
 // CreateClientFromConfig creates a Kerberos client from the provided config
-func (kcm *ClientManager) CreateClientFromConfig(pentestConfig *kerberosfern.PentestKerberosServiceTicketConfig) (*client.Client, string, error) {
+func (kcm *ClientManager) CreateClientFromConfig(pentestConfig *kerberosfern.PentestKerberosConfig) (*client.Client, string, error) {
 	if kcm.Config == nil {
 		kcm.CreateConfiguration()
 	}
