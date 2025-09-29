@@ -18,11 +18,22 @@ import (
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	goflags "github.com/projectdiscovery/goflags"
+	gologger "github.com/projectdiscovery/gologger"
+	"github.com/projectdiscovery/gologger/levels"
+	"github.com/projectdiscovery/gologger/writer"
 	result "github.com/projectdiscovery/naabu/v2/pkg/result"
 	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
 var requiredPorts = []string{"1", "65535"}
+
+// stderrWriter implements writer.Writer interface to redirect all gologger output to stderr
+type stderrWriter struct{}
+
+func (s *stderrWriter) Write(data []byte, level levels.Level) {
+	// Redirect all Naabu output to stderr instead of stdout
+	_, _ = os.Stderr.Write(data)
+}
 
 // RunPortScan performs a port scan on the specified target using the provided configuration.
 // It returns a report containing discovered open ports and any errors encountered during the process.
@@ -76,9 +87,15 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 	// Hide OS args from Naabu
 	hideOsArgsFromNaabu()
 
+	// Temporarily redirect gologger output to stderr to prevent Naabu stdout pollution
+	originalWriter := writer.NewCLI() // Create a new CLI writer to restore later
+	gologger.DefaultLogger.SetWriter(&stderrWriter{})
+
 	// Parse target hosts and create IP-to-hostname mapping
 	targetHosts, ipToHostname, err := utils.ParseTargetHostsWithMapping(config.Target)
 	if err != nil {
+		// Restore original gologger writer before returning error
+		gologger.DefaultLogger.SetWriter(originalWriter)
 		return nil, fmt.Errorf("failed to parse target hosts: %w", err)
 	}
 
@@ -89,6 +106,9 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		Silent:            false,
 		JSON:              true,
 		NoColor:           true,
+		Verbose:           false,
+		Debug:             false,
+		Stream:            false,
 		Rate:              runner.DefaultRateConnectScan,
 		Retries:           runner.DefaultRetriesConnectScan,
 		Threads:           config.Threads,
@@ -97,6 +117,7 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		SkipHostDiscovery: true,
 		WarmUpTime:        2,
 		InputReadTimeout:  180000000000, // This is their default
+		// Output:            "/dev/null",  // Redirect all output to null
 		OnResult: func(hr *result.HostResult) {
 			output = *hr
 			hosts = append(hosts, parsePortScanResult(&output, ipToHostname))
@@ -125,10 +146,15 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 
 	err = portscan.RunEnumeration(ctx)
 	if err != nil {
+		// Restore original gologger writer before returning error
+		gologger.DefaultLogger.SetWriter(originalWriter)
 		return nil, err
 	}
 
 	defer portscan.Close()
+
+	// Restore original gologger writer
+	gologger.DefaultLogger.SetWriter(originalWriter)
 
 	return hosts, nil
 
