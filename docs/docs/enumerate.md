@@ -17,7 +17,16 @@ Enumerate detailed information about supported network services on target hosts.
 #### Usage
 ```bash
 networkscan enumerate service --targets 127.0.0.1:22,192.168.1.101:21 --service ssh
+networkscan enumerate service --targets example.com:993 --service smtp
 ```
+
+#### Supported Services
+- `FTP` - File Transfer Protocol enumeration
+- `GRPC` - gRPC service enumeration
+- `LDAP` - LDAP directory service enumeration
+- `SMB` - Server Message Block protocol enumeration
+- `SMTP` - Simple Mail Transfer Protocol enumeration
+- `SSH` - Secure Shell protocol enumeration
 
 #### Help Text
 ```bash
@@ -29,7 +38,7 @@ Usage:
 
 Flags:
   -h, --help               help for service
-      --service string     Service to enumerate (ftp, grpc, smtp, ssh)
+      --service string     Service to enumerate (ftp, grpc, ldap, smb, smtp, ssh)
       --targets strings    List of target addresses (IP:port or hostname:port) to enumerate
       --timeout int        Timeout in seconds for enumerating each target (default 30)
 

@@ -28,13 +28,25 @@ For the full list of available installation options, please see the [Installatio
 ### General Usage
 
 ```bash
-discover port <flags>
+networkscan discover port <flags>
+networkscan enumerate service <flags>
+networkscan pentest spray password <flags>
+networkscan pentest service smb <flags>
 ```
 
 #### Examples
 
 ```bash
-discover port --target 127.0.0.1 --ports 22,80,443
+# Network discovery
+networkscan discover port --target 127.0.0.1 --ports 22,80,443
+networkscan discover host --target 192.168.1.0/24 --scan-type ICMP_ECHO
+
+# Service enumeration
+networkscan enumerate service --targets 192.168.1.10:22 --service ssh
+
+# Penetration testing
+networkscan pentest spray password --targets 192.168.1.0/24 --service SMB --usernames admin --passwords Password123
+networkscan pentest service smb --targets 192.168.1.100:445 --usernames admin --passwords password --actions AUTHENTICATE
 ```
 
 ## Contributing
