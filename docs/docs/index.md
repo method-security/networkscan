@@ -13,20 +13,28 @@ Network discovery capabilities to identify live hosts, open ports, running servi
 - `port` - Scan for open TCP ports with customizable scan types and port ranges
 - `service` - Identify and fingerprint network services on specific ports
 - `tls` - Retrieve and analyze TLS configuration and certificate details
+- `domain` - Discover domain information using LDAP/SMB discovery and DNS enumeration
 
 ### Enumerate
 Detailed enumeration of supported network services on target hosts.
 
 **Subcommands:**
-- `service` - Enumerate detailed information about supported network services (ftp, grpc, smtp, ssh)
+- `service` - Enumerate detailed information about supported network services (ftp, grpc, ldap, smb, smtp, ssh)
 
 ### Pentest
-Penetration testing modules against network services.
+Comprehensive penetration testing capabilities including credential spraying and service-specific attacks.
 
-**Available Services:**
-- `smb` - SMB penetration testing with authentication, command execution, and share enumeration
-- `ssh` - SSH penetration testing with authentication, command execution, and file transfer  
-- `telnet` - Telnet penetration testing with authentication and command execution
+**Spray Commands:**
+- `spray password` - Password spraying attacks against network services (SSH, SMB, TELNET, FTP, LDAP, KERBEROS)
+- `spray username` - Username enumeration against network services (KERBEROS)
+
+**Service Commands:**
+- `service smb` - SMB penetration testing with authentication, command execution, share enumeration, and file downloads
+- `service ssh` - SSH penetration testing with authentication, command execution, and file transfers
+- `service telnet` - Telnet penetration testing with authentication and command execution
+- `service ldap` - LDAP penetration testing with authentication and domain enumeration
+- `service msrpc` - MS-RPC penetration testing including DCSync attacks via DRSUAPI
+- `service kerberos` - Kerberos penetration testing with advanced attacks such as constrained delegation
 
 ## Global Flags
 

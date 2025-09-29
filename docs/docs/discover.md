@@ -19,6 +19,12 @@ Identify live hosts within a given IP, hostname, or CIDR range using various dis
 networkscan discover host --target 192.168.1.0/24 --scan-type ICMP_ECHO
 ```
 
+#### Stealth Mode
+Use stealth mode for slower, less detectable scans:
+```bash
+networkscan discover host --target 192.168.1.0/24 --sleep 2 --jitter 10 --reverse-lookup
+```
+
 #### Help Text
 ```bash
 networkscan discover host -h
@@ -29,7 +35,10 @@ Usage:
 
 Flags:
   -h, --help                  help for host
-      --scan-type string      Discovery scan type: TCP_SYN, TCP_ACK, ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (default "ICMP_ECHO")
+      --jitter int            Jitter percentage (0-100) to randomize sleep delay for stealth scan
+      --reverse-lookup        Perform reverse DNS lookup sweep first to identify potential targets
+      --scan-type string      Discovery scan type: TCP_SYN, TCP_ACK, ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (not needed for stealth mode) (default "ICMP_ECHO")
+      --sleep int             Sleep delay in seconds between hosts for stealth scan (stealth mode enabled when sleep > 0)
       --target string         Target IP address, hostname, or CIDR range to scan for live hosts
 
 Global Flags:
@@ -69,28 +78,47 @@ Global Flags:
 
 ### Port
 
-Scan a target host for open TCP ports using customizable scan types and port ranges.
+Scan target hosts for open TCP ports using customizable scan types and port ranges. Supports single IPs, hostnames, CIDR ranges, and IP ranges.
 
 #### Usage
 ```bash
-networkscan discover port --target 127.0.0.1 --ports 22 --ports 80
+networkscan discover port --target 127.0.0.1 --ports 22,80,443
+networkscan discover port --target 192.168.1.0/24 --top-ports 100
+```
+
+#### Port Validation
+Validate discovered ports with service detection:
+```bash
+networkscan discover port --target example.com --top-ports 100 --validate --validate-hostname example.com
+```
+
+#### Stealth Mode
+Use stealth mode for slower, less detectable scans:
+```bash
+networkscan discover port --target 192.168.1.1 --ports 1-1000 --sleep 1 --jitter 20
 ```
 
 #### Help Text
 ```bash
 networkscan discover port -h
-Scan a target host for open TCP ports using customizable scan types and port ranges.
+Scan target hosts for open TCP ports using customizable scan types and port ranges. Supports single IPs, hostnames, CIDR ranges, and IP ranges.
 
 Usage:
   networkscan discover port [flags]
 
 Flags:
-  -h, --help                help for port
-      --ports string        Comma-separated list or range of TCP ports to scan (e.g., 22,80,443 or 1-1024)
-      --scan-type string    Port scan type: SYN (default, requires root) or CONNECT (default "SYN")
-      --target string       Target IP address or FQDN to scan for open ports
-      --threads int         Number of concurrent threads to use during port scanning (default 25)
-      --top-ports string    Scan the top N most common TCP ports (options: full, 100, 1000)
+  -h, --help                            help for port
+      --jitter int                      Jitter percentage (0-100) to randomize sleep delay for stealth scan
+      --ports string                    Comma-separated list or range of TCP ports to scan (e.g., 22,80,443 or 1-1024)
+      --scan-type string                Port scan type: SYN (default, requires root) or CONNECT (default "SYN")
+      --sleep int                       Sleep delay in seconds between port scans for stealth scan (stealth mode enabled when sleep > 0)
+      --target string                   Target IP address, FQDN, CIDR range, or IP range to scan for open ports
+      --threads int                     Number of concurrent threads to use during port scanning (default 25)
+      --top-ports string                Scan the top N most common TCP ports (options: full, 100, 1000)
+      --validate                        Validate open ports by using service detection techniques
+      --validate-attempt-timeout int    Timeout in seconds for each service detection attempt (default 10)
+      --validate-hostname string        Hostname to validate against (e.g., example.com)
+      --validate-threads int            Number of concurrent threads to use during service detection
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
@@ -105,7 +133,14 @@ Identify and fingerprint the network service running on a specific open port of 
 
 #### Usage
 ```bash
-networkscan discover service --target 127.0.0.1 --port 443
+networkscan discover service --target 127.0.0.1:443
+networkscan discover service --target example.com:22
+```
+
+#### Stealth Mode
+Use stealth mode for specific service fingerprinting:
+```bash
+networkscan discover service --target 192.168.1.1:22 --service-type SSH
 ```
 
 #### Help Text
@@ -117,10 +152,10 @@ Usage:
   networkscan discover service [flags]
 
 Flags:
-  -h, --help           help for service
-      --port int       Port number of the service to fingerprint (e.g., 443)
-      --target string  Target IP address or hostname where the service is running
-      --timeout int    Timeout in seconds for each service fingerprinting attempt (default 5)
+  -h, --help                 help for service
+      --service-type string  Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
+      --target string        Target address in format IP:port or hostname:port (e.g., 192.168.1.1:443)
+      --timeout int          Timeout in seconds for each service fingerprinting attempt (default 5)
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
@@ -150,7 +185,36 @@ Flags:
   -h, --help               help for tls
       --targets strings    List of target addresses (IP:port or hostname:port) to analyze TLS configuration
       --timeout int        Timeout in seconds for each TLS handshake attempt (default 30)
-      --verify-tls         Verify TLS certificates (default: true)
+      --verify-tls         Verify TLS certificates (default: false)
+
+Global Flags:
+  -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
+  -f, --output-file string   Path to output file. If blank, will output to STDOUT
+  -q, --quiet                Suppress output
+  -v, --verbose              Verbose output
+```
+
+### Domain
+
+Discover domain information from a target host using LDAP/SMB discovery and DNS enumeration of domain controllers.
+
+#### Usage
+```bash
+networkscan discover domain --target 192.168.1.1
+networkscan discover domain --target dc.example.com
+```
+
+#### Help Text
+```bash
+networkscan discover domain -h
+Discover domain information from a target host using LDAP/SMB discovery and DNS enumeration of domain controllers.
+
+Usage:
+  networkscan discover domain [flags]
+
+Flags:
+  -h, --help            help for domain
+      --target string   Target IP address or hostname to discover domain information from
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
