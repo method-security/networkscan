@@ -27,11 +27,12 @@ import (
 
 var requiredPorts = []string{"1", "65535"}
 
-// discardWriter implements writer.Writer interface to discard all gologger output
-type discardWriter struct{}
+// stderrWriter implements writer.Writer interface to redirect all gologger output to stderr
+type stderrWriter struct{}
 
-func (d *discardWriter) Write(data []byte, level levels.Level) {
-	// Discard all output
+func (s *stderrWriter) Write(data []byte, level levels.Level) {
+	// Redirect all Naabu output to stderr instead of stdout
+	os.Stderr.Write(data)
 }
 
 // RunPortScan performs a port scan on the specified target using the provided configuration.
@@ -86,9 +87,9 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 	// Hide OS args from Naabu
 	hideOsArgsFromNaabu()
 
-	// Temporarily disable gologger to prevent Naabu console output
+	// Temporarily redirect gologger output to stderr to prevent Naabu stdout pollution
 	originalWriter := writer.NewCLI() // Create a new CLI writer to restore later
-	gologger.DefaultLogger.SetWriter(&discardWriter{})
+	gologger.DefaultLogger.SetWriter(&stderrWriter{})
 
 	// Parse target hosts and create IP-to-hostname mapping
 	targetHosts, ipToHostname, err := utils.ParseTargetHostsWithMapping(config.Target)
@@ -107,7 +108,7 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		NoColor:           true,
 		Verbose:           false,
 		Debug:             false,
-		Stream:            true, // Enable streaming mode to prevent dual output
+		Stream:            false,
 		Rate:              runner.DefaultRateConnectScan,
 		Retries:           runner.DefaultRetriesConnectScan,
 		Threads:           config.Threads,
