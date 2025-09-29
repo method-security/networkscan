@@ -32,7 +32,7 @@ type stderrWriter struct{}
 
 func (s *stderrWriter) Write(data []byte, level levels.Level) {
 	// Redirect all Naabu output to stderr instead of stdout
-	os.Stderr.Write(data)
+	_, _ = os.Stderr.Write(data)
 }
 
 // RunPortScan performs a port scan on the specified target using the provided configuration.
