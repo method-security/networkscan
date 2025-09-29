@@ -128,7 +128,7 @@ require (
 	github.com/projectdiscovery/dnsx v1.2.1 // indirect
 	github.com/projectdiscovery/fastdialer v0.4.1 // indirect
 	github.com/projectdiscovery/freeport v0.0.7 // indirect
-	github.com/projectdiscovery/gologger v1.1.46 // indirect
+	github.com/projectdiscovery/gologger v1.1.46
 	github.com/projectdiscovery/hmap v0.0.81 // indirect
 	github.com/projectdiscovery/ipranger v0.0.53 // indirect
 	github.com/projectdiscovery/machineid v0.0.0-20250715113114-c77eb3567582 // indirect
