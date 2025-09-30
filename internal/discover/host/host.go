@@ -5,14 +5,26 @@ import (
 	// Standard
 	"context"
 	"fmt"
+	"os"
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	// External
 	goflags "github.com/projectdiscovery/goflags"
+	gologger "github.com/projectdiscovery/gologger"
+	"github.com/projectdiscovery/gologger/levels"
+	"github.com/projectdiscovery/gologger/writer"
 	result "github.com/projectdiscovery/naabu/v2/pkg/result"
 	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
+
+// stderrWriter implements writer.Writer interface to redirect all gologger output to stderr
+type stderrWriter struct{}
+
+func (s *stderrWriter) Write(data []byte, level levels.Level) {
+	// Redirect all Naabu output to stderr instead of stdout
+	_, _ = os.Stderr.Write(data)
+}
 
 // RunHostDiscovery performs host discovery on the specified target using the provided configuration.
 // It returns a report containing discovered hosts and any errors encountered during the process.
@@ -45,6 +57,10 @@ func RunHostDiscovery(ctx context.Context, config discoverfern.DiscoverHostConfi
 // getHostDiscover configures and runs the host discovery process using the Naabu library.
 // It sets up scan options based on the provided scan type and returns discovered host details.
 func getHostDiscover(ctx context.Context, target string, scantype discoverfern.HostScanType) ([]*discoverfern.HostDetails, error) {
+	// Temporarily redirect gologger output to stderr to prevent Naabu stdout pollution
+	originalWriter := writer.NewCLI() // Create a new CLI writer to restore later
+	gologger.DefaultLogger.SetWriter(&stderrWriter{})
+
 	hostDetails := []*discoverfern.HostDetails{}
 	hostDiscoverOpts := &runner.Options{
 		Silent:            true,
@@ -81,16 +97,22 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverfern.H
 	case discoverfern.HostScanTypeIcmpAddressMask:
 		hostDiscoverOpts.IcmpAddressMaskRequestProbe = true
 	default:
+		// Restore original gologger writer before returning error
+		gologger.DefaultLogger.SetWriter(originalWriter)
 		return hostDetails, fmt.Errorf("no valid scantype provided")
 	}
 
 	hostdiscover, err := runner.NewRunner(hostDiscoverOpts)
 	if err != nil {
+		// Restore original gologger writer before returning error
+		gologger.DefaultLogger.SetWriter(originalWriter)
 		return hostDetails, err
 	}
 
 	err = hostdiscover.RunEnumeration(ctx)
 	if err != nil {
+		// Restore original gologger writer before returning error
+		gologger.DefaultLogger.SetWriter(originalWriter)
 		return hostDetails, err
 	}
 
@@ -106,6 +128,9 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverfern.H
 	}
 
 	defer hostdiscover.Close()
+
+	// Restore original gologger writer
+	gologger.DefaultLogger.SetWriter(originalWriter)
 
 	return result, nil
 }
