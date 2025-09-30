@@ -14,9 +14,9 @@ import (
 	discoverhost "github.com/Method-Security/networkscan/internal/discover/host"
 	discoverport "github.com/Method-Security/networkscan/internal/discover/port"
 	discoverservice "github.com/Method-Security/networkscan/internal/discover/service"
+	"github.com/Method-Security/networkscan/utils"
 
 	// External
-	privileges "github.com/projectdiscovery/naabu/v2/pkg/privileges"
 	cobra "github.com/spf13/cobra"
 )
 
@@ -86,8 +86,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Check privileges for stealth scan (after other validations)
-			if !privileges.IsPrivileged {
-				a.OutputSignal.AddError(errors.New("stealth host discovery requires root privileges for ICMP ping"))
+			// Use our custom privilege check that works properly on Windows
+			if !utils.IsPrivilegedForNetworkScanning() {
+				a.OutputSignal.AddError(errors.New("stealth host discovery requires administrator/root privileges for ICMP ping"))
 				return
 			}
 
@@ -121,8 +122,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 		Short: "Detect and fingerprint the operating system running on a specified host (requires nmap and root privileges).",
 		Long:  `Detect and fingerprint the operating system running on a specified host (requires nmap and root privileges).`,
 		Run: func(cmd *cobra.Command, args []string) {
-			if !privileges.IsPrivileged {
-				a.OutputSignal.AddError(errors.New("discover os can only be run as a privileged user"))
+			// Use our custom privilege check that works properly on Windows
+			if !utils.IsPrivilegedForNetworkScanning() {
+				a.OutputSignal.AddError(errors.New("discover os can only be run as administrator/root user"))
 				return
 			}
 
