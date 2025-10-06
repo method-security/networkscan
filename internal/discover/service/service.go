@@ -79,10 +79,12 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 	for _, ip := range ips {
 		addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(port))
 		fingerprintTarget := plugins.Target{Address: addrPort, Host: host}
+		serviceFound := false
 
 		/* --- 1. fingerprintx ------------------------------------------------- */
 		if fingerprintResult, fingerprintError := fingerprintConfig.SimpleScanTarget(fingerprintTarget); fingerprintError == nil && fingerprintResult != nil && fingerprintResult.Protocol != "" {
 			results = append(results, fxToServiceDetails(fingerprintResult))
+			serviceFound = true
 			continue // done with this IP
 		}
 
@@ -95,8 +97,14 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 			}
 			if detection != nil { // hit!
 				results = append(results, detection)
+				serviceFound = true
 				break
 			}
+		}
+
+		/* --- 3. no service found -------------------------------------------- */
+		if !serviceFound {
+			report.Errors = append(report.Errors, fmt.Sprintf("no service found on %s:%d", ip, port))
 		}
 	}
 
