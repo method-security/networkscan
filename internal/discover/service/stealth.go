@@ -67,6 +67,9 @@ func RunStealthServiceFingerprint(ctx context.Context, config discoverfern.Disco
 
 		if detection != nil {
 			results = append(results, detection)
+		} else {
+			// No service found for this specific service type
+			report.Errors = append(report.Errors, fmt.Sprintf("no %s service found on %s:%d", config.Stealth.ServiceType, ip, port))
 		}
 	}
 
