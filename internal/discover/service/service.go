@@ -104,7 +104,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 
 		/* --- 3. no service found -------------------------------------------- */
 		if !serviceFound {
-			report.Errors = append(report.Errors, fmt.Sprintf("no service found on %s:%d", ip, port))
+			report.Errors = append(report.Errors, fmt.Sprintf("no service found on ip address: %s and port: %d", ip, port))
 		}
 	}
 
