@@ -287,8 +287,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	// Service Command
 	discoverServiceCmd := &cobra.Command{
 		Use:   "service",
-		Short: "Identify and fingerprint the network service running on a specific open port of a target host.",
-		Long:  `Identify and fingerprint the network service running on a specific open port of a target host.`,
+		Short: "Identify and fingerprint network services on a target host or specific port.",
+		Long:  `Identify and fingerprint network services on a target host or specific port. Use --udp to scan common UDP ports.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			target, err := cmd.Flags().GetString("target")
 			if err != nil {
@@ -296,6 +296,13 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				return
 			}
 			timeout, err := cmd.Flags().GetInt("timeout")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			// UDP mode flag
+			udp, err := cmd.Flags().GetBool("udp")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -309,7 +316,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Set Config
-			config := getDiscoverServiceConfig(target, timeout, serviceType)
+			config := getDiscoverServiceConfig(target, timeout, serviceType, udp)
 
 			// Generate the report
 			report, err := discoverservice.RunServiceFingerprint(cmd.Context(), config)
@@ -320,8 +327,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	discoverServiceCmd.Flags().String("target", "", "Target address in format IP:port or hostname:port (e.g., 192.168.1.1:443)")
+	discoverServiceCmd.Flags().String("target", "", "Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)")
 	discoverServiceCmd.Flags().Int("timeout", 5, "Timeout in seconds for each service fingerprinting attempt")
+	discoverServiceCmd.Flags().Bool("udp", false, "Enable UDP service discovery mode (scans common UDP ports like DNS, NTP, SNMP, etc.)")
 	discoverServiceCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
 
 	// Mark Required Flags
@@ -452,11 +460,14 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 }
 
 // getDiscoverServiceConfig creates a configuration for service fingerprinting with the provided parameters.
-// It sets up the target (in IP:port format), timeout, and stealth-specific options.
-func getDiscoverServiceConfig(target string, timeout int, serviceType string) discoverfern.DiscoverServiceConfig {
+// It sets up the target (in IP:port format for TCP, or just IP for UDP), timeout, UDP mode, and stealth-specific options.
+func getDiscoverServiceConfig(target string, timeout int, serviceType string, udp bool) discoverfern.DiscoverServiceConfig {
 	config := discoverfern.DiscoverServiceConfig{
 		Target:  target,
 		Timeout: timeout,
+	}
+	if udp {
+		config.Udp = &udp
 	}
 	if serviceType != "" {
 		// Convert to uppercase for enum parsing
