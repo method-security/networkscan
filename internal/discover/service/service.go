@@ -69,7 +69,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 
 	// Check if UDP mode is enabled
 	if config.Udp != nil && *config.Udp {
-		return RunUDPServiceDiscovery(ctx, config)
+		return runUDPServiceDiscovery(ctx, config)
 	}
 
 	// Parse target to get host and port
@@ -77,6 +77,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 
 	ips, err := utils.GetIPs(host)
 	if err != nil {
+		report.Result = &discoverfern.DiscoverServiceResult{}
 		return report, err
 	}
 
@@ -172,10 +173,10 @@ func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 	return serviceDetails
 }
 
-// RunUDPServiceDiscovery scans common UDP ports on the target host and fingerprints discovered services.
+// runUDPServiceDiscovery scans common UDP ports on the target host and fingerprints discovered services.
 // It uses custom UDP fingerprinters for DNS, NTP, SNMP, NetBIOS-NS, and DHCP.
 // Each service is only probed on its well-known port(s) to avoid false positives.
-func RunUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
+func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
 	var results []*discoverfern.ServiceDetails
 
@@ -188,6 +189,7 @@ func RunUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 
 	ips, err := utils.GetIPs(host)
 	if err != nil {
+		report.Result = &discoverfern.DiscoverServiceResult{}
 		report.Errors = append(report.Errors, fmt.Sprintf("failed to resolve target %s: %v", host, err))
 		return report, nil
 	}
