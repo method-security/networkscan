@@ -73,7 +73,7 @@ func detectSMBService(ctx context.Context, ip net.IP, port int, host string) (*d
 	}
 
 	// Validate that we have actual SMB-specific server information
-	if serverInfo != nil && isValidSMBServerInfo(serverInfo, err) {
+	if serverInfo != nil && isValidSMBServerInfo(serverInfo) {
 		// Create successful service detection result
 		result := &discoverfern.ServiceDetails{
 			Host:      host,
@@ -170,7 +170,7 @@ func detectSMBService(ctx context.Context, ip net.IP, port int, host string) (*d
 }
 
 // isValidSMBServerInfo validates that the server info contains actual SMB-specific data
-func isValidSMBServerInfo(serverInfo *commonprotocolfern.SmbServerInfo, connErr error) bool {
+func isValidSMBServerInfo(serverInfo *commonprotocolfern.SmbServerInfo) bool {
 	if serverInfo == nil {
 		return false
 	}

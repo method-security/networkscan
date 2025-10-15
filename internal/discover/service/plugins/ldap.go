@@ -23,7 +23,7 @@ func (LDAPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	defer cancel()
 
 	// Use proper LDAP client with timeout
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	conn, err := ldap.DialURL(fmt.Sprintf("ldap://%s", addr), ldap.DialWithDialer(&net.Dialer{
 		Timeout: 10 * time.Second,

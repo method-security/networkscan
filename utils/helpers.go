@@ -140,9 +140,10 @@ func expandCIDR(target string) ([]string, map[string]string, error) {
 		hosts = append(hosts, ip.String())
 	}
 
-	// Remove network and broadcast addresses for /24 and smaller
-	ones, _ := ipnet.Mask.Size()
-	if ones >= 24 && len(hosts) > 2 {
+	// Remove network and broadcast addresses for IPv4 networks /24 and smaller
+	// IPv6 doesn't have broadcast addresses, so skip this logic for IPv6
+	ones, bits := ipnet.Mask.Size()
+	if bits == 32 && ones >= 24 && len(hosts) > 2 { // Only for IPv4 (/32 bits total)
 		hosts = hosts[1 : len(hosts)-1]
 	}
 

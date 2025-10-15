@@ -199,7 +199,7 @@ func enumerateDomainControllers(ctx context.Context, host string, domainName str
 
 	// Try querying the target host first (likely a DC), then fallback to system DNS
 	dnsServers := []string{
-		fmt.Sprintf("%s:53", host), // Query the target host directly
+		net.JoinHostPort(host, "53"), // Query the target host directly (properly handles IPv6)
 	}
 
 	// Add system DNS servers as fallback

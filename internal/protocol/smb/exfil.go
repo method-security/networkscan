@@ -73,7 +73,9 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 	log.Info("Fetching output file", svc1log.SafeParam("path", o.relativePath))
 
 	// Create TCP connection to SMB server
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:445", o.Host))
+	// Use net.JoinHostPort to properly handle IPv6 addresses with brackets
+	address := net.JoinHostPort(o.Host, "445")
+	conn, err := net.Dial("tcp", address)
 	if err != nil {
 		return fmt.Errorf("connect to SMB server: %w", err)
 	}

@@ -18,7 +18,7 @@ type SSHFingerprinter struct{}
 func (SSHFingerprinter) Name() string { return "ssh" }
 
 func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	// Create SSH client config with no auth methods (connection-only)
 	config := &ssh.ClientConfig{
