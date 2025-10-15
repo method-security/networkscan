@@ -45,7 +45,7 @@ type Fingerprinter interface {
 // Generic custom fingerprinters for protocols that don't integrate well with fingerprintx
 // These run BEFORE fingerprintx to provide more specific detection
 var customFingerprintModules = []Fingerprinter{
-	&localPlugins.GrpcFingerprinter{},   // gRPC can run on any port
+	&localPlugins.GrpcFingerprinter{},    // gRPC can run on any port
 	&localPlugins.MongoDBFingerprinter{}, // MongoDB driver manages its own connections
 }
 
