@@ -1,0 +1,114 @@
+// Package plugins provides TFTP (Trivial File Transfer Protocol) service fingerprinting
+package plugins
+
+import (
+	"context"
+	"encoding/binary"
+	"fmt"
+	"net"
+	"time"
+
+	"github.com/Method-Security/networkscan/generated/go/common"
+	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+)
+
+type TFTPFingerprinter struct{}
+
+func (TFTPFingerprinter) Name() string { return "tftp" }
+
+func (TFTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+	addr := fmt.Sprintf("%s:%d", ip, port)
+
+	// Create TFTP Read Request (RRQ) packet
+	// Opcode: 1 (RRQ), Filename: "test", Mode: "octet"
+	rrqPacket := []byte{
+		0x00, 0x01, // Opcode: RRQ (1)
+	}
+	rrqPacket = append(rrqPacket, []byte("test")...) // Filename
+	rrqPacket = append(rrqPacket, 0x00)              // Null terminator
+	rrqPacket = append(rrqPacket, []byte("octet")...) // Mode
+	rrqPacket = append(rrqPacket, 0x00)              // Null terminator
+
+	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = conn.Close() }()
+
+	// Set read/write deadline
+	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+		return nil, err
+	}
+
+	// Send RRQ packet
+	if _, err := conn.Write(rrqPacket); err != nil {
+		return nil, err
+	}
+
+	// Read response
+	response := make([]byte, 1024)
+	n, err := conn.Read(response)
+	if err != nil {
+		return nil, err
+	}
+
+	if n < 2 {
+		return nil, fmt.Errorf("response too short")
+	}
+
+	// Parse TFTP opcode
+	opcode := binary.BigEndian.Uint16(response[0:2])
+
+	// Valid TFTP responses:
+	// Opcode 3 = DATA (file exists and sending data)
+	// Opcode 5 = ERROR (file not found or other error - this is what we expect)
+	// Opcode 4 = ACK (unlikely for RRQ)
+	if opcode != 3 && opcode != 5 {
+		return nil, fmt.Errorf("not a TFTP response, opcode: %d", opcode)
+	}
+
+	result := &discoverfern.ServiceDetails{
+		Host:      host,
+		Ip:        ip.String(),
+		Port:      port,
+		Tls:       false,
+		Transport: common.TransportTypeUdp,
+		Protocol:  common.ProtocolTypeTftp,
+		Metadata:  make(map[string]string),
+	}
+
+	// Parse response details
+	switch opcode {
+	case 3: // DATA
+		result.Metadata["opcode"] = "DATA"
+		if n >= 4 {
+			blockNum := binary.BigEndian.Uint16(response[2:4])
+			result.Metadata["block_number"] = fmt.Sprintf("%d", blockNum)
+		}
+	case 5: // ERROR
+		result.Metadata["opcode"] = "ERROR"
+		if n >= 4 {
+			errorCode := binary.BigEndian.Uint16(response[2:4])
+			result.Metadata["error_code"] = fmt.Sprintf("%d", errorCode)
+
+			// Extract error message (null-terminated string starting at byte 4)
+			if n > 4 {
+				errorMsg := ""
+				for i := 4; i < n; i++ {
+					if response[i] == 0 {
+						break
+					}
+					errorMsg += string(response[i])
+				}
+				if errorMsg != "" {
+					result.Metadata["error_message"] = errorMsg
+				}
+			}
+		}
+	}
+
+	version := "TFTP"
+	result.Version = &version
+
+	return result, nil
+}

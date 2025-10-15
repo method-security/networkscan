@@ -21,7 +21,7 @@ import (
 
 	// Custom fingerprinters (includes fingerprintx plugin registration)
 	localPlugins "github.com/Method-Security/networkscan/internal/discover/service/plugins"
-	// Fingerprintx plugins
+	// Fingerprintx plugins (auto-register via init())
 	_ "github.com/Method-Security/networkscan/internal/discover/service/plugins/fingerprintx"
 	// Internal
 	"github.com/Method-Security/networkscan/internal/common/ntlm"
@@ -42,27 +42,34 @@ type Fingerprinter interface {
 	Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error)
 }
 
-// List the modules you want to run after fingerprintx fails.
+// Generic custom fingerprinters for protocols that don't integrate well with fingerprintx
+// These run BEFORE fingerprintx to provide more specific detection
 var customFingerprintModules = []Fingerprinter{
-	&localPlugins.GrpcFingerprinter{},
+	&localPlugins.GrpcFingerprinter{},   // gRPC can run on any port
+	&localPlugins.MongoDBFingerprinter{}, // MongoDB driver manages its own connections
 }
 
 // UDP fingerprinters mapped to their specific ports
 // Each UDP service is only probed on its well-known port(s)
 var udpFingerprinters = map[uint16]Fingerprinter{
-	53:  &localPlugins.DNSFingerprinter{},     // DNS
-	67:  &localPlugins.DHCPFingerprinter{},    // DHCP Server
-	123: &localPlugins.NTPFingerprinter{},     // NTP
-	137: &localPlugins.NetBIOSFingerprinter{}, // NetBIOS Name Service
-	161: &localPlugins.SNMPFingerprinter{},    // SNMP
-	162: &localPlugins.SNMPFingerprinter{},    // SNMP Trap
+	53:   &localPlugins.DNSFingerprinter{},     // DNS
+	67:   &localPlugins.DHCPFingerprinter{},    // DHCP Server
+	69:   &localPlugins.TFTPFingerprinter{},    // TFTP (Trivial File Transfer Protocol)
+	123:  &localPlugins.NTPFingerprinter{},     // NTP
+	137:  &localPlugins.NetBIOSFingerprinter{}, // NetBIOS Name Service
+	161:  &localPlugins.SNMPFingerprinter{},    // SNMP
+	162:  &localPlugins.SNMPFingerprinter{},    // SNMP Trap
+	623:  &localPlugins.IPMIFingerprinter{},    // IPMI (Intelligent Platform Management Interface)
+	1900: &localPlugins.SSDPFingerprinter{},    // SSDP (Simple Service Discovery Protocol)
+	5060: &localPlugins.SIPFingerprinter{},     // SIP (Session Initiation Protocol)
 }
 
 // RunServiceFingerprint fingerprints the service at target:port.
 //  1. If UDP mode is enabled, scan common UDP ports on the target host.
 //  2. If stealth mode is enabled, use targeted fingerprinting for the specified service type.
-//  3. Otherwise, let fingerprintx try first.
-//  4. If fingerprintx fails, run the custom modules in order until one hits.
+//  3. Otherwise, for TCP:
+//     a. Run custom modules first (MongoDB, gRPC - more specific detection)
+//     b. If custom modules fail, run fingerprintx (includes integrated plugins via PortPriority)
 func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
 	var results []*discoverfern.ServiceDetails
@@ -98,15 +105,9 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 		addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(port))
 		fingerprintTarget := plugins.Target{Address: addrPort, Host: host}
 		serviceFound := false
+		var fingerprintResult *plugins.Service
 
-		/* --- 1. fingerprintx ------------------------------------------------- */
-		if fingerprintResult, fingerprintError := fingerprintConfig.SimpleScanTarget(fingerprintTarget); fingerprintError == nil && fingerprintResult != nil && fingerprintResult.Protocol != "" {
-			results = append(results, fxToServiceDetails(fingerprintResult))
-			serviceFound = true
-			continue // done with this IP
-		}
-
-		/* --- 2. custom modules ---------------------------------------------- */
+		/* --- 1. Try custom modules first (more specific detection) --------- */
 		for _, fingerprinter := range customFingerprintModules {
 			detection, err := fingerprinter.Detect(ctx, ip, port, host, config.Timeout)
 			if err != nil {
@@ -117,6 +118,16 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 				results = append(results, detection)
 				serviceFound = true
 				break
+			}
+		}
+
+		// If custom modules didn't find anything, try fingerprintx
+		if !serviceFound {
+			/* --- 2. fingerprintx (includes our custom plugins via PortPriority) */
+			if fxResult, fingerprintError := fingerprintConfig.SimpleScanTarget(fingerprintTarget); fingerprintError == nil && fxResult != nil && fxResult.Protocol != "" {
+				fingerprintResult = fxResult
+				results = append(results, fxToServiceDetails(fingerprintResult))
+				serviceFound = true
 			}
 		}
 

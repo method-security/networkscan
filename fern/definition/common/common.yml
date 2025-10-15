@@ -1,8 +1,10 @@
 types:
   ProtocolType:
     enum:
-      - DNS
+      - BGP
+      - DCERPC
       - DHCP
+      - DNS
       - ECHO
       - FTP
       - GRPC
@@ -11,6 +13,7 @@ types:
       - HTTP2
       - IMAP
       - IMAPS
+      - IPP
       - IPMI
       - IPSEC
       - JDWP
@@ -19,7 +22,9 @@ types:
       - LDAP
       - LDAPS
       - MODBUS
+      - MONGODB
       - MQTT
+      - MSMQ
       - MSSQL
       - MYSQL
       - NETBIOS
@@ -34,14 +39,19 @@ types:
       - REDIS
       - RSYNC
       - RTSP
+      - SIP
       - SMB
       - SMTP
       - SMTPS
       - SNMP
       - SSH
+      - SSDP
       - STUN
       - TELNET
+      - TFTP
+      - UPNP
       - VNC
+      - WINRM
       - UNKNOWN
 
   TransportType:
