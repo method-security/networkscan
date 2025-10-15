@@ -29,7 +29,7 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 	timeoutDuration := time.Duration(timeout) * time.Second
 
 	// Try plaintext connection first

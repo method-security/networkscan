@@ -17,7 +17,7 @@ type DHCPFingerprinter struct{}
 func (DHCPFingerprinter) Name() string { return "dhcp" }
 
 func (DHCPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	// Create UDP connection
 	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)

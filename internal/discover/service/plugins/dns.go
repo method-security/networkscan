@@ -17,7 +17,7 @@ type DNSFingerprinter struct{}
 func (DNSFingerprinter) Name() string { return "dns" }
 
 func (DNSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	// Create DNS client with timeout
 	client := &dns.Client{

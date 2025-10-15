@@ -41,7 +41,9 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 
 	for _, proto := range protocols {
-		url := fmt.Sprintf("%s://%s:%d/", proto.scheme, ip, port)
+		// Use net.JoinHostPort to properly format IPv6 addresses with brackets
+		hostPort := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
+		url := fmt.Sprintf("%s://%s/", proto.scheme, hostPort)
 		req, err := http.NewRequestWithContext(timeoutCtx, "HEAD", url, nil)
 		if err != nil {
 			continue

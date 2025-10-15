@@ -34,7 +34,7 @@ func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 	timeoutDuration := 10 * time.Second // Fixed 10-second timeout
 
 	/* ---- try plaintext first --------------------------------------------- */
