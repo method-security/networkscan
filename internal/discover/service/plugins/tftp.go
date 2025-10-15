@@ -24,10 +24,10 @@ func (TFTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	rrqPacket := []byte{
 		0x00, 0x01, // Opcode: RRQ (1)
 	}
-	rrqPacket = append(rrqPacket, []byte("test")...) // Filename
-	rrqPacket = append(rrqPacket, 0x00)              // Null terminator
+	rrqPacket = append(rrqPacket, []byte("test")...)  // Filename
+	rrqPacket = append(rrqPacket, 0x00)               // Null terminator
 	rrqPacket = append(rrqPacket, []byte("octet")...) // Mode
-	rrqPacket = append(rrqPacket, 0x00)              // Null terminator
+	rrqPacket = append(rrqPacket, 0x00)               // Null terminator
 
 	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)
 	if err != nil {

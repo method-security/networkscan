@@ -108,11 +108,11 @@ func buildBGPOpenMessage() []byte {
 	}
 
 	// OPEN message payload
-	version := byte(4)                // BGP version 4
-	myAS := uint16(65000)             // Our ASN
-	holdTime := uint16(90)            // Hold time
-	bgpID := []byte{1, 1, 1, 1}       // BGP Identifier
-	optParamLen := byte(0)            // No optional parameters
+	version := byte(4)          // BGP version 4
+	myAS := uint16(65000)       // Our ASN
+	holdTime := uint16(90)      // Hold time
+	bgpID := []byte{1, 1, 1, 1} // BGP Identifier
+	optParamLen := byte(0)      // No optional parameters
 
 	// Build OPEN payload
 	openPayload := []byte{version}

@@ -22,25 +22,25 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	// Based on IPMI v1.5/2.0 RMCP specification
 	ipmiRequest := []byte{
 		// RMCP Header
-		0x06,       // RMCP Version 1.0
-		0x00,       // Reserved
-		0xFF,       // Sequence number (0xFF = no RMCP ACK)
-		0x07,       // Message Class: IPMI
+		0x06, // RMCP Version 1.0
+		0x00, // Reserved
+		0xFF, // Sequence number (0xFF = no RMCP ACK)
+		0x07, // Message Class: IPMI
 		// IPMI Session Header
 		0x00,                   // Authentication Type: None
 		0x00, 0x00, 0x00, 0x00, // Session Sequence Number
 		0x00, 0x00, 0x00, 0x00, // Session ID
 		// IPMI Message
-		0x09,                               // Message Length
-		0x20,                               // Responder Address
-		0x18,                               // NetFn/LUN
-		0xC8,                               // Checksum
-		0x81,                               // Requester Address
-		0x00,                               // Sequence Number
-		0x38,                               // Command: Get Channel Auth Capabilities
-		0x8E,                               // Channel Number
-		0x04,                               // Privilege Level
-		0xB5,                               // Checksum
+		0x09, // Message Length
+		0x20, // Responder Address
+		0x18, // NetFn/LUN
+		0xC8, // Checksum
+		0x81, // Requester Address
+		0x00, // Sequence Number
+		0x38, // Command: Get Channel Auth Capabilities
+		0x8E, // Channel Number
+		0x04, // Privilege Level
+		0xB5, // Checksum
 	}
 
 	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)
