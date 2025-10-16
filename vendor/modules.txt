@@ -162,6 +162,9 @@ github.com/gopacket/gopacket/pcap
 # github.com/gorilla/css v1.0.1
 ## explicit; go 1.20
 github.com/gorilla/css/scanner
+# github.com/gosnmp/gosnmp v1.42.1
+## explicit; go 1.22.0
+github.com/gosnmp/gosnmp
 # github.com/hashicorp/go-uuid v1.0.3
 ## explicit
 github.com/hashicorp/go-uuid
