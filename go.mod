@@ -10,6 +10,7 @@ require (
 	github.com/Ullaakut/nmap/v3 v3.0.6
 	github.com/go-ldap/ldap/v3 v3.4.11
 	github.com/google/uuid v1.6.0
+	github.com/gosnmp/gosnmp v1.42.1
 	github.com/jfjallid/go-smb v0.6.6
 	github.com/jfjallid/gokrb5/v8 v8.5.1
 	github.com/miekg/dns v1.1.68
@@ -41,7 +42,6 @@ require (
 	github.com/geoffgarside/ber v1.2.0 // indirect
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/gopacket/gopacket v1.4.0 // indirect
-	github.com/gosnmp/gosnmp v1.42.1 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/indece-official/go-ebcdic v1.2.0 // indirect
