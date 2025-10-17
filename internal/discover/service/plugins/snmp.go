@@ -65,7 +65,7 @@ func trySNMPv3Discovery(ip net.IP, port int, host string, timeout int) (*discove
 	if err != nil {
 		return nil, err
 	}
-	defer g.Close()
+	defer func() { _ = g.Close() }()
 
 	// Try to get system description - this will trigger SNMPv3 engine discovery internally
 	// The gosnmp library automatically sends a discovery packet first if needed
@@ -123,7 +123,7 @@ func trySNMPCommunity(ip net.IP, port int, host string, timeout int, community s
 	if err != nil {
 		return nil, err
 	}
-	defer g.Close()
+	defer func() { _ = g.Close() }()
 
 	// Try to get system description
 	oids := []string{"1.3.6.1.2.1.1.1.0"} // sysDescr
