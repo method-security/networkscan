@@ -1,15 +1,18 @@
-// Package plugins provides SNMP service fingerprinting
+// Package plugins provides SNMP service fingerprinting using GoSNMP library
 package plugins
 
 import (
 	"context"
-	"encoding/asn1"
+	"encoding/hex"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/gosnmp/gosnmp"
 )
 
 type SNMPFingerprinter struct{}
@@ -17,69 +20,120 @@ type SNMPFingerprinter struct{}
 func (SNMPFingerprinter) Name() string { return "snmp" }
 
 func (SNMPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
+	// First try SNMPv3 discovery (most secure, modern)
+	if result, err := trySNMPv3Discovery(ip, port, host, timeout); err == nil && result != nil {
+		return result, nil
+	}
 
-	// Create UDP connection
-	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)
+	// Fall back to SNMPv2c/v1 with community strings
+	communityStrings := []string{"public", "private"}
+
+	for _, community := range communityStrings {
+		// Try SNMPv2c first
+		if result, err := trySNMPCommunity(ip, port, host, timeout, community, gosnmp.Version2c); err == nil && result != nil {
+			return result, nil
+		}
+
+		// Fall back to SNMPv1
+		if result, err := trySNMPCommunity(ip, port, host, timeout, community, gosnmp.Version1); err == nil && result != nil {
+			return result, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no valid SNMP response with any method")
+}
+
+// trySNMPv3Discovery attempts to discover SNMPv3 engine information
+func trySNMPv3Discovery(ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+	// Create GoSNMP instance for SNMPv3 discovery
+	g := &gosnmp.GoSNMP{
+		Target:    ip.String(),
+		Port:      uint16(port),
+		Version:   gosnmp.Version3,
+		Timeout:   time.Duration(timeout) * time.Second,
+		Retries:   1,
+		Transport: "udp",
+		// For discovery, we use no authentication but need a username
+		SecurityModel: gosnmp.UserSecurityModel,
+		MsgFlags:      gosnmp.NoAuthNoPriv,
+		SecurityParameters: &gosnmp.UsmSecurityParameters{
+			UserName: "public", // Username required even for discovery
+		},
+	}
+
+	err := g.Connect()
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() { _ = g.Close() }()
 
-	// Set read deadline
-	if err := conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+	// Try to get system description - this will trigger SNMPv3 engine discovery internally
+	// The gosnmp library automatically sends a discovery packet first if needed
+	oids := []string{"1.3.6.1.2.1.1.1.0"} // sysDescr
+	result, err := g.Get(oids)
+
+	// Even if Get fails, check if we got engine information from the discovery
+	usmParams := g.SecurityParameters.(*gosnmp.UsmSecurityParameters)
+	if len(usmParams.AuthoritativeEngineID) > 0 {
+		// We successfully discovered an SNMPv3 engine
+		// AuthoritativeEngineID is stored as raw bytes in a string
+		engineIDBytes := []byte(usmParams.AuthoritativeEngineID)
+		engineIDHex := hex.EncodeToString(engineIDBytes)
+
+		engineInfo := &SNMPv3EngineInfo{
+			EngineID:    engineIDHex,
+			EngineBoots: int(usmParams.AuthoritativeEngineBoots),
+			EngineTime:  int(usmParams.AuthoritativeEngineTime),
+		}
+
+		// Parse engine ID format from raw bytes
+		engineInfo.EngineIDFormat, engineInfo.EngineIDData, engineInfo.Enterprise =
+			parseEngineID(engineIDBytes)
+
+		serviceResult := createSNMPv3Result(ip, port, host, engineInfo)
+
+		// Add system description if we got it successfully
+		if err == nil && len(result.Variables) > 0 && result.Variables[0].Value != nil {
+			serviceResult.Metadata["system_description"] = fmt.Sprintf("%v", result.Variables[0].Value)
+		}
+
+		return serviceResult, nil
+	}
+
+	// No engine information received
+	if err != nil {
 		return nil, err
 	}
+	return nil, fmt.Errorf("no SNMPv3 engine information received")
+}
 
-	// Build SNMP v1 GetRequest for sysDescr (1.3.6.1.2.1.1.1.0)
-	// This is a basic SNMP probe
-	snmpRequest := buildSNMPGetRequest("public", "1.3.6.1.2.1.1.1.0")
+// trySNMPCommunity tries SNMP with community string authentication
+func trySNMPCommunity(ip net.IP, port int, host string, timeout int, community string, version gosnmp.SnmpVersion) (*discoverfern.ServiceDetails, error) {
+	g := &gosnmp.GoSNMP{
+		Target:    ip.String(),
+		Port:      uint16(port),
+		Community: community,
+		Version:   version,
+		Timeout:   time.Duration(timeout) * time.Second,
+		Retries:   1,
+		Transport: "udp",
+	}
 
-	// Send the request
-	if _, err := conn.Write(snmpRequest); err != nil {
+	err := g.Connect()
+	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = g.Close() }()
 
-	// Read response
-	buffer := make([]byte, 4096)
-	n, err := conn.Read(buffer)
+	// Try to get system description
+	oids := []string{"1.3.6.1.2.1.1.1.0"} // sysDescr
+	result, err := g.Get(oids)
 	if err != nil {
-		return nil, fmt.Errorf("read error: %w", err)
-	}
-
-	// Check if we got a valid SNMP response
-	if n < 10 {
-		return nil, fmt.Errorf("response too short: %d bytes", n)
-	}
-
-	// Verify it starts with SEQUENCE tag (0x30)
-	if buffer[0] != 0x30 {
-		return nil, fmt.Errorf("invalid SNMP response: expected SEQUENCE tag, got 0x%02x", buffer[0])
-	}
-
-	// Parse basic SNMP response structure
-	// We use RawValue for Community because SNMP servers may return different ASN.1 types
-	var snmpMsg struct {
-		Version   int
-		Community asn1.RawValue
-		PDU       asn1.RawValue
-	}
-
-	_, err = asn1.Unmarshal(buffer[:n], &snmpMsg)
-	if err != nil {
-		return nil, fmt.Errorf("asn1 unmarshal error (got %d bytes): %w", n, err)
-	}
-
-	// Extract community string from RawValue
-	var community string
-	if snmpMsg.Community.Tag == 4 { // OCTET STRING
-		community = string(snmpMsg.Community.Bytes)
-	} else if snmpMsg.Community.Tag == 19 { // PrintableString
-		community = string(snmpMsg.Community.Bytes)
+		return nil, err
 	}
 
 	// SNMP service detected
-	result := &discoverfern.ServiceDetails{
+	serviceResult := &discoverfern.ServiceDetails{
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
@@ -91,41 +145,140 @@ func (SNMPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 
 	// Map SNMP version
 	var versionStr string
-	switch snmpMsg.Version {
-	case 0:
+	switch version {
+	case gosnmp.Version1:
 		versionStr = "SNMPv1"
-	case 1:
+	case gosnmp.Version2c:
 		versionStr = "SNMPv2c"
-	case 3:
-		versionStr = "SNMPv3"
 	default:
-		versionStr = fmt.Sprintf("SNMP (version %d)", snmpMsg.Version)
+		versionStr = fmt.Sprintf("SNMP (version %v)", version)
 	}
 
-	result.Version = &versionStr
-	result.Metadata["snmp_version"] = versionStr
-	result.Metadata["community"] = community
+	serviceResult.Version = &versionStr
+	serviceResult.Metadata["snmp_version"] = versionStr
+	serviceResult.Metadata["community"] = community
+	serviceResult.Metadata["community_used"] = community
 
-	return result, nil
+	// Add system description if available
+	if len(result.Variables) > 0 && result.Variables[0].Value != nil {
+		serviceResult.Metadata["system_description"] = fmt.Sprintf("%v", result.Variables[0].Value)
+	}
+
+	return serviceResult, nil
 }
 
-// buildSNMPGetRequest creates a simple SNMP v1 GetRequest packet
-func buildSNMPGetRequest(community, oid string) []byte {
-	// This is a simplified SNMP GetRequest packet for sysDescr
-	// SNMP v1, community "public", GetRequest for 1.3.6.1.2.1.1.1.0
-	snmpPacket := []byte{
-		0x30, 0x29, // SEQUENCE (41 bytes)
-		0x02, 0x01, 0x00, // INTEGER version (SNMPv1 = 0)
-		0x04, 0x06, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63, // OCTET STRING "public"
-		0xa0, 0x1c, // GetRequest PDU
-		0x02, 0x04, 0x00, 0x00, 0x00, 0x01, // request-id = 1
-		0x02, 0x01, 0x00, // error-status = 0
-		0x02, 0x01, 0x00, // error-index = 0
-		0x30, 0x0e, // variable-bindings SEQUENCE
-		0x30, 0x0c, // variable SEQUENCE
-		0x06, 0x08, 0x2b, 0x06, 0x01, 0x02, 0x01, 0x01, 0x01, 0x00, // OID 1.3.6.1.2.1.1.1.0
-		0x05, 0x00, // NULL value
+// createSNMPv3Result creates a ServiceDetails result for SNMPv3
+func createSNMPv3Result(ip net.IP, port int, host string, engineInfo *SNMPv3EngineInfo) *discoverfern.ServiceDetails {
+	result := &discoverfern.ServiceDetails{
+		Host:      host,
+		Ip:        ip.String(),
+		Port:      port,
+		Tls:       false,
+		Transport: common.TransportTypeUdp,
+		Protocol:  common.ProtocolTypeSnmp,
+		Metadata:  make(map[string]string),
 	}
 
-	return snmpPacket
+	versionStr := "SNMPv3"
+	result.Version = &versionStr
+	result.Metadata["snmp_version"] = "3"
+
+	// Add engine information to metadata
+	if engineInfo.EngineID != "" {
+		result.Metadata["engine_id"] = engineInfo.EngineID
+		result.Metadata["engine_id_format"] = engineInfo.EngineIDFormat
+		if engineInfo.EngineIDData != "" {
+			result.Metadata["engine_id_data"] = engineInfo.EngineIDData
+		}
+	}
+	if engineInfo.EngineBoots > 0 {
+		result.Metadata["engine_boots"] = strconv.Itoa(engineInfo.EngineBoots)
+	}
+	if engineInfo.EngineTime > 0 {
+		result.Metadata["engine_time"] = strconv.Itoa(engineInfo.EngineTime)
+		result.Metadata["engine_uptime"] = formatUptime(engineInfo.EngineTime)
+	}
+	if engineInfo.Enterprise > 0 {
+		result.Metadata["enterprise"] = strconv.Itoa(engineInfo.Enterprise)
+	}
+
+	return result
+}
+
+// SNMPv3EngineInfo holds SNMPv3 engine discovery information
+type SNMPv3EngineInfo struct {
+	EngineID       string
+	EngineIDFormat string
+	EngineIDData   string
+	EngineBoots    int
+	EngineTime     int
+	Enterprise     int
+}
+
+// parseEngineID analyzes the engine ID format and extracts relevant information
+func parseEngineID(engineID []byte) (format, data string, enterprise int) {
+	if len(engineID) < 5 {
+		return "unknown", "", 0
+	}
+
+	// First 4 bytes are enterprise ID
+	enterprise = int(engineID[0])<<24 | int(engineID[1])<<16 | int(engineID[2])<<8 | int(engineID[3])
+
+	if len(engineID) < 6 {
+		return "enterprise", "", enterprise
+	}
+
+	// 5th byte indicates format
+	formatByte := engineID[4]
+	remainder := engineID[5:]
+
+	switch formatByte {
+	case 1:
+		if len(remainder) >= 4 {
+			return "ipv4", fmt.Sprintf("%d.%d.%d.%d", remainder[0], remainder[1], remainder[2], remainder[3]), enterprise
+		}
+	case 2:
+		if len(remainder) >= 16 {
+			return "ipv6", hex.EncodeToString(remainder[:16]), enterprise
+		}
+	case 3:
+		if len(remainder) >= 6 {
+			return "mac", fmt.Sprintf("%02x:%02x:%02x:%02x:%02x:%02x",
+				remainder[0], remainder[1], remainder[2], remainder[3], remainder[4], remainder[5]), enterprise
+		}
+	case 4:
+		return "text", string(remainder), enterprise
+	case 5:
+		return "octets", hex.EncodeToString(remainder), enterprise
+	default:
+		return "reserved", hex.EncodeToString(remainder), enterprise
+	}
+
+	return "unknown", hex.EncodeToString(remainder), enterprise
+}
+
+// formatUptime converts engine time (seconds) to a human-readable format
+func formatUptime(seconds int) string {
+	if seconds <= 0 {
+		return "0 seconds"
+	}
+
+	days := seconds / 86400
+	hours := (seconds % 86400) / 3600
+	minutes := (seconds % 3600) / 60
+	secs := seconds % 60
+
+	var parts []string
+	if days > 0 {
+		parts = append(parts, fmt.Sprintf("%d days", days))
+	}
+	if hours > 0 || days > 0 {
+		parts = append(parts, fmt.Sprintf("%02d:%02d:%02d", hours, minutes, secs))
+	} else if minutes > 0 {
+		parts = append(parts, fmt.Sprintf("%d:%02d", minutes, secs))
+	} else {
+		parts = append(parts, fmt.Sprintf("%d seconds", secs))
+	}
+
+	return strings.Join(parts, ", ")
 }

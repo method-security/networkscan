@@ -308,6 +308,21 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				return
 			}
 
+			// Validate target format based on UDP mode
+			if !udp {
+				// For TCP mode, target must include a port (IP:port or hostname:port)
+				if !strings.Contains(target, ":") {
+					a.OutputSignal.AddError(fmt.Errorf("target must include port for TCP mode (e.g., %s:80). Use --udp flag for UDP service discovery", target))
+					return
+				}
+				// Use existing utility to validate the target format
+				_, port := utils.ParseHostPort(target, 0)
+				if port == 0 {
+					a.OutputSignal.AddError(fmt.Errorf("target must include a valid port for TCP mode (e.g., %s:80). Use --udp flag for UDP service discovery", target))
+					return
+				}
+			}
+
 			// Stealth flags
 			serviceType, err := cmd.Flags().GetString("service-type")
 			if err != nil {
