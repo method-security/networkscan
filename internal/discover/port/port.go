@@ -101,7 +101,7 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 
 	output := result.HostResult{}
 	hosts := []*discoverfern.SocketDetails{}
-	// These settings mimic naabu's default settings
+	// These settings mimic naabu's default settings with hardcoded slower rate
 	portscanOpts := &runner.Options{
 		Silent:            false,
 		JSON:              true,
@@ -109,7 +109,7 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		Verbose:           false,
 		Debug:             false,
 		Stream:            false,
-		Rate:              runner.DefaultRateConnectScan,
+		Rate:              config.PacketsPerSecond, // Global rate limit: packets per second across all threads (this is the bottleneck, not thread count)
 		Retries:           runner.DefaultRetriesConnectScan,
 		Threads:           config.Threads,
 		Timeout:           runner.DefaultPortTimeoutConnectScan,

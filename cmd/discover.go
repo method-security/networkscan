@@ -188,6 +188,11 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
+			packetsPerSecond, err := cmd.Flags().GetInt("packets-per-second")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
 			scanType, err := cmd.Flags().GetString("scan-type")
 			if err != nil {
 				a.OutputSignal.AddError(err)
@@ -255,7 +260,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Set Config
-			config := getDiscoverPortConfig(target, ports, topPorts, threads, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads, sleep, jitter)
+			config := getDiscoverPortConfig(target, ports, topPorts, threads, packetsPerSecond, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads, sleep, jitter)
 
 			// Generate the report
 			report, err := discoverport.RunPortScan(cmd.Context(), config)
@@ -271,6 +276,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().String("top-ports", "", "Scan the top N most common TCP ports (options: full, 100, 1000)")
 	discoverPortCmd.Flags().Int("threads", 25, "Number of concurrent threads to use during port scanning")
 	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN (default, requires root) or CONNECT")
+	discoverPortCmd.Flags().Int("packets-per-second", 1000, "Packets per second to send (default: 1000)")
 	discoverPortCmd.Flags().Bool("validate", false, "Validate open ports by using service detection techniques")
 	discoverPortCmd.Flags().String("validate-hostname", "", "Hostname to validate against (e.g., example.com)")
 	discoverPortCmd.Flags().Int("validate-attempt-timeout", 10, "Timeout in seconds for each service detection attempt")
@@ -435,12 +441,13 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 // getDiscoverPortConfig creates a configuration for port scanning with the provided parameters.
 // It handles both specific port ranges and top ports scanning modes.
-func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int, sleep int, jitter int) discoverfern.DiscoverPortConfig {
+func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, packetsPerSecond int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int, sleep int, jitter int) discoverfern.DiscoverPortConfig {
 	// Start with common fields that apply to both stealth and regular scans
 	config := discoverfern.DiscoverPortConfig{
-		Target:   target,
-		Ports:    &ports,
-		TopPorts: &topPorts,
+		Target:           target,
+		Ports:            &ports,
+		TopPorts:         &topPorts,
+		PacketsPerSecond: packetsPerSecond,
 	}
 
 	if sleep > 0 || jitter > 0 {
