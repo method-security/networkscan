@@ -354,6 +354,11 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 			log := svc1log.FromContext(ctx)
 			log.Debug("Successfully received NTLM challenge in stealth mode")
 
+			// Store the session so we can access security mode via reflection
+			if session != nil {
+				c.session = session
+			}
+
 			// Extract server info and return success
 			if !c.skipServerInfo {
 				if extractErr := c.extractServerInfoWithContext(ctx); extractErr != nil {
