@@ -9,12 +9,15 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
 type NetBIOSFingerprinter struct{}
 
 func (NetBIOSFingerprinter) Name() string { return "netbios-ns" }
+
+func (NetBIOSFingerprinter) DefaultPorts() []int { return []int{137} }
 
 func (NetBIOSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
@@ -59,7 +62,21 @@ func (NetBIOSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 		return nil, fmt.Errorf("invalid NetBIOS response")
 	}
 
-	// NetBIOS service detected
+	// NetBIOS service detected - build metadata
+	service := "NetBIOS-NS"
+	metadata := &protocol.NetbiosServerInfo{
+		Service: &service,
+	}
+
+	// Try to parse NetBIOS names from response
+	if n > 56 {
+		// NetBIOS name response format has names starting at offset 56
+		names := parseNetBIOSNames(buffer[56:n])
+		if len(names) > 0 {
+			metadata.NetbiosNames = names
+		}
+	}
+
 	result := &discoverfern.ServiceDetails{
 		Host:      host,
 		Ip:        ip.String(),
@@ -67,20 +84,8 @@ func (NetBIOSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 		Tls:       false,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeNetbios,
-		Metadata:  make(map[string]string),
-	}
-
-	version := "NetBIOS Name Service"
-	result.Version = &version
-	result.Metadata["service"] = "NetBIOS-NS"
-
-	// Try to parse NetBIOS names from response
-	if n > 56 {
-		// NetBIOS name response format has names starting at offset 56
-		names := parseNetBIOSNames(buffer[56:n])
-		if len(names) > 0 {
-			result.Metadata["netbios_names"] = fmt.Sprintf("%v", names)
-		}
+		Version:   nil, // NetBIOS has no version field
+		Metadata:  discoverfern.NewServiceMetadataFromNetbios(metadata),
 	}
 
 	return result, nil

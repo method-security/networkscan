@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/go-ldap/ldap/v3"
 )
@@ -38,6 +39,7 @@ func (LDAPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	if err != nil {
 		// Even if bind fails, if we got an LDAP error, the service is running
 		if strings.Contains(err.Error(), "LDAP") || strings.Contains(err.Error(), "ldap") {
+			metadata := &protocol.LdapServerInfo{}
 			return &discoverfern.ServiceDetails{
 				Host:      host,
 				Ip:        ip.String(),
@@ -45,13 +47,17 @@ func (LDAPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 				Tls:       false,
 				Transport: common.TransportTypeTcp,
 				Protocol:  common.ProtocolTypeLdap,
-				Metadata:  map[string]string{"detection": "ldap_bind_error", "error": err.Error()},
+				Metadata:  discoverfern.NewServiceMetadataFromLdap(metadata),
 			}, nil
 		}
 		return nil, err
 	}
 
 	// Successful anonymous bind
+	anonymousAllowed := true
+	metadata := &protocol.LdapServerInfo{
+		AnonymousBindAllowed: &anonymousAllowed,
+	}
 	return &discoverfern.ServiceDetails{
 		Host:      host,
 		Ip:        ip.String(),
@@ -59,6 +65,6 @@ func (LDAPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeLdap,
-		Metadata:  map[string]string{"detection": "ldap_anonymous_bind_success"},
+		Metadata:  discoverfern.NewServiceMetadataFromLdap(metadata),
 	}, nil
 }

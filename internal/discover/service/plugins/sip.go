@@ -9,12 +9,15 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
 type SIPFingerprinter struct{}
 
 func (SIPFingerprinter) Name() string { return "sip" }
+
+func (SIPFingerprinter) DefaultPorts() []int { return []int{5060} }
 
 func (SIPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := fmt.Sprintf("%s:%d", ip, port)
@@ -66,22 +69,15 @@ func (SIPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		return nil, fmt.Errorf("not a SIP response")
 	}
 
-	result := &discoverfern.ServiceDetails{
-		Host:      host,
-		Ip:        ip.String(),
-		Port:      port,
-		Tls:       false,
-		Transport: common.TransportTypeUdp,
-		Protocol:  common.ProtocolTypeSip,
-		Metadata:  make(map[string]string),
-	}
+	// Parse response first to extract metadata
+	var statusLine, server, userAgent, allow *string
+	var version *string
 
-	// Parse response
 	lines := strings.Split(responseStr, "\r\n")
 	if len(lines) > 0 {
 		// First line is status line
-		statusLine := lines[0]
-		result.Metadata["status"] = statusLine
+		sl := lines[0]
+		statusLine = &sl
 
 		// Parse headers
 		for _, line := range lines[1:] {
@@ -89,20 +85,38 @@ func (SIPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 				break
 			}
 			if strings.HasPrefix(line, "Server:") {
-				server := strings.TrimSpace(strings.TrimPrefix(line, "Server:"))
-				result.Version = &server
-				result.Metadata["server"] = server
+				s := strings.TrimSpace(strings.TrimPrefix(line, "Server:"))
+				server = &s
+				version = &s
 			} else if strings.HasPrefix(line, "User-Agent:") {
-				userAgent := strings.TrimSpace(strings.TrimPrefix(line, "User-Agent:"))
-				if result.Version == nil {
-					result.Version = &userAgent
+				ua := strings.TrimSpace(strings.TrimPrefix(line, "User-Agent:"))
+				userAgent = &ua
+				if version == nil {
+					version = &ua
 				}
-				result.Metadata["user_agent"] = userAgent
 			} else if strings.HasPrefix(line, "Allow:") {
-				allow := strings.TrimSpace(strings.TrimPrefix(line, "Allow:"))
-				result.Metadata["allow"] = allow
+				a := strings.TrimSpace(strings.TrimPrefix(line, "Allow:"))
+				allow = &a
 			}
 		}
+	}
+
+	metadata := &protocol.SipServerInfo{
+		Status:    statusLine,
+		Server:    server,
+		UserAgent: userAgent,
+		Allow:     allow,
+	}
+
+	result := &discoverfern.ServiceDetails{
+		Host:      host,
+		Ip:        ip.String(),
+		Port:      port,
+		Tls:       false,
+		Transport: common.TransportTypeUdp,
+		Protocol:  common.ProtocolTypeSip,
+		Version:   version,
+		Metadata:  discoverfern.NewServiceMetadataFromSip(metadata),
 	}
 
 	return result, nil

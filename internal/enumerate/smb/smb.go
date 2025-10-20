@@ -181,7 +181,6 @@ func (s *LibraryEnumerateSMB) processServerInfo(serverInfo *commonprotocolfern.S
 			TargetInfo:      serverInfo.TargetInfo,
 			OsInfo:          serverInfo.OsInfo,
 			MappedOsVersion: serverInfo.MappedOsVersion,
-			SigningRequired: serverInfo.SigningRequired,
 		}
 		ntlm.LogServerInfoDetails(ntlmServerInfo, target, log)
 
@@ -247,12 +246,7 @@ func (s *LibraryEnumerateSMB) assembleResponse(details *smb.EnumerateSmbDetails,
 	// Set authentication attempts
 	details.AuthAttempts = state.authAttempts
 
-	// Set security settings from server info
-	if serverInfo != nil && serverInfo.SigningRequired != nil {
-		details.SigningRequired = serverInfo.SigningRequired
-	}
-
-	// Set raw response information
+	// Set raw response information (signing info is in serverInfo)
 	var signing bool
 	if serverInfo != nil && serverInfo.SigningRequired != nil {
 		signing = *serverInfo.SigningRequired

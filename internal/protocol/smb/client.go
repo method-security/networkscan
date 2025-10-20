@@ -3,6 +3,7 @@ package smb
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -208,10 +209,28 @@ func (c *Client) ExtractServerInfoFromChallenge(ctx context.Context) (*commonpro
 	// Convert to SMB-specific server info with additional fields
 	smbInfo := convertNtlmToSmbServerInfo(ntlmInfo)
 
-	// Set signing requirement based on actual session state if available
+	// Set SMB-specific signing fields based on server's security mode (not session state)
 	if c.session != nil {
-		signingRequired := c.session.IsSigningRequired()
-		smbInfo.SigningRequired = &signingRequired
+		// Use reflection to get the server's actual security mode from the negotiate response
+		// This is necessary because IsSigningRequired() returns session-level state, which is
+		// set to false for null/guest sessions even when the server requires signing
+		securityMode, err := c.getServerSecurityMode()
+		if err != nil {
+			log.Debug("Failed to get server security mode, falling back to session signing state",
+				svc1log.SafeParam("error", err))
+			// Fallback to session-level signing state
+			signingRequired := c.session.IsSigningRequired()
+			smbInfo.SigningRequired = &signingRequired
+		} else {
+			// Successfully got server security mode - parse the flags
+			// SecurityModeSigningRequired = 2
+			signingRequired := (securityMode & gosmb.SecurityModeSigningRequired) > 0
+			smbInfo.SigningRequired = &signingRequired
+
+			log.Debug("Server security mode retrieved",
+				svc1log.SafeParam("securityMode", securityMode),
+				svc1log.SafeParam("signingRequired", signingRequired))
+		}
 	}
 
 	// SMB version detection - would need actual negotiation data
@@ -544,8 +563,20 @@ func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
 					commonprotocolfern.SmbVersionSmb20,
 				},
 			}
-			signingRequired := c.session.IsSigningRequired()
-			c.serverInfo.SigningRequired = &signingRequired
+
+			// Try to get server security mode from negotiate response using reflection
+			securityMode, err := c.getServerSecurityMode()
+			if err != nil {
+				log.Debug("Failed to get server security mode in fallback path, using session signing state",
+					svc1log.SafeParam("error", err))
+				// Fallback to session-level signing state
+				signingRequired := c.session.IsSigningRequired()
+				c.serverInfo.SigningRequired = &signingRequired
+			} else {
+				// Parse security mode flags
+				signingRequired := (securityMode & gosmb.SecurityModeSigningRequired) > 0
+				c.serverInfo.SigningRequired = &signingRequired
+			}
 		}
 		return nil
 	}
@@ -588,16 +619,41 @@ func (c *Client) GetSMBSession() (*gosmb.Connection, error) {
 	return c.session, nil
 }
 
+// getServerSecurityMode uses reflection to access the unexported securityMode field
+// from the SMB negotiate response. This is necessary because the session's IsSigningRequired()
+// returns false for null/guest sessions even when the server requires signing.
+//
+// The securityMode field is set from the SMB negotiate response and contains the server's
+// actual signing configuration. The session's IsSigningRequired() method returns the session-level
+// requirement, which is forcibly set to false for guest/null sessions regardless of the server
+// configuration.
+func (c *Client) getServerSecurityMode() (uint16, error) {
+	if c.session == nil {
+		return 0, fmt.Errorf("no active SMB session")
+	}
+
+	// Use reflection to access the unexported securityMode field from the embedded Session struct
+	sessionValue := reflect.ValueOf(c.session).Elem()
+	securityModeField := sessionValue.FieldByName("securityMode")
+
+	if !securityModeField.IsValid() {
+		return 0, fmt.Errorf("securityMode field not found in SMB session - library structure may have changed")
+	}
+
+	// Get the uint16 value
+	securityMode := securityModeField.Uint()
+	return uint16(securityMode), nil
+}
+
 // convertNtlmToSmbServerInfo converts NtlmServerInfo to SmbServerInfo, preserving nested structures
 func convertNtlmToSmbServerInfo(ntlmInfo *commonprotocolfern.NtlmServerInfo) *commonprotocolfern.SmbServerInfo {
 	return &commonprotocolfern.SmbServerInfo{
 		MappedOsVersion:      ntlmInfo.MappedOsVersion,
-		SigningRequired:      ntlmInfo.SigningRequired,
 		TargetInfo:           ntlmInfo.TargetInfo,
 		OsInfo:               ntlmInfo.OsInfo,
 		SmbVersion:           nil,                               // SMB-specific field, set separately
 		SupportedSmbVersions: []commonprotocolfern.SmbVersion{}, // SMB-specific field, set separately
-		SigningEnabled:       nil,                               // SMB-specific field, set separately
+		SigningRequired:      nil,                               // SMB-specific field, set separately
 		EncryptionSupported:  nil,                               // SMB-specific field, set separately
 		EncryptionRequired:   nil,                               // SMB-specific field, set separately
 		LanManagerVersion:    nil,                               // SMB-specific field, set separately

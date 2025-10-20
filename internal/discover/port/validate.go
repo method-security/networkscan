@@ -146,8 +146,15 @@ func isCDNResponse(ctx context.Context, service *discoverfern.ServiceDetails) bo
 		return false
 	}
 
+	// Extract metadata based on type
+	// For generic metadata, use the metadata map directly
+	metadataMap := make(map[string]string)
+	if service.Metadata.Generic != nil && service.Metadata.Generic.Metadata != nil {
+		metadataMap = service.Metadata.Generic.Metadata
+	}
+
 	// Check for specific CDN indicators regardless of status code
-	return hasCDNIndicators(ctx, service.Port, service.Metadata)
+	return hasCDNIndicators(ctx, service.Port, metadataMap)
 }
 
 // hasCDNIndicators checks for specific headers and content patterns that indicate CDN responses.

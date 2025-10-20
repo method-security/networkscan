@@ -1,0 +1,16 @@
+types:
+  # DNS Server Information
+  DnsServerInfo:
+    properties:
+      # Discovery fields
+      responseCode: optional<string>
+      authoritative: optional<boolean>
+      recursionAvailable: optional<boolean>
+      dnsVersion: optional<string>
+      edns0Support: optional<boolean>
+      udpBufferSize: optional<string>
+
+      # Additional DNS protocol details
+      serverName: optional<string>
+      supportedRecordTypes: optional<list<string>>
+      dnssecEnabled: optional<boolean>

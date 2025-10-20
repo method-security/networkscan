@@ -1,0 +1,16 @@
+types:
+  # IPP (Internet Printing Protocol) Server Information
+  IppServerInfo:
+    properties:
+      # Discovery fields
+      server: optional<string>
+      statusCode: optional<string>
+      httpStatus: optional<string>
+      scheme: optional<string>
+
+      # Additional IPP protocol details
+      printerName: optional<string>
+      printerState: optional<string>
+      printerUri: optional<list<string>>
+      supportedOperations: optional<list<string>>
+      documentFormats: optional<list<string>>

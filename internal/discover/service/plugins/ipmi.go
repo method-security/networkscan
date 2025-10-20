@@ -8,12 +8,15 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
 type IPMIFingerprinter struct{}
 
 func (IPMIFingerprinter) Name() string { return "ipmi" }
+
+func (IPMIFingerprinter) DefaultPorts() []int { return []int{623} }
 
 func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := fmt.Sprintf("%s:%d", ip, port)
@@ -80,6 +83,23 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		return nil, fmt.Errorf("not an IPMI response")
 	}
 
+	// Parse IPMI version and authentication type
+	authType := response[4]
+	authTypeStr := fmt.Sprintf("0x%02x", authType)
+
+	var version string
+	// Check if IPMI 2.0 is supported (indicated in response)
+	if n >= 20 && response[19]&0x02 != 0 {
+		version = "2.0"
+	} else {
+		version = "1.5"
+	}
+
+	metadata := &protocol.IpmiServerInfo{
+		Version:  &version,
+		AuthType: &authTypeStr,
+	}
+
 	result := &discoverfern.ServiceDetails{
 		Host:      host,
 		Ip:        ip.String(),
@@ -87,22 +107,8 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Tls:       false,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeIpmi,
-		Metadata:  make(map[string]string),
-	}
-
-	// Parse IPMI version if available
-	authType := response[4]
-	result.Metadata["auth_type"] = fmt.Sprintf("0x%02x", authType)
-
-	// Check if IPMI 2.0 is supported (indicated in response)
-	if n >= 20 && response[19]&0x02 != 0 {
-		version := "IPMI 2.0"
-		result.Version = &version
-		result.Metadata["version"] = "2.0"
-	} else {
-		version := "IPMI 1.5"
-		result.Version = &version
-		result.Metadata["version"] = "1.5"
+		Version:   &version,
+		Metadata:  discoverfern.NewServiceMetadataFromIpmi(metadata),
 	}
 
 	return result, nil

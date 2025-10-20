@@ -1,0 +1,13 @@
+types:
+  # Kerberos Server Information
+  KerberosServerInfo:
+    properties:
+      # Discovery fields
+      krbMessage: optional<string>
+      errorCode: optional<string>
+
+      # Additional Kerberos protocol details
+      realm: optional<string>
+      supportedEnctypes: optional<list<string>>
+      kdcAddress: optional<string>
+      preAuthRequired: optional<boolean>

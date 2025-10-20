@@ -1,0 +1,30 @@
+types:
+  # gRPC Method Definition
+  RpcMethod:
+    properties:
+      name: string # Method name (e.g., "Foo", "Bar")
+      fullPath: string # Full path (e.g., "/pkg.Svc/Foo")
+      requestType: string # Request message type (e.g., "pkg.Msg")
+      responseType: string # Response message type (e.g., "pkg.Resp")
+      clientStreaming: boolean # Whether method uses client streaming
+      serverStreaming: boolean # Whether method uses server streaming
+      requestFields: optional<list<string>> # Request message fields if available
+
+  # gRPC Service Definition
+  GrpcService:
+    properties:
+      name: string # Service name (e.g., "pkg.Svc")
+      methods: list<RpcMethod> # Methods in this service
+
+  # gRPC Server Information
+
+  GrpcServerInfo:
+    properties:
+      # Discovery/enumeration fields
+      reflectionSupported: boolean # Whether gRPC reflection is enabled
+      services: optional<list<GrpcService>> # Detailed service definitions if reflection enabled
+      rawDescriptorSet: optional<string> # base64-encoded FileDescriptorSet if available
+
+      # Additional gRPC protocol details
+      supportedCompression: optional<list<string>>
+      maxMessageSize: optional<integer>

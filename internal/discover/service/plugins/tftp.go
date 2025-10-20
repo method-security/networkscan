@@ -9,12 +9,15 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
 type TFTPFingerprinter struct{}
 
 func (TFTPFingerprinter) Name() string { return "tftp" }
+
+func (TFTPFingerprinter) DefaultPorts() []int { return []int{69} }
 
 func (TFTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := fmt.Sprintf("%s:%d", ip, port)
@@ -67,29 +70,25 @@ func (TFTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		return nil, fmt.Errorf("not a TFTP response, opcode: %d", opcode)
 	}
 
-	result := &discoverfern.ServiceDetails{
-		Host:      host,
-		Ip:        ip.String(),
-		Port:      port,
-		Tls:       false,
-		Transport: common.TransportTypeUdp,
-		Protocol:  common.ProtocolTypeTftp,
-		Metadata:  make(map[string]string),
-	}
+	metadata := &protocol.TftpServerInfo{}
 
 	// Parse response details
 	switch opcode {
 	case 3: // DATA
-		result.Metadata["opcode"] = "DATA"
+		opcodeStr := "DATA"
+		metadata.Opcode = &opcodeStr
 		if n >= 4 {
 			blockNum := binary.BigEndian.Uint16(response[2:4])
-			result.Metadata["block_number"] = fmt.Sprintf("%d", blockNum)
+			blockNumStr := fmt.Sprintf("%d", blockNum)
+			metadata.BlockNumber = &blockNumStr
 		}
 	case 5: // ERROR
-		result.Metadata["opcode"] = "ERROR"
+		opcodeStr := "ERROR"
+		metadata.Opcode = &opcodeStr
 		if n >= 4 {
 			errorCode := binary.BigEndian.Uint16(response[2:4])
-			result.Metadata["error_code"] = fmt.Sprintf("%d", errorCode)
+			errorCodeStr := fmt.Sprintf("%d", errorCode)
+			metadata.ErrorCode = &errorCodeStr
 
 			// Extract error message (null-terminated string starting at byte 4)
 			if n > 4 {
@@ -101,14 +100,22 @@ func (TFTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 					errorMsg += string(response[i])
 				}
 				if errorMsg != "" {
-					result.Metadata["error_message"] = errorMsg
+					metadata.ErrorMessage = &errorMsg
 				}
 			}
 		}
 	}
 
-	version := "TFTP"
-	result.Version = &version
+	result := &discoverfern.ServiceDetails{
+		Host:      host,
+		Ip:        ip.String(),
+		Port:      port,
+		Tls:       false,
+		Transport: common.TransportTypeUdp,
+		Protocol:  common.ProtocolTypeTftp,
+		Version:   nil, // TFTP has no version field
+		Metadata:  discoverfern.NewServiceMetadataFromTftp(metadata),
+	}
 
 	return result, nil
 }

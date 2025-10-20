@@ -66,6 +66,14 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 			protocolName = "HTTPS"
 		}
 
+		// Build generic metadata map
+		metadata := map[string]string{
+			"status":     fmt.Sprintf("%d %s", resp.StatusCode, resp.Status),
+			"server":     server,
+			"scheme":     proto.scheme,
+			"statusCode": fmt.Sprintf("%d", resp.StatusCode),
+		}
+
 		return &discoverfern.ServiceDetails{
 			Host:      host,
 			Ip:        ip.String(),
@@ -79,11 +87,9 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 				}
 				return common.ProtocolTypeUnknown
 			}(),
-			Metadata: map[string]string{
-				"status": fmt.Sprintf("%d %s", resp.StatusCode, resp.Status),
-				"server": server,
-				"scheme": proto.scheme,
-			},
+			Metadata: discoverfern.NewServiceMetadataFromGeneric(&discoverfern.GenericServiceMetadata{
+				Metadata: metadata,
+			}),
 		}, nil
 	}
 

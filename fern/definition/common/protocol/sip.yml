@@ -1,0 +1,15 @@
+types:
+  # SIP (Session Initiation Protocol) Server Information
+  SipServerInfo:
+    properties:
+      # Discovery fields
+      status: optional<string>
+      server: optional<string>
+      userAgent: optional<string>
+      allow: optional<string>
+
+      # Additional SIP protocol details
+      supportedMethods: optional<list<string>>
+      supportedCodecs: optional<list<string>>
+      registrarUri: optional<string>
+      realm: optional<string>

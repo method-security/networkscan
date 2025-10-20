@@ -3,27 +3,38 @@ imports:
 
 types:
   # LDAP Protocol Common Types
-  
+
   # LDAP Authentication Methods
   LdapAuthMethod:
     enum:
       - ANONYMOUS
-      - NULL_BIND  
+      - NULL_BIND
       - SIMPLE
       - NTLM
       - SASL_GSS_SPNEGO
-  
+
   # LDAP Server Information
   LdapServerInfo:
     extends: ntlmProtocol.NtlmServerInfo
     properties:
       # LDAP-specific properties
-      baseDN: optional<string>               # LDAP-specific base DN
+      baseDN: optional<string> # LDAP-specific base DN (alias for defaultNamingContext)
+      defaultNamingContext: optional<string>
+      schemaNamingContext: optional<string>
+      configurationNamingContext: optional<string>
+
+      # Protocol support
       supportsTLS: optional<boolean>
       supportsStartTLS: optional<boolean>
       supportsSASL: optional<boolean>
+      supportedLdapVersion: optional<list<string>>
+      supportedSaslMechanisms: optional<list<string>>
+      supportedCapabilities: optional<list<string>>
+
+      # Authentication
       anonymousBindAllowed: optional<boolean>
-      
+      nullBindAllowed: optional<boolean>
+
   # Basic LDAP Connection Info
   LdapConnectionInfo:
     properties:

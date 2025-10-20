@@ -1,0 +1,17 @@
+types:
+  # SSDP (Simple Service Discovery Protocol) / UPnP Server Information
+  SsdpServerInfo:
+    properties:
+      # Discovery response fields
+      status: optional<string>
+      server: optional<string>
+      location: optional<string>
+      cacheControl: optional<string>
+      usn: optional<string>
+      serviceType: optional<string>
+
+      # Additional UPnP details
+      searchTarget: optional<string>
+      ext: optional<string>
+      bootId: optional<string>
+      configId: optional<string>

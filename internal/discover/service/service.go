@@ -19,10 +19,8 @@ import (
 	plugins "github.com/praetorian-inc/fingerprintx/pkg/plugins"
 	scan "github.com/praetorian-inc/fingerprintx/pkg/scan"
 
-	// Custom fingerprinters (includes fingerprintx plugin registration)
+	// Custom fingerprinters
 	localPlugins "github.com/Method-Security/networkscan/internal/discover/service/plugins"
-	// Fingerprintx plugins (auto-register via init())
-	_ "github.com/Method-Security/networkscan/internal/discover/service/plugins/fingerprintx"
 	// Internal
 	"github.com/Method-Security/networkscan/internal/common/ntlm"
 	// Utilities
@@ -40,13 +38,22 @@ import (
 type Fingerprinter interface {
 	Name() string
 	Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error)
+	// DefaultPorts returns the list of default ports for this service
+	// Empty list means the service can run on any port (no port restrictions)
+	DefaultPorts() []int
 }
 
-// Generic custom fingerprinters for protocols that don't integrate well with fingerprintx
+// Custom fingerprinters for protocols that need specialized detection
 // These run BEFORE fingerprintx to provide more specific detection
 var customFingerprintModules = []Fingerprinter{
-	&localPlugins.GrpcFingerprinter{},    // gRPC can run on any port
-	&localPlugins.MongoDBFingerprinter{}, // MongoDB driver manages its own connections
+	&localPlugins.GrpcFingerprinter{},     // gRPC can run on any port
+	&localPlugins.MongoDBFingerprinter{},  // MongoDB driver manages its own connections
+	&localPlugins.BGPFingerprinter{},      // BGP protocol detection
+	&localPlugins.DCERPCFingerprinter{},   // Windows DCE/RPC
+	&localPlugins.IPPFingerprinter{},      // Internet Printing Protocol
+	&localPlugins.WinRMFingerprinter{},    // Windows Remote Management
+	&localPlugins.KerberosFingerprinter{}, // Kerberos (Kerberos 5),
+	&localPlugins.SMBFingerprinter{},      // SMB (Server Message Block),
 }
 
 // UDP fingerprinters mapped to their specific ports
@@ -67,9 +74,10 @@ var udpFingerprinters = map[uint16]Fingerprinter{
 // RunServiceFingerprint fingerprints the service at target:port.
 //  1. If UDP mode is enabled, scan common UDP ports on the target host.
 //  2. If stealth mode is enabled, use targeted fingerprinting for the specified service type.
-//  3. Otherwise, for TCP:
-//     a. Run custom modules first (MongoDB, gRPC - more specific detection)
-//     b. If custom modules fail, run fingerprintx (includes integrated plugins via PortPriority)
+//  3. Otherwise, for TCP (port-priority system):
+//     Phase 1: Run custom fingerprinters ONLY if port matches their default ports
+//     Phase 2: Run fingerprintx (which has its own port priority)
+//     Phase 3: If nothing found, run custom fingerprinters on all ports (comprehensive fallback)
 func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
 	var results []*discoverfern.ServiceDetails
@@ -107,23 +115,37 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 		serviceFound := false
 		var fingerprintResult *plugins.Service
 
-		/* --- 1. Try custom modules first (more specific detection) --------- */
+		/* --- Phase 1: Run custom fingerprinters on default ports only ------- */
+		// Collect applicable fingerprinters for this port
+		var applicableFingerprinters []Fingerprinter
 		for _, fingerprinter := range customFingerprintModules {
-			detection, err := fingerprinter.Detect(ctx, ip, port, host, config.Timeout)
-			if err != nil {
-				report.Errors = append(report.Errors, fmt.Sprintf("%s(%s): %v", fingerprinter.Name(), ip, err))
-				continue
+			defaultPorts := fingerprinter.DefaultPorts()
+			// Skip if this fingerprinter has port restrictions and current port doesn't match
+			if len(defaultPorts) > 0 {
+				portMatches := false
+				for _, p := range defaultPorts {
+					if p == port {
+						portMatches = true
+						break
+					}
+				}
+				if !portMatches {
+					continue
+				}
 			}
-			if detection != nil { // hit!
+			applicableFingerprinters = append(applicableFingerprinters, fingerprinter)
+		}
+
+		// Run applicable fingerprinters in parallel
+		if len(applicableFingerprinters) > 0 {
+			if detection := runFingerprintersParallel(ctx, applicableFingerprinters, ip, port, host, config.Timeout); detection != nil {
 				results = append(results, detection)
 				serviceFound = true
-				break
 			}
 		}
 
-		// If custom modules didn't find anything, try fingerprintx
+		/* --- Phase 2: Run fingerprintx (has its own port priority) --------- */
 		if !serviceFound {
-			/* --- 2. fingerprintx (includes our custom plugins via PortPriority) */
 			if fxResult, fingerprintError := fingerprintConfig.SimpleScanTarget(fingerprintTarget); fingerprintError == nil && fxResult != nil && fxResult.Protocol != "" {
 				fingerprintResult = fxResult
 				results = append(results, fxToServiceDetails(fingerprintResult))
@@ -131,7 +153,38 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 			}
 		}
 
-		/* --- 3. no service found -------------------------------------------- */
+		/* --- Phase 3: Run custom fingerprinters on all ports (fallback) ---- */
+		if !serviceFound {
+			// Collect fingerprinters we haven't tried yet
+			var fallbackFingerprinters []Fingerprinter
+			for _, fingerprinter := range customFingerprintModules {
+				defaultPorts := fingerprinter.DefaultPorts()
+				// Skip if we already tried this fingerprinter in phase 1
+				if len(defaultPorts) > 0 {
+					portMatches := false
+					for _, p := range defaultPorts {
+						if p == port {
+							portMatches = true
+							break
+						}
+					}
+					if portMatches {
+						continue // Already tried in phase 1
+					}
+				}
+				fallbackFingerprinters = append(fallbackFingerprinters, fingerprinter)
+			}
+
+			// Run fallback fingerprinters in parallel
+			if len(fallbackFingerprinters) > 0 {
+				if detection := runFingerprintersParallel(ctx, fallbackFingerprinters, ip, port, host, config.Timeout); detection != nil {
+					results = append(results, detection)
+					serviceFound = true
+				}
+			}
+		}
+
+		/* --- No service found ---------------------------------------------- */
 		if !serviceFound {
 			report.Errors = append(report.Errors, fmt.Sprintf("no service found on ip address: %s and port: %d", ip, port))
 		}
@@ -141,8 +194,83 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 	return report, nil
 }
 
+// runFingerprintersParallel runs multiple fingerprinters concurrently and returns the first successful detection
+func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprinter, ip net.IP, port int, host string, timeout int) *discoverfern.ServiceDetails {
+	// Create a cancellable context so we can stop remaining fingerprinters once we find a match
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	resultChan := make(chan *discoverfern.ServiceDetails, len(fingerprinters))
+	doneChan := make(chan struct{})
+
+	// Launch all fingerprinters concurrently
+	for _, fp := range fingerprinters {
+		go func(fingerprinter Fingerprinter) {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				detection, err := fingerprinter.Detect(ctx, ip, port, host, timeout)
+				if err == nil && detection != nil {
+					select {
+					case resultChan <- detection:
+					case <-ctx.Done():
+					}
+				}
+			}
+		}(fp)
+	}
+
+	// Wait for either a result or all fingerprinters to complete
+	go func() {
+		// Simple completion tracking - just wait for context to be cancelled
+		<-ctx.Done()
+		close(doneChan)
+	}()
+
+	// Return first successful result
+	select {
+	case result := <-resultChan:
+		cancel() // Cancel remaining fingerprinters
+		return result
+	case <-time.After(time.Duration(timeout) * time.Second):
+		return nil
+	}
+}
+
 // fxToServiceDetails converts fingerprintx result to ServiceDetails
 func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
+	// Parse fingerprintx result into a map so we can enrich it
+	var meta map[string]interface{}
+	if len(result.Raw) > 0 {
+		if err := json.Unmarshal(result.Raw, &meta); err != nil {
+			// If parsing fails, create new map with raw data as string
+			meta = map[string]interface{}{
+				"raw": string(result.Raw),
+			}
+		}
+	} else {
+		meta = make(map[string]interface{})
+	}
+
+	// Parse Windows OS version from NTLM metadata if available
+	if osVersion, exists := meta["osVersion"]; exists {
+		if osVersionStr, ok := osVersion.(string); ok && osVersionStr != "" {
+			// Extract build number from version like "10.0.20348" -> "Build 20348"
+			parts := strings.Split(osVersionStr, ".")
+			if len(parts) >= 3 {
+				buildVersion := fmt.Sprintf("Build %s", parts[2])
+				meta["mappedOsVersion"] = ntlm.ParseWindowsVersion(buildVersion)
+			}
+		}
+	}
+
+	// Convert map[string]interface{} to map[string]string for GenericServiceMetadata
+	metadataMap := make(map[string]string)
+	for k, v := range meta {
+		metadataMap[k] = fmt.Sprintf("%v", v)
+	}
+
 	serviceDetails := &discoverfern.ServiceDetails{
 		Host: result.Host,
 		Ip:   result.IP,
@@ -160,25 +288,8 @@ func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 			}
 			return common.ProtocolTypeUnknown
 		}(),
-		Version: &result.Version,
-		Metadata: map[string]string{
-			"raw": string(result.Raw),
-		},
-	}
-
-	// Parse Windows OS version from NTLM metadata if available
-	var rawData map[string]interface{}
-	if err := json.Unmarshal(result.Raw, &rawData); err == nil {
-		if osVersion, exists := rawData["osVersion"]; exists {
-			if osVersionStr, ok := osVersion.(string); ok && osVersionStr != "" {
-				// Extract build number from version like "10.0.20348" -> "Build 20348"
-				parts := strings.Split(osVersionStr, ".")
-				if len(parts) >= 3 {
-					buildVersion := fmt.Sprintf("Build %s", parts[2])
-					serviceDetails.Metadata["mappedOsVersion"] = ntlm.ParseWindowsVersion(buildVersion)
-				}
-			}
-		}
+		Version:  &result.Version,
+		Metadata: discoverfern.NewServiceMetadataFromGeneric(&discoverfern.GenericServiceMetadata{Metadata: metadataMap}),
 	}
 
 	return serviceDetails
@@ -207,18 +318,41 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 
 	// Scan each IP
 	for _, ip := range ips {
-		// Try each UDP port that has a custom fingerprinter
+		// Collect all UDP fingerprinters with their ports
+		type udpFingerprintTask struct {
+			port          int
+			fingerprinter Fingerprinter
+		}
+		var tasks []udpFingerprintTask
 		for port, fingerprinter := range udpFingerprinters {
-			detection, err := fingerprinter.Detect(ctx, ip, int(port), host, config.Timeout)
-			if err != nil {
-				// UDP errors are expected when services aren't running
-				// We silently skip these as they're normal behavior
-				continue
-			}
-			if detection != nil {
+			tasks = append(tasks, udpFingerprintTask{
+				port:          int(port),
+				fingerprinter: fingerprinter,
+			})
+		}
+
+		// Run all UDP fingerprinters in parallel
+		resultChan := make(chan *discoverfern.ServiceDetails, len(tasks))
+		for _, task := range tasks {
+			go func(t udpFingerprintTask) {
+				detection, err := t.fingerprinter.Detect(ctx, ip, t.port, host, config.Timeout)
+				if err == nil && detection != nil {
+					resultChan <- detection
+				}
+			}(task)
+		}
+
+		// Collect results with timeout
+		timeout := time.After(time.Duration(config.Timeout) * time.Second)
+		for range tasks {
+			select {
+			case detection := <-resultChan:
 				results = append(results, detection)
+			case <-timeout:
+				goto done
 			}
 		}
+	done:
 	}
 
 	if len(results) == 0 {

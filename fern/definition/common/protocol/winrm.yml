@@ -1,0 +1,15 @@
+types:
+  # WinRM (Windows Remote Management) Server Information
+  WinrmServerInfo:
+    properties:
+      # Discovery fields
+      server: optional<string>
+      statusCode: optional<string>
+      scheme: optional<string>
+      productVersion: optional<string>
+      protocolVersion: optional<string>
+
+      # Additional WinRM protocol details
+      maxEnvelopeSize: optional<integer>
+      maxTimeoutMs: optional<integer>
+      authSchemes: optional<list<string>>

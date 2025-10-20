@@ -1,58 +1,56 @@
-// Package fingerprintx provides BGP service fingerprinting for fingerprintx
-package fingerprintx
+// Package plugins provides BGP service fingerprinting
+package plugins
 
 import (
+	"context"
 	"encoding/binary"
+	"fmt"
 	"net"
 	"time"
 
-	plugins "github.com/praetorian-inc/fingerprintx/pkg/plugins"
-	utils "github.com/praetorian-inc/fingerprintx/pkg/plugins/pluginutils"
+	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
+	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
-/* ---------- metadata ---------- */
+type BGPFingerprinter struct{}
 
-type BGPMetadata struct {
-	MessageType string `json:"message_type,omitempty"`
-	Version     string `json:"version,omitempty"`
-}
+func (BGPFingerprinter) Name() string { return "bgp" }
 
-func (BGPMetadata) Type() string { return "bgp" }
+func (BGPFingerprinter) DefaultPorts() []int { return []int{179} }
 
-/* ---------- plugin ---------- */
+func (BGPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ip.String(), port), time.Duration(timeout)*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = conn.Close() }()
 
-type BGPPlugin struct{}
-
-func (p *BGPPlugin) Name() string                  { return "bgp" }
-func (p *BGPPlugin) Type() plugins.Protocol        { return plugins.TCP }
-func (p *BGPPlugin) PortPriority(port uint16) bool { return port == 179 }
-func (p *BGPPlugin) Priority() int                 { return 90 }
-
-func init() {
-	plugins.RegisterPlugin(&BGPPlugin{})
-}
-
-/* ---------- runtime ---------- */
-
-func (p *BGPPlugin) Run(conn net.Conn, t time.Duration, tgt plugins.Target) (*plugins.Service, error) {
 	// Build BGP OPEN message
 	openMsg := buildBGPOpenMessage()
 
 	// Set deadline
-	if err := conn.SetDeadline(time.Now().Add(t)); err != nil {
-		return nil, nil
+	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+		return nil, err
 	}
 
-	// Send BGP OPEN and wait for response
-	reply, err := utils.SendRecv(conn, openMsg, t)
-	if err != nil || len(reply) < 19 {
-		return nil, nil
+	// Send BGP OPEN
+	if _, err := conn.Write(openMsg); err != nil {
+		return nil, err
 	}
+
+	// Read response
+	reply := make([]byte, 4096)
+	n, err := conn.Read(reply)
+	if err != nil || n < 19 {
+		return nil, err
+	}
+	reply = reply[:n]
 
 	// Verify BGP marker (16 bytes of 0xFF)
 	for i := 0; i < 16; i++ {
 		if reply[i] != 0xFF {
-			return nil, nil
+			return nil, nil // Not BGP
 		}
 	}
 
@@ -70,32 +68,47 @@ func (p *BGPPlugin) Run(conn net.Conn, t time.Duration, tgt plugins.Target) (*pl
 		return nil, nil
 	}
 
-	meta := BGPMetadata{
-		Version: "BGP-4",
-	}
+	bgpVersion := "4"
+	var messageType string
 
 	// Determine message type
 	switch msgType {
 	case 1:
-		meta.MessageType = "OPEN"
+		messageType = "OPEN"
 		// Try to extract version from OPEN message
 		if len(reply) >= 20 {
 			version := reply[19]
 			if version == 4 {
-				meta.Version = "BGP-4"
+				bgpVersion = "4"
 			}
 		}
 	case 2:
-		meta.MessageType = "UPDATE"
+		messageType = "UPDATE"
 	case 3:
-		meta.MessageType = "NOTIFICATION"
+		messageType = "NOTIFICATION"
 	case 4:
-		meta.MessageType = "KEEPALIVE"
+		messageType = "KEEPALIVE"
 	case 5:
-		meta.MessageType = "ROUTE-REFRESH"
+		messageType = "ROUTE-REFRESH"
 	}
 
-	return plugins.CreateServiceFrom(tgt, meta, false, "", plugins.TCP), nil
+	metadata := &protocol.BgpServerInfo{
+		Version:     &bgpVersion,
+		MessageType: &messageType,
+	}
+
+	result := &discoverfern.ServiceDetails{
+		Host:      host,
+		Ip:        ip.String(),
+		Port:      port,
+		Tls:       false,
+		Transport: common.TransportTypeTcp,
+		Protocol:  common.ProtocolTypeBgp,
+		Version:   &bgpVersion,
+		Metadata:  discoverfern.NewServiceMetadataFromBgp(metadata),
+	}
+
+	return result, nil
 }
 
 /* ---------- helper ---------- */

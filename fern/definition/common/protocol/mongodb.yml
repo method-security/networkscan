@@ -1,0 +1,15 @@
+types:
+  # MongoDB Server Information
+  MongodbServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      buildInfo: optional<string>
+      unauthenticatedAccess: optional<boolean>
+
+      # Additional MongoDB protocol details
+      storageEngine: optional<string>
+      replicationEnabled: optional<boolean>
+      authMechanisms: optional<list<string>>
+      maxBsonObjectSize: optional<integer>
+      maxMessageSizeBytes: optional<integer>

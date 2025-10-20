@@ -16,6 +16,8 @@ type DHCPFingerprinter struct{}
 
 func (DHCPFingerprinter) Name() string { return "dhcp" }
 
+func (DHCPFingerprinter) DefaultPorts() []int { return []int{67} }
+
 func (DHCPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
@@ -66,7 +68,26 @@ func (DHCPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		return nil, fmt.Errorf("invalid DHCP magic cookie")
 	}
 
-	// DHCP service detected
+	// DHCP service detected - build metadata map first
+	meta := make(map[string]string)
+
+	// Parse offered IP address (yiaddr field at bytes 16-19)
+	offeredIP := net.IPv4(buffer[16], buffer[17], buffer[18], buffer[19])
+	meta["offered_ip"] = offeredIP.String()
+
+	// Parse server identifier (siaddr field at bytes 20-23)
+	serverIP := net.IPv4(buffer[20], buffer[21], buffer[22], buffer[23])
+	meta["server_ip"] = serverIP.String()
+
+	// Try to parse DHCP options
+	if n > 240 {
+		options := parseDHCPOptions(buffer[240:n])
+		for k, v := range options {
+			meta[k] = v
+		}
+	}
+
+	version := "DHCP Server"
 	result := &discoverfern.ServiceDetails{
 		Host:      host,
 		Ip:        ip.String(),
@@ -74,26 +95,8 @@ func (DHCPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Tls:       false,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeDhcp,
-		Metadata:  make(map[string]string),
-	}
-
-	version := "DHCP Server"
-	result.Version = &version
-
-	// Parse offered IP address (yiaddr field at bytes 16-19)
-	offeredIP := net.IPv4(buffer[16], buffer[17], buffer[18], buffer[19])
-	result.Metadata["offered_ip"] = offeredIP.String()
-
-	// Parse server identifier (siaddr field at bytes 20-23)
-	serverIP := net.IPv4(buffer[20], buffer[21], buffer[22], buffer[23])
-	result.Metadata["server_ip"] = serverIP.String()
-
-	// Try to parse DHCP options
-	if n > 240 {
-		options := parseDHCPOptions(buffer[240:n])
-		for k, v := range options {
-			result.Metadata[k] = v
-		}
+		Version:   &version,
+		Metadata:  discoverfern.NewServiceMetadataFromGeneric(&discoverfern.GenericServiceMetadata{Metadata: meta}),
 	}
 
 	return result, nil

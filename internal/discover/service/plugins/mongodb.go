@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -20,6 +21,8 @@ import (
 type MongoDBFingerprinter struct{}
 
 func (MongoDBFingerprinter) Name() string { return "mongodb" }
+
+func (MongoDBFingerprinter) DefaultPorts() []int { return []int{27017} }
 
 func (MongoDBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	// Create MongoDB connection string
@@ -54,6 +57,9 @@ func (MongoDBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 	version := ""
 	buildInfo := ""
 	unauthenticatedAccess := false
+	var storageEngine *string
+	var maxBsonObjectSize *int
+	var maxMessageSizeBytes *int
 
 	// Try to get build info (requires no authentication by default)
 	var result map[string]interface{}
@@ -64,6 +70,19 @@ func (MongoDBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 		}
 		if gitVersion, ok := result["gitVersion"].(string); ok {
 			buildInfo = gitVersion
+		}
+		if se, ok := result["storageEngines"].([]interface{}); ok && len(se) > 0 {
+			if seStr, ok := se[0].(string); ok {
+				storageEngine = &seStr
+			}
+		}
+		if maxBson, ok := result["maxBsonObjectSize"].(int32); ok {
+			maxBsonInt := int(maxBson)
+			maxBsonObjectSize = &maxBsonInt
+		}
+		if maxMsg, ok := result["maxMessageSizeBytes"].(int32); ok {
+			maxMsgInt := int(maxMsg)
+			maxMessageSizeBytes = &maxMsgInt
 		}
 	}
 
@@ -79,26 +98,26 @@ func (MongoDBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 		version = "MongoDB (version unknown)"
 	}
 
-	return buildMongoDBResult(host, ip, port, version, buildInfo, unauthenticatedAccess), nil
+	return buildMongoDBResult(host, ip, port, version, buildInfo, unauthenticatedAccess, storageEngine, maxBsonObjectSize, maxMessageSizeBytes), nil
 }
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                   */
 /* -------------------------------------------------------------------------- */
 
-func buildMongoDBResult(host string, ip net.IP, port int, version string, buildInfo string, unauthenticatedAccess bool) *discoverfern.ServiceDetails {
-	meta := map[string]string{
-		"version": version,
-	}
+func buildMongoDBResult(host string, ip net.IP, port int, version string, buildInfo string, unauthenticatedAccess bool, storageEngine *string, maxBsonObjectSize *int, maxMessageSizeBytes *int) *discoverfern.ServiceDetails {
+	var buildInfoPtr *string
 	if buildInfo != "" {
-		meta["build_info"] = buildInfo
+		buildInfoPtr = &buildInfo
 	}
 
-	// Add authentication status
-	if unauthenticatedAccess {
-		meta["unauthenticated_access"] = "true"
-	} else {
-		meta["unauthenticated_access"] = "false"
+	metadata := &protocol.MongodbServerInfo{
+		Version:               &version,
+		BuildInfo:             buildInfoPtr,
+		UnauthenticatedAccess: &unauthenticatedAccess,
+		StorageEngine:         storageEngine,
+		MaxBsonObjectSize:     maxBsonObjectSize,
+		MaxMessageSizeBytes:   maxMessageSizeBytes,
 	}
 
 	return &discoverfern.ServiceDetails{
@@ -109,6 +128,6 @@ func buildMongoDBResult(host string, ip net.IP, port int, version string, buildI
 		Version:   &version,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeMongodb,
-		Metadata:  meta,
+		Metadata:  discoverfern.NewServiceMetadataFromMongodb(metadata),
 	}
 }

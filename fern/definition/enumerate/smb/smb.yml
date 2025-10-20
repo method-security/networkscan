@@ -11,10 +11,10 @@ types:
       shares: optional<list<smbProtocol.SmbShare>>
       authMethods: optional<list<smbProtocol.AuthMethod>>
       serverInfo: optional<smbProtocol.SmbServerInfo>
+
+      # Enumeration-specific results (not part of server info)
       anonymousLoginAllowed: optional<boolean>
       guestLoginAllowed: optional<boolean>
       nullSessionAllowed: optional<boolean>
-      signingRequired: optional<boolean>
-      encryptionSupported: optional<boolean>
       authAttempts: optional<list<smbProtocol.SmbAuthAttempt>>
       rawResponse: optional<string>
