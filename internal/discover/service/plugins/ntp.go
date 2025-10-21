@@ -9,12 +9,15 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
 type NTPFingerprinter struct{}
 
 func (NTPFingerprinter) Name() string { return "ntp" }
+
+func (NTPFingerprinter) DefaultPorts() []int { return []int{123} }
 
 func (NTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
@@ -62,7 +65,35 @@ func (NTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		return nil, fmt.Errorf("invalid NTP mode: %d", mode)
 	}
 
-	// NTP service detected
+	version := fmt.Sprintf("%d", versionNumber)
+	ntpVersion := fmt.Sprintf("%d", versionNumber)
+	stratumStr := fmt.Sprintf("%d", stratum)
+	leapIndicatorStr := getLeapIndicatorString(leapIndicator)
+	modeStr := getNTPModeString(mode)
+
+	var referenceID *string
+	var referenceIP *string
+
+	// Parse reference identifier (bytes 12-15)
+	if stratum == 1 {
+		// For stratum 1, reference ID is an ASCII string (reference clock identifier)
+		refID := string(buffer[12:16])
+		referenceID = &refID
+	} else if stratum > 1 {
+		// For stratum > 1, reference ID is an IP address
+		refIP := net.IPv4(buffer[12], buffer[13], buffer[14], buffer[15]).String()
+		referenceIP = &refIP
+	}
+
+	metadata := &protocol.NtpServerInfo{
+		Version:       &ntpVersion,
+		Stratum:       &stratumStr,
+		LeapIndicator: &leapIndicatorStr,
+		Mode:          &modeStr,
+		ReferenceId:   referenceID,
+		ReferenceIp:   referenceIP,
+	}
+
 	result := &discoverfern.ServiceDetails{
 		Host:      host,
 		Ip:        ip.String(),
@@ -70,25 +101,8 @@ func (NTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Tls:       false,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeNtp,
-		Metadata:  make(map[string]string),
-	}
-
-	version := fmt.Sprintf("NTPv%d", versionNumber)
-	result.Version = &version
-	result.Metadata["ntp_version"] = fmt.Sprintf("%d", versionNumber)
-	result.Metadata["stratum"] = fmt.Sprintf("%d", stratum)
-	result.Metadata["leap_indicator"] = getLeapIndicatorString(leapIndicator)
-	result.Metadata["mode"] = getNTPModeString(mode)
-
-	// Parse reference identifier (bytes 12-15)
-	if stratum == 1 {
-		// For stratum 1, reference ID is an ASCII string (reference clock identifier)
-		refID := string(buffer[12:16])
-		result.Metadata["reference_id"] = refID
-	} else if stratum > 1 {
-		// For stratum > 1, reference ID is an IP address
-		refIP := net.IPv4(buffer[12], buffer[13], buffer[14], buffer[15])
-		result.Metadata["reference_ip"] = refIP.String()
+		Version:   &version,
+		Metadata:  discoverfern.NewServiceMetadataFromNtp(metadata),
 	}
 
 	return result, nil

@@ -1,0 +1,31 @@
+types:
+  # SNMP Protocol ENUMs
+  SnmpVersion:
+    enum:
+      - V1
+      - V2C
+      - V3
+
+  # SNMP Server Information
+  SnmpServerInfo:
+    properties:
+      # Discovery fields
+      versions: optional<list<string>> # All detected SNMP versions (v1, v2c, v3)
+      communityStrings: optional<list<string>> # Working community strings
+      systemDescription: optional<string>
+
+      # SNMPv3 specific fields
+      v3EngineId: optional<string>
+      v3EngineIdFormat: optional<string>
+      v3EngineIdData: optional<string>
+      v3EngineBoots: optional<integer>
+      v3EngineTime: optional<integer>
+      v3EngineUptime: optional<string>
+      v3Enterprise: optional<integer>
+
+      # Additional SNMP protocol details
+      sysObjectId: optional<string>
+      sysUptime: optional<string>
+      sysContact: optional<string>
+      sysName: optional<string>
+      sysLocation: optional<string>

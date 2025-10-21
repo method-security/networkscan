@@ -1,0 +1,14 @@
+types:
+  # DCE/RPC Server Information
+  DcerpcServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      packetType: optional<string>
+      fragmentLength: optional<string>
+
+      # Additional DCE/RPC protocol details
+      interfaces: optional<list<string>> # List of RPC interfaces
+      authLevel: optional<string>
+      maxTransmitFrag: optional<integer>
+      maxReceiveFrag: optional<integer>

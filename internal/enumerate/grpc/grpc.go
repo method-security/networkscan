@@ -8,6 +8,7 @@ import (
 	"time"
 
 	// Generated
+	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	grpc "github.com/Method-Security/networkscan/generated/go/enumerate/grpc"
 
@@ -34,6 +35,10 @@ func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target str
 	conn, err := connectToGRPCServer(ctx, target)
 	if err != nil {
 		errors = append(errors, err.Error())
+		// Set serverInfo with reflectionSupported = false
+		details.ServerInfo = &commonprotocolfern.GrpcServerInfo{
+			ReflectionSupported: false,
+		}
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 	defer closeConnection(conn)
@@ -41,26 +46,43 @@ func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target str
 	stream, err := createReflectionClient(ctx, conn)
 	if err != nil {
 		errors = append(errors, err.Error())
+		// Set serverInfo with reflectionSupported = false
+		details.ServerInfo = &commonprotocolfern.GrpcServerInfo{
+			ReflectionSupported: false,
+		}
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
 	services, err := requestAndReceiveServices(stream)
 	if err != nil {
 		errors = append(errors, err.Error())
+		// Set serverInfo with reflectionSupported = false
+		details.ServerInfo = &commonprotocolfern.GrpcServerInfo{
+			ReflectionSupported: false,
+		}
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
-	rawDescriptors, err := processServices(stream, services, &details)
+	// Build serverInfo with discovered services
+	serverInfo := &commonprotocolfern.GrpcServerInfo{
+		ReflectionSupported: true,
+		Services:            []*commonprotocolfern.GrpcService{},
+	}
+
+	rawDescriptors, err := processServices(stream, services, serverInfo)
 	if err != nil {
 		errors = append(errors, err.Error())
+		details.ServerInfo = serverInfo
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
-	if err := encodeRawDescriptors(rawDescriptors, &details); err != nil {
+	if err := encodeRawDescriptors(rawDescriptors, serverInfo); err != nil {
 		errors = append(errors, err.Error())
+		details.ServerInfo = serverInfo
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 	}
 
+	details.ServerInfo = serverInfo
 	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
 }
 
@@ -107,7 +129,7 @@ func requestAndReceiveServices(stream reflectionpb.ServerReflection_ServerReflec
 }
 
 // processServices gathers descriptors and extracts method info.
-func processServices(stream reflectionpb.ServerReflection_ServerReflectionInfoClient, services []*reflectionpb.ServiceResponse, details *grpc.EnumerateGrpcDetails) ([]*descriptorpb.FileDescriptorProto, error) {
+func processServices(stream reflectionpb.ServerReflection_ServerReflectionInfoClient, services []*reflectionpb.ServiceResponse, serverInfo *commonprotocolfern.GrpcServerInfo) ([]*descriptorpb.FileDescriptorProto, error) {
 	var rawDescriptors []*descriptorpb.FileDescriptorProto
 
 	for _, service := range services {
@@ -122,7 +144,7 @@ func processServices(stream reflectionpb.ServerReflection_ServerReflectionInfoCl
 			return nil, fmt.Errorf("failed to receive file descriptor for service %s: %v", serviceName, err)
 		}
 
-		if err := unmarshalFileDescriptors(fileDescriptorBytes, &rawDescriptors, details); err != nil {
+		if err := unmarshalFileDescriptors(fileDescriptorBytes, &rawDescriptors, serverInfo); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal file descriptor: %v", err)
 		}
 	}
@@ -149,7 +171,7 @@ func receiveFileDescriptor(stream reflectionpb.ServerReflection_ServerReflection
 }
 
 // unmarshalFileDescriptors decodes descriptors and populates method details.
-func unmarshalFileDescriptors(fileDescriptorBytes [][]byte, rawDescriptors *[]*descriptorpb.FileDescriptorProto, details *grpc.EnumerateGrpcDetails) error {
+func unmarshalFileDescriptors(fileDescriptorBytes [][]byte, rawDescriptors *[]*descriptorpb.FileDescriptorProto, serverInfo *commonprotocolfern.GrpcServerInfo) error {
 	for _, fdBytes := range fileDescriptorBytes {
 		var fileDesc descriptorpb.FileDescriptorProto
 		if err := proto.Unmarshal(fdBytes, &fileDesc); err != nil {
@@ -157,21 +179,23 @@ func unmarshalFileDescriptors(fileDescriptorBytes [][]byte, rawDescriptors *[]*d
 		}
 		*rawDescriptors = append(*rawDescriptors, &fileDesc)
 
-		extractMethods(&fileDesc, details)
+		extractMethods(&fileDesc, serverInfo)
 	}
 	return nil
 }
 
 // extractMethods converts proto methods into Fern RpcMethod & GrpcService.
-func extractMethods(fileDesc *descriptorpb.FileDescriptorProto, details *grpc.EnumerateGrpcDetails) {
+func extractMethods(fileDesc *descriptorpb.FileDescriptorProto, serverInfo *commonprotocolfern.GrpcServerInfo) {
 	for _, service := range fileDesc.Service {
-		var svc grpc.GrpcService
-		svc.Name = service.GetName()
+		svc := &commonprotocolfern.GrpcService{
+			Name:    service.GetName(),
+			Methods: []*commonprotocolfern.RpcMethod{},
+		}
 
 		for _, method := range service.Method {
 			requestFields := extractFields(fileDesc, method.GetInputType())
 
-			rpc := grpc.RpcMethod{
+			rpc := &commonprotocolfern.RpcMethod{
 				Name:            method.GetName(),
 				FullPath:        fmt.Sprintf("/%s/%s", service.GetName(), method.GetName()),
 				RequestType:     method.GetInputType(),
@@ -180,19 +204,20 @@ func extractMethods(fileDesc *descriptorpb.FileDescriptorProto, details *grpc.En
 				ServerStreaming: method.GetServerStreaming(),
 				RequestFields:   requestFields,
 			}
-			svc.Methods = append(svc.Methods, &rpc)
+			svc.Methods = append(svc.Methods, rpc)
 		}
-		details.Services = append(details.Services, &svc)
+		serverInfo.Services = append(serverInfo.Services, svc)
 	}
 }
 
 // encodeRawDescriptors stores the base-64 descriptor set.
-func encodeRawDescriptors(rawDescriptors []*descriptorpb.FileDescriptorProto, details *grpc.EnumerateGrpcDetails) error {
+func encodeRawDescriptors(rawDescriptors []*descriptorpb.FileDescriptorProto, serverInfo *commonprotocolfern.GrpcServerInfo) error {
 	rawData, err := proto.Marshal(&descriptorpb.FileDescriptorSet{File: rawDescriptors})
 	if err != nil {
 		return fmt.Errorf("failed to marshal raw descriptors: %v", err)
 	}
-	details.RawDescriptorSet = base64.StdEncoding.EncodeToString(rawData)
+	encoded := base64.StdEncoding.EncodeToString(rawData)
+	serverInfo.RawDescriptorSet = &encoded
 	return nil
 }
 

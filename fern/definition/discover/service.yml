@@ -1,19 +1,67 @@
 imports:
   common: ../common/common.yml
+  sshProtocol: ../common/protocol/ssh.yml
+  smbProtocol: ../common/protocol/smb.yml
+  ldapProtocol: ../common/protocol/ldap.yml
+  dnsProtocol: ../common/protocol/dns.yml
+  ntpProtocol: ../common/protocol/ntp.yml
+  snmpProtocol: ../common/protocol/snmp.yml
+  mongodbProtocol: ../common/protocol/mongodb.yml
+  grpcProtocol: ../common/protocol/grpc.yml
+  bgpProtocol: ../common/protocol/bgp.yml
+  dcerpcProtocol: ../common/protocol/dcerpc.yml
+  ippProtocol: ../common/protocol/ipp.yml
+  winrmProtocol: ../common/protocol/winrm.yml
+  kerberosProtocol: ../common/protocol/kerberos.yml
+  sipProtocol: ../common/protocol/sip.yml
+  ssdpProtocol: ../common/protocol/ssdp.yml
+  tftpProtocol: ../common/protocol/tftp.yml
+  netbiosProtocol: ../common/protocol/netbios.yml
+  ipmiProtocol: ../common/protocol/ipmi.yml
+
 types:
+  # Generic metadata for fingerprintx and other sources
+  # This is specific to the discover module and not a protocol-specific type
+  GenericServiceMetadata:
+    properties:
+      metadata: optional<map<string, string>> # Flat key-value pairs from fingerprintx or other sources
+
+  # Union type for service metadata
+  ServiceMetadata:
+    union:
+      generic: GenericServiceMetadata
+      smb: smbProtocol.SmbServerInfo
+      ssh: sshProtocol.SshServerInfo
+      ldap: ldapProtocol.LdapServerInfo
+      dns: dnsProtocol.DnsServerInfo
+      ntp: ntpProtocol.NtpServerInfo
+      snmp: snmpProtocol.SnmpServerInfo
+      mongodb: mongodbProtocol.MongodbServerInfo
+      grpc: grpcProtocol.GrpcServerInfo
+      bgp: bgpProtocol.BgpServerInfo
+      dcerpc: dcerpcProtocol.DcerpcServerInfo
+      ipp: ippProtocol.IppServerInfo
+      winrm: winrmProtocol.WinrmServerInfo
+      kerberos: kerberosProtocol.KerberosServerInfo
+      sip: sipProtocol.SipServerInfo
+      ssdp: ssdpProtocol.SsdpServerInfo
+      tftp: tftpProtocol.TftpServerInfo
+      netbios: netbiosProtocol.NetbiosServerInfo
+      ipmi: ipmiProtocol.IpmiServerInfo
+
   # Stealth service types
   StealthServiceType:
     enum:
-      - SSH         # SSH protocol fingerprinting
-      - HTTP        # HTTP/HTTPS protocol fingerprinting  
-      - GRPC        # gRPC protocol fingerprinting
-      - KERBEROS    # Kerberos protocol fingerprinting
-      - LDAP        # LDAP protocol fingerprinting
-      - SMB         # SMB protocol fingerprinting
+      - SSH # SSH protocol fingerprinting
+      - HTTP # HTTP/HTTPS protocol fingerprinting
+      - GRPC # gRPC protocol fingerprinting
+      - KERBEROS # Kerberos protocol fingerprinting
+      - LDAP # LDAP protocol fingerprinting
+      - SMB # SMB protocol fingerprinting
   # Stealth config
   ServiceStealthConfig:
     properties:
-      serviceType: StealthServiceType  # Specific service to fingerprint
+      serviceType: StealthServiceType # Specific service to fingerprint
   # Report structs
   ServiceDetails:
     properties:
@@ -24,17 +72,17 @@ types:
       version: optional<string>
       transport: common.TransportType
       protocol: common.ProtocolType
-      metadata: optional<map<string, string>>
+      metadata: optional<ServiceMetadata>
   DiscoverServiceResult:
     properties:
       services: optional<list<ServiceDetails>>
   # Config
   DiscoverServiceConfig:
     properties:
-      target: string  # Format: IP:port or hostname:port for TCP, IP or hostname for UDP mode
+      target: string # Format: IP:port or hostname:port for TCP, IP or hostname for UDP mode
       timeout: integer
       stealth: optional<ServiceStealthConfig>
-      udp: optional<boolean>  # Enable UDP service discovery mode (scans common UDP ports)
+      udp: optional<boolean> # Enable UDP service discovery mode (scans common UDP ports)
   # Final report
   DiscoverServiceReport:
     properties:

@@ -1,0 +1,17 @@
+types:
+  # NTP Server Information
+  NtpServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      stratum: optional<string>
+      leapIndicator: optional<string>
+      mode: optional<string>
+      referenceId: optional<string>
+      referenceIp: optional<string>
+
+      # Additional NTP protocol details
+      rootDelay: optional<string>
+      rootDispersion: optional<string>
+      precision: optional<integer>
+      poll: optional<integer>

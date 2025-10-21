@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/jfjallid/gokrb5/v8/config"
 	"github.com/jfjallid/gokrb5/v8/iana/nametype"
@@ -23,6 +24,8 @@ import (
 type KerberosFingerprinter struct{}
 
 func (KerberosFingerprinter) Name() string { return "kerberos" }
+
+func (KerberosFingerprinter) DefaultPorts() []int { return []int{88} }
 
 func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	// Create a context with timeout
@@ -63,6 +66,13 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 		transport = common.TransportTypeTcptls
 	}
 
+	version := "5"
+	detected := "kerberos"
+
+	metadata := &protocol.KerberosServerInfo{
+		KrbMessage: &detected,
+	}
+
 	return &discoverfern.ServiceDetails{
 		Host:      host,
 		Ip:        ip.String(),
@@ -70,8 +80,8 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 		Tls:       tlsUsed,
 		Transport: transport,
 		Protocol:  common.ProtocolTypeKerberos,
-		Version:   nil,
-		Metadata:  map[string]string{"detected": "kerberos"},
+		Version:   &version,
+		Metadata:  discoverfern.NewServiceMetadataFromKerberos(metadata),
 	}, nil
 }
 

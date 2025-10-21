@@ -6,11 +6,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/gosnmp/gosnmp"
 )
@@ -19,32 +19,48 @@ type SNMPFingerprinter struct{}
 
 func (SNMPFingerprinter) Name() string { return "snmp" }
 
+func (SNMPFingerprinter) DefaultPorts() []int { return []int{161, 162} }
+
 func (SNMPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	// First try SNMPv3 discovery (most secure, modern)
-	if result, err := trySNMPv3Discovery(ip, port, host, timeout); err == nil && result != nil {
-		return result, nil
+	// Test all SNMP versions with public and private community strings
+	// Use a short timeout for each attempt (1 second)
+	fingerprintTimeout := 1
+	if timeout < fingerprintTimeout {
+		fingerprintTimeout = timeout
 	}
 
-	// Fall back to SNMPv2c/v1 with community strings
-	communityStrings := []string{"public", "private"}
+	// Define versions to test with their names
+	type versionTest struct {
+		version     gosnmp.SnmpVersion
+		versionName string
+	}
+	versionTests := []versionTest{
+		{gosnmp.Version2c, "SNMPv2c"},
+		{gosnmp.Version1, "SNMPv1"},
+	}
+	communities := []string{"public", "private"}
 
-	for _, community := range communityStrings {
-		// Try SNMPv2c first
-		if result, err := trySNMPCommunity(ip, port, host, timeout, community, gosnmp.Version2c); err == nil && result != nil {
-			return result, nil
-		}
-
-		// Fall back to SNMPv1
-		if result, err := trySNMPCommunity(ip, port, host, timeout, community, gosnmp.Version1); err == nil && result != nil {
-			return result, nil
+	// Try each version with each community string
+	for _, vt := range versionTests {
+		for _, community := range communities {
+			if success, sysDescr, err := trySNMPCommunityCheck(ip, port, fingerprintTimeout, community, vt.version); err == nil && success {
+				return createSNMPFingerprintResult(ip, port, host, sysDescr, vt.versionName, community), nil
+			}
 		}
 	}
 
-	return nil, fmt.Errorf("no valid SNMP response with any method")
+	// Try SNMPv3 discovery
+	if v3Info, sysDescr, err := trySNMPv3Check(ip, port, fingerprintTimeout); err == nil && v3Info != nil {
+		return createSNMPv3FingerprintResult(ip, port, host, sysDescr, v3Info), nil
+	}
+
+	// If nothing worked, service not detected
+	return nil, fmt.Errorf("no SNMP response")
 }
 
-// trySNMPv3Discovery attempts to discover SNMPv3 engine information
-func trySNMPv3Discovery(ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+// trySNMPv3Check attempts to discover SNMPv3 engine information
+// Returns engine info, system description, and error
+func trySNMPv3Check(ip net.IP, port int, timeout int) (*SNMPv3EngineInfo, string, error) {
 	// Create GoSNMP instance for SNMPv3 discovery
 	g := &gosnmp.GoSNMP{
 		Target:    ip.String(),
@@ -63,7 +79,7 @@ func trySNMPv3Discovery(ip net.IP, port int, host string, timeout int) (*discove
 
 	err := g.Connect()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer func() { _ = g.Close() }()
 
@@ -90,25 +106,32 @@ func trySNMPv3Discovery(ip net.IP, port int, host string, timeout int) (*discove
 		engineInfo.EngineIDFormat, engineInfo.EngineIDData, engineInfo.Enterprise =
 			parseEngineID(engineIDBytes)
 
-		serviceResult := createSNMPv3Result(ip, port, host, engineInfo)
-
 		// Add system description if we got it successfully
+		var sysDescr string
 		if err == nil && len(result.Variables) > 0 && result.Variables[0].Value != nil {
-			serviceResult.Metadata["system_description"] = fmt.Sprintf("%v", result.Variables[0].Value)
+			switch v := result.Variables[0].Value.(type) {
+			case []byte:
+				sysDescr = string(v)
+			case string:
+				sysDescr = v
+			default:
+				sysDescr = fmt.Sprintf("%v", v)
+			}
 		}
 
-		return serviceResult, nil
+		return engineInfo, sysDescr, nil
 	}
 
 	// No engine information received
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return nil, fmt.Errorf("no SNMPv3 engine information received")
+	return nil, "", fmt.Errorf("no SNMPv3 engine information received")
 }
 
-// trySNMPCommunity tries SNMP with community string authentication
-func trySNMPCommunity(ip net.IP, port int, host string, timeout int, community string, version gosnmp.SnmpVersion) (*discoverfern.ServiceDetails, error) {
+// trySNMPCommunityCheck tests if an SNMP community string works
+// Returns success status, system description, and error
+func trySNMPCommunityCheck(ip net.IP, port int, timeout int, community string, version gosnmp.SnmpVersion) (bool, string, error) {
 	g := &gosnmp.GoSNMP{
 		Target:    ip.String(),
 		Port:      uint16(port),
@@ -121,7 +144,7 @@ func trySNMPCommunity(ip net.IP, port int, host string, timeout int, community s
 
 	err := g.Connect()
 	if err != nil {
-		return nil, err
+		return false, "", err
 	}
 	defer func() { _ = g.Close() }()
 
@@ -129,46 +152,36 @@ func trySNMPCommunity(ip net.IP, port int, host string, timeout int, community s
 	oids := []string{"1.3.6.1.2.1.1.1.0"} // sysDescr
 	result, err := g.Get(oids)
 	if err != nil {
-		return nil, err
+		return false, "", err
 	}
 
-	// SNMP service detected
-	serviceResult := &discoverfern.ServiceDetails{
-		Host:      host,
-		Ip:        ip.String(),
-		Port:      port,
-		Tls:       false,
-		Transport: common.TransportTypeUdp,
-		Protocol:  common.ProtocolTypeSnmp,
-		Metadata:  make(map[string]string),
-	}
-
-	// Map SNMP version
-	var versionStr string
-	switch version {
-	case gosnmp.Version1:
-		versionStr = "SNMPv1"
-	case gosnmp.Version2c:
-		versionStr = "SNMPv2c"
-	default:
-		versionStr = fmt.Sprintf("SNMP (version %v)", version)
-	}
-
-	serviceResult.Version = &versionStr
-	serviceResult.Metadata["snmp_version"] = versionStr
-	serviceResult.Metadata["community"] = community
-	serviceResult.Metadata["community_used"] = community
-
-	// Add system description if available
+	// Extract system description if available
+	var sysDescr string
 	if len(result.Variables) > 0 && result.Variables[0].Value != nil {
-		serviceResult.Metadata["system_description"] = fmt.Sprintf("%v", result.Variables[0].Value)
+		switch v := result.Variables[0].Value.(type) {
+		case []byte:
+			sysDescr = string(v)
+		case string:
+			sysDescr = v
+		default:
+			sysDescr = fmt.Sprintf("%v", v)
+		}
 	}
 
-	return serviceResult, nil
+	return true, sysDescr, nil
 }
 
-// createSNMPv3Result creates a ServiceDetails result for SNMPv3
-func createSNMPv3Result(ip net.IP, port int, host string, engineInfo *SNMPv3EngineInfo) *discoverfern.ServiceDetails {
+// createSNMPFingerprintResult creates a ServiceDetails result for v1/v2c fingerprinting
+func createSNMPFingerprintResult(ip net.IP, port int, host string, systemDescription, version, community string) *discoverfern.ServiceDetails {
+	metadata := &protocol.SnmpServerInfo{
+		Versions:         []string{version},
+		CommunityStrings: []string{community},
+	}
+
+	if systemDescription != "" {
+		metadata.SystemDescription = &systemDescription
+	}
+
 	result := &discoverfern.ServiceDetails{
 		Host:      host,
 		Ip:        ip.String(),
@@ -176,30 +189,55 @@ func createSNMPv3Result(ip net.IP, port int, host string, engineInfo *SNMPv3Engi
 		Tls:       false,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeSnmp,
-		Metadata:  make(map[string]string),
+		Version:   &version,
+		Metadata:  discoverfern.NewServiceMetadataFromSnmp(metadata),
+	}
+
+	return result
+}
+
+// createSNMPv3FingerprintResult creates a ServiceDetails result for SNMPv3 fingerprinting
+func createSNMPv3FingerprintResult(ip net.IP, port int, host string, systemDescription string, v3Info *SNMPv3EngineInfo) *discoverfern.ServiceDetails {
+	metadata := &protocol.SnmpServerInfo{
+		Versions: []string{"SNMPv3"},
+	}
+
+	if systemDescription != "" {
+		metadata.SystemDescription = &systemDescription
+	}
+
+	// Add v3 engine information
+	if v3Info != nil {
+		if v3Info.EngineID != "" {
+			metadata.V3EngineId = &v3Info.EngineID
+			metadata.V3EngineIdFormat = &v3Info.EngineIDFormat
+			if v3Info.EngineIDData != "" {
+				metadata.V3EngineIdData = &v3Info.EngineIDData
+			}
+		}
+		if v3Info.EngineBoots > 0 {
+			metadata.V3EngineBoots = &v3Info.EngineBoots
+		}
+		if v3Info.EngineTime > 0 {
+			metadata.V3EngineTime = &v3Info.EngineTime
+			uptime := formatUptime(v3Info.EngineTime)
+			metadata.V3EngineUptime = &uptime
+		}
+		if v3Info.Enterprise > 0 {
+			metadata.V3Enterprise = &v3Info.Enterprise
+		}
 	}
 
 	versionStr := "SNMPv3"
-	result.Version = &versionStr
-	result.Metadata["snmp_version"] = "3"
-
-	// Add engine information to metadata
-	if engineInfo.EngineID != "" {
-		result.Metadata["engine_id"] = engineInfo.EngineID
-		result.Metadata["engine_id_format"] = engineInfo.EngineIDFormat
-		if engineInfo.EngineIDData != "" {
-			result.Metadata["engine_id_data"] = engineInfo.EngineIDData
-		}
-	}
-	if engineInfo.EngineBoots > 0 {
-		result.Metadata["engine_boots"] = strconv.Itoa(engineInfo.EngineBoots)
-	}
-	if engineInfo.EngineTime > 0 {
-		result.Metadata["engine_time"] = strconv.Itoa(engineInfo.EngineTime)
-		result.Metadata["engine_uptime"] = formatUptime(engineInfo.EngineTime)
-	}
-	if engineInfo.Enterprise > 0 {
-		result.Metadata["enterprise"] = strconv.Itoa(engineInfo.Enterprise)
+	result := &discoverfern.ServiceDetails{
+		Host:      host,
+		Ip:        ip.String(),
+		Port:      port,
+		Tls:       false,
+		Transport: common.TransportTypeUdp,
+		Protocol:  common.ProtocolTypeSnmp,
+		Version:   &versionStr,
+		Metadata:  discoverfern.NewServiceMetadataFromSnmp(metadata),
 	}
 
 	return result

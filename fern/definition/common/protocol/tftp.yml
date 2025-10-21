@@ -1,0 +1,9 @@
+types:
+  # TFTP (Trivial File Transfer Protocol) Server Information
+  TftpServerInfo:
+    properties:
+      # Discovery fields
+      opcode: optional<string>
+      errorCode: optional<string>
+      errorMessage: optional<string>
+      blockNumber: optional<string>

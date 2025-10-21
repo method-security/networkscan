@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"golang.org/x/crypto/ssh"
 )
@@ -42,7 +43,12 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 			strings.Contains(errStr, "attempted methods [none]") ||
 			(strings.Contains(errStr, "ssh:") && strings.Contains(errStr, "protocol version")) {
 
-			// SSH service detected - extract any version info from error
+			// SSH service detected
+			target := fmt.Sprintf("%s:%d", host, port)
+			metadata := &protocol.SshServerInfo{
+				Target: &target,
+			}
+
 			result := &discoverfern.ServiceDetails{
 				Host:      host,
 				Ip:        ip.String(),
@@ -50,11 +56,7 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 				Tls:       false,
 				Transport: common.TransportTypeTcp,
 				Protocol:  common.ProtocolTypeSsh,
-				Metadata: map[string]string{
-					"detection":     "ssh_no_auth_handshake",
-					"auth_required": "true",
-					"error":         errStr,
-				},
+				Metadata:  discoverfern.NewServiceMetadataFromSsh(metadata),
 			}
 
 			return result, nil
@@ -71,6 +73,12 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	serverVersionBytes := client.ServerVersion()
 	serverVersion := string(serverVersionBytes)
 
+	target := fmt.Sprintf("%s:%d", host, port)
+	metadata := &protocol.SshServerInfo{
+		ServerVersion: &serverVersion,
+		Target:        &target,
+	}
+
 	result := &discoverfern.ServiceDetails{
 		Host:      host,
 		Ip:        ip.String(),
@@ -79,11 +87,7 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeSsh,
 		Version:   &serverVersion,
-		Metadata: map[string]string{
-			"detection":      "ssh_no_auth_success",
-			"server_version": serverVersion,
-			"authenticated":  "false",
-		},
+		Metadata:  discoverfern.NewServiceMetadataFromSsh(metadata),
 	}
 
 	return result, nil

@@ -49,7 +49,6 @@ types:
       - STUN
       - TELNET
       - TFTP
-      - UPNP
       - VNC
       - WINRM
       - UNKNOWN

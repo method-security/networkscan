@@ -1,0 +1,7 @@
+types:
+  # IPMI (Intelligent Platform Management Interface) Server Information
+  IpmiServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      authType: optional<string>

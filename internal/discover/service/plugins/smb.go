@@ -16,6 +16,8 @@ type SMBFingerprinter struct{}
 
 func (SMBFingerprinter) Name() string { return "smb" }
 
+func (SMBFingerprinter) DefaultPorts() []int { return []int{445, 139} }
+
 func (SMBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	// Channel to receive the result or error from the goroutine
 	resultChan := make(chan *discoverfern.ServiceDetails, 1)
@@ -74,64 +76,98 @@ func detectSMBService(ctx context.Context, ip net.IP, port int, host string) (*d
 
 	// Validate that we have actual SMB-specific server information
 	if serverInfo != nil && isValidSMBServerInfo(serverInfo) {
-		// Create successful service detection result
+		var osVersion, smbVersion, lanmanVersion *string
+		var signingRequired *bool
+		var netbiosDomain, netbiosComputer, dnsDomain, dnsComputer *string
+
+		// Add available server info
+		if serverInfo.GetMappedOsVersion() != nil {
+			osVersion = serverInfo.GetMappedOsVersion()
+		}
+
+		if serverInfo.GetSmbVersion() != nil {
+			v := string(*serverInfo.GetSmbVersion())
+			smbVersion = &v
+		}
+
+		if serverInfo.GetLanManagerVersion() != nil {
+			lanmanVersion = serverInfo.GetLanManagerVersion()
+		}
+
+		if serverInfo.GetSigningRequired() != nil {
+			signingRequired = serverInfo.GetSigningRequired()
+		}
+
+		// Add target info if available
+		if origTargetInfo := serverInfo.GetTargetInfo(); origTargetInfo != nil {
+			netbiosDomain = origTargetInfo.GetNetbiosDomainName()
+			netbiosComputer = origTargetInfo.GetNetbiosComputerName()
+			dnsDomain = origTargetInfo.GetDnsDomainName()
+			dnsComputer = origTargetInfo.GetDnsComputerName()
+		}
+
+		// Build target info for metadata if we have any domain/computer names
+		var metadataTargetInfo *commonprotocolfern.NtlmTargetInfo
+		if netbiosDomain != nil || netbiosComputer != nil || dnsDomain != nil || dnsComputer != nil {
+			metadataTargetInfo = &commonprotocolfern.NtlmTargetInfo{
+				NetbiosDomainName:   netbiosDomain,
+				NetbiosComputerName: netbiosComputer,
+				DnsDomainName:       dnsDomain,
+				DnsComputerName:     dnsComputer,
+			}
+		}
+
+		metadata := &commonprotocolfern.SmbServerInfo{
+			MappedOsVersion:   osVersion,
+			LanManagerVersion: lanmanVersion,
+			SigningRequired:   signingRequired,
+			TargetInfo:        metadataTargetInfo,
+			OsInfo:            serverInfo.GetOsInfo(),
+		}
+
+		// Set SMB version if available
+		if smbVersion != nil {
+			// Parse the string into SmbVersion enum
+			// Map generic versions to most common specific versions
+			switch *smbVersion {
+			case "SMB1":
+				v := commonprotocolfern.SmbVersionSmb1
+				metadata.SmbVersion = &v
+			case "SMB2":
+				// Default to SMB 2.1 as it's the most common SMB2 version
+				v := commonprotocolfern.SmbVersionSmb21
+				metadata.SmbVersion = &v
+			case "SMB2_0", "SMB2.0":
+				v := commonprotocolfern.SmbVersionSmb20
+				metadata.SmbVersion = &v
+			case "SMB2_1", "SMB2.1":
+				v := commonprotocolfern.SmbVersionSmb21
+				metadata.SmbVersion = &v
+			case "SMB3":
+				// Default to SMB 3.0 as it's the base SMB3 version
+				v := commonprotocolfern.SmbVersionSmb30
+				metadata.SmbVersion = &v
+			case "SMB3_0", "SMB3.0":
+				v := commonprotocolfern.SmbVersionSmb30
+				metadata.SmbVersion = &v
+			case "SMB3_0_2", "SMB3.0.2":
+				v := commonprotocolfern.SmbVersionSmb302
+				metadata.SmbVersion = &v
+			case "SMB3_1_1", "SMB3.1.1":
+				v := commonprotocolfern.SmbVersionSmb311
+				metadata.SmbVersion = &v
+			}
+		}
+
 		result := &discoverfern.ServiceDetails{
 			Host:      host,
 			Ip:        ip.String(),
 			Port:      port,
-			Tls:       false, // SMB over 445 is not TLS by default
+			Tls:       false,
 			Transport: common.TransportTypeTcp,
 			Protocol:  common.ProtocolTypeSmb,
-			Metadata:  map[string]string{"detection": "smb_challenge_only"},
-		}
-
-		// Add connection status to metadata
-		if err != nil {
-			result.Metadata["connection_status"] = "challenge_only_no_auth"
-		} else {
-			result.Metadata["connection_status"] = "challenge_only_success"
-		}
-
-		// Always false in challenge-only mode
-		result.Metadata["authenticated"] = "false"
-
-		// Add available server info to metadata and version
-		if serverInfo.GetMappedOsVersion() != nil {
-			version := *serverInfo.GetMappedOsVersion()
-			result.Version = &version
-			result.Metadata["os_version"] = version
-		}
-
-		if serverInfo.GetSmbVersion() != nil {
-			result.Metadata["smb_version"] = string(*serverInfo.GetSmbVersion())
-		}
-
-		if serverInfo.GetLanManagerVersion() != nil {
-			result.Metadata["lanman_version"] = *serverInfo.GetLanManagerVersion()
-		}
-
-		if serverInfo.GetSigningRequired() != nil {
-			if *serverInfo.GetSigningRequired() {
-				result.Metadata["signing"] = "required"
-			} else {
-				result.Metadata["signing"] = "not_required"
-			}
-		}
-
-		// Add target info if available
-		if targetInfo := serverInfo.GetTargetInfo(); targetInfo != nil {
-			if targetInfo.GetNetbiosDomainName() != nil {
-				result.Metadata["netbios_domain"] = *targetInfo.GetNetbiosDomainName()
-			}
-			if targetInfo.GetNetbiosComputerName() != nil {
-				result.Metadata["netbios_computer"] = *targetInfo.GetNetbiosComputerName()
-			}
-			if targetInfo.GetDnsDomainName() != nil {
-				result.Metadata["dns_domain"] = *targetInfo.GetDnsDomainName()
-			}
-			if targetInfo.GetDnsComputerName() != nil {
-				result.Metadata["dns_computer"] = *targetInfo.GetDnsComputerName()
-			}
+			Version:   osVersion,
+			Metadata:  discoverfern.NewServiceMetadataFromSmb(metadata),
 		}
 
 		// Close connection if it was established
@@ -150,6 +186,9 @@ func detectSMBService(ctx context.Context, ip net.IP, port int, host string) (*d
 	// Connection succeeded but no server info - still report as detected SMB
 	defer func() { _ = client.Close() }()
 
+	// Create empty metadata since we don't have detailed server info
+	metadata := &commonprotocolfern.SmbServerInfo{}
+
 	result := &discoverfern.ServiceDetails{
 		Host:      host,
 		Ip:        ip.String(),
@@ -157,13 +196,7 @@ func detectSMBService(ctx context.Context, ip net.IP, port int, host string) (*d
 		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeSmb,
-		Metadata:  map[string]string{"detection": "smb_client_connection"},
-	}
-
-	if client.IsAuthenticated() {
-		result.Metadata["authenticated"] = "true"
-	} else {
-		result.Metadata["authenticated"] = "false"
+		Metadata:  discoverfern.NewServiceMetadataFromSmb(metadata),
 	}
 
 	return result, nil

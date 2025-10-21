@@ -1,0 +1,7 @@
+types:
+  # NetBIOS Name Service Server Information
+  NetbiosServerInfo:
+    properties:
+      # Discovery fields
+      service: optional<string>
+      netbiosNames: optional<list<string>>

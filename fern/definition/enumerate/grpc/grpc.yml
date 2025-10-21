@@ -1,22 +1,9 @@
+imports:
+  grpcProtocol: ../../common/protocol/grpc.yml
+
 types:
-  RpcMethod:
-    properties:
-      name: string # Foo, Bar
-      fullPath: string # /pkg.Svc/Foo
-      requestType: string # pkg.Msg
-      responseType: string # pkg.Resp
-      clientStreaming: boolean
-      serverStreaming: boolean
-      requestFields: optional<list<string>>
-  GrpcService:
-    properties:
-      name: string # pkg.Svc
-      methods: list<RpcMethod>
-  # Report structs
   EnumerateGrpcDetails:
     properties:
       target: string
-      services: list<GrpcService>
-      rawDescriptorSet: string # base64-encoded FileDescriptorSet
-      reflectionSupported: boolean
-      errors: optional<list<string>>
+      serverInfo: optional<grpcProtocol.GrpcServerInfo>
+      rawResponse: optional<string>

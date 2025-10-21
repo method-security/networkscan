@@ -81,18 +81,18 @@ types:
       # Basic server identification
       serverVersion: optional<string>
       target: optional<string>
-      
+
       # Protocol capabilities
       supportedAuthMethods: optional<list<SshAuthMethod>>
       supportedCiphers: optional<list<CipherAlgorithm>>
       supportedMacs: optional<list<MACAlgorithm>>
       supportedKex: optional<list<KeyExchangeAlgorithm>>
       hostKeyAlgos: optional<list<HostKeyAlgorithm>>
-      
+
       # Raw protocol information
       rawASCII: optional<string>
 
-  # Authentication result for any SSH operation  
+  # Authentication result for any SSH operation
   SshAuthAttempt:
     properties:
       username: string
@@ -114,6 +114,6 @@ types:
     properties:
       localPath: string
       remotePath: string
-      direction: string # "upload" or "download"  
+      direction: string # "upload" or "download"
       success: boolean
       timestamp: datetime

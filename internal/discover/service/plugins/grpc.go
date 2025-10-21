@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -29,13 +30,15 @@ type GrpcFingerprinter struct{}
 
 func (GrpcFingerprinter) Name() string { return "grpc" }
 
+func (GrpcFingerprinter) DefaultPorts() []int { return []int{} }
+
 func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	// Create a context with 10-second timeout
-	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// Create a context with timeout
+	timeoutDuration := time.Duration(timeout) * time.Second
+	timeoutCtx, cancel := context.WithTimeout(ctx, timeoutDuration)
 	defer cancel()
 
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	timeoutDuration := 10 * time.Second // Fixed 10-second timeout
 
 	/* ---- try plaintext first --------------------------------------------- */
 	conn, tlsUsed, err := dial(timeoutCtx, addr, timeoutDuration, false)
@@ -110,7 +113,13 @@ func buildResult(host string, ip net.IP, port int, tlsUsed bool, statusStr strin
 	if tlsUsed {
 		transport = "TCPTLS"
 	}
-	meta := map[string]string{"reflection": statusStr}
+
+	// reflectionSupported is true if server returned LIST_OK (reflection enabled)
+	reflectionSupported := statusStr == "LIST_OK"
+
+	metadata := &protocol.GrpcServerInfo{
+		ReflectionSupported: reflectionSupported,
+	}
 
 	return &discoverfern.ServiceDetails{
 		Host:    host,
@@ -125,6 +134,6 @@ func buildResult(host string, ip net.IP, port int, tlsUsed bool, statusStr strin
 			return common.TransportTypeTcp
 		}(),
 		Protocol: common.ProtocolTypeGrpc,
-		Metadata: meta,
+		Metadata: discoverfern.NewServiceMetadataFromGrpc(metadata),
 	}
 }

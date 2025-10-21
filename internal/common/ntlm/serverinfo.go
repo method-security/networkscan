@@ -88,10 +88,6 @@ func ExtractServerInfoFromChallenge(challengeMessage []byte, log svc1log.Logger)
 	}
 	result.OsInfo = ntlmOsInfo
 
-	// Set signing requirement based on NTLM flags
-	signingRequired := (c.NegotiateFlags & 0x00040000) != 0 // NTLMSSP_NEGOTIATE_SIGN
-	result.SigningRequired = &signingRequired
-
 	// Log detailed extraction info
 	log.Info("Extracted unified server info from NTLM challenge",
 		svc1log.SafeParam("nbDomain", nbDomain),
@@ -110,9 +106,6 @@ func ConvertToLDAPServerInfo(ntlmInfo *commonprotocolfern.NtlmServerInfo) *commo
 	// Copy core fields that exist in cleaned structure
 	if ntlmInfo.MappedOsVersion != nil {
 		result.MappedOsVersion = ntlmInfo.MappedOsVersion
-	}
-	if ntlmInfo.SigningRequired != nil {
-		result.SigningRequired = ntlmInfo.SigningRequired
 	}
 
 	// Copy nested structures
@@ -134,16 +127,9 @@ func ConvertToLDAPServerInfo(ntlmInfo *commonprotocolfern.NtlmServerInfo) *commo
 		}
 	}
 
-	// Set LDAP-specific capabilities
-	supportsTLS := false          // Default - would need more sophisticated detection
-	supportsStartTLS := true      // Most modern servers support StartTLS
-	supportsSASL := true          // NTLM is a SASL mechanism
-	anonymousBindAllowed := false // Default for AD
-
-	result.SupportsTls = &supportsTLS
-	result.SupportsStartTls = &supportsStartTLS
-	result.SupportsSasl = &supportsSASL
-	result.AnonymousBindAllowed = &anonymousBindAllowed
+	// Note: LDAP-specific capabilities (supportsTLS, supportsStartTLS, supportsSASL, anonymousBindAllowed)
+	// are not set here because they cannot be determined from NTLM challenge alone.
+	// These fields should be set by the calling code when they are actually tested.
 
 	return result
 }
@@ -258,14 +244,6 @@ func GetOSVersion(serverInfo *commonprotocolfern.NtlmServerInfo) string {
 	return ""
 }
 
-// GetSigningRequired extracts signing requirement from server info
-func GetSigningRequired(serverInfo *commonprotocolfern.NtlmServerInfo) bool {
-	if serverInfo != nil && serverInfo.SigningRequired != nil {
-		return *serverInfo.SigningRequired
-	}
-	return false
-}
-
 // LogServerInfoDetails logs detailed server info with all available fields
 func LogServerInfoDetails(serverInfo *commonprotocolfern.NtlmServerInfo, target string, log svc1log.Logger) {
 	if serverInfo == nil {
@@ -277,7 +255,6 @@ func LogServerInfoDetails(serverInfo *commonprotocolfern.NtlmServerInfo, target 
 	serverName := GetServerName(serverInfo)
 	domain := GetDomainName(serverInfo)
 	osVersion := GetOSVersion(serverInfo)
-	signingRequired := GetSigningRequired(serverInfo)
 
 	// Extract detailed TargetInfo fields
 	var netbiosDomain, dnsDomain, dnsComputer, netbiosComputer string
@@ -322,7 +299,6 @@ func LogServerInfoDetails(serverInfo *commonprotocolfern.NtlmServerInfo, target 
 		svc1log.SafeParam("serverName", serverName),
 		svc1log.SafeParam("domain", domain),
 		svc1log.SafeParam("osVersion", osVersion),
-		svc1log.SafeParam("signingRequired", signingRequired),
 		// TargetInfo details
 		svc1log.SafeParam("netbiosDomain", netbiosDomain),
 		svc1log.SafeParam("dnsDomain", dnsDomain),

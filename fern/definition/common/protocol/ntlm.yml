@@ -25,9 +25,6 @@ types:
       # Parsed OS version (derived from OsInfo)
       mappedOsVersion: optional<string> # Mapped OS version (e.g., "Windows Server 2022")
 
-      # Protocol-specific fields
-      signingRequired: optional<boolean> # Whether SMB signing is required
-
       # Detailed NTLM structures
       targetInfo: optional<NtlmTargetInfo> # Detailed TargetInfo from NTLM challenge
       osInfo: optional<NtlmOsInfo> # Detailed OS/Version info from NTLM challenge

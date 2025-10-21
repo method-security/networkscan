@@ -1,0 +1,12 @@
+types:
+  # BGP Server Information
+  BgpServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      messageType: optional<string>
+
+      # Additional BGP protocol details
+      asn: optional<integer> # Autonomous System Number
+      routerId: optional<string>
+      holdTime: optional<integer>

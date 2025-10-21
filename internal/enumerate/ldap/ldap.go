@@ -237,8 +237,8 @@ func (l *LibraryEnumerateLDAP) performAuthentication(ctx context.Context, host s
 }
 
 // extractLdapInfo extracts LDAP-specific information from the connection
-func (l *LibraryEnumerateLDAP) extractLdapInfo(ctx context.Context, conn *ldap.Conn, details *ldapfern.EnumerateLdapDetails, target string, log svc1log.Logger) {
-	if conn == nil {
+func (l *LibraryEnumerateLDAP) extractLdapInfo(ctx context.Context, conn *ldap.Conn, serverInfo *commonprotocolfern.LdapServerInfo, target string, log svc1log.Logger) {
+	if conn == nil || serverInfo == nil {
 		return
 	}
 
@@ -274,41 +274,42 @@ func (l *LibraryEnumerateLDAP) extractLdapInfo(ctx context.Context, conn *ldap.C
 		entry := sr.Entries[0]
 
 		if attr := entry.GetAttributeValue("defaultNamingContext"); attr != "" {
-			details.DefaultNamingContext = &attr
+			serverInfo.DefaultNamingContext = &attr
 		}
 		if attr := entry.GetAttributeValue("schemaNamingContext"); attr != "" {
-			details.SchemaNamingContext = &attr
+			serverInfo.SchemaNamingContext = &attr
 		}
 		if attr := entry.GetAttributeValue("configurationNamingContext"); attr != "" {
-			details.ConfigurationNamingContext = &attr
+			serverInfo.ConfigurationNamingContext = &attr
 		}
 
 		// Get multi-valued attributes
 		if attrs := entry.GetAttributeValues("supportedLDAPVersion"); len(attrs) > 0 {
-			details.SupportedLdapVersion = attrs
+			serverInfo.SupportedLdapVersion = attrs
 		}
 		if attrs := entry.GetAttributeValues("supportedSASLMechanisms"); len(attrs) > 0 {
-			details.SupportedSaslMechanisms = attrs
+			serverInfo.SupportedSaslMechanisms = attrs
 		}
 		if attrs := entry.GetAttributeValues("supportedCapabilities"); len(attrs) > 0 {
-			details.SupportedCapabilities = attrs
+			serverInfo.SupportedCapabilities = attrs
 		}
 
 		log.Debug("Successfully extracted LDAP server information",
-			svc1log.SafeParam("defaultNamingContext", details.DefaultNamingContext))
+			svc1log.SafeParam("defaultNamingContext", serverInfo.DefaultNamingContext))
 	}
 }
 
 // assembleResponse assembles the final response
 func (l *LibraryEnumerateLDAP) assembleResponse(details *ldapfern.EnumerateLdapDetails, state authenticationState) {
-	// Set server info
+	// Set server info (already populated with NTLM + LDAP details)
 	if state.serverInfo != nil {
+		// Add authentication results to serverInfo
+		state.serverInfo.NullBindAllowed = &state.nullBindAllowed
+		state.serverInfo.AnonymousBindAllowed = &state.anonymousAllowed
 		details.ServerInfo = state.serverInfo
 	}
 
-	// Set authentication results
-	details.NullBindAllowed = &state.nullBindAllowed
-	details.AnonymousBindAllowed = &state.anonymousAllowed
+	// Set authentication methods at the details level
 	details.AuthMethods = state.supportedMethods
 }
 
@@ -331,8 +332,10 @@ func (l *LibraryEnumerateLDAP) EnumerateTarget(ctx context.Context, target strin
 	if !authState.connectionSuccessful {
 		errors = append(errors, fmt.Sprintf("All connection methods failed for %s", target))
 	} else {
-		// Extract LDAP-specific information
-		l.extractLdapInfo(ctx, authState.workingConnection, &details, target, log)
+		// Extract LDAP-specific information into serverInfo
+		if authState.serverInfo != nil {
+			l.extractLdapInfo(ctx, authState.workingConnection, authState.serverInfo, target, log)
+		}
 	}
 
 	// Close the connection at the very end after all operations are complete
