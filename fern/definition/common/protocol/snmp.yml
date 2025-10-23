@@ -22,6 +22,7 @@ types:
       v3EngineTime: optional<integer>
       v3EngineUptime: optional<string>
       v3Enterprise: optional<integer>
+      v3EnterpriseName: optional<string> # Human-readable enterprise name (e.g., "Cisco", "MikroTik")
 
       # Additional SNMP protocol details
       sysObjectId: optional<string>
@@ -29,3 +30,4 @@ types:
       sysContact: optional<string>
       sysName: optional<string>
       sysLocation: optional<string>
+      sysServices: optional<integer>
