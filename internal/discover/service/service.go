@@ -333,26 +333,39 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 
 		// Run all UDP fingerprinters in parallel
 		resultChan := make(chan *discoverfern.ServiceDetails, len(tasks))
+		doneChan := make(chan struct{}, len(tasks))
+
 		for _, task := range tasks {
 			go func(t udpFingerprintTask) {
 				detection, err := t.fingerprinter.Detect(ctx, ip, t.port, host, config.Timeout)
 				if err == nil && detection != nil {
-					resultChan <- detection
+					select {
+					case resultChan <- detection:
+					case <-ctx.Done():
+					}
+				}
+				select {
+				case doneChan <- struct{}{}:
+				case <-ctx.Done():
 				}
 			}(task)
 		}
 
-		// Collect results with timeout
-		timeout := time.After(time.Duration(config.Timeout) * time.Second)
-		for range tasks {
+		// Collect results - wait for all fingerprinters to complete or timeout
+		// Each fingerprinter has its own timeout, so we give extra time for all to finish
+		overallTimeout := time.After(time.Duration(config.Timeout+2) * time.Second)
+		completedTasks := 0
+	collectLoop:
+		for completedTasks < len(tasks) {
 			select {
 			case detection := <-resultChan:
 				results = append(results, detection)
-			case <-timeout:
-				goto done
+			case <-doneChan:
+				completedTasks++
+			case <-overallTimeout:
+				break collectLoop
 			}
 		}
-	done:
 	}
 
 	if len(results) == 0 {
