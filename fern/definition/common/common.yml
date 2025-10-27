@@ -49,6 +49,7 @@ types:
       - STUN
       - TELNET
       - TFTP
+      - UBIQUITI
       - VNC
       - WINRM
       - UNKNOWN

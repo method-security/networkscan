@@ -1,0 +1,16 @@
+types:
+  # Ubiquiti Discovery Protocol Server Information
+  UbiquitiServerInfo:
+    properties:
+      # Discovery fields
+      protocolVersion: optional<string>
+      command: optional<string>
+      macAddress: optional<string>
+      macAddressAlt: optional<string>
+      hostname: optional<string>
+      model: optional<string>
+      essid: optional<string> # Wireless SSID
+      firmware: optional<string>
+      uptime: optional<string>
+      default: optional<string>
+      locating: optional<string>

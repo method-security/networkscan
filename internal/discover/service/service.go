@@ -59,16 +59,17 @@ var customFingerprintModules = []Fingerprinter{
 // UDP fingerprinters mapped to their specific ports
 // Each UDP service is only probed on its well-known port(s)
 var udpFingerprinters = map[uint16]Fingerprinter{
-	53:   &localPlugins.DNSFingerprinter{},     // DNS
-	67:   &localPlugins.DHCPFingerprinter{},    // DHCP Server
-	69:   &localPlugins.TFTPFingerprinter{},    // TFTP (Trivial File Transfer Protocol)
-	123:  &localPlugins.NTPFingerprinter{},     // NTP
-	137:  &localPlugins.NetBIOSFingerprinter{}, // NetBIOS Name Service
-	161:  &localPlugins.SNMPFingerprinter{},    // SNMP
-	162:  &localPlugins.SNMPFingerprinter{},    // SNMP Trap
-	623:  &localPlugins.IPMIFingerprinter{},    // IPMI (Intelligent Platform Management Interface)
-	1900: &localPlugins.SSDPFingerprinter{},    // SSDP (Simple Service Discovery Protocol)
-	5060: &localPlugins.SIPFingerprinter{},     // SIP (Session Initiation Protocol)
+	53:    &localPlugins.DNSFingerprinter{},      // DNS
+	67:    &localPlugins.DHCPFingerprinter{},     // DHCP Server
+	69:    &localPlugins.TFTPFingerprinter{},     // TFTP (Trivial File Transfer Protocol)
+	123:   &localPlugins.NTPFingerprinter{},      // NTP
+	137:   &localPlugins.NetBIOSFingerprinter{},  // NetBIOS Name Service
+	161:   &localPlugins.SNMPFingerprinter{},     // SNMP
+	162:   &localPlugins.SNMPFingerprinter{},     // SNMP Trap
+	623:   &localPlugins.IPMIFingerprinter{},     // IPMI (Intelligent Platform Management Interface)
+	1900:  &localPlugins.SSDPFingerprinter{},     // SSDP (Simple Service Discovery Protocol)
+	5060:  &localPlugins.SIPFingerprinter{},      // SIP (Session Initiation Protocol)
+	10001: &localPlugins.UbiquitiFingerprinter{}, // Ubiquiti Discovery Protocol
 }
 
 // RunServiceFingerprint fingerprints the service at target:port.

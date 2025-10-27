@@ -18,6 +18,7 @@ imports:
   tftpProtocol: ../common/protocol/tftp.yml
   netbiosProtocol: ../common/protocol/netbios.yml
   ipmiProtocol: ../common/protocol/ipmi.yml
+  ubiquitiProtocol: ../common/protocol/ubiquiti.yml
 
 types:
   # Generic metadata for fingerprintx and other sources
@@ -48,6 +49,7 @@ types:
       tftp: tftpProtocol.TftpServerInfo
       netbios: netbiosProtocol.NetbiosServerInfo
       ipmi: ipmiProtocol.IpmiServerInfo
+      ubiquiti: ubiquitiProtocol.UbiquitiServerInfo
 
   # Stealth service types
   StealthServiceType:
