@@ -7,7 +7,6 @@ toolchain go1.24.7
 require (
 	github.com/Method-Security/pkg v0.0.6
 	github.com/RedTeamPentesting/adauth v0.5.0
-	github.com/Ullaakut/nmap/v3 v3.0.6
 	github.com/go-ldap/ldap/v3 v3.4.11
 	github.com/google/uuid v1.6.0
 	github.com/gosnmp/gosnmp v1.42.1
