@@ -4,7 +4,6 @@ import (
 	// Standard
 	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	// Generated
@@ -115,49 +114,6 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverHostCmd)
-
-	// OS Command
-	discoverOSCmd := &cobra.Command{
-		Use:   "os",
-		Short: "Detect and fingerprint the operating system running on a specified host (requires nmap and root privileges).",
-		Long:  `Detect and fingerprint the operating system running on a specified host (requires nmap and root privileges).`,
-		Run: func(cmd *cobra.Command, args []string) {
-			// Use our custom privilege check that works properly on Windows
-			if !utils.IsPrivilegedForNetworkScanning() {
-				a.OutputSignal.AddError(errors.New("discover os can only be run as administrator/root user"))
-				return
-			}
-
-			// Check if nmap is installed
-			_, err := exec.LookPath("nmap")
-			if err != nil {
-				a.OutputSignal.AddError(errors.New("nmap is not installed or is not in the system path"))
-				return
-			}
-
-			// Target flags
-			target, err := cmd.Flags().GetString("target")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-
-			// Generate the report
-			report, err := discover.RunOsFingerprint(cmd.Context(), target)
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			a.OutputSignal.Content = report
-		},
-	}
-	discoverOSCmd.Flags().String("target", "", "Target IP address or fully qualified domain name (FQDN) for OS fingerprinting")
-
-	// Mark Required Flags
-	_ = discoverOSCmd.MarkFlagRequired("target")
-
-	// Add Command to 'Discover' Command
-	discoverCmd.AddCommand(discoverOSCmd)
 
 	// Port Command
 	discoverPortCmd := &cobra.Command{
