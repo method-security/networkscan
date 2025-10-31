@@ -1,0 +1,13 @@
+types:
+  # FortiGate to FortiManager Protocol Server Information
+  FgfmServerInfo:
+    properties:
+      # Discovery fields
+      vendor: optional<string> # Vendor name (e.g., "Fortinet")
+      product: optional<string> # Product name (e.g., "FortiGate")
+      certificateAuthority: optional<string> # Certificate authority (e.g., "fortinet-ca")
+      supportDomain: optional<string> # Support domain (e.g., "support.fortinet.com")
+
+      # Additional FGFM protocol details
+      managementEnabled: optional<boolean> # Whether FortiManager access is enabled
+      port: optional<integer> # FGFM service port (typically 541)

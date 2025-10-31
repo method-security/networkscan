@@ -6,6 +6,7 @@ types:
       - DHCP
       - DNS
       - ECHO
+      - FGFM
       - FTP
       - GRPC
       - HTTP
