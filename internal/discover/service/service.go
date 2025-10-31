@@ -46,14 +46,15 @@ type Fingerprinter interface {
 // Custom fingerprinters for protocols that need specialized detection
 // These run BEFORE fingerprintx to provide more specific detection
 var customFingerprintModules = []Fingerprinter{
-	&localPlugins.GrpcFingerprinter{},     // gRPC can run on any port
-	&localPlugins.MongoDBFingerprinter{},  // MongoDB driver manages its own connections
-	&localPlugins.BGPFingerprinter{},      // BGP protocol detection
-	&localPlugins.DCERPCFingerprinter{},   // Windows DCE/RPC
-	&localPlugins.IPPFingerprinter{},      // Internet Printing Protocol
-	&localPlugins.WinRMFingerprinter{},    // Windows Remote Management
-	&localPlugins.KerberosFingerprinter{}, // Kerberos (Kerberos 5),
-	&localPlugins.SMBFingerprinter{},      // SMB (Server Message Block),
+	&localPlugins.GrpcFingerprinter{},      // gRPC can run on any port
+	&localPlugins.MongoDBFingerprinter{},   // MongoDB driver manages its own connections
+	&localPlugins.BGPFingerprinter{},       // BGP protocol detection
+	&localPlugins.DCERPCFingerprinter{},    // Windows DCE/RPC
+	&localPlugins.IPPFingerprinter{},       // Internet Printing Protocol
+	&localPlugins.WinRMFingerprinter{},     // Windows Remote Management
+	&localPlugins.KerberosFingerprinter{},  // Kerberos (Kerberos 5),
+	&localPlugins.SMBFingerprinter{},       // SMB (Server Message Block),
+	&localPlugins.FortiGateFingerprinter{}, // FortiGate FGFM (FortiGate to FortiManager),
 }
 
 // UDP fingerprinters mapped to their specific ports

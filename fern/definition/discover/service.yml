@@ -19,6 +19,7 @@ imports:
   netbiosProtocol: ../common/protocol/netbios.yml
   ipmiProtocol: ../common/protocol/ipmi.yml
   ubiquitiProtocol: ../common/protocol/ubiquiti.yml
+  fgfmProtocol: ../common/protocol/fgfm.yml
 
 types:
   # Generic metadata for fingerprintx and other sources
@@ -50,6 +51,7 @@ types:
       netbios: netbiosProtocol.NetbiosServerInfo
       ipmi: ipmiProtocol.IpmiServerInfo
       ubiquiti: ubiquitiProtocol.UbiquitiServerInfo
+      fgfm: fgfmProtocol.FgfmServerInfo
 
   # Stealth service types
   StealthServiceType:
