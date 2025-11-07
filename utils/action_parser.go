@@ -79,7 +79,7 @@ func (p *SSHActionParser) ParseActions(actionStrings []string) ([]sshfern.Pentes
 }
 
 func (p *SSHActionParser) GetValidActions() []string {
-	return []string{"AUTH", "COMMAND", "FILE_TRANSFER"}
+	return []string{"AUTH", "EXEC", "FILE_TRANSFER"}
 }
 
 func (p *SSHActionParser) ContainsAction(actions []sshfern.PentestSshAction, target sshfern.PentestSshAction) bool {
