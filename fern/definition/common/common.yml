@@ -1,17 +1,22 @@
 types:
   ProtocolType:
     enum:
+      - ARD
+      - ATG
       - BGP
       - DCERPC
       - DHCP
       - DNS
       - ECHO
       - FGFM
+      - FINS
       - FTP
+      - GESRTP
       - GRPC
       - HTTP
       - HTTPS
       - HTTP2
+      - IEC104
       - IMAP
       - IMAPS
       - IPP
@@ -33,16 +38,19 @@ types:
       - ORACLE
       - OPCUA
       - OPENVPN
+      - PCOM
       - PCWORX
       - POP3
       - POP3S
       - POSTGRESQL
+      - PPTP
       - RDP
       - RPC
       - REDIS
       - RSYNC
       - RTSP
       - SIP
+      - SLP
       - SMB
       - SMTP
       - SMTPS

@@ -58,6 +58,14 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.PcworxFingerprinter{},    // PCWORX (Phoenix Contact PLCs)
 	&localPlugins.OpcuaFingerprinter{},     // OPC UA (OPC Unified Architecture)
 	&localPlugins.X11Fingerprinter{},       // X11 (X Window System)
+	&localPlugins.PcomFingerprinter{},      // Unitronics PCOM (PLC Communication)
+	&localPlugins.Iec104Fingerprinter{},    // IEC 60870-5-104 (SCADA protocol)
+	&localPlugins.GesrtpFingerprinter{},    // GE SRTP (Service Request Transport Protocol)
+	&localPlugins.FinsFingerprinter{},      // FINS (Omron PLC)
+	&localPlugins.AtgFingerprinter{},       // ATG (Automatic Tank Gauging)
+	&localPlugins.ArdFingerprinter{},       // ARD (Apple Remote Desktop)
+	&localPlugins.PptpFingerprinter{},      // PPTP (Point-to-Point Tunneling Protocol)
+	&localPlugins.MsmqFingerprinter{},      // MSMQ (Microsoft Message Queuing)
 }
 
 // UDP fingerprinters mapped to their specific ports
@@ -71,6 +79,7 @@ var udpFingerprinters = map[uint16]Fingerprinter{
 	161:   &localPlugins.SNMPFingerprinter{},     // SNMP
 	162:   &localPlugins.SNMPFingerprinter{},     // SNMP Trap
 	177:   &localPlugins.XdmcpFingerprinter{},    // XDMCP (X Display Manager Control Protocol)
+	427:   &localPlugins.SlpFingerprinter{},      // SLP (Service Location Protocol)
 	623:   &localPlugins.IPMIFingerprinter{},     // IPMI (Intelligent Platform Management Interface)
 	1900:  &localPlugins.SSDPFingerprinter{},     // SSDP (Simple Service Discovery Protocol)
 	5060:  &localPlugins.SIPFingerprinter{},      // SIP (Session Initiation Protocol)

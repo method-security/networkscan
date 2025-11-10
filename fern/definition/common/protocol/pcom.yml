@@ -1,0 +1,9 @@
+types:
+  # Unitronics PCOM (PLC Communication) Server Information
+  PcomServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      plcModel: optional<string>
+      plcName: optional<string>
+      firmwareVersion: optional<string>

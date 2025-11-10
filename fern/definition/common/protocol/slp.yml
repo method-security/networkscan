@@ -1,0 +1,8 @@
+types:
+  # SLP (Service Location Protocol) Server Information
+  SlpServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      services: optional<list<string>>
+      scopes: optional<list<string>>
