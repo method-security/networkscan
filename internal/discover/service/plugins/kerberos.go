@@ -41,7 +41,11 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	// Try Kerberos detection on plaintext connection
 	result, tlsUsed, err := detectKerberos(conn, host, timeoutDuration, false)
@@ -52,7 +56,11 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = conn.Close() }()
+		defer func() {
+			if conn != nil {
+				_ = conn.Close()
+			}
+		}()
 
 		result, tlsUsed, err = detectKerberos(conn, host, timeoutDuration, true)
 		if err != nil || !result {

@@ -49,7 +49,11 @@ func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 			return nil, nil // neither path worked → not gRPC
 		}
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+	}()
 
 	/* ---- Server-reflection ListServices ---------------------------------- */
 	rctx, cancel := context.WithTimeout(timeoutCtx, timeoutDuration/2)
