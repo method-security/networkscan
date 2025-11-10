@@ -1,0 +1,9 @@
+types:
+  # GE SRTP (Service Request Transport Protocol) Server Information
+  GesrtpServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      deviceType: optional<string>
+      firmwareVersion: optional<string>
+      deviceId: optional<string>

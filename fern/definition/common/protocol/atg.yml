@@ -1,0 +1,9 @@
+types:
+  # ATG (Automatic Tank Gauging) Server Information
+  AtgServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      manufacturer: optional<string>
+      model: optional<string>
+      tankId: optional<string>

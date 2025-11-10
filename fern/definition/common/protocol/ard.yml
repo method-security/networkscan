@@ -1,0 +1,8 @@
+types:
+  # ARD (Apple Remote Desktop) Server Information
+  ArdServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      machineName: optional<string>
+      osVersion: optional<string>

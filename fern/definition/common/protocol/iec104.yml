@@ -1,0 +1,9 @@
+types:
+  # IEC 60870-5-104 (SCADA protocol) Server Information
+  Iec104ServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      asduAddress: optional<string>
+      causeOfTransmission: optional<string>
+      commonAddress: optional<string>

@@ -1,0 +1,9 @@
+types:
+  # MMS (Manufacturing Message Specification - IEC 61850) Server Information
+  MmsServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      vendorName: optional<string>
+      modelName: optional<string>
+      revision: optional<string>

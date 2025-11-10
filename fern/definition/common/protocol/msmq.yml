@@ -1,0 +1,8 @@
+types:
+  # MSMQ (Microsoft Message Queuing) Server Information
+  MsmqServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      queueManager: optional<string>
+      machineId: optional<string>

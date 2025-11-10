@@ -1,0 +1,9 @@
+types:
+  # MEMCACHED Server Information
+  MemcachedServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      pid: optional<string>
+      uptime: optional<string>
+      pointerSize: optional<string>

@@ -1,0 +1,9 @@
+types:
+  # FOX (Tridium Niagara) Server Information
+  FoxServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      stationName: optional<string>
+      hostId: optional<string>
+      hostAddress: optional<string>

@@ -1,0 +1,9 @@
+types:
+  # FINS (Factory Interface Network Service - Omron PLC) Server Information
+  FinsServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      plcModel: optional<string>
+      nodeAddress: optional<string>
+      unitAddress: optional<string>

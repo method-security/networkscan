@@ -24,6 +24,19 @@ imports:
   opcuaProtocol: ../common/protocol/opcua.yml
   x11Protocol: ../common/protocol/x11.yml
   xdmcpProtocol: ../common/protocol/xdmcp.yml
+  pcomProtocol: ../common/protocol/pcom.yml
+  iec104Protocol: ../common/protocol/iec104.yml
+  gesrtpProtocol: ../common/protocol/gesrtp.yml
+  finsProtocol: ../common/protocol/fins.yml
+  atgProtocol: ../common/protocol/atg.yml
+  ardProtocol: ../common/protocol/ard.yml
+  slpProtocol: ../common/protocol/slp.yml
+  pptpProtocol: ../common/protocol/pptp.yml
+  msmqProtocol: ../common/protocol/msmq.yml
+  mmsProtocol: ../common/protocol/mms.yml
+  hartProtocol: ../common/protocol/hart.yml
+  foxProtocol: ../common/protocol/fox.yml
+  memcachedProtocol: ../common/protocol/memcached.yml
 
 types:
   # Generic metadata for fingerprintx and other sources
@@ -60,6 +73,19 @@ types:
       opcua: opcuaProtocol.OpcuaServerInfo
       x11: x11Protocol.X11ServerInfo
       xdmcp: xdmcpProtocol.XdmcpServerInfo
+      pcom: pcomProtocol.PcomServerInfo
+      iec104: iec104Protocol.Iec104ServerInfo
+      gesrtp: gesrtpProtocol.GesrtpServerInfo
+      fins: finsProtocol.FinsServerInfo
+      atg: atgProtocol.AtgServerInfo
+      ard: ardProtocol.ArdServerInfo
+      slp: slpProtocol.SlpServerInfo
+      pptp: pptpProtocol.PptpServerInfo
+      msmq: msmqProtocol.MsmqServerInfo
+      mms: mmsProtocol.MmsServerInfo
+      hart: hartProtocol.HartServerInfo
+      fox: foxProtocol.FoxServerInfo
+      memcached: memcachedProtocol.MemcachedServerInfo
 
   # Stealth service types
   StealthServiceType:

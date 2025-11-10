@@ -1,0 +1,9 @@
+types:
+  # HART-IP (Highway Addressable Remote Transducer) Server Information
+  HartServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      deviceType: optional<string>
+      manufacturer: optional<string>
+      deviceId: optional<string>

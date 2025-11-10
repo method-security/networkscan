@@ -1,0 +1,8 @@
+types:
+  # PPTP (Point-to-Point Tunneling Protocol) Server Information
+  PptpServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      hostname: optional<string>
+      vendor: optional<string>
