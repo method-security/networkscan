@@ -33,6 +33,10 @@ imports:
   slpProtocol: ../common/protocol/slp.yml
   pptpProtocol: ../common/protocol/pptp.yml
   msmqProtocol: ../common/protocol/msmq.yml
+  mmsProtocol: ../common/protocol/mms.yml
+  hartProtocol: ../common/protocol/hart.yml
+  foxProtocol: ../common/protocol/fox.yml
+  memcachedProtocol: ../common/protocol/memcached.yml
 
 types:
   # Generic metadata for fingerprintx and other sources
@@ -78,6 +82,10 @@ types:
       slp: slpProtocol.SlpServerInfo
       pptp: pptpProtocol.PptpServerInfo
       msmq: msmqProtocol.MsmqServerInfo
+      mms: mmsProtocol.MmsServerInfo
+      hart: hartProtocol.HartServerInfo
+      fox: foxProtocol.FoxServerInfo
+      memcached: memcachedProtocol.MemcachedServerInfo
 
   # Stealth service types
   StealthServiceType:

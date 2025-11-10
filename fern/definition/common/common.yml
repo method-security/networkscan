@@ -10,9 +10,11 @@ types:
       - ECHO
       - FGFM
       - FINS
+      - FOX
       - FTP
       - GESRTP
       - GRPC
+      - HART
       - HTTP
       - HTTPS
       - HTTP2
@@ -27,6 +29,8 @@ types:
       - KERBEROS
       - LDAP
       - LDAPS
+      - MEMCACHED
+      - MMS
       - MODBUS
       - MONGODB
       - MQTT

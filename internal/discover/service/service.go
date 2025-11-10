@@ -66,6 +66,10 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.ArdFingerprinter{},       // ARD (Apple Remote Desktop)
 	&localPlugins.PptpFingerprinter{},      // PPTP (Point-to-Point Tunneling Protocol)
 	&localPlugins.MsmqFingerprinter{},      // MSMQ (Microsoft Message Queuing)
+	&localPlugins.MmsFingerprinter{},       // MMS (Manufacturing Message Specification)
+	&localPlugins.HartFingerprinter{},      // HART-IP (Highway Addressable Remote Transducer)
+	&localPlugins.FoxFingerprinter{},       // FOX (Tridium Niagara Framework)
+	&localPlugins.MemcachedFingerprinter{}, // MEMCACHED
 }
 
 // UDP fingerprinters mapped to their specific ports
