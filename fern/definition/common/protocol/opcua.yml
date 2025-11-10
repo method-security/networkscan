@@ -1,0 +1,12 @@
+types:
+  # OPC UA (OPC Unified Architecture) Server Information
+  OpcuaServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      serverName: optional<string>
+      applicationUri: optional<string>
+      productUri: optional<string>
+      endpointUrl: optional<string>
+      securityMode: optional<string>
+      securityPolicy: optional<string>
