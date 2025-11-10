@@ -31,7 +31,9 @@ types:
       - NETBIOS
       - NTP
       - ORACLE
+      - OPCUA
       - OPENVPN
+      - PCWORX
       - POP3
       - POP3S
       - POSTGRESQL
@@ -53,6 +55,8 @@ types:
       - UBIQUITI
       - VNC
       - WINRM
+      - X11
+      - XDMCP
       - UNKNOWN
 
   TransportType:

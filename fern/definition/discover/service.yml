@@ -20,6 +20,10 @@ imports:
   ipmiProtocol: ../common/protocol/ipmi.yml
   ubiquitiProtocol: ../common/protocol/ubiquiti.yml
   fgfmProtocol: ../common/protocol/fgfm.yml
+  pcworxProtocol: ../common/protocol/pcworx.yml
+  opcuaProtocol: ../common/protocol/opcua.yml
+  x11Protocol: ../common/protocol/x11.yml
+  xdmcpProtocol: ../common/protocol/xdmcp.yml
 
 types:
   # Generic metadata for fingerprintx and other sources
@@ -52,6 +56,10 @@ types:
       ipmi: ipmiProtocol.IpmiServerInfo
       ubiquiti: ubiquitiProtocol.UbiquitiServerInfo
       fgfm: fgfmProtocol.FgfmServerInfo
+      pcworx: pcworxProtocol.PcworxServerInfo
+      opcua: opcuaProtocol.OpcuaServerInfo
+      x11: x11Protocol.X11ServerInfo
+      xdmcp: xdmcpProtocol.XdmcpServerInfo
 
   # Stealth service types
   StealthServiceType:

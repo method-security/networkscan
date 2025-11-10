@@ -1,0 +1,9 @@
+types:
+  # XDMCP (X Display Manager Control Protocol) Server Information
+  XdmcpServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      authenticationName: optional<list<string>>
+      status: optional<string>
+      sessionId: optional<string>

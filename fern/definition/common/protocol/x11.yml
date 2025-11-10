@@ -1,0 +1,11 @@
+types:
+  # X11 (X Window System) Server Information
+  X11ServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      protocolMajor: optional<integer>
+      protocolMinor: optional<integer>
+      vendor: optional<string>
+      releaseNumber: optional<integer>
+      authRequired: optional<boolean>

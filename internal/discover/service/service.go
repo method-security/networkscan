@@ -55,6 +55,9 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.KerberosFingerprinter{},  // Kerberos (Kerberos 5),
 	&localPlugins.SMBFingerprinter{},       // SMB (Server Message Block),
 	&localPlugins.FortiGateFingerprinter{}, // FortiGate FGFM (FortiGate to FortiManager),
+	&localPlugins.PcworxFingerprinter{},    // PCWORX (Phoenix Contact PLCs)
+	&localPlugins.OpcuaFingerprinter{},     // OPC UA (OPC Unified Architecture)
+	&localPlugins.X11Fingerprinter{},       // X11 (X Window System)
 }
 
 // UDP fingerprinters mapped to their specific ports
@@ -67,6 +70,7 @@ var udpFingerprinters = map[uint16]Fingerprinter{
 	137:   &localPlugins.NetBIOSFingerprinter{},  // NetBIOS Name Service
 	161:   &localPlugins.SNMPFingerprinter{},     // SNMP
 	162:   &localPlugins.SNMPFingerprinter{},     // SNMP Trap
+	177:   &localPlugins.XdmcpFingerprinter{},    // XDMCP (X Display Manager Control Protocol)
 	623:   &localPlugins.IPMIFingerprinter{},     // IPMI (Intelligent Platform Management Interface)
 	1900:  &localPlugins.SSDPFingerprinter{},     // SSDP (Simple Service Discovery Protocol)
 	5060:  &localPlugins.SIPFingerprinter{},      // SIP (Session Initiation Protocol)

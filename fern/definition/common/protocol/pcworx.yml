@@ -1,0 +1,9 @@
+types:
+  # PCWORX (Phoenix Contact PLCs) Server Information
+  PcworxServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      deviceType: optional<string>
+      deviceName: optional<string>
+      projectName: optional<string>
