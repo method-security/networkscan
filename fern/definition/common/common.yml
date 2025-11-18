@@ -8,6 +8,7 @@ types:
       - DHCP
       - DNS
       - ECHO
+      - ETHERNETIP
       - FGFM
       - FINS
       - FOX

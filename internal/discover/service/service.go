@@ -70,6 +70,7 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.HartFingerprinter{},      // HART-IP (Highway Addressable Remote Transducer)
 	&localPlugins.FoxFingerprinter{},       // FOX (Tridium Niagara Framework)
 	&localPlugins.MemcachedFingerprinter{}, // MEMCACHED
+	&localPlugins.UnistreamFingerprinter{}, // Unitronics UniStream (EtherNet/IP)
 }
 
 // UDP fingerprinters mapped to their specific ports

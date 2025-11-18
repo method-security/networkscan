@@ -1,0 +1,11 @@
+types:
+  # Unitronics UniStream (EtherNet/IP) PLC Information
+  UnistreamServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      productName: optional<string>
+      vendorId: optional<string>
+      serialNumber: optional<string>
+      deviceType: optional<string>
+      deviceIp: optional<string>
