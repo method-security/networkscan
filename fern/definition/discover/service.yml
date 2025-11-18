@@ -37,6 +37,7 @@ imports:
   hartProtocol: ../common/protocol/hart.yml
   foxProtocol: ../common/protocol/fox.yml
   memcachedProtocol: ../common/protocol/memcached.yml
+  unistreamProtocol: ../common/protocol/unistream.yml
 
 types:
   # Generic metadata for fingerprintx and other sources
@@ -86,6 +87,7 @@ types:
       hart: hartProtocol.HartServerInfo
       fox: foxProtocol.FoxServerInfo
       memcached: memcachedProtocol.MemcachedServerInfo
+      unistream: unistreamProtocol.UnistreamServerInfo
 
   # Stealth service types
   StealthServiceType:

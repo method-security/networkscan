@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
@@ -38,77 +40,141 @@ func (PcomFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		return nil, err
 	}
 
-	// PCOM identification request
-	// PCOM protocol structure: /ID + command code
-	// Command 0x4D (ID request) to identify the PLC
-	pcomRequest := []byte{
-		0x2F, 0x5F, // ASCII "/_" - PCOM header
-		0x49, 0x44, // ASCII "ID" - Identification command
-		0x02,       // STX (Start of Text)
-		0x30, 0x30, // Unit ID "00"
-		0x4D, // Command: Get PLC Name
-		0x03, // ETX (End of Text)
+	// Try multiple PCOM identification requests
+	// PCOM protocol can vary between models, so try different approaches
+
+	var response []byte
+	var n int
+	var lastErr error
+
+	// Approach 1: Standard PCOM ID command
+	pcomRequests := [][]byte{
+		// Standard ID command
+		{0x2F, 0x49, 0x44, 0x02, 0x30, 0x30, 0x4D, 0x03, 0x6A, 0x0D}, // /ID with checksum
+		// Alternative ID command format
+		{0x2F, 0x5F, 0x49, 0x44, 0x02, 0x30, 0x30, 0x4D, 0x03, 0x6E, 0x0D}, // /_ID variant
+		// Simple identification
+		{0x2F, 0x49, 0x44, 0x0D}, // /ID simple
+		// PCOM info request
+		{0x2F, 0x49, 0x4E, 0x46, 0x4F, 0x0D}, // /INFO
 	}
 
-	// Calculate and append checksum (XOR of all bytes between STX and ETX)
-	checksum := byte(0)
-	for i := 4; i < len(pcomRequest)-1; i++ {
-		checksum ^= pcomRequest[i]
-	}
-	pcomRequest = append(pcomRequest, checksum)
-	pcomRequest = append(pcomRequest, 0x0D) // CR (Carriage Return)
+	responseBuffer := make([]byte, 1024)
 
-	// Send identification request
-	if _, err := conn.Write(pcomRequest); err != nil {
-		return nil, err
+	for _, req := range pcomRequests {
+		// Send request
+		if _, err := conn.Write(req); err != nil {
+			lastErr = err
+			continue
+		}
+
+		// Set a shorter read timeout for each attempt
+		if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+			lastErr = err
+			continue
+		}
+
+		// Read response
+		n, err = conn.Read(responseBuffer)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if n > 0 {
+			response = responseBuffer[:n]
+			break
+		}
 	}
 
-	// Read response
-	response := make([]byte, 512)
-	n, err := conn.Read(response)
-	if err != nil {
-		return nil, err
+	// If no response from any request, return the last error
+	if n == 0 || response == nil {
+		if lastErr != nil {
+			return nil, lastErr
+		}
+		return nil, fmt.Errorf("no response from PCOM requests")
 	}
 
-	// PCOM responses typically start with "/_"
-	if n < 6 {
+	// PCOM responses can vary, but typically contain readable text
+	if n < 3 {
 		return nil, fmt.Errorf("response too short")
 	}
 
-	// Verify PCOM response header
-	if response[0] != 0x2F || response[1] != 0x41 { // "/A" for acknowledgment
-		return nil, fmt.Errorf("invalid PCOM response header")
+	// Convert response to string for pattern matching
+	responseStr := string(response[:n])
+
+	// Check for PCOM indicators in response (be more flexible)
+	isPcomResponse := false
+
+	// Check for common PCOM response patterns
+	if strings.Contains(responseStr, "PCOM") ||
+		strings.Contains(responseStr, "Unitronics") ||
+		strings.Contains(responseStr, "Model:") ||
+		strings.Contains(responseStr, "PLC") ||
+		strings.Contains(responseStr, "Vision") ||
+		strings.Contains(responseStr, "V") ||
+		(response[0] == 0x2F && (response[1] == 0x41 || response[1] == 0x49)) { // "/A" or "/I" response
+		isPcomResponse = true
 	}
 
-	// Extract PLC information from response
-	var plcModel, plcName, firmwareVersion *string
-
-	// Parse response payload (after header)
-	if n > 10 && response[2] == 0x02 { // STX found
-		// Find ETX to determine payload length
-		etxPos := -1
-		for i := 3; i < n; i++ {
-			if response[i] == 0x03 {
-				etxPos = i
-				break
-			}
-		}
-
-		if etxPos > 3 {
-			payload := response[3:etxPos]
-			// Try to extract ASCII strings that might indicate PLC model
-			if len(payload) > 0 {
-				plcInfo := string(payload)
-				if len(plcInfo) > 0 && isPrintableString(plcInfo) {
-					plcModel = &plcInfo
+	// Also check for binary response patterns that might indicate PCOM
+	if !isPcomResponse {
+		// Look for structured binary data that might be PCOM
+		for i := 0; i < n-3; i++ {
+			if response[i] == 0x02 && response[i+1] != 0x00 { // STX followed by data
+				// Look for ETX
+				for j := i + 2; j < n && j < i+50; j++ {
+					if response[j] == 0x03 { // Found ETX
+						isPcomResponse = true
+						break
+					}
+				}
+				if isPcomResponse {
+					break
 				}
 			}
 		}
 	}
 
-	// Extract version from response if available
+	if !isPcomResponse {
+		return nil, fmt.Errorf("not a PCOM response")
+	}
+
+	// Extract PLC information from response using regex patterns
+	var plcModel, plcName, firmwareVersion, hardwareVersion, osVersion, osBuild, uniqueID *string
+
+	// Define patterns to extract information from PCOM response
+	patterns := map[string]**string{
+		`Model:\s*([^\r\n]+)`:            &plcModel,
+		`PLC Name:\s*([^\r\n]+)`:         &plcName,
+		`Hardware Version:\s*([^\r\n]+)`: &hardwareVersion,
+		`OS Version:\s*([^\r\n]+)`:       &osVersion,
+		`OS Build:\s*([^\r\n]+)`:         &osBuild,
+		`PLC Unique ID:\s*([^\r\n]+)`:    &uniqueID,
+	}
+
+	for pattern, field := range patterns {
+		if re := regexp.MustCompile(pattern); re != nil {
+			if matches := re.FindStringSubmatch(responseStr); len(matches) > 1 {
+				value := strings.TrimSpace(matches[1])
+				if value != "" {
+					*field = &value
+				}
+			}
+		}
+	}
+
+	// If we have OS Version and Build, combine them for firmware version
+	if osVersion != nil && osBuild != nil {
+		combined := *osVersion + " Build " + *osBuild
+		firmwareVersion = &combined
+	} else if osVersion != nil {
+		firmwareVersion = osVersion
+	}
+
+	// Set version based on detection
 	var version *string
-	if plcModel != nil {
+	if plcModel != nil || strings.Contains(responseStr, "PCOM") || strings.Contains(responseStr, "Unitronics") {
 		versionStr := "PCOM"
 		version = &versionStr
 	}
@@ -132,18 +198,4 @@ func (PcomFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 
 	return result, nil
-}
-
-// isPrintableString checks if a string contains mostly printable ASCII characters
-func isPrintableString(s string) bool {
-	if len(s) == 0 {
-		return false
-	}
-	printableCount := 0
-	for _, c := range s {
-		if c >= 32 && c <= 126 {
-			printableCount++
-		}
-	}
-	return printableCount > len(s)/2
 }
