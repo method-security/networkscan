@@ -85,8 +85,10 @@ var udpFingerprinters = map[uint16]Fingerprinter{
 	162:   &localPlugins.SNMPFingerprinter{},     // SNMP Trap
 	177:   &localPlugins.XdmcpFingerprinter{},    // XDMCP (X Display Manager Control Protocol)
 	427:   &localPlugins.SlpFingerprinter{},      // SLP (Service Location Protocol)
+	500:   &localPlugins.IKEFingerprinter{},      // IKE (Internet Key Exchange)
 	623:   &localPlugins.IPMIFingerprinter{},     // IPMI (Intelligent Platform Management Interface)
 	1900:  &localPlugins.SSDPFingerprinter{},     // SSDP (Simple Service Discovery Protocol)
+	4500:  &localPlugins.IKEFingerprinter{},      // IKE NAT-T (NAT Traversal)
 	5060:  &localPlugins.SIPFingerprinter{},      // SIP (Session Initiation Protocol)
 	10001: &localPlugins.UbiquitiFingerprinter{}, // Ubiquiti Discovery Protocol
 }
