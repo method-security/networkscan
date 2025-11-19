@@ -1,0 +1,20 @@
+types:
+  # IKE Server Information
+  IkeServerInfo:
+    properties:
+      # Discovery fields
+      version: optional<string>
+      initiatorSpi: optional<string>
+      responderSpi: optional<string>
+      exchangeType: optional<string>
+      flags: optional<string>
+      messageId: optional<string>
+
+      # Vendor ID information
+      vendorIds: optional<list<string>>
+
+      # Security Association details
+      encryptionAlgorithms: optional<list<string>>
+      hashAlgorithms: optional<list<string>>
+      authenticationMethods: optional<list<string>>
+      dhGroups: optional<list<string>>

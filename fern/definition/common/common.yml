@@ -19,6 +19,7 @@ types:
       - HTTPS
       - HTTP2
       - IEC104
+      - IKE
       - IMAP
       - IMAPS
       - IPP
