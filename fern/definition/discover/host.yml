@@ -1,8 +1,6 @@
 types:
   HostScanType:
     enum:
-      - TCP_SYN
-      - TCP_ACK
       - ICMP_ECHO
       - ICMP_TIMESTAMP
       - ARP

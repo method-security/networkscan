@@ -81,13 +81,18 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverfern.H
 		OnResult: func(hr *result.HostResult) {
 			hostDetails = append(hostDetails, parseHostDiscoverResult(*hr))
 		},
+		// Explicitly disable all probe types to prevent Naabu from enabling defaults
+		// When no probes are specified, Naabu automatically enables multiple probe types
+		// including ICMP Echo, ICMP Timestamp, and TCP probes on ports 80/443.
+		// We explicitly disable all probe types here and only enable the requested one.
+		IcmpEchoRequestProbe:        false,
+		IcmpTimestampRequestProbe:   false,
+		IcmpAddressMaskRequestProbe: false,
+		ArpPing:                     false,
+		IPv6NeighborDiscoveryPing:   false,
 	}
 
 	switch scantype {
-	case discoverfern.HostScanTypeTcpSyn:
-		hostDiscoverOpts.TcpSynPingProbes = goflags.StringSlice{"80"}
-	case discoverfern.HostScanTypeTcpAck:
-		hostDiscoverOpts.TcpAckPingProbes = goflags.StringSlice{"80"}
 	case discoverfern.HostScanTypeIcmpEcho:
 		hostDiscoverOpts.IcmpEchoRequestProbe = true
 	case discoverfern.HostScanTypeIcmpTimestamp:
