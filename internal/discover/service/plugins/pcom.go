@@ -109,10 +109,8 @@ func (PcomFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	// Check for common PCOM response patterns
 	if strings.Contains(responseStr, "PCOM") ||
 		strings.Contains(responseStr, "Unitronics") ||
-		strings.Contains(responseStr, "Model:") ||
 		strings.Contains(responseStr, "PLC") ||
 		strings.Contains(responseStr, "Vision") ||
-		strings.Contains(responseStr, "V") ||
 		(response[0] == 0x2F && (response[1] == 0x41 || response[1] == 0x49)) { // "/A" or "/I" response
 		isPcomResponse = true
 	}
