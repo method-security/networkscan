@@ -9,9 +9,8 @@ Network discovery capabilities to identify live hosts, open ports, running servi
 
 **Subcommands:**
 - `host` - Identify live hosts within IP ranges using various discovery techniques
-- `os` - Detect and fingerprint operating systems (requires nmap and root privileges)
 - `port` - Scan for open TCP ports with customizable scan types and port ranges
-- `service` - Identify and fingerprint network services on specific ports
+- `service` - Identify and fingerprint network services on specific ports (TCP/UDP)
 - `tls` - Retrieve and analyze TLS configuration and certificate details
 - `domain` - Discover domain information using LDAP/SMB discovery and DNS enumeration
 

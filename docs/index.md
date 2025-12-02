@@ -8,7 +8,7 @@ Hello and welcome to the networkscan documentation. While we always want to prov
 
 # About networkscan
 
-networkscan offers security teams a data-rich network scanning and enumeration techniques to help them gain visibility into all of their cloud and on-premise environments. Designed with data-modeling and data-integration needs in mind, networkscan can be used on its own as an interactive CLI, orchestrated as part of a broader data pipeline, or leveraged from within the Method Platform.
+networkscan offers security teams comprehensive network scanning, service enumeration, and penetration testing capabilities to help them gain visibility into their cloud and on-premise environments. The tool provides advanced features including stealth scanning modes, credential spraying, service-specific attacks, and extensive protocol support. Designed with data-modeling and data-integration needs in mind, networkscan can be used on its own as an interactive CLI, orchestrated as part of a broader data pipeline, or leveraged from within the Method Platform.
 
 The types of scans that networkscan can conduct are constantly growing. For the most up to date listing, please see the documentation [here](./docs/index.md)
 
@@ -39,14 +39,14 @@ networkscan pentest service smb <flags>
 ```bash
 # Network discovery
 networkscan discover port --target 127.0.0.1 --ports 22,80,443
-networkscan discover host --target 192.168.1.0/24 --scan-type ICMP_ECHO
+networkscan discover host --target 192.168.1.0/24
 
 # Service enumeration
 networkscan enumerate service --targets 192.168.1.10:22 --service ssh
 
 # Penetration testing
 networkscan pentest spray password --targets 192.168.1.0/24 --service SMB --usernames admin --passwords Password123
-networkscan pentest service smb --targets 192.168.1.100:445 --usernames admin --passwords password --actions AUTHENTICATE
+networkscan pentest service smb --targets 192.168.1.100:445 --usernames admin --passwords password --actions AUTH
 ```
 
 ## Contributing
