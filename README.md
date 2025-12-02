@@ -11,7 +11,16 @@
 
 </div>
 
-networkscan offers security teams a data-rich network scanning and enumeration techniques to help them gain visibility into all of their cloud and on-premise environments. Designed with data-modeling and data-integration needs in mind, networkscan can be used on its own as an interactive CLI, orchestrated as part of a broader data pipeline, or leveraged from within the Method Platform.
+networkscan offers security teams comprehensive network scanning, service enumeration, and penetration testing capabilities to help them gain visibility into their cloud and on-premise environments. The tool provides advanced features including stealth scanning modes, credential spraying, service-specific attacks, and extensive protocol support. Designed with data-modeling and data-integration needs in mind, networkscan can be used on its own as an interactive CLI, orchestrated as part of a broader data pipeline, or leveraged from within the Method Platform.
+
+## Key Features
+
+- **Network Discovery**: Host discovery with multiple scan types, port scanning with stealth modes, service fingerprinting for TCP/UDP protocols
+- **Service Enumeration**: Deep inspection of network services including SSH, SMB, LDAP, SMTP, FTP, and gRPC
+- **Penetration Testing**: Credential spraying against multiple protocols, service-specific attacks, and advanced techniques like DCSync and Kerberos delegation
+- **Stealth Operations**: Configurable delays, jitter, and evasion techniques across all scanning modes
+- **Built-in Wordlists**: Integrated username and password lists for common attack scenarios
+- **Flexible Output**: Multiple output formats (JSON, YAML, Signal) with structured reporting
 
 The types of scans that networkscan can conduct are constantly growing. For the most up to date listing, please see the documentation [here](./docs/index.md)
 
@@ -38,23 +47,28 @@ networkscan [command] [subcommand] <flags>
 
 ```bash
 # Network Discovery
-networkscan discover host --target 192.168.1.0/24 --scan-type ICMP_ECHO
+networkscan discover host --target 192.168.1.0/24
+networkscan discover host --target 192.168.1.0/24 --sleep 2 --jitter 10 --reverse-lookup
 networkscan discover port --target scanme.sh --top-ports 100
+networkscan discover port --target scanme.sh --ports 22,80,443 --validate
 networkscan discover service --target scanme.sh:22
-networkscan discover tls --targets scanme.sh:443
+networkscan discover service --target 192.168.1.1 --udp
+networkscan discover tls --targets scanme.sh:443,example.com:443
 networkscan discover domain --target 192.168.1.1
 
-# Service Enumeration
+# Service Enumeration  
 networkscan enumerate service --targets 192.168.1.10:22,192.168.1.11:21 --service ssh
 
-# Penetration Testing - Credential Spraying
-networkscan pentest spray password --targets 192.168.1.0/24 --service SMB --usernames admin,guest --passwords Password123,123456
+# Credential Spraying
+networkscan pentest spray password --targets 192.168.1.0/24 --service SMB --usernames admin,guest --passwords Password123,123456 --domain CORP
+networkscan pentest spray password --targets 192.168.1.100:445 --service SMB --username-lists DOMAIN_USERNAMES --password-lists DOMAIN_PASSWORDS --sleep 2 --jitter 10
 networkscan pentest spray username --targets dc.example.com:88 --service KERBEROS --domain EXAMPLE.COM --usernames admin,guest
 
-# Penetration Testing - Service Specific
-networkscan pentest service smb --targets 192.168.1.100:445 --usernames admin --passwords password --actions AUTHENTICATE,SHARE_ENUM
-networkscan pentest service ssh --targets 192.168.1.100:22 --usernames root --passwords password --actions AUTHENTICATE,EXECUTE --execute "whoami"
-networkscan pentest service ldap --targets dc.example.com:389 --usernames user --passwords pass --domain EXAMPLE.COM --actions DOMAINDUMP
+# Service-Specific Penetration Testing
+networkscan pentest service smb --targets 192.168.1.100:445 --usernames admin --passwords password --actions AUTH,SHARES_MAP
+networkscan pentest service ssh --targets 192.168.1.100:22 --usernames root --passwords password --actions AUTH,EXEC --execute "whoami"
+networkscan pentest service telnet --targets 192.168.1.100:23 --usernames admin --passwords password --actions AUTH
+networkscan pentest service ldap --targets dc.example.com:389 --usernames user --passwords pass --domain EXAMPLE.COM --actions AUTH,DOMAINDUMP
 networkscan pentest service msrpc --targets dc.example.com:445 --usernames admin --passwords Password123 --domain EXAMPLE.COM --actions DCSYNC
 networkscan pentest service kerberos --targets dc.example.com:88 --usernames user --passwords pass --domain EXAMPLE.COM --actions SERVICE_TICKET --spn HTTP/server.example.com
 ```

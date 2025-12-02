@@ -37,7 +37,7 @@ Flags:
   -h, --help                  help for host
       --jitter int            Jitter percentage (0-100) to randomize sleep delay for stealth scan
       --reverse-lookup        Perform reverse DNS lookup sweep first to identify potential targets
-      --scan-type string      Discovery scan type: TCP_SYN, TCP_ACK, ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (not needed for stealth mode) (default "ICMP_ECHO")
+      --scan-type string      Discovery scan type: ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (not needed for stealth mode) (default "ICMP_ECHO")
       --sleep int             Sleep delay in seconds between hosts for stealth scan (stealth mode enabled when sleep > 0)
       --target string         Target IP address, hostname, or CIDR range to scan for live hosts
 
@@ -48,33 +48,6 @@ Global Flags:
   -v, --verbose              Verbose output
 ```
 
-### OS
-
-Detect and fingerprint the operating system running on a specified host (requires nmap and root privileges).
-
-#### Usage
-```bash
-networkscan discover os --target 127.0.0.1
-```
-
-#### Help Text
-```bash
-networkscan discover os -h
-Detect and fingerprint the operating system running on a specified host (requires nmap and root privileges).
-
-Usage:
-  networkscan discover os [flags]
-
-Flags:
-  -h, --help            help for os
-      --target string   Target IP address or fully qualified domain name (FQDN) for OS fingerprinting
-
-Global Flags:
-  -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
-  -f, --output-file string   Path to output file. If blank, will output to STDOUT
-  -q, --quiet                Suppress output
-  -v, --verbose              Verbose output
-```
 
 ### Port
 
@@ -109,6 +82,7 @@ Usage:
 Flags:
   -h, --help                            help for port
       --jitter int                      Jitter percentage (0-100) to randomize sleep delay for stealth scan
+      --packets-per-second int          Packets per second to send (default 1000)
       --ports string                    Comma-separated list or range of TCP ports to scan (e.g., 22,80,443 or 1-1024)
       --scan-type string                Port scan type: SYN (default, requires root) or CONNECT (default "SYN")
       --sleep int                       Sleep delay in seconds between port scans for stealth scan (stealth mode enabled when sleep > 0)
@@ -129,12 +103,18 @@ Global Flags:
 
 ### Service
 
-Identify and fingerprint the network service running on a specific open port of a target host.
+Identify and fingerprint network services on a target host or specific port.
 
-#### Usage
+#### TCP Service Discovery
 ```bash
 networkscan discover service --target 127.0.0.1:443
 networkscan discover service --target example.com:22
+```
+
+#### UDP Service Discovery
+Use UDP mode to discover common UDP services:
+```bash
+networkscan discover service --target 192.168.1.1 --udp
 ```
 
 #### Stealth Mode
@@ -146,7 +126,7 @@ networkscan discover service --target 192.168.1.1:22 --service-type SSH
 #### Help Text
 ```bash
 networkscan discover service -h
-Identify and fingerprint the network service running on a specific open port of a target host.
+Identify and fingerprint network services on a target host or specific port. Use --udp to scan common UDP ports.
 
 Usage:
   networkscan discover service [flags]
@@ -154,8 +134,9 @@ Usage:
 Flags:
   -h, --help                 help for service
       --service-type string  Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
-      --target string        Target address in format IP:port or hostname:port (e.g., 192.168.1.1:443)
+      --target string        Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)
       --timeout int          Timeout in seconds for each service fingerprinting attempt (default 5)
+      --udp                  Enable UDP service discovery mode (scans common UDP ports like DNS, NTP, SNMP, etc.)
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
