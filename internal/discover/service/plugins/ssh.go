@@ -18,6 +18,8 @@ type SSHFingerprinter struct{}
 
 func (SSHFingerprinter) Name() string { return "ssh" }
 
+func (SSHFingerprinter) DefaultPorts() []int { return []int{22} }
+
 func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 

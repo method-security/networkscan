@@ -292,8 +292,15 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				return
 			}
 
+			// Fingerprintx timeout flag
+			fingerprintxTimeout, err := cmd.Flags().GetInt("fingerprintx-timeout")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
 			// Set Config
-			config := getDiscoverServiceConfig(target, timeout, serviceType, udp)
+			config := getDiscoverServiceConfig(target, timeout, serviceType, udp, fingerprintxTimeout)
 
 			// Generate the report
 			report, err := discoverservice.RunServiceFingerprint(cmd.Context(), config)
@@ -306,6 +313,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	discoverServiceCmd.Flags().String("target", "", "Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)")
 	discoverServiceCmd.Flags().Int("timeout", 5, "Timeout in seconds for each service fingerprinting attempt")
+	discoverServiceCmd.Flags().Int("fingerprintx-timeout", 0, "Timeout in seconds for fingerprintx attempt (default is no timeout)")
 	discoverServiceCmd.Flags().Bool("udp", false, "Enable UDP service discovery mode (scans common UDP ports like DNS, NTP, SNMP, etc.)")
 	discoverServiceCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
 
@@ -439,10 +447,11 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 
 // getDiscoverServiceConfig creates a configuration for service fingerprinting with the provided parameters.
 // It sets up the target (in IP:port format for TCP, or just IP for UDP), timeout, UDP mode, and stealth-specific options.
-func getDiscoverServiceConfig(target string, timeout int, serviceType string, udp bool) discoverfern.DiscoverServiceConfig {
+func getDiscoverServiceConfig(target string, timeout int, serviceType string, udp bool, fingerprintxTimeout int) discoverfern.DiscoverServiceConfig {
 	config := discoverfern.DiscoverServiceConfig{
-		Target:  target,
-		Timeout: timeout,
+		Target:              target,
+		Timeout:             timeout,
+		FingerprintxTimeout: fingerprintxTimeout,
 	}
 	if udp {
 		config.Udp = &udp
