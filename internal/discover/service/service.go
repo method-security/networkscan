@@ -46,6 +46,7 @@ type Fingerprinter interface {
 // Custom fingerprinters for protocols that need specialized detection
 // These run BEFORE fingerprintx to provide more specific detection
 var customFingerprintModules = []Fingerprinter{
+	&localPlugins.SSHFingerprinter{},       // SSH (Secure Shell)
 	&localPlugins.GrpcFingerprinter{},      // gRPC can run on any port
 	&localPlugins.MongoDBFingerprinter{},   // MongoDB driver manages its own connections
 	&localPlugins.BGPFingerprinter{},       // BGP protocol detection
@@ -125,7 +126,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 
 	// Standard fingerprinting path
 	fingerprintConfig := scan.Config{
-		FastMode:       false,
+		FastMode:       true,
 		DefaultTimeout: time.Duration(config.Timeout) * time.Second,
 		UDP:            false,
 		Verbose:        true,
@@ -168,10 +169,47 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 
 		/* --- Phase 2: Run fingerprintx (has its own port priority) --------- */
 		if !serviceFound {
-			if fxResult, fingerprintError := fingerprintConfig.SimpleScanTarget(fingerprintTarget); fingerprintError == nil && fxResult != nil && fxResult.Protocol != "" {
-				fingerprintResult = fxResult
-				results = append(results, fxToServiceDetails(fingerprintResult))
-				serviceFound = true
+			// Wrap fingerprintx in context timeout to prevent hanging (if timeout > 0)
+			var fxCtx context.Context
+			var cancel context.CancelFunc
+
+			if config.FingerprintxTimeout > 0 {
+				fxCtx, cancel = context.WithTimeout(ctx, time.Duration(config.FingerprintxTimeout)*time.Second)
+			} else {
+				fxCtx, cancel = context.WithCancel(ctx)
+			}
+			defer cancel()
+
+			resultChan := make(chan *plugins.Service, 1)
+			errChan := make(chan error, 1)
+
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						errChan <- fmt.Errorf("fingerprintx panic: %v", r)
+					}
+				}()
+
+				result, err := fingerprintConfig.SimpleScanTarget(fingerprintTarget)
+				if err != nil {
+					errChan <- err
+					return
+				}
+				resultChan <- result
+			}()
+
+			select {
+			case <-fxCtx.Done():
+				// fingerprintx timed out or context cancelled - move to Phase 3
+			case fxResult := <-resultChan:
+				if fxResult != nil && fxResult.Protocol != "" {
+					fingerprintResult = fxResult
+					results = append(results, fxToServiceDetails(fingerprintResult))
+					serviceFound = true
+				}
+			case err := <-errChan:
+				// fingerprintx failed - continue to Phase 3
+				_ = err
 			}
 		}
 
