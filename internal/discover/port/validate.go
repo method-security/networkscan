@@ -12,6 +12,8 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	// Internal
 	discoverservice "github.com/Method-Security/networkscan/internal/discover/service"
+	"github.com/Method-Security/networkscan/utils"
+
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -41,6 +43,24 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 		maxThreads = *config.ValidateThreads
 	}
 
+	// Resolve validation hostname once before processing all ports
+	// This avoids repeated DNS lookups for every single port
+	var resolvedValidationIP string
+	if config.ValidateHostname != nil {
+		log.Info("Resolving validation hostname once", svc1log.SafeParam("hostname", *config.ValidateHostname))
+		// Import needed: "github.com/Method-Security/networkscan/utils"
+		ips, err := utils.GetIPs(*config.ValidateHostname)
+		if err != nil {
+			errorsMutex.Lock()
+			errors = append(errors, fmt.Sprintf("failed to resolve validation hostname %s: %v", *config.ValidateHostname, err))
+			errorsMutex.Unlock()
+			// Continue with IP-based validation only
+		} else if len(ips) > 0 {
+			resolvedValidationIP = ips[0].String()
+			log.Info("Resolved validation hostname", svc1log.SafeParam("hostname", *config.ValidateHostname), svc1log.SafeParam("ip", resolvedValidationIP))
+		}
+	}
+
 	for _, socket := range sockets {
 		if socket == nil || socket.Ports == nil {
 			continue
@@ -62,9 +82,10 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 					log.Info("Validating port", svc1log.SafeParam("port", port.Port))
 
 					// Use RunServiceFingerprint to check if there's a service on this port
+					// Use pre-resolved IP to avoid repeated DNS lookups
 					var targetStr string
-					if config.ValidateHostname != nil {
-						targetStr = fmt.Sprintf("%s:%d", *config.ValidateHostname, port.Port)
+					if resolvedValidationIP != "" {
+						targetStr = fmt.Sprintf("%s:%d", resolvedValidationIP, port.Port)
 					} else {
 						targetStr = fmt.Sprintf("%s:%d", socket.Ip, port.Port)
 					}
