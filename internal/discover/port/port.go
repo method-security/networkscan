@@ -25,7 +25,50 @@ import (
 	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
-var requiredPorts = []string{"1", "65535"}
+var requiredPorts = []string{
+	"1",
+	"2",
+	"3",
+	"9",
+	"19",
+	"32768",
+	"32769",
+	"32770",
+	"49150",
+	"49151",
+	"49998",
+	"49999",
+	"52673",
+	"52822",
+	"52848",
+	"52869",
+	"54045",
+	"54328",
+	"55055",
+	"55056",
+	"55555",
+	"55600",
+	"56737",
+	"56738",
+	"57294",
+	"57797",
+	"58080",
+	"54320",
+	"54321",
+	"60000",
+	"60001",
+	"61095",
+	"61096",
+	"61111",
+	"62000",
+	"65000",
+	"65530",
+	"65531",
+	"65532",
+	"65533",
+	"65534",
+	"65535",
+}
 
 // stderrWriter implements writer.Writer interface to redirect all gologger output to stderr
 type stderrWriter struct{}
