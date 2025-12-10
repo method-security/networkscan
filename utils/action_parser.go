@@ -9,6 +9,7 @@ import (
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	sshfern "github.com/Method-Security/networkscan/generated/go/pentest/ssh"
 	telnetfern "github.com/Method-Security/networkscan/generated/go/pentest/telnet"
+	winrmfern "github.com/Method-Security/networkscan/generated/go/pentest/winrm"
 )
 
 // SMBActionParser handles SMB-specific action parsing
@@ -211,6 +212,46 @@ func (p *MSRPCActionParser) ContainsAction(actions []msrpcfern.PentestMsrpcActio
 	return false
 }
 
+// WinRMActionParser handles WinRM-specific action parsing
+type WinRMActionParser struct{}
+
+func (p *WinRMActionParser) ParseActions(actionStrings []string) ([]winrmfern.PentestWinrmAction, error) {
+	var actions []winrmfern.PentestWinrmAction
+
+	for _, actionStr := range actionStrings {
+		// Handle comma-separated actions in a single flag
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue // Skip empty parts
+			}
+			// Convert to uppercase for enum matching
+			upperPart := strings.ToUpper(part)
+			winrmAction, err := winrmfern.NewPentestWinrmActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid WinRM action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, winrmAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *WinRMActionParser) GetValidActions() []string {
+	return []string{"AUTH", "EXEC"}
+}
+
+func (p *WinRMActionParser) ContainsAction(actions []winrmfern.PentestWinrmAction, target winrmfern.PentestWinrmAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
 // Global parser instances (singletons)
 var (
 	smbParserInstance    *SMBActionParser
@@ -218,6 +259,7 @@ var (
 	telnetParserInstance *TelnetActionParser
 	ldapParserInstance   *LDAPActionParser
 	msrpcParserInstance  *MSRPCActionParser
+	winrmParserInstance  *WinRMActionParser
 )
 
 // GetSMBParser returns the singleton SMB action parser
@@ -258,4 +300,12 @@ func GetMSRPCParser() *MSRPCActionParser {
 		msrpcParserInstance = &MSRPCActionParser{}
 	}
 	return msrpcParserInstance
+}
+
+// GetWinRMParser returns the singleton WinRM action parser
+func GetWinRMParser() *WinRMActionParser {
+	if winrmParserInstance == nil {
+		winrmParserInstance = &WinRMActionParser{}
+	}
+	return winrmParserInstance
 }

@@ -13,3 +13,22 @@ types:
       maxEnvelopeSize: optional<integer>
       maxTimeoutMs: optional<integer>
       authSchemes: optional<list<string>>
+
+  # Authentication result for any WinRM operation
+  WinrmAuthAttempt:
+    properties:
+      username: string
+      password: string
+      domain: optional<string>
+      success: boolean
+      message: string
+      timestamp: datetime
+      errorCode: optional<string>
+
+  # Command execution via WinRM
+  WinrmCommandExecution:
+    properties:
+      command: string
+      output: string
+      exitCode: optional<integer>
+      timestamp: datetime
