@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
@@ -43,23 +42,17 @@ func (BGPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	// Read initial response - BGP servers may immediately close connection or send NOTIFICATION
 	reply := make([]byte, 4096)
 	n, err := conn.Read(reply)
-	
+
 	// Handle different response scenarios
 	if err != nil {
-		// Connection reset by peer is common for BGP - indicates BGP service is running
-		// but rejecting our connection (wrong AS, not configured peer, etc.)
-		errStr := err.Error()
-		if n == 0 && (errStr == "EOF" || 
-						   strings.Contains(errStr, "connection reset by peer") ||
-						   strings.Contains(errStr, "reset by peer")) {
-			// This is actually a positive BGP detection - service is there but rejecting us
-			return createBGPServiceDetails(ip, port, host, "4", "CONNECTION_REJECTED", nil, nil, nil), nil
-		}
+		// For NMAP -sV equivalent behavior, only detect as BGP if we get actual BGP responses
+		// Timeouts and other generic errors should be handled by other fingerprinters
 		return nil, err
 	}
-	
+
 	if n < 19 {
 		// Got some data but not enough for BGP header
+		// This is likely not BGP - let other fingerprinters handle it
 		return nil, nil
 	}
 	reply = reply[:n]
@@ -80,8 +73,19 @@ func (BGPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		return nil, nil
 	}
 
-	// Validate message length
+	// Validate message length - be more restrictive
 	if msgLength < 19 || msgLength > 4096 || int(msgLength) > len(reply) {
+		return nil, nil
+	}
+
+	// Additional validation: for NOTIFICATION messages, ensure proper structure
+	if msgType == 3 && msgLength != 21 {
+		// NOTIFICATION messages should be exactly 21 bytes (19 header + 2 error codes)
+		return nil, nil
+	}
+
+	// For KEEPALIVE messages, ensure they're exactly 19 bytes (header only)
+	if msgType == 4 && msgLength != 19 {
 		return nil, nil
 	}
 
@@ -95,8 +99,16 @@ func (BGPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	switch msgType {
 	case 1:
 		messageType = "OPEN"
-		// Parse OPEN message details
+		// Parse OPEN message details - validate minimum OPEN message length
+		if int(msgLength) < 29 {
+			// OPEN messages must be at least 29 bytes (19 header + 10 minimum OPEN data)
+			return nil, nil
+		}
 		if parsedData := parseBGPOpenMessage(reply[19:]); parsedData != nil {
+			// Validate BGP version
+			if parsedData.version != 4 {
+				return nil, nil
+			}
 			bgpVersion = fmt.Sprintf("%d", parsedData.version)
 			asn = &parsedData.asn
 			routerIDStr := fmt.Sprintf("%d.%d.%d.%d", parsedData.routerID[0], parsedData.routerID[1], parsedData.routerID[2], parsedData.routerID[3])
@@ -167,6 +179,22 @@ func parseBGPOpenMessage(data []byte) *bgpOpenData {
 	holdTime := int(binary.BigEndian.Uint16(data[3:5]))
 	routerID := make([]byte, 4)
 	copy(routerID, data[5:9])
+
+	// Validate optional parameter length
+	if len(data) < 10 {
+		return nil
+	}
+	optParamLen := data[9]
+
+	// Ensure we have enough data for optional parameters
+	if len(data) < int(10+optParamLen) {
+		return nil
+	}
+
+	// Validate hold time - should be 0 or >= 3 seconds
+	if holdTime != 0 && holdTime < 3 {
+		return nil
+	}
 
 	return &bgpOpenData{
 		version:  version,
