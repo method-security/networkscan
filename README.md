@@ -5,6 +5,7 @@
 [![Verify][verify-img]][verify]
 [![Go Report Card][go-report-img]][go-report]
 [![License: Apache-2.0][license-img]][license]
+[![Acceptable Use Policy][acceptable-use-policy-img]][acceptable-use-policy]
 
 [![GitHub Downloads][github-downloads-img]][release]
 [![Docker Pulls][docker-pulls-img]][docker-pull]
@@ -103,3 +104,5 @@ Have an idea for a Tool to contribute? Open a Discussion [here](https://github.c
 [docker-pull]: https://hub.docker.com/r/methodsecurity/networkscan
 [license]: https://github.com/Method-Security/networkscan/blob/main/LICENSE
 [license-img]: https://img.shields.io/badge/License-Apache%202.0-blue.svg
+[acceptable-use-policy]: https://github.com/Method-Security/networkscan/blob/main/ACCEPTABLE_USE_POLICY.md
+[acceptable-use-policy-img]: https://www.svgrepo.com/show/497211/judge.svg
