@@ -2,6 +2,7 @@ package smb
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +29,7 @@ type OutputFileFetcher struct {
 	Host     string // SMB server hostname or IP address
 	Username string // Username for authentication
 	Password string // Password for authentication
+	NTLMHash string // NTLM hash for pass-the-hash authentication (hex string)
 	Domain   string // Domain for authentication (optional)
 
 	// SMB Share Configuration
@@ -81,11 +83,22 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 	}
 	defer func() { _ = conn.Close() }()
 
-	// Create NTLM initiator
+	// Create NTLM initiator with hash or password authentication
 	initiator := &smb2.NTLMInitiator{
-		User:     o.Username,
-		Password: o.Password,
-		Domain:   o.Domain,
+		User:   o.Username,
+		Domain: o.Domain,
+	}
+
+	// Use NTLM hash if provided, otherwise use password
+	if o.NTLMHash != "" {
+		hashBytes, err := hex.DecodeString(o.NTLMHash)
+		if err != nil {
+			return fmt.Errorf("decode NTLM hash: %w", err)
+		}
+		initiator.Hash = hashBytes
+		log.Info("Using NTLM hash authentication for SMB output fetch")
+	} else {
+		initiator.Password = o.Password
 	}
 
 	// Create SMB dialer and session

@@ -44,11 +44,18 @@ type WMIExecutor struct {
 	host           string
 	username       string
 	password       string
+	ntlmHash       string
 	domain         string
 }
 
 // NewWMIExecutor creates a new WMI executor with proper authentication
+// Supports both password and NTLM hash authentication
 func NewWMIExecutor(ctx context.Context, host, username, password, domain string) (*WMIExecutor, error) {
+	return NewWMIExecutorWithHash(ctx, host, username, password, "", domain)
+}
+
+// NewWMIExecutorWithHash creates a new WMI executor with NTLM hash authentication support
+func NewWMIExecutorWithHash(ctx context.Context, host, username, password, ntlmHash, domain string) (*WMIExecutor, error) {
 	log := svc1log.FromContext(ctx)
 
 	// Set up DCE/RPC authentication options
@@ -58,7 +65,15 @@ func NewWMIExecutor(ctx context.Context, host, username, password, domain string
 	} else {
 		credStr = username
 	}
-	cred := credential.NewFromPassword(credStr, password)
+
+	// Use NTLM hash authentication if provided, otherwise use password
+	var cred any
+	if ntlmHash != "" {
+		log.Info("Using NTLM hash authentication for WMI")
+		cred = credential.NewFromNTHash(credStr, ntlmHash)
+	} else {
+		cred = credential.NewFromPassword(credStr, password)
+	}
 
 	// Create GSSAPI credential with proper formatting
 	gssapiCred := gssapi.NewCredential("", nil, gssapi.InitiateAndAccept, cred)
@@ -83,6 +98,7 @@ func NewWMIExecutor(ctx context.Context, host, username, password, domain string
 		host:     host,
 		username: username,
 		password: password,
+		ntlmHash: ntlmHash,
 		domain:   domain,
 	}
 
@@ -151,7 +167,14 @@ func (w *WMIExecutor) initialize(ctx context.Context) error {
 		} else {
 			credStr = w.username
 		}
-		cred := credential.NewFromPassword(credStr, w.password)
+
+		// Use NTLM hash authentication if provided, otherwise use password
+		var cred any
+		if w.ntlmHash != "" {
+			cred = credential.NewFromNTHash(credStr, w.ntlmHash)
+		} else {
+			cred = credential.NewFromPassword(credStr, w.password)
+		}
 		gssapiCred := gssapi.NewCredential("", nil, gssapi.InitiateAndAccept, cred)
 
 		// Configure connection options with endpoints and authentication
@@ -232,6 +255,7 @@ func (w *WMIExecutor) ExecuteCommand(ctx context.Context, command string) (map[s
 				Host:             w.host,
 				Username:         w.username,
 				Password:         w.password,
+				NTLMHash:         w.ntlmHash,
 				Domain:           w.domain,
 				Share:            "ADMIN$",
 				SharePath:        `C:\Windows`,
