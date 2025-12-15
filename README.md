@@ -105,4 +105,4 @@ Have an idea for a Tool to contribute? Open a Discussion [here](https://github.c
 [license]: https://github.com/Method-Security/networkscan/blob/main/LICENSE
 [license-img]: https://img.shields.io/badge/License-Apache%202.0-blue.svg
 [acceptable-use-policy]: https://github.com/Method-Security/networkscan/blob/main/ACCEPTABLE_USE_POLICY.md
-[acceptable-use-policy-img]: https://www.svgrepo.com/show/497211/judge.svg
+[acceptable-use-policy-img]: https://img.shields.io/badge/acceptable_use-policy-blue
