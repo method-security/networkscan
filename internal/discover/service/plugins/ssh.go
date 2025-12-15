@@ -40,10 +40,14 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 
 		// Look for SSH-specific errors that indicate the service is running
 		// Be more specific to avoid false positives
-		if strings.Contains(errStr, "no supported authentication methods") ||
-			strings.Contains(errStr, "unable to authenticate") ||
-			strings.Contains(errStr, "attempted methods [none]") ||
-			(strings.Contains(errStr, "ssh:") && strings.Contains(errStr, "protocol version")) {
+		errStrLower := strings.ToLower(errStr)
+		if strings.Contains(errStrLower, "no supported authentication methods") ||
+			strings.Contains(errStrLower, "unable to authenticate") ||
+			strings.Contains(errStrLower, "attempted methods [none]") ||
+			strings.Contains(errStrLower, "permission denied") ||
+			strings.Contains(errStrLower, "handshake failed") ||
+			strings.Contains(errStrLower, "no supported methods remain") ||
+			(strings.Contains(errStrLower, "ssh:") && strings.Contains(errStrLower, "protocol")) {
 
 			// SSH service detected
 			target := fmt.Sprintf("%s:%d", host, port)
