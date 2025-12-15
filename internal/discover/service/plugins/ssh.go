@@ -11,7 +11,6 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-	"golang.org/x/crypto/ssh"
 )
 
 type SSHFingerprinter struct{}
@@ -23,65 +22,37 @@ func (SSHFingerprinter) DefaultPorts() []int { return []int{22} }
 func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
-	// Create SSH client config with no auth methods (connection-only)
-	config := &ssh.ClientConfig{
-		User:            "probe",            // Username for connection (not used for auth)
-		Auth:            []ssh.AuthMethod{}, // Empty auth methods - no authentication
-		Timeout:         10 * time.Second,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // Only for service detection
-	}
-
-	// Attempt connection to get server info without authentication
-	client, err := ssh.Dial("tcp", addr, config)
+	// Use raw TCP connection to read SSH banner - the gold standard approach
+	conn, err := net.DialTimeout("tcp", addr, time.Duration(timeout)*time.Second)
 	if err != nil {
-		// Expected - connection will fail due to no auth methods, but we can extract server info
-		// Check if the error indicates SSH protocol was detected
-		errStr := err.Error()
+		return nil, err
+	}
+	defer func() { _ = conn.Close() }()
 
-		// Look for SSH-specific errors that indicate the service is running
-		// Be more specific to avoid false positives
-		errStrLower := strings.ToLower(errStr)
-		if strings.Contains(errStrLower, "no supported authentication methods") ||
-			strings.Contains(errStrLower, "unable to authenticate") ||
-			strings.Contains(errStrLower, "attempted methods [none]") ||
-			strings.Contains(errStrLower, "permission denied") ||
-			strings.Contains(errStrLower, "handshake failed") ||
-			strings.Contains(errStrLower, "no supported methods remain") ||
-			(strings.Contains(errStrLower, "ssh:") && strings.Contains(errStrLower, "protocol")) {
-
-			// SSH service detected
-			target := fmt.Sprintf("%s:%d", host, port)
-			metadata := &protocol.SshServerInfo{
-				Target: &target,
-			}
-
-			result := &discoverfern.ServiceDetails{
-				Host:      host,
-				Ip:        ip.String(),
-				Port:      port,
-				Tls:       false,
-				Transport: common.TransportTypeTcp,
-				Protocol:  common.ProtocolTypeSsh,
-				Metadata:  discoverfern.NewServiceMetadataFromSsh(metadata),
-			}
-
-			return result, nil
-		}
-
-		// Not an SSH service or connection failed
+	// Set read deadline
+	err = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	if err != nil {
 		return nil, err
 	}
 
-	// If we somehow connected without auth (unusual), SSH is definitely running
-	defer func() { _ = client.Close() }()
+	// Read banner
+	buf := make([]byte, 256)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return nil, err
+	}
 
-	// Get server version from successful connection
-	serverVersionBytes := client.ServerVersion()
-	serverVersion := string(serverVersionBytes)
+	banner := strings.TrimSpace(string(buf[:n]))
 
+	// SSH always begins with "SSH-" banner
+	if !strings.HasPrefix(banner, "SSH") {
+		return nil, fmt.Errorf("not an SSH service")
+	}
+
+	// Extract version from banner (e.g., "SSH-2.0-OpenSSH_8.9" -> "SSH-2.0-OpenSSH_8.9")
 	target := fmt.Sprintf("%s:%d", host, port)
 	metadata := &protocol.SshServerInfo{
-		ServerVersion: &serverVersion,
+		ServerVersion: &banner,
 		Target:        &target,
 	}
 
@@ -92,7 +63,7 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeSsh,
-		Version:   &serverVersion,
+		Version:   &banner,
 		Metadata:  discoverfern.NewServiceMetadataFromSsh(metadata),
 	}
 
