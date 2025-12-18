@@ -401,9 +401,6 @@ func hasValidPcomIndicators(response string, binaryResponse []byte) bool {
 		return true
 	}
 
-	// REMOVED: Weak heuristic based on non-printable character ratio
-	// This was causing false positives with DCERPC and other binary protocols
-
 	return false
 }
 
