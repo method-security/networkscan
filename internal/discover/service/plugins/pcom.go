@@ -355,6 +355,21 @@ func isFalsePositive(response string, rawResponse []byte) bool {
 		}
 	}
 
+	// DCERPC/MSRPC responses (Windows RPC Endpoint Mapper on port 135, 139, etc.)
+	// DCERPC version 5 responses: 0x05 0x00-0x01 [packet_type]
+	if len(rawResponse) >= 3 && rawResponse[0] == 0x05 {
+		// Check if second byte is reasonable version minor (0x00 or 0x01)
+		if rawResponse[1] <= 0x01 {
+			// Check if third byte is a valid DCERPC packet type
+			packetType := rawResponse[2]
+			// Common DCERPC packet types: 0x00-0x13
+			// 0x00=Request, 0x02=Response, 0x0b=Bind, 0x0c=Bind_ack, 0x0d=Bind_nak, etc.
+			if packetType <= 0x13 {
+				return true
+			}
+		}
+	}
+
 	// Other false positives
 	if contains(response, "Bad Request") || contains(response, "Internal Server Error") {
 		return true
@@ -371,31 +386,19 @@ func hasValidPcomIndicators(response string, binaryResponse []byte) bool {
 	// NOTE: Empty response check moved to caller context where port is available
 	// Empty responses should ONLY be considered valid PCOM indicators on port 20256
 
-	// Check for specific binary patterns
+	// Check for specific PCOM binary patterns only
+	// These are known PCOM protocol signatures
 	if len(binaryResponse) >= 6 {
+		// PCOM protocol-specific patterns
 		if (binaryResponse[0] == 0x02 && binaryResponse[1] == 0x09) ||
-			(binaryResponse[0] == 0x00 && binaryResponse[1] == 0x5B) ||
-			(binaryResponse[0] == 0x00 && binaryResponse[1] == 0x00) {
+			(binaryResponse[0] == 0x00 && binaryResponse[1] == 0x5B) {
 			return true
 		}
 	}
 
-	// VMware authentication responses might still be on PCOM ports
-	if contains(response, "VMware Authentication Daemon") {
+	// PCOM ASCII response pattern: /A<data><CR>
+	if len(response) >= 2 && response[0] == '/' && response[1] == 'A' {
 		return true
-	}
-
-	// Short binary responses with non-printable characters
-	if len(binaryResponse) > 0 && len(binaryResponse) < 50 {
-		nonPrintableCount := 0
-		for _, b := range binaryResponse {
-			if b < 32 || b > 126 {
-				nonPrintableCount++
-			}
-		}
-		if float64(nonPrintableCount)/float64(len(binaryResponse)) > 0.5 {
-			return true
-		}
 	}
 
 	return false
