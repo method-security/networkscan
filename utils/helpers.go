@@ -8,12 +8,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 
 	pentestfern "github.com/Method-Security/networkscan/generated/go/pentest"
-	permissionutil "github.com/projectdiscovery/utils/permission"
 )
 
 // GetEntriesFromTXTFiles reads and combines entries from multiple text files.
@@ -241,20 +239,4 @@ func GetIPs(host string) ([]net.IP, error) {
 	}
 
 	return ips, nil
-}
-
-// IsPrivilegedForNetworkScanning checks if the current process has the necessary privileges
-// for network scanning operations that require raw sockets (like ICMP ping).
-// On Windows, this checks if the process is running with Administrator privileges.
-// On Unix-like systems, this checks for root privileges or CAP_NET_RAW capability.
-func IsPrivilegedForNetworkScanning() bool {
-	if runtime.GOOS == "windows" {
-		// On Windows, use the permission utility to check for Administrator privileges
-		// The permissionutil.IsRoot checks for elevated privileges on Windows
-		return permissionutil.IsRoot
-	}
-
-	// On Unix-like systems, fall back to the naabu privilege check
-	// This handles both root privileges and CAP_NET_RAW capability
-	return os.Geteuid() == 0
 }

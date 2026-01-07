@@ -2,7 +2,6 @@ package cmd
 
 import (
 	// Standard
-	"errors"
 	"fmt"
 	"strings"
 
@@ -81,13 +80,6 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			// Validate jitter range
 			if jitter < 0 || jitter > 100 {
 				a.OutputSignal.AddError(fmt.Errorf("jitter must be between 0 and 100 (percentage), got %d", jitter))
-				return
-			}
-
-			// Check privileges for stealth scan (after other validations)
-			// Use our custom privilege check that works properly on Windows
-			if !utils.IsPrivilegedForNetworkScanning() {
-				a.OutputSignal.AddError(errors.New("stealth host discovery requires administrator/root privileges for ICMP ping"))
 				return
 			}
 
