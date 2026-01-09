@@ -25,6 +25,8 @@ import (
 	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
 
+// requiredPorts are the ports that are required to be open for the scan to be considered valid if Validate is true
+// These ports are ADDED to the list of ports to scan if Validate is true
 var requiredPorts = []string{
 	"1",
 	"2",
@@ -32,10 +34,6 @@ var requiredPorts = []string{
 	"9",
 	"19",
 	"32768",
-	"32769",
-	"32770",
-	"49150",
-	"49151",
 	"49998",
 	"49999",
 	"52673",
@@ -43,30 +41,12 @@ var requiredPorts = []string{
 	"52848",
 	"52869",
 	"54045",
-	"54328",
-	"55055",
-	"55056",
-	"55555",
-	"55600",
-	"56737",
-	"56738",
-	"57294",
-	"57797",
 	"58080",
 	"54320",
 	"54321",
 	"60000",
 	"60001",
 	"61095",
-	"61096",
-	"61111",
-	"62000",
-	"65000",
-	"65530",
-	"65531",
-	"65532",
-	"65533",
-	"65534",
 	"65535",
 }
 
@@ -160,7 +140,6 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		SkipHostDiscovery: true,
 		WarmUpTime:        2,
 		InputReadTimeout:  180000000000, // This is their default
-		// Output:            "/dev/null",  // Redirect all output to null
 		OnResult: func(hr *result.HostResult) {
 			output = *hr
 			hosts = append(hosts, parsePortScanResult(&output, ipToHostname))
