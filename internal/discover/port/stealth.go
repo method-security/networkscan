@@ -91,7 +91,7 @@ func getStealthPortScan(ctx context.Context, config discoverfern.DiscoverPortCon
 				}
 			}
 
-			if isPortOpen(ctx, host, port) {
+			if isPortOpen(host, port) {
 				openPorts = append(openPorts, &discoverfern.PortDetails{
 					Port:     port,
 					Protocol: common.TransportTypeTcp,
@@ -291,7 +291,7 @@ func parsePortList(portStr string) ([]int, error) {
 }
 
 // isPortOpen checks if a specific port is open using a simple TCP connection
-func isPortOpen(ctx context.Context, host string, port int) bool {
+func isPortOpen(host string, port int) bool {
 	timeout := 3 * time.Second
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), timeout)
 	if err != nil {
