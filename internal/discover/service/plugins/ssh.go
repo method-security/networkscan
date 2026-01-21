@@ -17,19 +17,35 @@ type SSHFingerprinter struct{}
 
 func (SSHFingerprinter) Name() string { return "ssh" }
 
-func (SSHFingerprinter) DefaultPorts() []int { return []int{22} }
+func (SSHFingerprinter) DefaultPorts() []int { return []int{22, 2222} }
 
 func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	// Use raw TCP connection to read SSH banner - the gold standard approach
-	conn, err := net.DialTimeout("tcp", addr, time.Duration(timeout)*time.Second)
+	dialer := net.Dialer{
+		Timeout: time.Duration(timeout) * time.Second,
+	}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
-	// Set read deadline
+	// Set write deadline before sending client version
+	err = conn.SetWriteDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	if err != nil {
+		return nil, err
+	}
+
+	// Send client version first - some SSH servers wait for client greeting before sending banner
+	clientVersion := "SSH-2.0-GoSSHScanner\r\n"
+	_, err = conn.Write([]byte(clientVersion))
+	if err != nil {
+		return nil, fmt.Errorf("failed to send SSH version string: %w", err)
+	}
+
+	// Set read deadline for banner response
 	err = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
 	if err != nil {
 		return nil, err
