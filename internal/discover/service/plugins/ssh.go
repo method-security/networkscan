@@ -32,6 +32,12 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	}
 	defer func() { _ = conn.Close() }()
 
+	// Set write deadline before sending client version
+	err = conn.SetWriteDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	if err != nil {
+		return nil, err
+	}
+
 	// Send client version first - some SSH servers wait for client greeting before sending banner
 	clientVersion := "SSH-2.0-GoSSHScanner\r\n"
 	_, err = conn.Write([]byte(clientVersion))
@@ -39,7 +45,7 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		return nil, fmt.Errorf("failed to send SSH version string: %w", err)
 	}
 
-	// Set a lenient read deadline for banner response
+	// Set read deadline for banner response
 	err = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
 	if err != nil {
 		return nil, err
