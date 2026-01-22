@@ -293,7 +293,7 @@ func parsePortList(portStr string) ([]int, error) {
 // isPortOpen checks if a specific port is open using a simple TCP connection
 func isPortOpen(host string, port int) bool {
 	timeout := 3 * time.Second
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), timeout)
+	conn, err := net.DialTimeout("tcp", utils.FormatHostPort(host, port), timeout)
 	if err != nil {
 		return false
 	}

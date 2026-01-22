@@ -11,6 +11,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/utils"
 )
 
 type SSHFingerprinter struct{}
@@ -66,7 +67,7 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	}
 
 	// Extract version from banner (e.g., "SSH-2.0-OpenSSH_8.9" -> "SSH-2.0-OpenSSH_8.9")
-	target := fmt.Sprintf("%s:%d", host, port)
+	target := utils.FormatHostPort(host, port)
 	metadata := &protocol.SshServerInfo{
 		ServerVersion: &banner,
 		Target:        &target,

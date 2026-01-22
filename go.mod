@@ -153,7 +153,7 @@ require (
 	github.com/projectdiscovery/retryabledns v1.0.94 // indirect
 	github.com/projectdiscovery/retryablehttp-go v1.0.101 // indirect
 	github.com/projectdiscovery/uncover v1.0.9 // indirect
-	github.com/projectdiscovery/utils v0.4.18
+	github.com/projectdiscovery/utils v0.4.18 // indirect
 	github.com/projectdiscovery/wappalyzergo v0.2.41 // indirect
 	github.com/rbetts/go-ntlm v0.0.0-20130522135510-f22198915663
 	github.com/refraction-networking/utls v1.8.0 // indirect

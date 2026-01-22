@@ -11,6 +11,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/utils"
 )
 
 type SSDPFingerprinter struct{}
@@ -20,7 +21,7 @@ func (SSDPFingerprinter) Name() string { return "ssdp" }
 func (SSDPFingerprinter) DefaultPorts() []int { return []int{1900} }
 
 func (SSDPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := utils.FormatHostPort(ip.String(), port)
 
 	// SSDP M-SEARCH discovery request
 	msearchRequest := "M-SEARCH * HTTP/1.1\r\n" +

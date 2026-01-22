@@ -122,6 +122,9 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		return nil, fmt.Errorf("failed to parse target hosts: %w", err)
 	}
 
+	// Detect IP versions present in targets
+	ipVersions := utils.DetectIPVersions(targetHosts)
+
 	output := result.HostResult{}
 	hosts := []*discoverfern.SocketDetails{}
 	// These settings mimic naabu's default settings with hardcoded slower rate
@@ -137,6 +140,7 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		Threads:           config.Threads,
 		Timeout:           runner.DefaultPortTimeoutConnectScan,
 		Host:              goflags.StringSlice(targetHosts), // Use resolved IPs
+		IPVersion:         goflags.StringSlice(ipVersions),
 		SkipHostDiscovery: true,
 		WarmUpTime:        2,
 		InputReadTimeout:  180000000000, // This is their default
