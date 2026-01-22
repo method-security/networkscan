@@ -11,6 +11,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/utils"
 )
 
 type SIPFingerprinter struct{}
@@ -20,7 +21,7 @@ func (SIPFingerprinter) Name() string { return "sip" }
 func (SIPFingerprinter) DefaultPorts() []int { return []int{5060} }
 
 func (SIPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := utils.FormatHostPort(ip.String(), port)
 
 	// Create SIP OPTIONS request
 	sipRequest := fmt.Sprintf(

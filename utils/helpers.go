@@ -240,3 +240,51 @@ func GetIPs(host string) ([]net.IP, error) {
 
 	return ips, nil
 }
+
+// FormatHostPort formats a host (IP address or hostname) and port into a valid address string.
+// For IPv6 addresses, it wraps them in square brackets. For IPv4 and hostnames, it uses simple colon notation.
+// This ensures compatibility with services expecting properly formatted network addresses.
+func FormatHostPort(host string, port int) string {
+	return net.JoinHostPort(host, fmt.Sprintf("%d", port))
+}
+
+// DetectIPVersions analyzes a list of IP addresses and returns which IP versions are present.
+// Returns a slice containing "4" for IPv4 and/or "6" for IPv6.
+// This is used to configure scanners to support the appropriate IP versions.
+func DetectIPVersions(hosts []string) []string {
+	hasIPv4 := false
+	hasIPv6 := false
+
+	for _, host := range hosts {
+		ip := net.ParseIP(host)
+		if ip == nil {
+			continue
+		}
+
+		if ip.To4() != nil {
+			hasIPv4 = true
+		} else {
+			hasIPv6 = true
+		}
+
+		// Short circuit if we've found both
+		if hasIPv4 && hasIPv6 {
+			break
+		}
+	}
+
+	var versions []string
+	if hasIPv4 {
+		versions = append(versions, "4")
+	}
+	if hasIPv6 {
+		versions = append(versions, "6")
+	}
+
+	// Default to IPv4 if no valid IPs found
+	if len(versions) == 0 {
+		versions = []string{"4"}
+	}
+
+	return versions
+}

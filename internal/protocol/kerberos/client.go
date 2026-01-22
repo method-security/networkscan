@@ -7,6 +7,7 @@ import (
 
 	kerberosfern "github.com/Method-Security/networkscan/generated/go/pentest/kerberos"
 	"github.com/Method-Security/networkscan/internal/common/ntlm"
+	"github.com/Method-Security/networkscan/utils"
 	"github.com/jfjallid/gokrb5/v8/client"
 	"github.com/jfjallid/gokrb5/v8/config"
 	"github.com/jfjallid/gokrb5/v8/iana/etypeID"
@@ -43,7 +44,7 @@ func (kcm *ClientManager) CreateConfiguration() *config.Config {
 	cfg.Realms = []config.Realm{
 		{
 			Realm: strings.ToUpper(kcm.Target.Domain),
-			KDC:   []string{fmt.Sprintf("%s:%d", kcm.Target.Host, kcm.Target.Port)},
+			KDC:   []string{utils.FormatHostPort(kcm.Target.Host, kcm.Target.Port)},
 		},
 	}
 	cfg.DomainRealm = map[string]string{

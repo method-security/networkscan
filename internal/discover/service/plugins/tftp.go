@@ -11,6 +11,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/utils"
 )
 
 type TFTPFingerprinter struct{}
@@ -20,7 +21,7 @@ func (TFTPFingerprinter) Name() string { return "tftp" }
 func (TFTPFingerprinter) DefaultPorts() []int { return []int{69} }
 
 func (TFTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := utils.FormatHostPort(ip.String(), port)
 
 	// Create TFTP Read Request (RRQ) packet
 	// Opcode: 1 (RRQ), Filename: "test", Mode: "octet"

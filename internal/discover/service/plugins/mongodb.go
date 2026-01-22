@@ -10,6 +10,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/utils"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -26,7 +27,7 @@ func (MongoDBFingerprinter) DefaultPorts() []int { return []int{27017} }
 
 func (MongoDBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	// Create MongoDB connection string
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := utils.FormatHostPort(ip.String(), port)
 	uri := fmt.Sprintf("mongodb://%s", addr)
 
 	// Create context with timeout

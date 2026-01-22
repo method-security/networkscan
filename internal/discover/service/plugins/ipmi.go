@@ -10,6 +10,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/utils"
 )
 
 type IPMIFingerprinter struct{}
@@ -19,7 +20,7 @@ func (IPMIFingerprinter) Name() string { return "ipmi" }
 func (IPMIFingerprinter) DefaultPorts() []int { return []int{623} }
 
 func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	addr := fmt.Sprintf("%s:%d", ip, port)
+	addr := utils.FormatHostPort(ip.String(), port)
 
 	// IPMI "Get Channel Authentication Capabilities" request
 	// Based on IPMI v1.5/2.0 RMCP specification

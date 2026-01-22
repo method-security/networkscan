@@ -264,7 +264,7 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 	log.Info("Starting SMB enumeration for target", svc1log.SafeParam("target", target))
 
 	host, port := utils.ParseHostPort(target, 445)
-	details.Target = fmt.Sprintf("%s:%d", host, port)
+	details.Target = utils.FormatHostPort(host, port)
 
 	// Create SMB client using shared protocol library
 	client := smbclient.NewClient(host, port)

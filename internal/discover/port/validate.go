@@ -85,9 +85,9 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 					// Use pre-resolved IP to avoid repeated DNS lookups
 					var targetStr string
 					if resolvedValidationIP != "" {
-						targetStr = fmt.Sprintf("%s:%d", resolvedValidationIP, port.Port)
+						targetStr = utils.FormatHostPort(resolvedValidationIP, port.Port)
 					} else {
-						targetStr = fmt.Sprintf("%s:%d", socket.Ip, port.Port)
+						targetStr = utils.FormatHostPort(socket.Ip, port.Port)
 					}
 					serviceConfig := discoverfern.DiscoverServiceConfig{
 						Target:  targetStr,

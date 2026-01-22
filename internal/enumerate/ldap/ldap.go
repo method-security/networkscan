@@ -323,7 +323,7 @@ func (l *LibraryEnumerateLDAP) EnumerateTarget(ctx context.Context, target strin
 
 	host, port := utils.ParseHostPort(target, 389)
 	// Set the actual connection target (ip:port)
-	details.Target = fmt.Sprintf("%s:%d", host, port)
+	details.Target = utils.FormatHostPort(host, port)
 
 	// Perform all authentication tests
 	authState := l.performAuthentication(ctx, host, port, target)

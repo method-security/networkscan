@@ -9,6 +9,8 @@ import (
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	// Internal
+	"github.com/Method-Security/networkscan/utils"
 	// External
 	goflags "github.com/projectdiscovery/goflags"
 	gologger "github.com/projectdiscovery/gologger"
@@ -61,6 +63,14 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverfern.H
 	originalWriter := writer.NewCLI() // Create a new CLI writer to restore later
 	gologger.DefaultLogger.SetWriter(&stderrWriter{})
 
+	// Parse target to detect IP versions
+	targetHosts, err := utils.ParseTargetHosts(target)
+	if err != nil {
+		gologger.DefaultLogger.SetWriter(originalWriter)
+		return nil, fmt.Errorf("failed to parse target hosts: %w", err)
+	}
+	ipVersions := utils.DetectIPVersions(targetHosts)
+
 	hostDetails := []*discoverfern.HostDetails{}
 	hostDiscoverOpts := &runner.Options{
 		Silent:            true,
@@ -74,6 +84,7 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverfern.H
 		StatsInterval:     5,
 		Timeout:           runner.DefaultPortTimeoutSynScan,
 		Host:              goflags.StringSlice{target},
+		IPVersion:         goflags.StringSlice(ipVersions),
 		OnlyHostDiscovery: true,
 		SkipHostDiscovery: false,
 		InputReadTimeout:  3,
