@@ -1,0 +1,10 @@
+types:
+  # Nuclei Configuration for Network CVE Scanning
+  NucleiConfig:
+    properties:
+      targets: list<string>
+      templatePaths: optional<list<string>>
+      timeout: integer
+      threads: integer
+      verboseLogs: boolean
+      globalRateLimit: integer

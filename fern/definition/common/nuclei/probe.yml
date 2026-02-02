@@ -1,0 +1,18 @@
+types:
+  NucleiMatcherConditionEnum:
+    enum:
+      - AND
+      - OR
+  NucleiExpectedMatcher:
+    properties:
+      type: string
+      part: optional<string>
+      values: list<string>
+  NucleiMatcherDetails:
+    properties:
+      matcherCondition: NucleiMatcherConditionEnum
+      matchers: list<NucleiExpectedMatcher>
+  NucleiProbe:
+    properties:
+      payloads: optional<list<string>>
+      matcherDetails: optional<NucleiMatcherDetails>
