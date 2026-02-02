@@ -315,10 +315,6 @@ func (b *Builder) Consume(ev *nout.ResultEvent) {
 	if ev.Info.Reference != nil {
 		reference = ev.Info.Reference.ToSlice()
 	}
-	var softwareWeakness string
-	if ev.Info.Metadata["method-software-weakness-name"] != nil {
-		softwareWeakness = ev.Info.Metadata["method-software-weakness-name"].(string)
-	}
 
 	// Extract template metadata if available
 	var metadata map[string]string
@@ -332,17 +328,16 @@ func (b *Builder) Consume(ev *nout.ResultEvent) {
 	}
 
 	attemptInfo.Finding = &nuclei.NucleiFindingInfo{
-		Name:             name,
-		SoftwareWeakness: &softwareWeakness,
-		Description:      description,
-		Impact:           impact,
-		Remediation:      remediation,
-		Reference:        reference,
-		Classification:   classificationDetails,
-		Severity:         &severity,
-		Finding:          ev.MatcherStatus,
-		Probe:            probe,
-		Metadata:         metadata,
+		Name:           name,
+		Description:    description,
+		Impact:         impact,
+		Remediation:    remediation,
+		Reference:      reference,
+		Classification: classificationDetails,
+		Severity:       &severity,
+		Finding:        ev.MatcherStatus,
+		Probe:          probe,
+		Metadata:       metadata,
 	}
 
 	// Always add the attempt to the report, even if there was an error parsing the request/response

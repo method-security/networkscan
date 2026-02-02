@@ -22,7 +22,7 @@ func RunNucleiEngine(ctx context.Context, config nuclei.NucleiConfig) ([]*nuclei
 	log.Info("Starting Nuclei Run")
 
 	// Get the template and workflow file systems
-	var templateFileSystems, workflowFileSystems []fs.FS
+	var templateFileSystems []fs.FS
 	var err error
 
 	// Get template file systems
@@ -33,16 +33,8 @@ func RunNucleiEngine(ctx context.Context, config nuclei.NucleiConfig) ([]*nuclei
 		}
 	}
 
-	// Get workflow file systems
-	if config.WorkflowPaths != nil {
-		workflowFileSystems, err = templates.GetTemplateFileSystem(ctx, config.WorkflowPaths)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	// Get the runner config
-	runnerConfig := runner.GetRunnerConfig(templateFileSystems, workflowFileSystems, config)
+	runnerConfig := runner.GetRunnerConfig(templateFileSystems, config)
 
 	// Build the report builder and run the nuclei engine
 	builder := report.NewBuilder()

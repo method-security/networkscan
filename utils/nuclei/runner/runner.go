@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	// Generated
@@ -17,16 +16,13 @@ import (
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	nucleilib "github.com/projectdiscovery/nuclei/v3/lib"
-	"github.com/projectdiscovery/nuclei/v3/pkg/catalog/disk"
 	useragent "github.com/projectdiscovery/useragent"
 )
 
 type Config struct {
 	Targets         []string
 	TemplateFS      []fs.FS // template sources
-	WorkflowFS      []fs.FS // workflow sources
 	Threads         int
-	Proxy           string
 	SuccessfulOnly  *bool
 	VerboseLogs     bool
 	Timeout         int
@@ -43,18 +39,11 @@ func validateConfig(cfg Config) error {
 	return nil
 }
 
-func copyFilesToTmpDirs(cfg Config) (templateDir, workflowDir string, err error) {
+func copyFilesToTmpDirs(cfg Config) (templateDir string, err error) {
 	// Create template directory
 	templateDir, err = os.MkdirTemp("", "networkscan-tpl-*")
 	if err != nil {
-		return "", "", err
-	}
-
-	// Create workflow directory
-	workflowDir, err = os.MkdirTemp("", "networkscan-wf-*")
-	if err != nil {
-		_ = os.RemoveAll(templateDir)
-		return "", "", err
+		return "", err
 	}
 
 	// Copy templates
@@ -79,63 +68,15 @@ func copyFilesToTmpDirs(cfg Config) (templateDir, workflowDir string, err error)
 		})
 	}
 
-	// Copy workflows with subtemplates structure
-	subtemplatesDir := filepath.Join(workflowDir, "subtemplates")
-	if err := os.MkdirAll(subtemplatesDir, 0o755); err != nil {
-		return "", "", err
-	}
-
-	for _, src := range cfg.WorkflowFS {
-		_ = fs.WalkDir(src, ".", func(p string, d fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if d.IsDir() {
-				return nil
-			}
-			ext := filepath.Ext(p)
-			if ext != ".yaml" && ext != ".yml" {
-				return nil
-			}
-			data, err := fs.ReadFile(src, p)
-			if err != nil {
-				return err
-			}
-
-			// Determine if this is a workflow file or a template file
-			filename := filepath.Base(p)
-			var dst string
-			if strings.Contains(string(data), "workflows:") {
-				// This is a workflow file - put it in the root
-				dst = filepath.Join(workflowDir, filename)
-			} else {
-				// This is a template file - put it in subtemplates/
-				dst = filepath.Join(subtemplatesDir, filename)
-			}
-			return os.WriteFile(dst, data, 0o600)
-		})
-	}
-
-	return templateDir, workflowDir, nil
+	return templateDir, nil
 }
 
-func buildNucleiOptions(cfg Config, templateDir, workflowDir string) []nucleilib.NucleiSDKOptions {
+func buildNucleiOptions(cfg Config, templateDir string) []nucleilib.NucleiSDKOptions {
 	templateSources := nucleilib.TemplateSources{}
 
 	// Only add template directory if it has content
 	if len(cfg.TemplateFS) > 0 {
 		templateSources.Templates = []string{templateDir}
-	}
-
-	// Only add workflow directory if it has content
-	if len(cfg.WorkflowFS) > 0 {
-		templateSources.Workflows = []string{workflowDir}
-	}
-
-	// Create a custom catalog that points to our workflow directory for template resolution
-	var customCatalog *disk.DiskCatalog
-	if len(cfg.WorkflowFS) > 0 {
-		customCatalog = disk.NewCatalog(workflowDir)
 	}
 
 	opts := []nucleilib.NucleiSDKOptions{
@@ -172,11 +113,6 @@ func buildNucleiOptions(cfg Config, templateDir, workflowDir string) []nucleilib
 		},
 	}
 
-	// Add custom catalog if we have workflows
-	if customCatalog != nil {
-		opts = append(opts, nucleilib.WithCatalog(customCatalog))
-	}
-
 	// Add verbose logs if enabled
 	if cfg.VerboseLogs {
 		opts = append(opts, nucleilib.WithVerbosity(nucleilib.VerbosityOptions{Silent: false, Debug: true, Verbose: true}))
@@ -185,11 +121,6 @@ func buildNucleiOptions(cfg Config, templateDir, workflowDir string) []nucleilib
 	// Add random user agent
 	randomUserAgent := useragent.PickRandom()
 	opts = append(opts, nucleilib.WithHeaders([]string{fmt.Sprintf("User-Agent:%s", randomUserAgent.Raw)}))
-
-	// proxy
-	if cfg.Proxy != "" {
-		opts = append(opts, nucleilib.WithProxy([]string{cfg.Proxy}, false))
-	}
 
 	return opts
 }
@@ -200,22 +131,12 @@ func loadTargets(eng *nucleilib.NucleiEngine, cfg Config) error {
 	return nil
 }
 
-// getProxy returns the proxy URL from the config, or an empty string if no proxy is set.
-func getProxy(config nuclei.NucleiConfig) string {
-	if config.Proxy != nil {
-		return *config.Proxy
-	}
-	return ""
-}
-
 // GetRunnerConfig returns a runner config from a nuclei config.
-func GetRunnerConfig(templateFileSystems, workflowFileSystems []fs.FS, config nuclei.NucleiConfig) Config {
+func GetRunnerConfig(templateFileSystems []fs.FS, config nuclei.NucleiConfig) Config {
 	rconfig := Config{
 		Targets:         config.Targets,
 		TemplateFS:      templateFileSystems,
-		WorkflowFS:      workflowFileSystems,
 		Threads:         config.Threads,
-		Proxy:           getProxy(config),
 		VerboseLogs:     config.VerboseLogs,
 		Timeout:         config.Timeout,
 		GlobalRateLimit: config.GlobalRateLimit,
@@ -238,17 +159,16 @@ func Run(ctx context.Context, cfg Config, reportBuilder *report.Builder) ([]*nuc
 	log.Info("Scan will timeout after", svc1log.SafeParam("maxScanTime", maxScanTime))
 
 	log.Info("Copying templates and workflows to tmp dirs")
-	templateDir, workflowDir, err := copyFilesToTmpDirs(cfg)
+	templateDir, err := copyFilesToTmpDirs(cfg)
 	if err != nil {
 		return nil, err
 	}
 	defer func() {
 		_ = os.RemoveAll(templateDir)
-		_ = os.RemoveAll(workflowDir)
 	}()
 
 	log.Info("Building Nuclei options")
-	opts := buildNucleiOptions(cfg, templateDir, workflowDir)
+	opts := buildNucleiOptions(cfg, templateDir)
 
 	log.Info("Creating Nuclei engine")
 	eng, err := nucleilib.NewNucleiEngineCtx(scanCtx, opts...)
