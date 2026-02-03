@@ -1,0 +1,45 @@
+imports:
+  config: ./config.yml
+  probe: ./probe.yml
+types:
+  NetworkRequestResponse:
+    properties:
+      request: optional<string> # Raw network request data (TCP/UDP/etc)
+      response: optional<string> # Raw network response data (TCP/UDP/etc)
+  CweDetails:
+    properties:
+      id: string
+  CveDetails:
+    properties:
+      id: string
+      cvssMetrics: optional<string>
+      cvssScore: optional<float>
+      epssScore: optional<float>
+      epssPercentile: optional<float>
+      cpe: optional<string>
+  ClassificationDetails:
+    properties:
+      cwes: optional<list<CweDetails>>
+      cves: optional<list<CveDetails>>
+  NucleiFindingInfo:
+    properties:
+      name: optional<string>
+      description: optional<string>
+      impact: optional<string>
+      remediation: optional<string>
+      reference: optional<list<string>>
+      classification: optional<ClassificationDetails>
+      severity: optional<string>
+      finding: boolean
+      probe: optional<probe.NucleiProbe>
+      metadata: optional<map<string, string>>
+  NucleiAttemptInfo:
+    properties:
+      templateId: string # Nuclei template ID
+      requestResponse: optional<NetworkRequestResponse> # Raw network request/response data
+      finding: optional<NucleiFindingInfo>
+  NucleiTargetInfo:
+    properties:
+      target: string
+      baselineAttempt: optional<NucleiAttemptInfo>
+      attempts: optional<list<NucleiAttemptInfo>>

@@ -8,7 +8,6 @@ type Keys struct {
 	FofaKey         string
 	QuakeToken      string
 	HunterToken     string
-	ZoomEyeHost     string
 	ZoomEyeToken    string
 	NetlasToken     string
 	CriminalIPToken string
@@ -16,6 +15,10 @@ type Keys struct {
 	HunterHowToken  string
 	GoogleKey       string
 	GoogleCX        string
+	OdinToken       string
+	BinaryEdgeToken string
+	OnypheKey       string
+	DriftnetToken   string
 }
 
 func (keys Keys) Empty() bool {
@@ -26,12 +29,15 @@ func (keys Keys) Empty() bool {
 		keys.FofaKey == "" &&
 		keys.QuakeToken == "" &&
 		keys.HunterToken == "" &&
-		keys.ZoomEyeHost == "" &&
 		keys.ZoomEyeToken == "" &&
 		keys.NetlasToken == "" &&
 		keys.CriminalIPToken == "" &&
 		keys.PublicwwwToken == "" &&
 		keys.HunterHowToken == "" &&
 		keys.GoogleKey == "" &&
-		keys.GoogleCX == ""
+		keys.GoogleCX == "" &&
+		keys.OdinToken == "" &&
+		keys.BinaryEdgeToken == "" &&
+		keys.OnypheKey == "" &&
+		keys.DriftnetToken == ""
 }
