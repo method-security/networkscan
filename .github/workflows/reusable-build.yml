@@ -23,6 +23,14 @@ jobs:
     env:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
     steps:
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo docker system prune -af
+          df -h
+
       - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@v3
@@ -63,6 +71,11 @@ jobs:
             goreleaser build --single-target --clean --snapshot --timeout 60m \
             -f .goreleaser/goreleaser-build.yml ${{ inputs.goreleaser_options }}
 
+      - name: Cleanup Docker images
+        run: |
+          docker rmi armbuilder || true
+          docker system prune -f
+
       - uses: actions/upload-artifact@v4
         with:
           name: linux-arm64-dist
@@ -76,6 +89,14 @@ jobs:
     env:
       DOCKER_CLI_EXPERIMENTAL: "enabled"
     steps:
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo docker system prune -af
+          df -h
+
       - name: Set up Docker Buildx
         id: buildx
         uses: docker/setup-buildx-action@v3
@@ -115,6 +136,11 @@ jobs:
             --rm amdbuilder \
             goreleaser build --single-target --clean --snapshot --timeout 60m \
             -f .goreleaser/goreleaser-build.yml ${{ inputs.goreleaser_options }}
+
+      - name: Cleanup Docker images
+        run: |
+          docker rmi amdbuilder || true
+          docker system prune -f
 
       - uses: actions/upload-artifact@v4
         with:
@@ -208,6 +234,21 @@ jobs:
           remove-docker-images: "true"
           remove-dotnet: "true"
           remove-haskell: "true"
+          remove-codeql: "true"
+          remove-swapfile: "true"
+
+      - name: Clean up disk space
+        run: |
+          echo "Disk space before cleanup:"
+          df -h
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo docker image prune --all --force
+          sudo apt-get clean
+          echo "Disk space after cleanup:"
+          df -h
 
       - name: Install Dependences
         run: sudo apt install libpcap-dev
