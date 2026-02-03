@@ -27,7 +27,7 @@ func getRequestResponse(ev *nout.ResultEvent) *nuclei.NetworkRequestResponse {
 	}
 }
 
-// stringPtr returns a pointer to a string, or nil if empty
+// stringPtr returns a pointer to a string, or nil if empty.
 func stringPtr(s string) *string {
 	if s == "" {
 		return nil
