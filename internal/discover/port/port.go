@@ -30,23 +30,23 @@ import (
 var requiredPorts = []string{
 	"1",
 	"2",
-	"3",
-	"9",
-	"19",
-	"32768",
-	"49998",
-	"49999",
-	"52673",
-	"52822",
-	"52848",
-	"52869",
-	"54045",
-	"58080",
-	"54320",
+	"4873",
+	"9127",
+	"10439",
+	"15872",
+	"21345",
+	"27654",
+	"31987",
+	"35841",
+	"40129",
+	"44762",
+	"48991",
+	"51234",
 	"54321",
-	"60000",
-	"60001",
-	"61095",
+	"57689",
+	"60321",
+	"62844",
+	"64998",
 	"65535",
 }
 
@@ -83,18 +83,34 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 		errors = append(errors, err.Error())
 	}
 
-	// Filter ports by service validation if requested
+	// Port validation checks:
+	// 1. Check if open ports exceed threshold
+	// 2. Verify required validation ports are open
 	if config.Validate {
-		// Check if either of the required ports are open
-		if !hasOpenRequiredPorts(portscanResult, requiredPorts) {
+		shouldValidate := false
+
+		// Step 1: Check if the number of open ports exceeds the validation threshold
+		if config.MaxOpenPortsValidationThreshold != nil && *config.MaxOpenPortsValidationThreshold > 0 {
+			openPortCount := countOpenPorts(portscanResult)
+			if openPortCount > *config.MaxOpenPortsValidationThreshold {
+				log.Warn("Number of open ports exceeds validation threshold, triggering validation",
+					svc1log.SafeParam("openPorts", openPortCount),
+					svc1log.SafeParam("threshold", *config.MaxOpenPortsValidationThreshold))
+				errors = append(errors, fmt.Sprintf("validation warning: %d open ports exceeds threshold of %d", openPortCount, *config.MaxOpenPortsValidationThreshold))
+				shouldValidate = true
+			}
+		}
+		// Step 2: Check if required validation ports are ope
+		shouldValidate = shouldValidate || hasOpenRequiredPorts(portscanResult, requiredPorts)
+
+		// If neither condition is met, skip validation
+		if !shouldValidate {
 			log.Info("Required validation ports are closed, skipping validation", svc1log.SafeParam("requiredPorts", requiredPorts))
-			// Required ports are not open, consider everything validated (skip validation)
 			return &discoverfern.DiscoverPortReport{
 				Config: &config, Result: &discoverfern.DiscoverPortResult{Sockets: portscanResult}, Errors: errors}, nil
 		}
-		log.Info("Required validation ports are open, proceeding with validation", svc1log.SafeParam("requiredPorts", requiredPorts))
 
-		// Required ports are open, proceed with validation
+		// If either condition is met, proceed with validation
 		validatedPorts, validationErrors := validatePortScan(ctx, config, portscanResult)
 		portscanResult = validatedPorts
 		errors = append(errors, validationErrors...)
@@ -267,6 +283,17 @@ func hasOpenRequiredPorts(scanResults []*discoverfern.SocketDetails, requiredPor
 	}
 
 	return false
+}
+
+// countOpenPorts counts the total number of open ports across all hosts in the scan results
+func countOpenPorts(scanResults []*discoverfern.SocketDetails) int {
+	count := 0
+	for _, socket := range scanResults {
+		if socket != nil && socket.Ports != nil {
+			count += len(socket.Ports)
+		}
+	}
+	return count
 }
 
 // hideOsArgsFromNaabu prevents Naabu from processing command line arguments.

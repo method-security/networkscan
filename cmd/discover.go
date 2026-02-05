@@ -159,6 +159,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			var validateHostname *string
 			var validateAttemptTimeout *int
 			var validateThreads *int
+			var maxOpenPortsValidationThreshold *int
 			if validate {
 				// Validate hostname
 				validateHostnameString, err := cmd.Flags().GetString("validate-hostname")
@@ -183,6 +184,12 @@ func (a *NetworkScan) InitDiscoverCommand() {
 					return
 				}
 				validateThreads = &validateThreadsInt
+				maxOpenPortsValidationThresholdInt, err := cmd.Flags().GetInt("max-open-ports-validation-threshold")
+				if err != nil {
+					a.OutputSignal.AddError(err)
+					return
+				}
+				maxOpenPortsValidationThreshold = &maxOpenPortsValidationThresholdInt
 			}
 
 			// Stealth flags
@@ -208,7 +215,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Set Config
-			config := getDiscoverPortConfig(target, ports, topPorts, threads, packetsPerSecond, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads, sleep, jitter)
+			config := getDiscoverPortConfig(target, ports, topPorts, threads, packetsPerSecond, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads, maxOpenPortsValidationThreshold, sleep, jitter)
 
 			// Generate the report
 			report, err := discoverport.RunPortScan(cmd.Context(), config)
@@ -229,6 +236,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().String("validate-hostname", "", "Hostname to validate against (e.g., example.com)")
 	discoverPortCmd.Flags().Int("validate-attempt-timeout", 10, "Timeout in seconds for each service detection attempt")
 	discoverPortCmd.Flags().Int("validate-threads", 0, "Number of concurrent threads to use during service detection")
+	discoverPortCmd.Flags().Int("max-open-ports-validation-threshold", 50, "Trigger validation warning when more than this many ports are open (default: 50)")
 	discoverPortCmd.Flags().Int("sleep", 0, "Sleep delay in seconds between port scans for stealth scan (stealth mode enabled when sleep > 0)")
 	discoverPortCmd.Flags().Int("jitter", 0, "Jitter percentage (0-100) to randomize sleep delay for stealth scan")
 
@@ -397,7 +405,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 // getDiscoverPortConfig creates a configuration for port scanning with the provided parameters.
 // It handles both specific port ranges and top ports scanning modes.
-func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, packetsPerSecond int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int, sleep int, jitter int) discoverfern.DiscoverPortConfig {
+func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, packetsPerSecond int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int, maxOpenPortsValidationThreshold *int, sleep int, jitter int) discoverfern.DiscoverPortConfig {
 	// Start with common fields that apply to both stealth and regular scans
 	config := discoverfern.DiscoverPortConfig{
 		Target:           target,
@@ -431,6 +439,10 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 		}
 		if validateThreads != nil {
 			config.ValidateThreads = validateThreads
+		}
+		if maxOpenPortsValidationThreshold != nil {
+			threshold := max(0, *maxOpenPortsValidationThreshold)
+			config.MaxOpenPortsValidationThreshold = &threshold
 		}
 	}
 
