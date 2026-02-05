@@ -31,12 +31,13 @@ types:
       ports: optional<string>
       topPorts: optional<string>
       threads: integer
-      packetsPerSecond: integer # Packets per second to send (default: 10)
+      packetsPerSecond: integer
       scanType: PortScanType
       validate: boolean
       validateHostname: optional<string>
       validateAttemptTimeout: optional<integer>
       validateThreads: optional<integer>
+      maxOpenPortsValidationThreshold: optional<integer>
       stealth: optional<PortStealthConfig>
   # Final report
   DiscoverPortReport:
