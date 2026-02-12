@@ -12,7 +12,6 @@ import (
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-	"github.com/labstack/gommon/log"
 
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -143,6 +142,8 @@ func resolveTarget(target string) (string, error) {
 // performTraceroute executes the actual traceroute operation using the specified probe type.
 // It sends probes with incrementing TTL values and collects responses from intermediate hops.
 func performTraceroute(ctx context.Context, target, targetIP string, maxHops int, timeout time.Duration, probeType discoverfern.ProbeType, port, probesPerHop, probeDelay int) (*discoverfern.TracerouteResult, error) {
+	log := svc1log.FromContext(ctx)
+
 	result := &discoverfern.TracerouteResult{
 		Target:    target,
 		TargetIp:  targetIP,
