@@ -1,0 +1,47 @@
+types:
+  # Enums
+  ProbeType:
+    enum:
+      - UDP
+      - ICMP
+      - TCP_SYN
+  # Structs
+  TracerouteHop:
+    properties:
+      hopNumber: integer
+      ipAddress: optional<string>
+      hostname: optional<string>
+      rtt1: optional<double>
+      rtt2: optional<double>
+      rtt3: optional<double>
+      timeout: boolean
+  TracerouteResult:
+    properties:
+      target: string
+      targetIp: string
+      maxHops: integer
+      hops: list<TracerouteHop>
+      completed: boolean
+  # Config
+  DiscoverRouteConfig:
+    properties:
+      targets: list<string>
+      hostIp: optional<string>
+      excludeTimeoutHops: boolean
+      probesPerHop: integer
+      probeDelay: integer
+      maxHops: integer
+      timeout: integer
+      probeType: ProbeType
+      port: integer
+      packetSize: integer
+  # Result  
+  DiscoverRouteResult:
+    properties:
+      traceroutes: list<TracerouteResult>
+  # Final report
+  DiscoverRouteReport:
+    properties:
+      config: DiscoverRouteConfig
+      result: DiscoverRouteResult
+      errors: optional<list<string>>

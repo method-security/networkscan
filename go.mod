@@ -12,6 +12,7 @@ require (
 	github.com/gosnmp/gosnmp v1.42.1
 	github.com/jfjallid/go-smb v0.6.6
 	github.com/jfjallid/gokrb5/v8 v8.5.1
+	github.com/labstack/gommon v0.4.2
 	github.com/masterzen/winrm v0.0.0-20250927112105-5f8e6c707321
 	github.com/miekg/dns v1.1.68
 	github.com/oiweiwei/go-msrpc v1.2.8
@@ -180,7 +181,6 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/labstack/echo/v4 v4.13.4 // indirect
-	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/leslie-qiwa/flat v0.0.0-20230424180412-f9d1cf014baa // indirect
 	github.com/lib/pq v1.10.9 // indirect
