@@ -11,6 +11,7 @@ import (
 	discover "github.com/Method-Security/networkscan/internal/discover"
 	discoverhost "github.com/Method-Security/networkscan/internal/discover/host"
 	discoverport "github.com/Method-Security/networkscan/internal/discover/port"
+	discoverroute "github.com/Method-Security/networkscan/internal/discover/route"
 	discoverservice "github.com/Method-Security/networkscan/internal/discover/service"
 	"github.com/Method-Security/networkscan/utils"
 
@@ -322,8 +323,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			// Set Config
 			config := getDiscoverRouteConfig(targets, hostIP, excludeTimeoutHops, probesPerHop, probeDelay, maxHops, timeout, probeType, port)
 
-			// Generate the report
-			report, err := discover.RunRouteDiscovery(cmd.Context(), config)
+		// Generate the report
+		report, err := discoverroute.RunRouteDiscovery(cmd.Context(), config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return

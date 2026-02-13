@@ -1,5 +1,5 @@
-// Package discover implements network discovery functionality for finding live hosts and services.
-package discover
+// Package route implements traceroute functionality for discovering network paths to targets.
+package route
 
 import (
 	// Standard
@@ -11,6 +11,10 @@ import (
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+
+	// Internal
+	"github.com/Method-Security/networkscan/internal/discover/route/udpsocket"
+
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"golang.org/x/net/icmp"
@@ -361,25 +365,13 @@ func newUDPTracer(destIP net.IP, port int) (*udpTracer, error) {
 
 // SendProbe sends a UDP packet with the specified TTL and waits for ICMP response.
 func (t *udpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
-	// Set TTL on UDP socket using syscall
-	rawConn, err := t.sendConn.SyscallConn()
-	if err != nil {
-		return "", fmt.Errorf("failed to get raw connection: %w", err)
-	}
-
-	var sockErr error
-	err = rawConn.Control(func(fd uintptr) {
-		sockErr = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_TTL, ttl)
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to set TTL: %w", err)
-	}
-	if sockErr != nil {
-		return "", fmt.Errorf("failed to set TTL: %w", sockErr)
+	// Set TTL on UDP socket (platform-specific implementation)
+	if err := udpsocket.SetUDPSocketTTL(t.sendConn, ttl); err != nil {
+		return "", err
 	}
 
 	// Send UDP packet
-	_, err = t.sendConn.Write([]byte("networkscan-traceroute"))
+	_, err := t.sendConn.Write([]byte("networkscan-traceroute"))
 	if err != nil {
 		return "", fmt.Errorf("failed to send UDP probe: %w", err)
 	}
