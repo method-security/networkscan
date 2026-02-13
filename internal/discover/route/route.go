@@ -160,16 +160,17 @@ func resolveTarget(target string) (string, error) {
 func getOutboundIP() (string, error) {
 	// Connect to a public DNS server (Google's 8.8.8.8)
 	// This doesn't actually send any packets, just determines the local IP that would be used
-	conn, err := net.Dial("udp", "8.8.8.8:80")
+	conn, err := net.Dial("udp", "8.8.8.8:53")
 	if err != nil {
 		return "", fmt.Errorf("failed to detect outbound IP: %w", err)
 	}
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
 	err = conn.Close()
 	if err != nil {
 		return "", fmt.Errorf("failed to close connection: %w", err)
 	}
-
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP.String(), nil
 }
 
