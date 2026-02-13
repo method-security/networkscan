@@ -6,13 +6,11 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sync"
 	"syscall"
 	"time"
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"golang.org/x/net/icmp"
@@ -193,39 +191,30 @@ func performTraceroute(ctx context.Context, target, targetIP string, maxHops int
 		}
 
 		// Send configurable number of probes per hop and measure RTT
-		var wg sync.WaitGroup
+		// Probes must be sequential to avoid socket races on the shared tracer
 		rtts := make([]float64, probesPerHop)
 		timeouts := make([]bool, probesPerHop)
 		var hopIP string
-		var hopMutex sync.Mutex
 
 		for i := 0; i < probesPerHop; i++ {
-			wg.Add(1)
-			go func(probeNum int) {
-				defer wg.Done()
+			start := time.Now()
+			replyIP, err := tr.SendProbe(ttl, timeout)
+			rtt := time.Since(start).Seconds() * 1000 // Convert to milliseconds
 
-				start := time.Now()
-				replyIP, err := tr.SendProbe(ttl, timeout)
-				rtt := time.Since(start).Seconds() * 1000 // Convert to milliseconds
-
-				hopMutex.Lock()
-				defer hopMutex.Unlock()
-
-				if err != nil {
-					timeouts[probeNum] = true
-				} else {
-					rtts[probeNum] = rtt
-					if hopIP == "" {
-						hopIP = replyIP
-					}
+			if err != nil {
+				timeouts[i] = true
+			} else {
+				rtts[i] = rtt
+				if hopIP == "" {
+					hopIP = replyIP
 				}
-			}(i)
+			}
 
 			// Configurable delay between probes
-			time.Sleep(time.Duration(probeDelay) * time.Millisecond)
+			if i < probesPerHop-1 {
+				time.Sleep(time.Duration(probeDelay) * time.Millisecond)
+			}
 		}
-
-		wg.Wait()
 
 		// Set IP address and try hostname resolution
 		if hopIP != "" {
@@ -382,8 +371,11 @@ func (t *udpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 	err = rawConn.Control(func(fd uintptr) {
 		sockErr = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_TTL, ttl)
 	})
-	if err != nil || sockErr != nil {
+	if err != nil {
 		return "", fmt.Errorf("failed to set TTL: %w", err)
+	}
+	if sockErr != nil {
+		return "", fmt.Errorf("failed to set TTL: %w", sockErr)
 	}
 
 	// Send UDP packet
