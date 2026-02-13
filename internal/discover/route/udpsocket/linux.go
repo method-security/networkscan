@@ -9,7 +9,7 @@ import (
 	"syscall"
 )
 
-// setUDPSocketTTL sets the TTL (Time To Live) on a UDP socket for Unix-like systems.
+// SetUDPSocketTTL sets the TTL (Time To Live) on a UDP socket for Unix-like systems.
 // This is used for traceroute to control how many hops a packet can travel.
 func SetUDPSocketTTL(conn *net.UDPConn, ttl int) error {
 	rawConn, err := conn.SyscallConn()

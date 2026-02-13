@@ -323,8 +323,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			// Set Config
 			config := getDiscoverRouteConfig(targets, hostIP, excludeTimeoutHops, probesPerHop, probeDelay, maxHops, timeout, probeType, port)
 
-		// Generate the report
-		report, err := discoverroute.RunRouteDiscovery(cmd.Context(), config)
+			// Generate the report
+			report, err := discoverroute.RunRouteDiscovery(cmd.Context(), config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
