@@ -313,8 +313,6 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				switch probeType {
 				case discoverfern.ProbeTypeUdp:
 					port = 33434 // Standard UDP traceroute port
-				case discoverfern.ProbeTypeTcpSyn:
-					port = 80 // Default to HTTP port for TCP
 				case discoverfern.ProbeTypeIcmp:
 					port = 0 // ICMP doesn't use ports
 				}
@@ -339,8 +337,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverRouteCmd.Flags().Int("probe-delay", 100, "Delay in milliseconds between probes (default: 100)")
 	discoverRouteCmd.Flags().Int("max-hops", 30, "Maximum number of hops to trace (default: 30)")
 	discoverRouteCmd.Flags().Int("timeout", 5, "Timeout in seconds for each probe (default: 5)")
-	discoverRouteCmd.Flags().String("probe-type", "UDP", "Probe packet type: UDP, ICMP, or TCP_SYN (default: UDP)")
-	discoverRouteCmd.Flags().Int("port", 0, "Port number for TCP/UDP probes (default: 33434 for UDP, 80 for TCP)")
+	discoverRouteCmd.Flags().String("probe-type", "UDP", "Probe packet type: UDP or ICMP (default: UDP)")
+	discoverRouteCmd.Flags().Int("port", 33434, "Port number for UDP probes (default: 33434 for UDP)")
 	discoverRouteCmd.Flags().Int("packet-size", 0, "Packet size in bytes (default: varies by probe type)")
 
 	// Mark Required Flags
