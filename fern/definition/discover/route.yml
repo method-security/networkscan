@@ -32,7 +32,6 @@ types:
       timeout: integer
       probeType: ProbeType
       port: integer
-      packetSize: integer
   # Result  
   DiscoverRouteResult:
     properties:

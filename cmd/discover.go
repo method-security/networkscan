@@ -299,11 +299,6 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			packetSize, err := cmd.Flags().GetInt("packet-size")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
 
 			// Convert probe type string to enum
 			probeType, err := discoverfern.NewProbeTypeFromString(strings.ToUpper(probeTypeStr))
@@ -312,8 +307,20 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				return
 			}
 
+			// Apply default ports based on probe type if port is 0
+			if port == 0 {
+				switch probeType {
+				case discoverfern.ProbeTypeUdp:
+					port = 33434 // Standard UDP traceroute port
+				case discoverfern.ProbeTypeTcpSyn:
+					port = 80 // Default to HTTP port for TCP
+				case discoverfern.ProbeTypeIcmp:
+					port = 0 // ICMP doesn't use ports
+				}
+			}
+
 			// Set Config
-			config := getDiscoverRouteConfig(targets, hostIP, excludeTimeoutHops, probesPerHop, probeDelay, maxHops, timeout, probeType, port, packetSize)
+			config := getDiscoverRouteConfig(targets, hostIP, excludeTimeoutHops, probesPerHop, probeDelay, maxHops, timeout, probeType, port)
 
 			// Generate the report
 			report, err := discover.RunRouteDiscovery(cmd.Context(), config)
@@ -332,7 +339,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverRouteCmd.Flags().Int("max-hops", 30, "Maximum number of hops to trace (default: 30)")
 	discoverRouteCmd.Flags().Int("timeout", 5, "Timeout in seconds for each probe (default: 5)")
 	discoverRouteCmd.Flags().String("probe-type", "UDP", "Probe packet type: UDP, ICMP, or TCP_SYN (default: UDP)")
-	discoverRouteCmd.Flags().Int("port", 0, "Port number for TCP/UDP probes (default: varies by probe type)")
+	discoverRouteCmd.Flags().Int("port", 0, "Port number for TCP/UDP probes (default: 33434 for UDP, 80 for TCP)")
 	discoverRouteCmd.Flags().Int("packet-size", 0, "Packet size in bytes (default: varies by probe type)")
 
 	// Mark Required Flags
@@ -546,7 +553,7 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 
 // getDiscoverRouteConfig creates a configuration for traceroute with the provided parameters.
 // It sets up the targets, probe settings, and timing configurations.
-func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops bool, probesPerHop, probeDelay, maxHops, timeout int, probeType discoverfern.ProbeType, port, packetSize int) discoverfern.DiscoverRouteConfig {
+func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops bool, probesPerHop, probeDelay, maxHops, timeout int, probeType discoverfern.ProbeType, port int) discoverfern.DiscoverRouteConfig {
 	config := discoverfern.DiscoverRouteConfig{
 		Targets:            targets,
 		ExcludeTimeoutHops: excludeTimeoutHops,
@@ -556,7 +563,6 @@ func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops 
 		Timeout:            timeout,
 		ProbeType:          probeType,
 		Port:               port,
-		PacketSize:         packetSize,
 	}
 
 	if hostIP != "" {
