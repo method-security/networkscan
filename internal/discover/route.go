@@ -235,16 +235,14 @@ func performTraceroute(ctx context.Context, target, targetIP string, maxHops int
 			}
 		}
 
-		// Set RTT values based on number of probes
-		if probesPerHop >= 1 && !timeouts[0] {
-			hop.Rtt1 = &rtts[0]
+		// Collect RTT values for all successful probes
+		var validRtts []float64
+		for i := 0; i < probesPerHop; i++ {
+			if !timeouts[i] {
+				validRtts = append(validRtts, rtts[i])
+			}
 		}
-		if probesPerHop >= 2 && !timeouts[1] {
-			hop.Rtt2 = &rtts[1]
-		}
-		if probesPerHop >= 3 && !timeouts[2] {
-			hop.Rtt3 = &rtts[2]
-		}
+		hop.Rtts = validRtts
 
 		// Check if all probes timed out
 		allTimeout := true

@@ -11,9 +11,7 @@ types:
       hopNumber: integer
       ipAddress: optional<string>
       hostname: optional<string>
-      rtt1: optional<double>
-      rtt2: optional<double>
-      rtt3: optional<double>
+      rtts: list<double>
       timeout: boolean
   TracerouteResult:
     properties:
