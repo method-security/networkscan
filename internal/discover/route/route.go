@@ -168,10 +168,6 @@ func performTraceroute(ctx context.Context, target, targetIP string, maxHops int
 		tr, err = newICMPTracer(destIP)
 	case discoverfern.ProbeTypeUdp:
 		tr, err = newUDPTracer(destIP, port)
-	default:
-		// TCP SYN is complex without raw sockets, fallback to UDP
-		log.Info("TCP SYN not supported, falling back to UDP")
-		tr, err = newUDPTracer(destIP, port)
 	}
 
 	if err != nil {
