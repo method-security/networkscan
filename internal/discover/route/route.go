@@ -52,6 +52,21 @@ func RunRouteDiscovery(ctx context.Context, config discoverfern.DiscoverRouteCon
 
 	log := svc1log.FromContext(ctx)
 
+	// Get or detect host IP
+	var hostIP string
+	if config.HostIp != nil && *config.HostIp != "" {
+		hostIP = *config.HostIp
+		log.Info("Using provided host IP", svc1log.SafeParam("hostIP", hostIP))
+	} else {
+		detectedIP, err := getOutboundIP()
+		if err != nil {
+			log.Warn("Failed to auto-detect host IP, continuing without binding", svc1log.SafeParam("error", err.Error()))
+		} else {
+			config.HostIp = &detectedIP
+			log.Info("Auto-detected host IP", svc1log.SafeParam("hostIP", config.HostIp))
+		}
+	}
+
 	// Get required configuration values
 	maxHops := config.MaxHops
 	timeout := time.Duration(config.Timeout) * time.Second
@@ -137,6 +152,25 @@ func resolveTarget(target string) (string, error) {
 
 	// Fall back to first IP (might be IPv6)
 	return ips[0].String(), nil
+}
+
+// getOutboundIP detects the preferred outbound IP address of this machine.
+// It does this by creating a UDP connection to a public IP (doesn't actually send data).
+// This works even if the machine is behind NAT or a firewall.
+func getOutboundIP() (string, error) {
+	// Connect to a public DNS server (Google's 8.8.8.8)
+	// This doesn't actually send any packets, just determines the local IP that would be used
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return "", fmt.Errorf("failed to detect outbound IP: %w", err)
+	}
+	err = conn.Close()
+	if err != nil {
+		return "", fmt.Errorf("failed to close connection: %w", err)
+	}
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String(), nil
 }
 
 // performTraceroute executes the actual traceroute operation using the specified probe type.
