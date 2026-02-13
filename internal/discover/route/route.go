@@ -62,8 +62,8 @@ func RunRouteDiscovery(ctx context.Context, config discoverfern.DiscoverRouteCon
 		if err != nil {
 			log.Warn("Failed to auto-detect host IP, continuing without binding", svc1log.SafeParam("error", err.Error()))
 		} else {
-			hostIP = detectedIP
-			log.Info("Auto-detected host IP", svc1log.SafeParam("hostIP", hostIP))
+			config.HostIp = &detectedIP
+			log.Info("Auto-detected host IP", svc1log.SafeParam("hostIP", config.HostIp))
 		}
 	}
 
@@ -164,7 +164,10 @@ func getOutboundIP() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to detect outbound IP: %w", err)
 	}
-	defer conn.Close()
+	err = conn.Close()
+	if err != nil {
+		return "", fmt.Errorf("failed to close connection: %w", err)
+	}
 
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
 	return localAddr.IP.String(), nil
