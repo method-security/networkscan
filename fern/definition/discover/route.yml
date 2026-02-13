@@ -4,7 +4,6 @@ types:
     enum:
       - UDP
       - ICMP
-      - TCP_SYN
   # Structs
   TracerouteHop:
     properties:
