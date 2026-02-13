@@ -11,6 +11,7 @@ import (
 	discover "github.com/Method-Security/networkscan/internal/discover"
 	discoverhost "github.com/Method-Security/networkscan/internal/discover/host"
 	discoverport "github.com/Method-Security/networkscan/internal/discover/port"
+	discoverroute "github.com/Method-Security/networkscan/internal/discover/route"
 	discoverservice "github.com/Method-Security/networkscan/internal/discover/service"
 	"github.com/Method-Security/networkscan/utils"
 
@@ -246,6 +247,108 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverPortCmd)
 
+	discoverRouteCmd := &cobra.Command{
+		Use:   "route",
+		Short: "Perform traceroute to trace the network path to a target destination.",
+		Long:  `Perform traceroute to trace the network path to a target destination using various probe types (UDP, ICMP, TCP SYN).`,
+		Run: func(cmd *cobra.Command, args []string) {
+			// Target flags
+			targets, err := cmd.Flags().GetStringSlice("targets")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			hostIP, err := cmd.Flags().GetString("host-ip")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			excludeTimeoutHops, err := cmd.Flags().GetBool("exclude-timeout-hops")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			probesPerHop, err := cmd.Flags().GetInt("probes-per-hop")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			probeDelay, err := cmd.Flags().GetInt("probe-delay")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			// Configuration flags
+			maxHops, err := cmd.Flags().GetInt("max-hops")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			timeout, err := cmd.Flags().GetInt("timeout")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			probeTypeStr, err := cmd.Flags().GetString("probe-type")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			port, err := cmd.Flags().GetInt("port")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			// Convert probe type string to enum
+			probeType, err := discoverfern.NewProbeTypeFromString(strings.ToUpper(probeTypeStr))
+			if err != nil {
+				a.OutputSignal.AddError(fmt.Errorf("invalid probe type: %s", probeTypeStr))
+				return
+			}
+
+			// Apply default ports based on probe type if port is 0
+			if port == 0 {
+				switch probeType {
+				case discoverfern.ProbeTypeUdp:
+					port = 33434 // Standard UDP traceroute port
+				case discoverfern.ProbeTypeTcpSyn:
+					port = 80 // Default to HTTP port for TCP
+				case discoverfern.ProbeTypeIcmp:
+					port = 0 // ICMP doesn't use ports
+				}
+			}
+
+			// Set Config
+			config := getDiscoverRouteConfig(targets, hostIP, excludeTimeoutHops, probesPerHop, probeDelay, maxHops, timeout, probeType, port)
+
+			// Generate the report
+			report, err := discoverroute.RunRouteDiscovery(cmd.Context(), config)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			a.OutputSignal.Content = report
+		},
+	}
+	discoverRouteCmd.Flags().StringSlice("targets", []string{}, "Target IP addresses or hostnames to trace route to (comma-separated)")
+	discoverRouteCmd.Flags().String("host-ip", "", "Host IP address for network interface binding")
+	discoverRouteCmd.Flags().Bool("exclude-timeout-hops", false, "Exclude hops that timed out from the results")
+	discoverRouteCmd.Flags().Int("probes-per-hop", 3, "Number of probes to send per hop (default: 3)")
+	discoverRouteCmd.Flags().Int("probe-delay", 100, "Delay in milliseconds between probes (default: 100)")
+	discoverRouteCmd.Flags().Int("max-hops", 30, "Maximum number of hops to trace (default: 30)")
+	discoverRouteCmd.Flags().Int("timeout", 5, "Timeout in seconds for each probe (default: 5)")
+	discoverRouteCmd.Flags().String("probe-type", "UDP", "Probe packet type: UDP, ICMP, or TCP_SYN (default: UDP)")
+	discoverRouteCmd.Flags().Int("port", 0, "Port number for TCP/UDP probes (default: 33434 for UDP, 80 for TCP)")
+	discoverRouteCmd.Flags().Int("packet-size", 0, "Packet size in bytes (default: varies by probe type)")
+
+	// Mark Required Flags
+	_ = discoverRouteCmd.MarkFlagRequired("targets")
+
+	// Add Command to 'Discover' Command
+	discoverCmd.AddCommand(discoverRouteCmd)
+
 	// Service Command
 	discoverServiceCmd := &cobra.Command{
 		Use:   "service",
@@ -444,6 +547,27 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 			threshold := max(0, *maxOpenPortsValidationThreshold)
 			config.MaxOpenPortsValidationThreshold = &threshold
 		}
+	}
+
+	return config
+}
+
+// getDiscoverRouteConfig creates a configuration for traceroute with the provided parameters.
+// It sets up the targets, probe settings, and timing configurations.
+func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops bool, probesPerHop, probeDelay, maxHops, timeout int, probeType discoverfern.ProbeType, port int) discoverfern.DiscoverRouteConfig {
+	config := discoverfern.DiscoverRouteConfig{
+		Targets:            targets,
+		ExcludeTimeoutHops: excludeTimeoutHops,
+		ProbesPerHop:       probesPerHop,
+		ProbeDelay:         probeDelay,
+		MaxHops:            maxHops,
+		Timeout:            timeout,
+		ProbeType:          probeType,
+		Port:               port,
+	}
+
+	if hostIP != "" {
+		config.HostIp = &hostIP
 	}
 
 	return config
