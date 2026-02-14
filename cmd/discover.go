@@ -295,27 +295,22 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			port, err := cmd.Flags().GetInt("port")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-
 			// Convert probe type string to enum
 			probeType, err := discoverfern.NewProbeTypeFromString(strings.ToUpper(probeTypeStr))
 			if err != nil {
 				a.OutputSignal.AddError(fmt.Errorf("invalid probe type: %s", probeTypeStr))
 				return
 			}
-
-			// Apply default ports based on probe type if port is 0
-			if port == 0 {
-				switch probeType {
-				case discoverfern.ProbeTypeUdp:
-					port = 33434 // Standard UDP traceroute port
-				case discoverfern.ProbeTypeIcmp:
-					port = 0 // ICMP doesn't use ports
-				}
+			port, err := cmd.Flags().GetInt("port")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			// Apply default ports based on probe type
+			if port == 0 && probeType != discoverfern.ProbeTypeIcmp {
+				port = 33434 // Standard UDP traceroute port
+			} else if probeType == discoverfern.ProbeTypeIcmp {
+				port = 0 // ICMP doesn't use ports
 			}
 
 			// Set Config
