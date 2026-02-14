@@ -258,55 +258,62 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
+
+			// Config flags
 			hostIP, err := cmd.Flags().GetString("host-ip")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
+
 			excludeTimeoutHops, err := cmd.Flags().GetBool("exclude-timeout-hops")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
+
 			probesPerHop, err := cmd.Flags().GetInt("probes-per-hop")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
+
 			probeDelay, err := cmd.Flags().GetInt("probe-delay")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
 
-			// Configuration flags
 			maxHops, err := cmd.Flags().GetInt("max-hops")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
+
 			timeout, err := cmd.Flags().GetInt("timeout")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
+
+			// Get probe type and validate
 			probeTypeStr, err := cmd.Flags().GetString("probe-type")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			// Convert probe type string to enum
 			probeType, err := discoverfern.NewProbeTypeFromString(strings.ToUpper(probeTypeStr))
 			if err != nil {
 				a.OutputSignal.AddError(fmt.Errorf("invalid probe type: %s", probeTypeStr))
 				return
 			}
+
+			// Get port and normalize
 			port, err := cmd.Flags().GetInt("port")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			// Apply default ports based on probe type
 			if port == 0 && probeType != discoverfern.ProbeTypeIcmp {
 				port = 33434 // Standard UDP traceroute port
 			} else if probeType == discoverfern.ProbeTypeIcmp {
@@ -332,9 +339,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverRouteCmd.Flags().Int("probe-delay", 100, "Delay in milliseconds between probes (default: 100)")
 	discoverRouteCmd.Flags().Int("max-hops", 30, "Maximum number of hops to trace (default: 30)")
 	discoverRouteCmd.Flags().Int("timeout", 5, "Timeout in seconds for each probe (default: 5)")
-	discoverRouteCmd.Flags().String("probe-type", "UDP", "Probe packet type: UDP or ICMP (default: UDP)")
-	discoverRouteCmd.Flags().Int("port", 33434, "Port number for UDP probes (default: 33434 for UDP)")
-	discoverRouteCmd.Flags().Int("packet-size", 0, "Packet size in bytes (default: varies by probe type)")
+	discoverRouteCmd.Flags().String("probe-type", "ICMP", "Probe packet type: UDP or ICMP (default: ICMP)")
+	discoverRouteCmd.Flags().Int("port", 0, "Port number for UDP probes (default: 33434 for UDP)")
 
 	// Mark Required Flags
 	_ = discoverRouteCmd.MarkFlagRequired("targets")

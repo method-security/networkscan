@@ -10,13 +10,12 @@ types:
       hopNumber: integer
       ipAddress: optional<string>
       hostname: optional<string>
-      rtts: list<double>
+      rtts: optional<list<double>>
       timeout: boolean
   TracerouteResult:
     properties:
       target: string
       targetIp: string
-      maxHops: integer
       hops: list<TracerouteHop>
       completed: boolean
   # Config
