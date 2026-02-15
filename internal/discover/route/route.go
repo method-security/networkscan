@@ -52,28 +52,7 @@ func RunRouteDiscovery(ctx context.Context, config discoverfern.DiscoverRouteCon
 
 	log := svc1log.FromContext(ctx)
 
-	// Get or detect host IP
-	var hostIP string
-	if config.HostIp != nil && *config.HostIp != "" {
-		hostIP = *config.HostIp
-		log.Info("Using provided host IP", svc1log.SafeParam("hostIP", hostIP))
-	} else {
-		detectedIP, err := getOutboundIP()
-		if err != nil {
-			log.Warn("Failed to auto-detect host IP, continuing without binding", svc1log.SafeParam("error", err.Error()))
-		} else {
-			config.HostIp = &detectedIP
-			log.Info("Auto-detected host IP", svc1log.SafeParam("hostIP", config.HostIp))
-		}
-	}
-
-	// Get required configuration values
-	maxHops := config.MaxHops
-	timeout := time.Duration(config.Timeout) * time.Second
-	probeType := config.ProbeType
-	port := config.Port
-
-	log.Info("Starting traceroute", svc1log.SafeParam("targets", config.Targets), svc1log.SafeParam("maxHops", maxHops), svc1log.SafeParam("probeType", probeType))
+	log.Info("Starting traceroute", svc1log.SafeParam("targets", config.Targets), svc1log.SafeParam("maxHops", config.MaxHops), svc1log.SafeParam("probeType", config.ProbeType))
 
 	var tracerouteResults []*discoverfern.TracerouteResult
 
@@ -91,11 +70,7 @@ func RunRouteDiscovery(ctx context.Context, config discoverfern.DiscoverRouteCon
 		log.Info("Target resolved", svc1log.SafeParam("target", target), svc1log.SafeParam("targetIP", targetIP))
 
 		// Perform traceroute
-		// Get configuration values (all required now)
-		probesPerHop := config.ProbesPerHop
-		probeDelay := config.ProbeDelay
-
-		tracerouteResult, err := performTraceroute(ctx, target, targetIP, maxHops, timeout, probeType, port, probesPerHop, probeDelay)
+		tracerouteResult, err := performTraceroute(ctx, target, targetIP, config)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("Traceroute failed for %s: %v", target, err))
 			continue
@@ -150,39 +125,18 @@ func resolveTarget(target string) (string, error) {
 		}
 	}
 
-	// Fall back to first IP (might be IPv6)
+	// Fall back to first IP
 	return ips[0].String(), nil
-}
-
-// getOutboundIP detects the preferred outbound IP address of this machine.
-// It does this by creating a UDP connection to a public IP (doesn't actually send data).
-// This works even if the machine is behind NAT or a firewall.
-func getOutboundIP() (string, error) {
-	// Connect to a public DNS server (Google's 8.8.8.8)
-	// This doesn't actually send any packets, just determines the local IP that would be used
-	conn, err := net.Dial("udp", "8.8.8.8:53")
-	if err != nil {
-		return "", fmt.Errorf("failed to detect outbound IP: %w", err)
-	}
-
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-
-	err = conn.Close()
-	if err != nil {
-		return "", fmt.Errorf("failed to close connection: %w", err)
-	}
-	return localAddr.IP.String(), nil
 }
 
 // performTraceroute executes the actual traceroute operation using the specified probe type.
 // It sends probes with incrementing TTL values and collects responses from intermediate hops.
-func performTraceroute(ctx context.Context, target, targetIP string, maxHops int, timeout time.Duration, probeType discoverfern.ProbeType, port, probesPerHop, probeDelay int) (*discoverfern.TracerouteResult, error) {
+func performTraceroute(ctx context.Context, target, targetIP string, config discoverfern.DiscoverRouteConfig) (*discoverfern.TracerouteResult, error) {
 	log := svc1log.FromContext(ctx)
 
 	result := &discoverfern.TracerouteResult{
 		Target:    target,
 		TargetIp:  targetIP,
-		MaxHops:   maxHops,
 		Hops:      []*discoverfern.TracerouteHop{},
 		Completed: false,
 	}
@@ -195,14 +149,14 @@ func performTraceroute(ctx context.Context, target, targetIP string, maxHops int
 	var tr tracer
 	var err error
 
-	log.Info("Initializing tracer", svc1log.SafeParam("probeType", probeType), svc1log.SafeParam("port", port))
+	log.Info("Initializing tracer", svc1log.SafeParam("probeType", config.ProbeType), svc1log.SafeParam("port", config.Port))
 
 	// Create appropriate tracer based on probe type
-	switch probeType {
+	switch config.ProbeType {
 	case discoverfern.ProbeTypeIcmp:
 		tr, err = newICMPTracer(destIP)
 	case discoverfern.ProbeTypeUdp:
-		tr, err = newUDPTracer(destIP, port)
+		tr, err = newUDPTracer(destIP, config.Port)
 	}
 
 	if err != nil {
@@ -211,7 +165,7 @@ func performTraceroute(ctx context.Context, target, targetIP string, maxHops int
 	defer func() { _ = tr.Close() }()
 
 	// Perform traceroute with increasing TTL
-	for ttl := 1; ttl <= maxHops; ttl++ {
+	for ttl := 1; ttl <= config.MaxHops; ttl++ {
 		select {
 		case <-ctx.Done():
 			return result, ctx.Err()
@@ -225,13 +179,13 @@ func performTraceroute(ctx context.Context, target, targetIP string, maxHops int
 
 		// Send configurable number of probes per hop and measure RTT
 		// Probes must be sequential to avoid socket races on the shared tracer
-		rtts := make([]float64, probesPerHop)
-		timeouts := make([]bool, probesPerHop)
+		rtts := make([]float64, config.ProbesPerHop)
+		timeouts := make([]bool, config.ProbesPerHop)
 		var hopIP string
 
-		for i := 0; i < probesPerHop; i++ {
+		for i := 0; i < config.ProbesPerHop; i++ {
 			start := time.Now()
-			replyIP, err := tr.SendProbe(ttl, timeout)
+			replyIP, err := tr.SendProbe(ttl, time.Duration(config.Timeout)*time.Second)
 			rtt := time.Since(start).Seconds() * 1000 // Convert to milliseconds
 
 			if err != nil {
@@ -244,8 +198,8 @@ func performTraceroute(ctx context.Context, target, targetIP string, maxHops int
 			}
 
 			// Configurable delay between probes
-			if i < probesPerHop-1 {
-				time.Sleep(time.Duration(probeDelay) * time.Millisecond)
+			if i < config.ProbesPerHop-1 {
+				time.Sleep(time.Duration(config.ProbeDelay) * time.Millisecond)
 			}
 		}
 
@@ -259,7 +213,7 @@ func performTraceroute(ctx context.Context, target, targetIP string, maxHops int
 
 		// Collect RTT values for all successful probes
 		var validRtts []float64
-		for i := 0; i < probesPerHop; i++ {
+		for i := 0; i < config.ProbesPerHop; i++ {
 			if !timeouts[i] {
 				validRtts = append(validRtts, rtts[i])
 			}
@@ -268,7 +222,7 @@ func performTraceroute(ctx context.Context, target, targetIP string, maxHops int
 
 		// Check if all probes timed out
 		allTimeout := true
-		for i := 0; i < probesPerHop; i++ {
+		for i := 0; i < config.ProbesPerHop; i++ {
 			if !timeouts[i] {
 				allTimeout = false
 				break
@@ -287,7 +241,7 @@ func performTraceroute(ctx context.Context, target, targetIP string, maxHops int
 
 		// Log progress every 5 hops
 		if ttl%5 == 0 {
-			log.Info("Traceroute progress", svc1log.SafeParam("currentHop", ttl), svc1log.SafeParam("maxHops", maxHops))
+			log.Info("Traceroute progress", svc1log.SafeParam("currentHop", ttl), svc1log.SafeParam("maxHops", config.MaxHops))
 		}
 	}
 
