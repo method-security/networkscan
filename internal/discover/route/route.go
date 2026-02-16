@@ -295,26 +295,76 @@ func (t *icmpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 		return "", fmt.Errorf("failed to send ICMP probe: %w", err)
 	}
 
-	// Wait for reply
+	// Wait for reply with retries to handle out-of-order responses
 	reply := make([]byte, 1500)
-	_ = t.conn.SetReadDeadline(time.Now().Add(timeout))
-	n, peer, err := t.conn.ReadFrom(reply)
-	if err != nil {
-		return "", fmt.Errorf("timeout waiting for ICMP reply: %w", err)
+	deadline := time.Now().Add(timeout)
+	_ = t.conn.SetReadDeadline(deadline)
+	
+	for time.Now().Before(deadline) {
+		n, peer, err := t.conn.ReadFrom(reply)
+		if err != nil {
+			return "", fmt.Errorf("timeout waiting for ICMP reply: %w", err)
+		}
+
+		// Parse reply - could be Time Exceeded or Echo Reply
+		msg, err := icmp.ParseMessage(ipv4.ICMPTypeTimeExceeded.Protocol(), reply[:n])
+		if err != nil {
+			continue // Skip malformed packets
+		}
+
+		// Validate the response matches our probe
+		switch msg.Type {
+		case ipv4.ICMPTypeTimeExceeded:
+			// Time Exceeded contains the original packet in its body
+			// We need to extract and validate the original Echo Request
+			timeExceeded, ok := msg.Body.(*icmp.TimeExceeded)
+			if !ok {
+				continue
+			}
+
+			// Parse the original ICMP message from the TimeExceeded data
+			// The data contains: original IP header (20 bytes) + original ICMP message (at least 8 bytes)
+			if len(timeExceeded.Data) < 28 {
+				continue // Not enough data
+			}
+
+			// Skip the IP header (20 bytes) to get to the ICMP message
+			origICMP, err := icmp.ParseMessage(ipv4.ICMPTypeEcho.Protocol(), timeExceeded.Data[20:])
+			if err != nil {
+				continue
+			}
+
+			// Validate it's our Echo Request
+			origEcho, ok := origICMP.Body.(*icmp.Echo)
+			if !ok {
+				continue
+			}
+
+			if origEcho.ID != t.id || origEcho.Seq != seq {
+				continue // Not our packet, keep waiting
+			}
+
+			return peer.(*net.IPAddr).IP.String(), nil
+
+		case ipv4.ICMPTypeEchoReply:
+			// Echo Reply - validate ID and Sequence
+			echoReply, ok := msg.Body.(*icmp.Echo)
+			if !ok {
+				continue
+			}
+
+			if echoReply.ID != t.id || echoReply.Seq != seq {
+				continue // Not our packet, keep waiting
+			}
+
+			return peer.(*net.IPAddr).IP.String(), nil
+
+		default:
+			continue // Unexpected message type, keep waiting
+		}
 	}
 
-	// Parse reply - could be Time Exceeded or Echo Reply
-	msg, err = icmp.ParseMessage(ipv4.ICMPTypeTimeExceeded.Protocol(), reply[:n])
-	if err != nil {
-		return "", fmt.Errorf("failed to parse ICMP reply: %w", err)
-	}
-
-	// Check if it's the expected message type (Time Exceeded or Echo Reply)
-	if msg.Type != ipv4.ICMPTypeTimeExceeded && msg.Type != ipv4.ICMPTypeEchoReply {
-		return "", fmt.Errorf("unexpected ICMP message type: %v", msg.Type)
-	}
-
-	return peer.(*net.IPAddr).IP.String(), nil
+	return "", fmt.Errorf("timeout: no matching ICMP reply received")
 }
 
 // Close releases the ICMP socket resources.
@@ -353,32 +403,76 @@ func (t *udpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 		return "", err
 	}
 
-	// Send UDP packet
-	_, err := t.sendConn.Write([]byte("networkscan-traceroute"))
+	// Get local port for validation
+	localAddr := t.sendConn.LocalAddr().(*net.UDPAddr)
+	localPort := localAddr.Port
+
+	// Send UDP packet with unique payload
+	payload := []byte("networkscan-traceroute")
+	_, err := t.sendConn.Write(payload)
 	if err != nil {
 		return "", fmt.Errorf("failed to send UDP probe: %w", err)
 	}
 
-	// Wait for ICMP Time Exceeded or Destination Unreachable reply
+	// Wait for ICMP Time Exceeded or Destination Unreachable reply with retries
 	reply := make([]byte, 1500) // 1500 is the standard Ethernet MTU (Maximum Transmission Unit)
-	_ = t.recvConn.SetReadDeadline(time.Now().Add(timeout))
-	n, peer, err := t.recvConn.ReadFrom(reply)
-	if err != nil {
-		return "", fmt.Errorf("timeout waiting for ICMP reply: %w", err)
+	deadline := time.Now().Add(timeout)
+	_ = t.recvConn.SetReadDeadline(deadline)
+
+	for time.Now().Before(deadline) {
+		n, peer, err := t.recvConn.ReadFrom(reply)
+		if err != nil {
+			return "", fmt.Errorf("timeout waiting for ICMP reply: %w", err)
+		}
+
+		// Parse ICMP reply - could be Time Exceeded or Destination Unreachable
+		msg, err := icmp.ParseMessage(ipv4.ICMPTypeTimeExceeded.Protocol(), reply[:n])
+		if err != nil {
+			continue // Skip malformed packets
+		}
+
+		// Validate the response matches our probe
+		var icmpData []byte
+		switch msg.Type {
+		case ipv4.ICMPTypeTimeExceeded:
+			timeExceeded, ok := msg.Body.(*icmp.TimeExceeded)
+			if !ok {
+				continue
+			}
+			icmpData = timeExceeded.Data
+
+		case ipv4.ICMPTypeDestinationUnreachable:
+			destUnreach, ok := msg.Body.(*icmp.DstUnreach)
+			if !ok {
+				continue
+			}
+			icmpData = destUnreach.Data
+
+		default:
+			continue // Unexpected message type, keep waiting
+		}
+
+		// The ICMP data contains: original IP header (20 bytes) + original UDP header (8 bytes) + payload
+		if len(icmpData) < 28 {
+			continue // Not enough data
+		}
+
+		// Extract UDP header from the original packet (skip 20-byte IP header)
+		udpHeader := icmpData[20:28]
+		
+		// UDP header format: src port (2 bytes) | dst port (2 bytes) | length (2 bytes) | checksum (2 bytes)
+		origSrcPort := int(udpHeader[0])<<8 | int(udpHeader[1])
+		origDstPort := int(udpHeader[2])<<8 | int(udpHeader[3])
+
+		// Validate this is our UDP packet
+		if origSrcPort != localPort || origDstPort != t.port {
+			continue // Not our packet, keep waiting
+		}
+
+		return peer.(*net.IPAddr).IP.String(), nil
 	}
 
-	// Parse ICMP reply - could be Time Exceeded or Destination Unreachable
-	msg, err := icmp.ParseMessage(ipv4.ICMPTypeTimeExceeded.Protocol(), reply[:n])
-	if err != nil {
-		return "", fmt.Errorf("failed to parse ICMP reply: %w", err)
-	}
-
-	// Check if it's the expected message type (Time Exceeded or Destination Unreachable)
-	if msg.Type != ipv4.ICMPTypeTimeExceeded && msg.Type != ipv4.ICMPTypeDestinationUnreachable {
-		return "", fmt.Errorf("unexpected ICMP message type: %v", msg.Type)
-	}
-
-	return peer.(*net.IPAddr).IP.String(), nil
+	return "", fmt.Errorf("timeout: no matching ICMP reply received")
 }
 
 // Close releases both UDP and ICMP socket resources.
