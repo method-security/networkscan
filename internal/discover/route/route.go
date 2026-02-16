@@ -323,13 +323,25 @@ func (t *icmpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 			}
 
 			// Parse the original ICMP message from the TimeExceeded data
-			// The data contains: original IP header (20 bytes) + original ICMP message (at least 8 bytes)
-			if len(timeExceeded.Data) < 28 {
+			// The data contains: original IP header (variable length 20-60 bytes) + original ICMP message
+			if len(timeExceeded.Data) < 1 {
+				continue // Not enough data to read IP header
+			}
+
+			// Extract IP header length from IHL field (lower 4 bits of first byte)
+			// IHL is in 32-bit (4-byte) words, so multiply by 4 to get bytes
+			ipHeaderLen := int(timeExceeded.Data[0]&0x0F) * 4
+			if ipHeaderLen < 20 || ipHeaderLen > 60 {
+				continue // Invalid IP header length
+			}
+
+			// Ensure we have enough data for IP header + minimum ICMP header
+			if len(timeExceeded.Data) < ipHeaderLen+8 {
 				continue // Not enough data
 			}
 
-			// Skip the IP header (20 bytes) to get to the ICMP message
-			origICMP, err := icmp.ParseMessage(ipv4.ICMPTypeEcho.Protocol(), timeExceeded.Data[20:])
+			// Skip the IP header to get to the ICMP message
+			origICMP, err := icmp.ParseMessage(ipv4.ICMPTypeEcho.Protocol(), timeExceeded.Data[ipHeaderLen:])
 			if err != nil {
 				continue
 			}
@@ -452,13 +464,25 @@ func (t *udpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 			continue // Unexpected message type, keep waiting
 		}
 
-		// The ICMP data contains: original IP header (20 bytes) + original UDP header (8 bytes) + payload
-		if len(icmpData) < 28 {
+		// The ICMP data contains: original IP header (variable length 20-60 bytes) + original UDP header (8 bytes) + payload
+		if len(icmpData) < 1 {
+			continue // Not enough data to read IP header
+		}
+
+		// Extract IP header length from IHL field (lower 4 bits of first byte)
+		// IHL is in 32-bit (4-byte) words, so multiply by 4 to get bytes
+		ipHeaderLen := int(icmpData[0]&0x0F) * 4
+		if ipHeaderLen < 20 || ipHeaderLen > 60 {
+			continue // Invalid IP header length
+		}
+
+		// Ensure we have enough data for IP header + UDP header
+		if len(icmpData) < ipHeaderLen+8 {
 			continue // Not enough data
 		}
 
-		// Extract UDP header from the original packet (skip 20-byte IP header)
-		udpHeader := icmpData[20:28]
+		// Extract UDP header from the original packet (skip variable-length IP header)
+		udpHeader := icmpData[ipHeaderLen : ipHeaderLen+8]
 		
 		// UDP header format: src port (2 bytes) | dst port (2 bytes) | length (2 bytes) | checksum (2 bytes)
 		origSrcPort := int(udpHeader[0])<<8 | int(udpHeader[1])
