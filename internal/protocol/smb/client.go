@@ -363,7 +363,8 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 			if !c.skipServerInfo {
 				serverInfo, extractErr := c.ExtractServerInfoFromChallenge(ctx)
 				if extractErr != nil {
-					log.Debug("Failed to extract server info from challenge", svc1log.SafeParam("error", extractErr))
+					log.Debug("Failed to extract server info from challenge, using fallback", svc1log.SafeParam("error", extractErr))
+					c.serverInfo = c.createFallbackServerInfo(ctx)
 				} else {
 					c.serverInfo = serverInfo
 				}
@@ -384,7 +385,8 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 			serverInfo, extractErr := c.ExtractServerInfoFromChallenge(ctx)
 			if extractErr != nil {
 				log := svc1log.FromContext(ctx)
-				log.Debug("Failed to extract server info from failed connection", svc1log.SafeParam("error", extractErr))
+				log.Debug("Failed to extract server info from failed connection, using fallback", svc1log.SafeParam("error", extractErr))
+				c.serverInfo = c.createFallbackServerInfo(ctx)
 			} else {
 				c.serverInfo = serverInfo
 			}
@@ -406,7 +408,8 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 	if !c.skipServerInfo {
 		serverInfo, extractErr := c.ExtractServerInfoFromChallenge(ctx)
 		if extractErr != nil {
-			log.Warn("Failed to extract server info", svc1log.SafeParam("error", extractErr))
+			log.Warn("Failed to extract server info, using fallback", svc1log.SafeParam("error", extractErr))
+			c.serverInfo = c.createFallbackServerInfo(ctx)
 		} else {
 			c.serverInfo = serverInfo
 		}
@@ -599,6 +602,41 @@ func (c *Client) getServerSecurityMode() (uint16, error) {
 	// Get the uint16 value
 	securityMode := securityModeField.Uint()
 	return uint16(securityMode), nil
+}
+
+// createFallbackServerInfo creates minimal server info when extraction fails
+func (c *Client) createFallbackServerInfo(ctx context.Context) *commonprotocolfern.SmbServerInfo {
+	log := svc1log.FromContext(ctx)
+
+	if c.session == nil {
+		return nil
+	}
+
+	// Create minimal server info with default supported versions
+	serverInfo := &commonprotocolfern.SmbServerInfo{
+		SupportedSmbVersions: []commonprotocolfern.SmbVersion{
+			commonprotocolfern.SmbVersionSmb302,
+			commonprotocolfern.SmbVersionSmb30,
+			commonprotocolfern.SmbVersionSmb21,
+			commonprotocolfern.SmbVersionSmb20,
+		},
+	}
+
+	// Try to get server security mode from negotiate response using reflection
+	securityMode, err := c.getServerSecurityMode()
+	if err != nil {
+		log.Debug("Failed to get server security mode in fallback path, using session signing state",
+			svc1log.SafeParam("error", err))
+		// Fallback to session-level signing state
+		signingRequired := c.session.IsSigningRequired()
+		serverInfo.SigningRequired = &signingRequired
+	} else {
+		// Parse security mode flags
+		signingRequired := (securityMode & gosmb.SecurityModeSigningRequired) > 0
+		serverInfo.SigningRequired = &signingRequired
+	}
+
+	return serverInfo
 }
 
 // convertNtlmToSmbServerInfo converts NtlmServerInfo to SmbServerInfo, preserving nested structures
