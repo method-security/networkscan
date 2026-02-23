@@ -299,7 +299,7 @@ func (t *icmpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 	reply := make([]byte, 1500)
 	deadline := time.Now().Add(timeout)
 	_ = t.conn.SetReadDeadline(deadline)
-	
+
 	for time.Now().Before(deadline) {
 		n, peer, err := t.conn.ReadFrom(reply)
 		if err != nil {
@@ -483,7 +483,7 @@ func (t *udpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 
 		// Extract UDP header from the original packet (skip variable-length IP header)
 		udpHeader := icmpData[ipHeaderLen : ipHeaderLen+8]
-		
+
 		// UDP header format: src port (2 bytes) | dst port (2 bytes) | length (2 bytes) | checksum (2 bytes)
 		origSrcPort := int(udpHeader[0])<<8 | int(udpHeader[1])
 		origDstPort := int(udpHeader[2])<<8 | int(udpHeader[3])

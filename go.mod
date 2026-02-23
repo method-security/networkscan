@@ -1,8 +1,6 @@
 module github.com/Method-Security/networkscan
 
-go 1.24.1
-
-toolchain go1.24.7
+go 1.26.0
 
 require (
 	github.com/Method-Security/pkg v0.0.6
@@ -87,8 +85,9 @@ require (
 	github.com/bodgit/sevenzip v1.6.0 // indirect
 	github.com/bodgit/windows v1.0.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
-	github.com/bytedance/sonic v1.13.3 // indirect
-	github.com/bytedance/sonic/loader v0.2.4 // indirect
+	github.com/bytedance/gopkg v0.1.3 // indirect
+	github.com/bytedance/sonic v1.15.0 // indirect
+	github.com/bytedance/sonic/loader v0.5.0 // indirect
 	github.com/caddyserver/certmagic v0.19.2 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -101,7 +100,7 @@ require (
 	github.com/clbanning/mxj/v2 v2.7.0 // indirect
 	github.com/cloudflare/cfssl v1.6.4 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
-	github.com/cloudwego/base64x v0.1.5 // indirect
+	github.com/cloudwego/base64x v0.1.6 // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
 	github.com/davidmz/go-pageant v1.0.2 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
@@ -177,7 +176,7 @@ require (
 	github.com/kataras/jwt v0.1.10 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/kitabisa/go-ci v1.0.3 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/labstack/echo/v4 v4.13.4 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
