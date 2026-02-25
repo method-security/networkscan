@@ -99,9 +99,12 @@ func checkAnonymousLogin(ctx context.Context, conn net.Conn, details *ftp.Enumer
 	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return fmt.Errorf("failed to set read deadline: %v", err)
 	}
-	defer conn.SetReadDeadline(time.Time{})
+	err := conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		return fmt.Errorf("failed to set read deadline: %v", err)
+	}
 
-	_, err := conn.Write([]byte("USER anonymous\r\n"))
+	_, err = conn.Write([]byte("USER anonymous\r\n"))
 	if err != nil {
 		return fmt.Errorf("failed to send USER command: %v", err)
 	}
@@ -181,7 +184,10 @@ func checkTLSImplemented(ctx context.Context, conn net.Conn, details *ftp.Enumer
 	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		return fmt.Errorf("failed to set read deadline: %v", err)
 	}
-	defer conn.SetReadDeadline(time.Time{})
+	err = conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		return fmt.Errorf("failed to set read deadline: %v", err)
+	}
 
 	for {
 		n, err := conn.Read(response)
@@ -238,7 +244,11 @@ func checkTLSForced(ctx context.Context, conn net.Conn, details *ftp.EnumerateFt
 		errors = append(errors, fmt.Sprintf("failed to set read deadline: %v", err))
 		return errors
 	}
-	defer conn.SetReadDeadline(time.Time{})
+	err = conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		errors = append(errors, fmt.Sprintf("failed to set read deadline: %v", err))
+		return errors
+	}
 
 	response := make([]byte, bufferSize)
 	n, err := conn.Read(response)
