@@ -59,28 +59,31 @@ func grabBanner(ctx context.Context, conn net.Conn) (string, error) {
 
 // Function to check for anonymous login with retry on failure
 func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.Conn, details *ftp.EnumerateFtpDetails) []string {
-	// Initialize
 	log := svc1log.FromContext(ctx)
 
 	errors := []string{}
 	if err := checkAnonymousLogin(ctx, conn, details); err != nil {
 		log.Warn("Error checking anonymous login, retrying...", svc1log.SafeParam("error", err.Error()))
 
-		// Reconnect and retry
 		conn, err = attemptConnection(ctx, target)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("failed to reconnect: %v", err))
 			return errors
 		}
 
-		// Retry checking anonymous login after reconnect
+		// Consume the banner from the new connection before retrying
+		if _, bannerErr := grabBanner(ctx, conn); bannerErr != nil {
+			errors = append(errors, fmt.Sprintf("failed to read banner after reconnect: %v", bannerErr))
+			_ = conn.Close()
+			return errors
+		}
+
 		err = checkAnonymousLogin(ctx, conn, details)
 		if err != nil {
-			errors = append(errors, fmt.Sprintf("failed to reconnect: %v", err))
+			errors = append(errors, fmt.Sprintf("anonymous login check failed after retry: %v", err))
 		}
-		err = conn.Close()
-		if err != nil {
-			errors = append(errors, fmt.Sprintf("failed to close connection: %v", err))
+		if closeErr := conn.Close(); closeErr != nil {
+			errors = append(errors, fmt.Sprintf("failed to close connection: %v", closeErr))
 		}
 	}
 
@@ -89,18 +92,20 @@ func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.C
 
 // Function to check for anonymous login
 func checkAnonymousLogin(ctx context.Context, conn net.Conn, details *ftp.EnumerateFtpDetails) error {
-	// Initialize
 	log := svc1log.FromContext(ctx)
 
 	log.Info("Checking for anonymous login...")
 
-	// Send the USER anonymous command
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return fmt.Errorf("failed to set read deadline: %v", err)
+	}
+	defer conn.SetReadDeadline(time.Time{})
+
 	_, err := conn.Write([]byte("USER anonymous\r\n"))
 	if err != nil {
 		return fmt.Errorf("failed to send USER command: %v", err)
 	}
 
-	// Read the response from the server
 	response := make([]byte, bufferSize)
 	n, err := conn.Read(response)
 	if err != nil {
@@ -111,13 +116,12 @@ func checkAnonymousLogin(ctx context.Context, conn net.Conn, details *ftp.Enumer
 		responseStr := string(response[:n])
 		log.Info("Anonymous login response received", svc1log.SafeParam("response", responseStr))
 
-		if strings.HasPrefix(responseStr, "331") {
+		if containsFTPCode(responseStr, "331") {
 			_, err = conn.Write([]byte("PASS anonymous\r\n"))
 			if err != nil {
 				return fmt.Errorf("failed to send PASS command: %v", err)
 			}
 
-			// Read the response from the server after sending the password
 			n, err = conn.Read(response)
 			if err != nil {
 				return fmt.Errorf("error reading response after sending password: %v", err)
@@ -127,12 +131,11 @@ func checkAnonymousLogin(ctx context.Context, conn net.Conn, details *ftp.Enumer
 				responseStr = string(response[:n])
 				log.Info("Password response received", svc1log.SafeParam("response", responseStr))
 
-				// Check for response indicating anonymous login status
-				if strings.HasPrefix(responseStr, "530") {
+				if containsFTPCode(responseStr, "530") {
 					details.AllowsAnonymousLogin = new(bool)
 					*details.AllowsAnonymousLogin = false
 					log.Info("Anonymous login not supported (530 response)")
-				} else if strings.HasPrefix(responseStr, "230") {
+				} else if containsFTPCode(responseStr, "230") {
 					details.AllowsAnonymousLogin = new(bool)
 					*details.AllowsAnonymousLogin = true
 					log.Info("Anonymous login supported")
@@ -152,9 +155,18 @@ func checkAnonymousLogin(ctx context.Context, conn net.Conn, details *ftp.Enumer
 	return nil
 }
 
+// containsFTPCode checks if any line in a multi-line FTP response starts with the given code.
+func containsFTPCode(response string, code string) bool {
+	for _, line := range strings.Split(response, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), code) {
+			return true
+		}
+	}
+	return false
+}
+
 // Function to check if TLS is implemented (supported) using the FEAT command
 func checkTLSImplemented(ctx context.Context, conn net.Conn, details *ftp.EnumerateFtpDetails) error {
-	// Initialize
 	log := svc1log.FromContext(ctx)
 
 	log.Info("Sending FEAT command to check if TLS is implemented...")
@@ -165,35 +177,28 @@ func checkTLSImplemented(ctx context.Context, conn net.Conn, details *ftp.Enumer
 
 	var featResponse string
 	response := make([]byte, bufferSize)
-	timeout := time.After(5 * time.Second)
 
-readLoop: // Label for the outer loop
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return fmt.Errorf("failed to set read deadline: %v", err)
+	}
+	defer conn.SetReadDeadline(time.Time{})
+
 	for {
-		select {
-		case <-timeout:
-			log.Error("Timeout while reading FEAT response.")
-			return fmt.Errorf("timeout while reading FEAT response")
-		default:
-			err = conn.SetReadDeadline(time.Now().Add(5 * time.Second)) // Set a read deadline
-			if err != nil {
-				log.Error("failed to set read deadline", svc1log.SafeParam("error", err.Error()))
-				return fmt.Errorf("failed to set read deadline: %v", err)
+		n, err := conn.Read(response)
+		if err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				log.Error("Timeout while reading FEAT response.")
+				return fmt.Errorf("timeout while reading FEAT response")
 			}
-			n, err := conn.Read(response)
-			if err != nil {
-				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-					continue
-				}
-				if err.Error() == "EOF" {
-					log.Info("EOF encountered: TLS not implemented (no response from server).")
-					return nil
-				}
-				return fmt.Errorf("error reading FEAT response: %v", err)
+			if err.Error() == "EOF" {
+				log.Info("EOF encountered: TLS not implemented (no response from server).")
+				return nil
 			}
-			featResponse += string(response[:n])
-			if strings.Contains(featResponse, "211 End") || n == 0 {
-				break readLoop
-			}
+			return fmt.Errorf("error reading FEAT response: %v", err)
+		}
+		featResponse += string(response[:n])
+		if strings.Contains(featResponse, "211 End") || n == 0 {
+			break
 		}
 	}
 
@@ -215,7 +220,6 @@ readLoop: // Label for the outer loop
 
 // Function to check if TLS is forced (i.e., required by the server)
 func checkTLSForced(ctx context.Context, conn net.Conn, details *ftp.EnumerateFtpDetails) []string {
-	// Initialize
 	log := svc1log.FromContext(ctx)
 
 	log.Info("Sending TLS commands to check if TLS is forced...")
@@ -228,8 +232,13 @@ func checkTLSForced(ctx context.Context, conn net.Conn, details *ftp.EnumerateFt
 			errors = append(errors, fmt.Sprintf("error sending STARTTLS command: %v", err))
 			return errors
 		}
-
 	}
+
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		errors = append(errors, fmt.Sprintf("failed to set read deadline: %v", err))
+		return errors
+	}
+	defer conn.SetReadDeadline(time.Time{})
 
 	response := make([]byte, bufferSize)
 	n, err := conn.Read(response)
