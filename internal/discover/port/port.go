@@ -85,7 +85,7 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 
 	// Port validation checks:
 	// 1. Check if open ports exceed threshold
-	// 2. Verify required validation ports are open
+	// 2. Check if required validation ports are open
 	if config.Validate {
 		shouldValidate := false
 
@@ -96,16 +96,21 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 				log.Warn("Number of open ports exceeds validation threshold, triggering validation",
 					svc1log.SafeParam("openPorts", openPortCount),
 					svc1log.SafeParam("threshold", *config.MaxOpenPortsValidationThreshold))
-				errors = append(errors, fmt.Sprintf("validation warning: %d open ports exceeds threshold of %d", openPortCount, *config.MaxOpenPortsValidationThreshold))
+				errors = append(errors, fmt.Sprintf("validation triggered due to count of open ports exceeding threshold (%d > %d)", openPortCount, *config.MaxOpenPortsValidationThreshold)) // Note: DD Metrics is generated off of this error line. Please update with caution
 				shouldValidate = true
 			}
 		}
 		// Step 2: Check if required validation ports are ope
-		shouldValidate = shouldValidate || hasOpenRequiredPorts(portscanResult, requiredPorts)
+		hasOpenRequiredPorts := hasOpenRequiredPorts(portscanResult, requiredPorts)
+		if hasOpenRequiredPorts {
+			log.Warn("Required validation ports are open, triggering validation", svc1log.SafeParam("requiredPorts", requiredPorts))
+			errors = append(errors, fmt.Sprintf("validation triggered due to one or more validation ports being open: %v", requiredPorts)) // Note: DD Metrics is generated off of this error line. Please update with caution
+			shouldValidate = true
+		}
 
 		// If neither condition is met, skip validation
 		if !shouldValidate {
-			log.Info("Required validation ports are closed, skipping validation", svc1log.SafeParam("requiredPorts", requiredPorts))
+			log.Info("Skipping validation, conditions not met")
 			return &discoverfern.DiscoverPortReport{
 				Config: &config, Result: &discoverfern.DiscoverPortResult{Sockets: portscanResult}, Errors: errors}, nil
 		}

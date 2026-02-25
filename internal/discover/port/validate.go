@@ -28,7 +28,9 @@ import (
 // 1. Performs service fingerprinting on each discovered port
 // 2. Filters out ports that don't respond to service detection probes
 // 3. Detects and removes CDN protected services that return blocking responses
-// 4. Returns only sockets containing ports with confirmed active services
+//
+// Conclusion:
+// Returns only sockets containing ports with confirmed active services
 func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfig, sockets []*discoverfern.SocketDetails) ([]*discoverfern.SocketDetails, []string) {
 	log := svc1log.FromContext(ctx)
 	log.Info("Validating ports", svc1log.SafeParam("threads", config.ValidateThreads))
