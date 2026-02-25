@@ -362,22 +362,30 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
 	var results []*discoverfern.ServiceDetails
 
-	// Parse target to get host (should be just IP or hostname, no port)
+	// Parse target to get host (should be just IP, hostname, or CIDR)
 	host := config.Target
 	// Strip port if someone accidentally included it
 	if strings.Contains(host, ":") {
 		host, _, _ = net.SplitHostPort(host)
 	}
 
-	ips, err := utils.GetIPs(host)
+	// Use ParseTargetHosts to handle CIDR notation, IP ranges, and hostnames
+	hostStrs, err := utils.ParseTargetHosts(host)
 	if err != nil {
 		report.Result = &discoverfern.DiscoverServiceResult{}
 		report.Errors = append(report.Errors, fmt.Sprintf("failed to resolve target %s: %v", host, err))
 		return report, nil
 	}
 
+	var ips []net.IP
+	for _, h := range hostStrs {
+		ips = append(ips, net.ParseIP(h))
+	}
+
 	// Scan each IP
 	for _, ip := range ips {
+		ipStr := ip.String()
+
 		// Collect all UDP fingerprinters with their ports
 		type udpFingerprintTask struct {
 			port          int
@@ -397,7 +405,7 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 
 		for _, task := range tasks {
 			go func(t udpFingerprintTask) {
-				detection, err := t.fingerprinter.Detect(ctx, ip, t.port, host, config.Timeout)
+				detection, err := t.fingerprinter.Detect(ctx, ip, t.port, ipStr, config.Timeout)
 				if err == nil && detection != nil {
 					select {
 					case resultChan <- detection:
