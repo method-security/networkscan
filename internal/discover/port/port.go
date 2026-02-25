@@ -96,7 +96,7 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 				log.Warn("Number of open ports exceeds validation threshold, triggering validation",
 					svc1log.SafeParam("openPorts", openPortCount),
 					svc1log.SafeParam("threshold", *config.MaxOpenPortsValidationThreshold))
-				errors = append(errors, fmt.Sprintf("validation triggered due to open ports exceed (%d >%d)", openPortCount, *config.MaxOpenPortsValidationThreshold))
+				errors = append(errors, fmt.Sprintf("validation triggered due to count of open ports exceed (%d > %d)", openPortCount, *config.MaxOpenPortsValidationThreshold)) // Note: DD Metrics is generated off of this error line. Please update with caution
 				shouldValidate = true
 			}
 		}
@@ -104,13 +104,13 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 		hasOpenRequiredPorts := hasOpenRequiredPorts(portscanResult, requiredPorts)
 		if hasOpenRequiredPorts {
 			log.Warn("Required validation ports are open, triggering validation", svc1log.SafeParam("requiredPorts", requiredPorts))
-			errors = append(errors, fmt.Sprintf("validation triggered due to open ports"))
+			errors = append(errors, fmt.Sprintf("validation triggered due to one or more validation ports being open: %v", requiredPorts)) // Note: DD Metrics is generated off of this error line. Please update with caution
 			shouldValidate = true
 		}
 
 		// If neither condition is met, skip validation
 		if !shouldValidate {
-			log.Info("Skipping validation, no condition met")
+			log.Info("Skipping validation, conditions not met")
 			return &discoverfern.DiscoverPortReport{
 				Config: &config, Result: &discoverfern.DiscoverPortResult{Sockets: portscanResult}, Errors: errors}, nil
 		}
