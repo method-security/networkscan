@@ -362,24 +362,27 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
 	var results []*discoverfern.ServiceDetails
 
-	// Parse target to get host (should be just IP, hostname, or CIDR)
 	host := config.Target
 	// Strip port if someone accidentally included it
 	if strings.Contains(host, ":") {
 		host, _, _ = net.SplitHostPort(host)
 	}
+	// Strip /32 CIDR suffix (single-host notation); reject broader CIDR ranges
+	if strings.Contains(host, "/") {
+		if strings.HasSuffix(host, "/32") {
+			host = strings.TrimSuffix(host, "/32")
+		} else {
+			report.Result = &discoverfern.DiscoverServiceResult{}
+			report.Errors = append(report.Errors, fmt.Sprintf("UDP service discovery only supports a single target; got CIDR %s", host))
+			return report, nil
+		}
+	}
 
-	// Use ParseTargetHosts to handle CIDR notation, IP ranges, and hostnames
-	hostStrs, err := utils.ParseTargetHosts(host)
+	ips, err := utils.GetIPs(host)
 	if err != nil {
 		report.Result = &discoverfern.DiscoverServiceResult{}
 		report.Errors = append(report.Errors, fmt.Sprintf("failed to resolve target %s: %v", host, err))
 		return report, nil
-	}
-
-	var ips []net.IP
-	for _, h := range hostStrs {
-		ips = append(ips, net.ParseIP(h))
 	}
 
 	// Scan each IP
