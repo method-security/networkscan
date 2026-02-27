@@ -361,8 +361,12 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 
 			// Extract server info and return success
 			if !c.skipServerInfo {
-				if extractErr := c.extractServerInfoWithContext(ctx); extractErr != nil {
-					log.Debug("Failed to extract server info from challenge", svc1log.SafeParam("error", extractErr))
+				serverInfo, extractErr := c.ExtractServerInfoFromChallenge(ctx)
+				if extractErr != nil {
+					log.Debug("Failed to extract server info from challenge, using fallback", svc1log.SafeParam("error", extractErr))
+					c.serverInfo = c.createFallbackServerInfo(ctx)
+				} else {
+					c.serverInfo = serverInfo
 				}
 			}
 
@@ -378,9 +382,13 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 		if session != nil && !c.skipServerInfo {
 			c.session = session
 			// Use the existing server info extraction logic
-			if err := c.extractServerInfoWithContext(ctx); err != nil {
+			serverInfo, extractErr := c.ExtractServerInfoFromChallenge(ctx)
+			if extractErr != nil {
 				log := svc1log.FromContext(ctx)
-				log.Debug("Failed to extract server info from failed connection", svc1log.SafeParam("error", err))
+				log.Debug("Failed to extract server info from failed connection, using fallback", svc1log.SafeParam("error", extractErr))
+				c.serverInfo = c.createFallbackServerInfo(ctx)
+			} else {
+				c.serverInfo = serverInfo
 			}
 		}
 		return fmt.Errorf("failed to connect to SMB server %s:%d: %v", c.Host, c.Port, err)
@@ -398,8 +406,12 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 
 	// Extract server information (unless skipped)
 	if !c.skipServerInfo {
-		if err := c.extractServerInfoWithContext(ctx); err != nil {
-			log.Warn("Failed to extract server info", svc1log.SafeParam("error", err))
+		serverInfo, extractErr := c.ExtractServerInfoFromChallenge(ctx)
+		if extractErr != nil {
+			log.Warn("Failed to extract server info, using fallback", svc1log.SafeParam("error", extractErr))
+			c.serverInfo = c.createFallbackServerInfo(ctx)
+		} else {
+			c.serverInfo = serverInfo
 		}
 	}
 
@@ -544,53 +556,6 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// extractServerInfo extracts server information from the SMB session
-func (c *Client) extractServerInfo() error {
-	return c.extractServerInfoWithContext(context.Background())
-}
-
-// extractServerInfoWithContext extracts server information from the SMB session with context
-func (c *Client) extractServerInfoWithContext(ctx context.Context) error {
-	log := svc1log.FromContext(ctx)
-
-	// Use the unified challenge-based extraction method
-	serverInfo, err := c.ExtractServerInfoFromChallenge(ctx)
-	if err != nil {
-		// If unified extraction fails, create minimal server info from session
-		log.Debug("Unified server info extraction failed, creating minimal server info", svc1log.SafeParam("error", err))
-
-		if c.session != nil {
-			c.serverInfo = &commonprotocolfern.SmbServerInfo{
-				SupportedSmbVersions: []commonprotocolfern.SmbVersion{
-					commonprotocolfern.SmbVersionSmb302,
-					commonprotocolfern.SmbVersionSmb30,
-					commonprotocolfern.SmbVersionSmb21,
-					commonprotocolfern.SmbVersionSmb20,
-				},
-			}
-
-			// Try to get server security mode from negotiate response using reflection
-			securityMode, err := c.getServerSecurityMode()
-			if err != nil {
-				log.Debug("Failed to get server security mode in fallback path, using session signing state",
-					svc1log.SafeParam("error", err))
-				// Fallback to session-level signing state
-				signingRequired := c.session.IsSigningRequired()
-				c.serverInfo.SigningRequired = &signingRequired
-			} else {
-				// Parse security mode flags
-				signingRequired := (securityMode & gosmb.SecurityModeSigningRequired) > 0
-				c.serverInfo.SigningRequired = &signingRequired
-			}
-		}
-		return nil
-	}
-
-	// Store the extracted server info
-	c.serverInfo = serverInfo
-	return nil
-}
-
 // determineShareType determines the share type based on share name patterns
 func (c *Client) determineShareType(shareName string) commonprotocolfern.ShareType {
 	switch {
@@ -603,17 +568,6 @@ func (c *Client) determineShareType(shareName string) commonprotocolfern.ShareTy
 	default:
 		return commonprotocolfern.ShareTypeDisk // Regular disk shares
 	}
-}
-
-// countAccessibleShares counts the number of accessible shares
-func (c *Client) countAccessibleShares(shares []*commonprotocolfern.SmbShare) int {
-	count := 0
-	for _, share := range shares {
-		if share.Accessible != nil && *share.Accessible {
-			count++
-		}
-	}
-	return count
 }
 
 // GetSMBSession returns the underlying go-smb connection for DCE/RPC operations
@@ -648,6 +602,41 @@ func (c *Client) getServerSecurityMode() (uint16, error) {
 	// Get the uint16 value
 	securityMode := securityModeField.Uint()
 	return uint16(securityMode), nil
+}
+
+// createFallbackServerInfo creates minimal server info when extraction fails
+func (c *Client) createFallbackServerInfo(ctx context.Context) *commonprotocolfern.SmbServerInfo {
+	log := svc1log.FromContext(ctx)
+
+	if c.session == nil {
+		return nil
+	}
+
+	// Create minimal server info with default supported versions
+	serverInfo := &commonprotocolfern.SmbServerInfo{
+		SupportedSmbVersions: []commonprotocolfern.SmbVersion{
+			commonprotocolfern.SmbVersionSmb302,
+			commonprotocolfern.SmbVersionSmb30,
+			commonprotocolfern.SmbVersionSmb21,
+			commonprotocolfern.SmbVersionSmb20,
+		},
+	}
+
+	// Try to get server security mode from negotiate response using reflection
+	securityMode, err := c.getServerSecurityMode()
+	if err != nil {
+		log.Debug("Failed to get server security mode in fallback path, using session signing state",
+			svc1log.SafeParam("error", err))
+		// Fallback to session-level signing state
+		signingRequired := c.session.IsSigningRequired()
+		serverInfo.SigningRequired = &signingRequired
+	} else {
+		// Parse security mode flags
+		signingRequired := (securityMode & gosmb.SecurityModeSigningRequired) > 0
+		serverInfo.SigningRequired = &signingRequired
+	}
+
+	return serverInfo
 }
 
 // convertNtlmToSmbServerInfo converts NtlmServerInfo to SmbServerInfo, preserving nested structures

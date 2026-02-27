@@ -89,7 +89,6 @@ type authTestResult struct {
 	conn          *ldap.Conn
 	allowedMethod bool
 	authMethod    commonprotocolfern.LdapAuthMethod
-	serverInfo    *commonprotocolfern.LdapServerInfo
 }
 
 // authenticationState holds the overall state of authentication testing

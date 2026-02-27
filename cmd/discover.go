@@ -413,7 +413,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	discoverServiceCmd.Flags().String("target", "", "Target address (IP:port or hostname:port for TCP, IP/hostname/CIDR for UDP mode)")
+	discoverServiceCmd.Flags().String("target", "", "Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)")
 	discoverServiceCmd.Flags().Int("timeout", 5, "Timeout in seconds for each service fingerprinting attempt")
 	discoverServiceCmd.Flags().Int("fingerprintx-timeout", 0, "Timeout in seconds for fingerprintx attempt (default is no timeout)")
 	discoverServiceCmd.Flags().Bool("udp", false, "Enable UDP service discovery mode (scans common UDP ports like DNS, NTP, SNMP, etc.)")
