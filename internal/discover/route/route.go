@@ -13,10 +13,13 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	// Internal
 	"github.com/Method-Security/networkscan/internal/discover/route/udpsocket"
+	"github.com/Method-Security/networkscan/utils"
+
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 // tracer defines the interface for different traceroute probe implementations.
@@ -33,6 +36,7 @@ type icmpTracer struct {
 	conn   *icmp.PacketConn
 	destIP net.IP
 	id     int
+	isIPv6 bool
 }
 
 // udpTracer implements traceroute using UDP packets to high-numbered ports.
@@ -42,6 +46,7 @@ type udpTracer struct {
 	recvConn *icmp.PacketConn
 	destIP   net.IP
 	port     int
+	isIPv6   bool
 }
 
 // RunRouteDiscovery performs network path tracing to discover the route packets take to reach targets.
@@ -101,7 +106,6 @@ func RunRouteDiscovery(ctx context.Context, config discoverfern.DiscoverRouteCon
 }
 
 // resolveTarget converts a hostname to an IP address or validates an existing IP address.
-// It prefers IPv4 addresses when multiple addresses are available.
 func resolveTarget(target string) (string, error) {
 	// Check if target is already an IP address
 	if ip := net.ParseIP(target); ip != nil {
@@ -118,14 +122,7 @@ func resolveTarget(target string) (string, error) {
 		return "", fmt.Errorf("no IP addresses found for hostname")
 	}
 
-	// Prefer IPv4 address
-	for _, ip := range ips {
-		if ip.To4() != nil {
-			return ip.String(), nil
-		}
-	}
-
-	// Fall back to first IP
+	// Return the first resolved IP
 	return ips[0].String(), nil
 }
 
@@ -197,9 +194,13 @@ func performTraceroute(ctx context.Context, target, targetIP string, config disc
 				}
 			}
 
-			// Configurable delay between probes
+			// Configurable delay between probes, respecting context cancellation
 			if i < config.ProbesPerHop-1 {
-				time.Sleep(time.Duration(config.ProbeDelay) * time.Millisecond)
+				select {
+				case <-ctx.Done():
+					return result, ctx.Err()
+				case <-time.After(time.Duration(config.ProbeDelay) * time.Millisecond):
+				}
 			}
 		}
 
@@ -232,8 +233,8 @@ func performTraceroute(ctx context.Context, target, targetIP string, config disc
 
 		result.Hops = append(result.Hops, &hop)
 
-		// Check if we reached the destination
-		if hopIP == targetIP {
+		// Check if we reached the destination (use parsed IP comparison for correctness)
+		if hopIP != "" && net.ParseIP(hopIP).Equal(net.ParseIP(targetIP)) {
 			log.Info("Reached destination", svc1log.SafeParam("hop", ttl), svc1log.SafeParam("targetIP", targetIP))
 			result.Completed = true
 			break
@@ -251,7 +252,16 @@ func performTraceroute(ctx context.Context, target, targetIP string, config disc
 // newICMPTracer creates a new ICMP-based traceroute implementation.
 // Requires elevated privileges for raw socket access.
 func newICMPTracer(destIP net.IP) (*icmpTracer, error) {
-	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	var network, listenAddr string
+	if utils.IsIPv6(destIP.String()) {
+		network = "ip6:ipv6-icmp"
+		listenAddr = "::"
+	} else {
+		network = "ip4:icmp"
+		listenAddr = "0.0.0.0"
+	}
+
+	conn, err := icmp.ListenPacket(network, listenAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ICMP socket (may require root privileges): %w", err)
 	}
@@ -260,21 +270,33 @@ func newICMPTracer(destIP net.IP) (*icmpTracer, error) {
 		conn:   conn,
 		destIP: destIP,
 		id:     syscall.Getpid() & 0xffff,
+		isIPv6: utils.IsIPv6(destIP.String()),
 	}, nil
 }
 
 // SendProbe sends an ICMP Echo Request with the specified TTL and waits for a response.
 func (t *icmpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
-	// Set TTL on socket
-	err := t.conn.IPv4PacketConn().SetTTL(ttl)
+	// Set TTL/HopLimit on socket
+	var err error
+	if t.isIPv6 {
+		err = t.conn.IPv6PacketConn().SetHopLimit(ttl)
+	} else {
+		err = t.conn.IPv4PacketConn().SetTTL(ttl)
+	}
 	if err != nil {
 		return "", fmt.Errorf("failed to set TTL: %w", err)
 	}
 
 	// Create ICMP Echo Request
 	seq := ttl
+	var echoType icmp.Type
+	if t.isIPv6 {
+		echoType = ipv6.ICMPTypeEchoRequest
+	} else {
+		echoType = ipv4.ICMPTypeEcho
+	}
 	msg := &icmp.Message{
-		Type: ipv4.ICMPTypeEcho,
+		Type: echoType,
 		Code: 0,
 		Body: &icmp.Echo{
 			ID:   t.id,
@@ -300,6 +322,19 @@ func (t *icmpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 	deadline := time.Now().Add(timeout)
 	_ = t.conn.SetReadDeadline(deadline)
 
+	// Determine protocol number and ICMP types based on IP version
+	var proto int
+	var timeExceededType, echoReplyType icmp.Type
+	if t.isIPv6 {
+		proto = 58 // ICMPv6
+		timeExceededType = ipv6.ICMPTypeTimeExceeded
+		echoReplyType = ipv6.ICMPTypeEchoReply
+	} else {
+		proto = 1 // ICMPv4
+		timeExceededType = ipv4.ICMPTypeTimeExceeded
+		echoReplyType = ipv4.ICMPTypeEchoReply
+	}
+
 	for time.Now().Before(deadline) {
 		n, peer, err := t.conn.ReadFrom(reply)
 		if err != nil {
@@ -307,14 +342,14 @@ func (t *icmpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 		}
 
 		// Parse reply - could be Time Exceeded or Echo Reply
-		msg, err := icmp.ParseMessage(ipv4.ICMPTypeTimeExceeded.Protocol(), reply[:n])
+		msg, err := icmp.ParseMessage(proto, reply[:n])
 		if err != nil {
 			continue // Skip malformed packets
 		}
 
 		// Validate the response matches our probe
 		switch msg.Type {
-		case ipv4.ICMPTypeTimeExceeded:
+		case timeExceededType:
 			// Time Exceeded contains the original packet in its body
 			// We need to extract and validate the original Echo Request
 			timeExceeded, ok := msg.Body.(*icmp.TimeExceeded)
@@ -323,16 +358,22 @@ func (t *icmpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 			}
 
 			// Parse the original ICMP message from the TimeExceeded data
-			// The data contains: original IP header (variable length 20-60 bytes) + original ICMP message
+			// For IPv4: data contains original IP header (variable length 20-60 bytes) + original ICMP message
+			// For IPv6: data contains original IPv6 header (40 bytes) + original ICMPv6 message
 			if len(timeExceeded.Data) < 1 {
-				continue // Not enough data to read IP header
+				continue // Not enough data
 			}
 
-			// Extract IP header length from IHL field (lower 4 bits of first byte)
-			// IHL is in 32-bit (4-byte) words, so multiply by 4 to get bytes
-			ipHeaderLen := int(timeExceeded.Data[0]&0x0F) * 4
-			if ipHeaderLen < 20 || ipHeaderLen > 60 {
-				continue // Invalid IP header length
+			var ipHeaderLen int
+			if t.isIPv6 {
+				ipHeaderLen = 40 // IPv6 header is always 40 bytes
+			} else {
+				// Extract IP header length from IHL field (lower 4 bits of first byte)
+				// IHL is in 32-bit (4-byte) words, so multiply by 4 to get bytes
+				ipHeaderLen = int(timeExceeded.Data[0]&0x0F) * 4
+				if ipHeaderLen < 20 || ipHeaderLen > 60 {
+					continue // Invalid IP header length
+				}
 			}
 
 			// Ensure we have enough data for IP header + minimum ICMP header
@@ -341,7 +382,7 @@ func (t *icmpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 			}
 
 			// Skip the IP header to get to the ICMP message
-			origICMP, err := icmp.ParseMessage(ipv4.ICMPTypeEcho.Protocol(), timeExceeded.Data[ipHeaderLen:])
+			origICMP, err := icmp.ParseMessage(proto, timeExceeded.Data[ipHeaderLen:])
 			if err != nil {
 				continue
 			}
@@ -358,7 +399,7 @@ func (t *icmpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 
 			return peer.(*net.IPAddr).IP.String(), nil
 
-		case ipv4.ICMPTypeEchoReply:
+		case echoReplyType:
 			// Echo Reply - validate ID and Sequence
 			echoReply, ok := msg.Body.(*icmp.Echo)
 			if !ok {
@@ -388,13 +429,22 @@ func (t *icmpTracer) Close() error {
 // Requires privileges for ICMP socket to receive Time Exceeded messages.
 func newUDPTracer(destIP net.IP, port int) (*udpTracer, error) {
 	// Create UDP sending socket
-	sendConn, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: destIP, Port: port})
+	sendConn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: destIP, Port: port})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create UDP socket: %w", err)
 	}
 
 	// Create ICMP receiving socket for time exceeded messages
-	recvConn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	var icmpNetwork, listenAddr string
+	if utils.IsIPv6(destIP.String()) {
+		icmpNetwork = "ip6:ipv6-icmp"
+		listenAddr = "::"
+	} else {
+		icmpNetwork = "ip4:icmp"
+		listenAddr = "0.0.0.0"
+	}
+
+	recvConn, err := icmp.ListenPacket(icmpNetwork, listenAddr)
 	if err != nil {
 		_ = sendConn.Close()
 		return nil, fmt.Errorf("failed to create ICMP socket (may require root privileges): %w", err)
@@ -405,6 +455,7 @@ func newUDPTracer(destIP net.IP, port int) (*udpTracer, error) {
 		recvConn: recvConn,
 		destIP:   destIP,
 		port:     port,
+		isIPv6:   utils.IsIPv6(destIP.String()),
 	}, nil
 }
 
@@ -426,6 +477,19 @@ func (t *udpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 		return "", fmt.Errorf("failed to send UDP probe: %w", err)
 	}
 
+	// Determine protocol number and ICMP types based on IP version
+	var proto int
+	var timeExceededType, destUnreachType icmp.Type
+	if t.isIPv6 {
+		proto = 58 // ICMPv6
+		timeExceededType = ipv6.ICMPTypeTimeExceeded
+		destUnreachType = ipv6.ICMPTypeDestinationUnreachable
+	} else {
+		proto = 1 // ICMPv4
+		timeExceededType = ipv4.ICMPTypeTimeExceeded
+		destUnreachType = ipv4.ICMPTypeDestinationUnreachable
+	}
+
 	// Wait for ICMP Time Exceeded or Destination Unreachable reply with retries
 	reply := make([]byte, 1500) // 1500 is the standard Ethernet MTU (Maximum Transmission Unit)
 	deadline := time.Now().Add(timeout)
@@ -438,7 +502,7 @@ func (t *udpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 		}
 
 		// Parse ICMP reply - could be Time Exceeded or Destination Unreachable
-		msg, err := icmp.ParseMessage(ipv4.ICMPTypeTimeExceeded.Protocol(), reply[:n])
+		msg, err := icmp.ParseMessage(proto, reply[:n])
 		if err != nil {
 			continue // Skip malformed packets
 		}
@@ -446,14 +510,14 @@ func (t *udpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 		// Validate the response matches our probe
 		var icmpData []byte
 		switch msg.Type {
-		case ipv4.ICMPTypeTimeExceeded:
+		case timeExceededType:
 			timeExceeded, ok := msg.Body.(*icmp.TimeExceeded)
 			if !ok {
 				continue
 			}
 			icmpData = timeExceeded.Data
 
-		case ipv4.ICMPTypeDestinationUnreachable:
+		case destUnreachType:
 			destUnreach, ok := msg.Body.(*icmp.DstUnreach)
 			if !ok {
 				continue
@@ -464,16 +528,22 @@ func (t *udpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 			continue // Unexpected message type, keep waiting
 		}
 
-		// The ICMP data contains: original IP header (variable length 20-60 bytes) + original UDP header (8 bytes) + payload
+		// The ICMP data contains: original IP header + original UDP header (8 bytes) + payload
+		// For IPv4: variable length 20-60 bytes; For IPv6: fixed 40 bytes
 		if len(icmpData) < 1 {
 			continue // Not enough data to read IP header
 		}
 
-		// Extract IP header length from IHL field (lower 4 bits of first byte)
-		// IHL is in 32-bit (4-byte) words, so multiply by 4 to get bytes
-		ipHeaderLen := int(icmpData[0]&0x0F) * 4
-		if ipHeaderLen < 20 || ipHeaderLen > 60 {
-			continue // Invalid IP header length
+		var ipHeaderLen int
+		if t.isIPv6 {
+			ipHeaderLen = 40 // IPv6 header is always 40 bytes
+		} else {
+			// Extract IP header length from IHL field (lower 4 bits of first byte)
+			// IHL is in 32-bit (4-byte) words, so multiply by 4 to get bytes
+			ipHeaderLen = int(icmpData[0]&0x0F) * 4
+			if ipHeaderLen < 20 || ipHeaderLen > 60 {
+				continue // Invalid IP header length
+			}
 		}
 
 		// Ensure we have enough data for IP header + UDP header

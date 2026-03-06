@@ -91,6 +91,10 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 					} else {
 						targetStr = utils.FormatHostPort(socket.Ip, port.Port)
 					}
+					if config.ValidateAttemptTimeout == nil {
+						defaultTimeout := 30
+						config.ValidateAttemptTimeout = &defaultTimeout
+					}
 					serviceConfig := discoverfern.DiscoverServiceConfig{
 						Target:  targetStr,
 						Timeout: *config.ValidateAttemptTimeout,

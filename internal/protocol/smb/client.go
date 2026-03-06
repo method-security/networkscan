@@ -2,6 +2,7 @@ package smb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -16,6 +17,9 @@ import (
 	"github.com/jfjallid/go-smb/spnego"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
+
+// ErrChallengeReceived is a sentinel error indicating the NTLM challenge was successfully received
+var ErrChallengeReceived = errors.New("challenge_received")
 
 // CapturingNTLM wraps the built-in NTLM initiator and captures the server's challenge
 type CapturingNTLM struct {
@@ -97,7 +101,7 @@ func (c *ChallengeOnlyNTLM) InitSecContext(inputToken []byte) ([]byte, error) {
 
 		// If we've received a challenge, stop the authentication process
 		if c.challengeReceived {
-			return nil, fmt.Errorf("challenge_received") // Special error to signal we got what we wanted
+			return nil, ErrChallengeReceived // Special error to signal we got what we wanted
 		}
 	}
 
@@ -350,7 +354,7 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 		}
 
 		// Check if we got the expected "challenge_received" error, which means success for us
-		if err != nil && strings.Contains(err.Error(), "challenge_received") {
+		if err != nil && errors.Is(err, ErrChallengeReceived) {
 			log := svc1log.FromContext(ctx)
 			log.Debug("Successfully received NTLM challenge in stealth mode")
 
@@ -452,6 +456,7 @@ func (c *Client) TestCredentials(username, password, domain string) (bool, strin
 
 	err := testClient.Connect()
 	if err != nil {
+		_ = testClient.Close()
 		// Analyze error for specific failure types
 		errStr := err.Error()
 

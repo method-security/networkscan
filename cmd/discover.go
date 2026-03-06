@@ -402,7 +402,11 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Set Config
-			config := getDiscoverServiceConfig(target, timeout, serviceType, udp, fingerprintxTimeout)
+			config, err := getDiscoverServiceConfig(target, timeout, serviceType, udp, fingerprintxTimeout)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
 
 			// Generate the report
 			report, err := discoverservice.RunServiceFingerprint(cmd.Context(), config)
@@ -451,7 +455,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			config := getDiscoverTLSConfig(targets, timeout, verifyTLS)
 
 			// Generate the report
-			report, err := discover.GetTLSInfo(cmd.Context(), targets, config)
+			report, err := discover.GetTLSInfo(cmd.Context(), config)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -574,7 +578,7 @@ func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops 
 
 // getDiscoverServiceConfig creates a configuration for service fingerprinting with the provided parameters.
 // It sets up the target (in IP:port format for TCP, or just IP for UDP), timeout, UDP mode, and stealth-specific options.
-func getDiscoverServiceConfig(target string, timeout int, serviceType string, udp bool, fingerprintxTimeout int) discoverfern.DiscoverServiceConfig {
+func getDiscoverServiceConfig(target string, timeout int, serviceType string, udp bool, fingerprintxTimeout int) (discoverfern.DiscoverServiceConfig, error) {
 	config := discoverfern.DiscoverServiceConfig{
 		Target:              target,
 		Timeout:             timeout,
@@ -586,13 +590,14 @@ func getDiscoverServiceConfig(target string, timeout int, serviceType string, ud
 	if serviceType != "" {
 		// Convert to uppercase for enum parsing
 		serviceTypeEnum, err := discoverfern.NewStealthServiceTypeFromString(strings.ToUpper(serviceType))
-		if err == nil {
-			config.Stealth = &discoverfern.ServiceStealthConfig{
-				ServiceType: serviceTypeEnum,
-			}
+		if err != nil {
+			return config, fmt.Errorf("invalid service type '%s': %v", serviceType, err)
+		}
+		config.Stealth = &discoverfern.ServiceStealthConfig{
+			ServiceType: serviceTypeEnum,
 		}
 	}
-	return config
+	return config, nil
 }
 
 // getDiscoverTLSConfig creates a configuration for TLS scanning with the provided parameters.

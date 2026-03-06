@@ -14,6 +14,7 @@ import (
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 // performReverseLookupSweep performs reverse DNS lookups on all IPs in a CIDR range
@@ -158,8 +159,28 @@ func pingHost(ctx context.Context, host string) bool {
 		targetIP = addrs[0]
 	}
 
+	// Detect IP version and select appropriate ICMP parameters
+	var network, listenAddr string
+	var icmpType icmp.Type
+	var replyType icmp.Type
+	var proto int
+
+	if utils.IsIPv6(targetIP.String()) {
+		network = "ip6:ipv6-icmp"
+		listenAddr = "::"
+		icmpType = ipv6.ICMPTypeEchoRequest
+		replyType = ipv6.ICMPTypeEchoReply
+		proto = 58 // ICMPv6 protocol number
+	} else {
+		network = "ip4:icmp"
+		listenAddr = "0.0.0.0"
+		icmpType = ipv4.ICMPTypeEcho
+		replyType = ipv4.ICMPTypeEchoReply
+		proto = 1 // ICMPv4 protocol number
+	}
+
 	// Create ICMP connection
-	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	conn, err := icmp.ListenPacket(network, listenAddr)
 	if err != nil {
 		return false
 	}
@@ -169,7 +190,7 @@ func pingHost(ctx context.Context, host string) bool {
 
 	// Create ICMP message
 	msg := &icmp.Message{
-		Type: ipv4.ICMPTypeEcho,
+		Type: icmpType,
 		Code: 0,
 		Body: &icmp.Echo{
 			ID:   1,
@@ -203,14 +224,14 @@ func pingHost(ctx context.Context, host string) bool {
 		return false
 	}
 
-	// Parse reply - use protocol number 1 for ICMPv4
-	replyMsg, err := icmp.ParseMessage(1, reply[:n])
+	// Parse reply
+	replyMsg, err := icmp.ParseMessage(proto, reply[:n])
 	if err != nil {
 		return false
 	}
 
 	// Check if it's an echo reply and verify it's our ping
-	if replyMsg.Type == ipv4.ICMPTypeEchoReply {
+	if replyMsg.Type == replyType {
 		if echoReply, ok := replyMsg.Body.(*icmp.Echo); ok {
 			return echoReply.ID == 1
 		}

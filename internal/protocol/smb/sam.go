@@ -21,6 +21,7 @@ import (
 	"github.com/jfjallid/go-smb/smb/dcerpc/msrrp"
 	"github.com/jfjallid/go-smb/smb/encoder"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
+	"golang.org/x/crypto/md4"
 )
 
 // SAM registry data structures
@@ -240,7 +241,10 @@ func GetSysKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) ([]byte, erro
 		}
 		sysKeyIV = samAesData.Salt[:]
 		encSysKey = samAesData.Data[:samAesData.DataLen]
-		tmpSysKey, _ = DecryptAESSysKey(BootKey, encSysKey, sysKeyIV)
+		tmpSysKey, err = DecryptAESSysKey(BootKey, encSysKey, sysKeyIV)
+		if err != nil {
+			return nil, err
+		}
 		copy(sysKey, tmpSysKey)
 	} else if f.Revision == 2 {
 		// RC4
@@ -252,7 +256,10 @@ func GetSysKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) ([]byte, erro
 
 		sysKeyIV = samData.Salt[:]
 		encSysKey = append(samData.Key[:], samData.Checksum[:]...)
-		tmpSysKey, _ = DecryptRC4SysKey(BootKey, encSysKey, sysKeyIV)
+		tmpSysKey, err = DecryptRC4SysKey(BootKey, encSysKey, sysKeyIV)
+		if err != nil {
+			return nil, err
+		}
 		// Verify checksum
 		input := []byte{}
 		input = append(input, tmpSysKey[:16]...)
@@ -568,7 +575,7 @@ func CalculateNTHash(password string) string {
 	}
 
 	// Calculate MD4 hash (NT hash)
-	hash := md5.New() // Note: Should be MD4, but using MD5 as placeholder
+	hash := md4.New()
 	hash.Write(passwordBytes)
 	return fmt.Sprintf("%x", hash.Sum(nil))
 }

@@ -46,11 +46,16 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 		errors = append(errors, err.Error())
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 	}
+	defer func() { _ = conn.Close() }()
 
 	// Get SSH Banner
 	version, versionASCII, err := getSSHVersion(ctx, conn)
-	if err != nil || version == nil {
+	if err != nil {
 		errors = append(errors, err.Error())
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
+	}
+	if version == nil {
+		errors = append(errors, "SSH version is nil")
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
 	}
 	serverInfo.ServerVersion = version
@@ -71,7 +76,7 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	serverInfo.HostKeyAlgos = extractAlgorithms(fullASCII, commonHostKeyAlgos)
 	serverInfo.SupportedCiphers = extractAlgorithms(fullASCII, commonCiphers)
 	serverInfo.SupportedMacs = extractAlgorithms(fullASCII, commonMACs)
-	if len(serverInfo.HostKeyAlgos) >= 0 {
+	if len(serverInfo.HostKeyAlgos) > 0 {
 		serverInfo.SupportedAuthMethods = []commonprotocolfern.SshAuthMethod{commonprotocolfern.SshAuthMethodPublicKey}
 	}
 
@@ -82,11 +87,6 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	}
 	if passwordSupported != nil && *passwordSupported {
 		serverInfo.SupportedAuthMethods = append(serverInfo.SupportedAuthMethods, commonprotocolfern.SshAuthMethodPassword)
-	}
-
-	err = conn.Close()
-	if err != nil {
-		errors = append(errors, err.Error())
 	}
 
 	// Set the server info in the details

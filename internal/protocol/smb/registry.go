@@ -64,75 +64,37 @@ const (
 
 // ConnectToRegistry establishes a connection to the remote registry service
 func ConnectToRegistry(session *gosmb.Connection) (*RegistryConnection, error) {
-	// Implement DCE/RPC connection to Remote Registry service
-	// This requires:
-	// 1. Binding to the Remote Registry service UUID
-	// 2. Opening a handle to the registry hive (HKLM, etc.)
-	// 3. Managing authentication context
-
-	return &RegistryConnection{
-		Session: session,
-		Handle:  nil, // Will be populated with actual DCE/RPC handle
-	}, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // OpenRegistryKey opens a registry key for reading
 func (rc *RegistryConnection) OpenRegistryKey(keyPath string) (*RegistryKey, error) {
-	// Implement registry key opening
-	// This uses DCE/RPC calls to the Remote Registry service
-	// to open the specified key path
-
-	return &RegistryKey{
-		Name:     keyPath,
-		SubKeys:  []string{},
-		Values:   []RegistryValue{},
-		Class:    "",
-		Modified: 0,
-	}, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // ReadRegistryValue reads a value from an open registry key
 func (rc *RegistryConnection) ReadRegistryValue(key *RegistryKey, valueName string) (*RegistryValue, error) {
-	// Implement registry value reading
-	// This uses DCE/RPC calls to query the value data
-
-	return &RegistryValue{
-		Name: valueName,
-		Type: RegBinary,
-		Data: []byte{},
-	}, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // EnumerateSubKeys lists all subkeys under the given registry key
 func (rc *RegistryConnection) EnumerateSubKeys(key *RegistryKey) ([]string, error) {
-	// Implement subkey enumeration
-	// This uses DCE/RPC calls to enumerate registry subkeys
-
-	return []string{}, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // EnumerateValues lists all values under the given registry key
 func (rc *RegistryConnection) EnumerateValues(key *RegistryKey) ([]RegistryValue, error) {
-	// Implement value enumeration
-	// This uses DCE/RPC calls to enumerate registry values
-
-	return []RegistryValue{}, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // CloseRegistryKey closes an open registry key
 func (rc *RegistryConnection) CloseRegistryKey(key *RegistryKey) error {
-	// Implement registry key closing
-	// This releases the DCE/RPC handle
-
-	return nil
+	return fmt.Errorf("not implemented")
 }
 
 // Disconnect closes the registry connection
 func (rc *RegistryConnection) Disconnect() error {
-	// Implement connection cleanup
-	// This closes the DCE/RPC connection
-
-	return nil
+	return fmt.Errorf("not implemented")
 }
 
 // Registry data parsing utilities
@@ -283,10 +245,7 @@ func SplitRegistryPath(path string) (hive, key string) {
 
 // GetRegistryHiveHandle gets a handle to a registry hive
 func GetRegistryHiveHandle(hive string) (interface{}, error) {
-	// Map hive names to DCE/RPC handles
-	// HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER, etc.
-
-	return nil, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // Registry data validation
@@ -324,34 +283,22 @@ func IsValidRegistryValueName(name string) bool {
 
 // GetRegistryKeySecurityDescriptor retrieves security information for a registry key
 func GetRegistryKeySecurityDescriptor(rc *RegistryConnection, key *RegistryKey) ([]byte, error) {
-	// Implement security descriptor retrieval
-	// This requires additional DCE/RPC calls to get key security information
-
-	return []byte{}, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // CheckRegistryKeyAccess checks if we have specific access to a registry key
 func CheckRegistryKeyAccess(rc *RegistryConnection, key *RegistryKey, accessMask uint32) (bool, error) {
-	// Implement access checking
-	// This would check against the key's security descriptor
-
-	return true, nil
+	return false, fmt.Errorf("not implemented")
 }
 
 // Registry backup and restore utilities
 
 // BackupRegistryKey creates a backup of a registry key and its subkeys
 func BackupRegistryKey(rc *RegistryConnection, key *RegistryKey) ([]byte, error) {
-	// Implement registry key backup
-	// This uses the RegSaveKey equivalent functionality
-
-	return []byte{}, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // RestoreRegistryKey restores a registry key from backup data
 func RestoreRegistryKey(rc *RegistryConnection, keyPath string, backupData []byte) error {
-	// Implement registry key restoration
-	// This uses the RegRestoreKey equivalent functionality
-
-	return nil
+	return fmt.Errorf("not implemented")
 }

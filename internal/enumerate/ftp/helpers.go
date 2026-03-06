@@ -245,10 +245,17 @@ func checkTLSForced(ctx context.Context, conn net.Conn, details *ftp.EnumerateFt
 	_, err := conn.Write([]byte("AUTH TLS\r\n"))
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("error sending AUTH TLS command: %v", err))
+		// AUTH TLS failed to send, try STARTTLS as fallback
 		_, err = conn.Write([]byte("STARTTLS\r\n"))
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("error sending STARTTLS command: %v", err))
 			return errors
+		}
+	} else {
+		// AUTH TLS was sent successfully, also try STARTTLS as a separate attempt
+		_, starttlsErr := conn.Write([]byte("STARTTLS\r\n"))
+		if starttlsErr != nil {
+			errors = append(errors, fmt.Sprintf("error sending STARTTLS command: %v", starttlsErr))
 		}
 	}
 

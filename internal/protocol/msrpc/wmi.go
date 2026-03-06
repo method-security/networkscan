@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Method-Security/networkscan/internal/protocol/smb"
+	"github.com/Method-Security/networkscan/utils"
 	"github.com/google/uuid"
 	"github.com/oiweiwei/go-msrpc/dcerpc"
 	"github.com/oiweiwei/go-msrpc/msrpc/dcom"
@@ -79,7 +80,7 @@ func NewWMIExecutorWithHash(ctx context.Context, host, username, password, ntlmH
 	gssapiCred := gssapi.NewCredential("", nil, gssapi.InitiateAndAccept, cred)
 
 	// Create DCOM/WMI connection with DCE/RPC authentication
-	conn, err := dcerpc.Dial(ctx, fmt.Sprintf("ncacn_ip_tcp:%s[135]", host),
+	conn, err := dcerpc.Dial(ctx, utils.FormatRPCBinding(host, "135"),
 		dcerpc.WithSeal(),
 		dcerpc.WithSign(),
 		dcerpc.WithSecurityLevel(dcerpc.AuthLevelPktPrivacy),
@@ -186,7 +187,7 @@ func (w *WMIExecutor) initialize(ctx context.Context) error {
 			dcerpc.WithMechanism(ssp.NTLM),
 			dcerpc.WithAbstractSyntax(iwbemlevel1login.Level1LoginSyntaxV0_0))
 
-		conn, err := dcerpc.Dial(ctx, fmt.Sprintf("ncacn_ip_tcp:%s[135]", w.host), reconnectOpts...)
+		conn, err := dcerpc.Dial(ctx, utils.FormatRPCBinding(w.host, "135"), reconnectOpts...)
 		if err != nil {
 			log.Error("Failed to reconnect to WMI interface", svc1log.SafeParam("error", err.Error()))
 			return fmt.Errorf("reconnect to WMI interface: %w", err)

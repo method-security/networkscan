@@ -46,7 +46,7 @@ func (l *LibraryEnumerateLDAP) extractServerInfoFromNTLMChallenge(ctx context.Co
 	log := svc1log.FromContext(ctx)
 	log.Debug("Extracting LDAP server info via NTLM challenge for enumeration", svc1log.SafeParam("target", target))
 
-	conn, err := ldap.DialURL(fmt.Sprintf("ldap://%s:%d", host, port))
+	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, false))
 	if err != nil {
 		log.Debug("Failed to connect to LDAP server for server info extraction", svc1log.SafeParam("error", err.Error()))
 		return nil
@@ -106,7 +106,7 @@ func (l *LibraryEnumerateLDAP) testNullBind(ctx context.Context, host string, po
 	log := svc1log.FromContext(ctx)
 	log.Debug("Testing LDAP null bind", svc1log.SafeParam("target", target))
 
-	conn, err := ldap.DialURL(fmt.Sprintf("ldap://%s:%d", host, port))
+	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, false))
 	if err != nil {
 		log.Debug("Failed to connect to LDAP server", svc1log.SafeParam("error", err.Error()))
 		return authTestResult{
@@ -143,7 +143,7 @@ func (l *LibraryEnumerateLDAP) testAnonymousBind(ctx context.Context, host strin
 	log := svc1log.FromContext(ctx)
 	log.Debug("Testing LDAP anonymous bind", svc1log.SafeParam("target", target))
 
-	conn, err := ldap.DialURL(fmt.Sprintf("ldap://%s:%d", host, port))
+	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, false))
 	if err != nil {
 		log.Debug("Failed to connect to LDAP server", svc1log.SafeParam("error", err.Error()))
 		return authTestResult{

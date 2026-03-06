@@ -185,7 +185,10 @@ func (s4u *S4UManager) createPAForUserData(impersonateUser, userDomain string, s
 		return nil, fmt.Errorf("failed to write PA-FOR-USER data: %v", err)
 	}
 
-	checksumEtype, _ := crypto.GetChksumEtype(chksumtype.KERB_CHECKSUM_HMAC_MD5)
+	checksumEtype, err := crypto.GetChksumEtype(chksumtype.KERB_CHECKSUM_HMAC_MD5)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get checksum etype: %v", err)
+	}
 	cksumHash, err := checksumEtype.GetChecksumHash(sessionKey.KeyValue, s4uByteArray.Bytes(), keyusage.KERB_NON_KERB_CKSUM_SALT)
 	if err != nil {
 		return nil, fmt.Errorf("failed to calculate checksum: %v", err)

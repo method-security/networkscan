@@ -42,11 +42,11 @@ func lookupIPAddress(ctx context.Context, hostname string) (string, error) {
 // GetTLSInfo retrieves comprehensive TLS configuration and certificate details for a list of target addresses.
 // It establishes TLS connections to each target, probes multiple TLS versions, collects supported cipher suites,
 // and detects security issues. Returns a report containing detailed TLS configuration and any errors encountered.
-func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.DiscoverTlsConfig) (discoverfern.DiscoverTlsReport, error) {
+func GetTLSInfo(ctx context.Context, config discoverfern.DiscoverTlsConfig) (discoverfern.DiscoverTlsReport, error) {
 	errors := []string{}
 
 	serviceDetails := []*discoverfern.TlsSummary{}
-	for _, targetAddress := range addresses {
+	for _, targetAddress := range config.Targets {
 		// Check if the address includes a port
 		host, port, err := net.SplitHostPort(targetAddress)
 		if err != nil || port == "" {
@@ -131,8 +131,8 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	defaultState := defaultConn.ConnectionState()
 	negotiatedVersion := tlsVersionToString(defaultState.Version)
 	negotiatedCipherSuite := convertCipherSuiteToEnum(defaultState.CipherSuite)
-	compressionEnabled := defaultState.DidResume                   // Using DidResume as proxy - Go doesn't support compression
-	secureRenegotiation := defaultState.NegotiatedProtocolIsMutual // Best available proxy
+	compressionEnabled := false  // TODO: probe for these properly
+	secureRenegotiation := false // TODO: probe for these properly
 	certificates := extractCertificates(defaultState.PeerCertificates)
 
 	_ = defaultConn.Close()
