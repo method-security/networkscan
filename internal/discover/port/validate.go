@@ -72,6 +72,11 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 		validatedPorts := []*discoverfern.PortDetails{}
 
 		// Create channel for work distribution
+		if config.ValidateAttemptTimeout == nil {
+			defaultTimeout := 30
+			config.ValidateAttemptTimeout = &defaultTimeout
+		}
+
 		portChan := make(chan *discoverfern.PortDetails, len(socket.Ports))
 		var wg sync.WaitGroup
 
@@ -90,10 +95,6 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 						targetStr = utils.FormatHostPort(resolvedValidationIP, port.Port)
 					} else {
 						targetStr = utils.FormatHostPort(socket.Ip, port.Port)
-					}
-					if config.ValidateAttemptTimeout == nil {
-						defaultTimeout := 30
-						config.ValidateAttemptTimeout = &defaultTimeout
 					}
 					serviceConfig := discoverfern.DiscoverServiceConfig{
 						Target:  targetStr,

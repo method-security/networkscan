@@ -266,11 +266,10 @@ func FormatLDAPURL(host string, port int, useTLS bool) string {
 	return fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(host, fmt.Sprintf("%d", port)))
 }
 
-// FormatRPCBinding constructs an ncacn_ip_tcp binding string that handles IPv6 addresses.
+// FormatRPCBinding constructs an ncacn_ip_tcp binding string.
+// The string binding format uses '[' as the endpoint delimiter, so IPv6 colons
+// in the network address are unambiguous: ncacn_ip_tcp:2001:db8::1[135]
 func FormatRPCBinding(host string, endpoint string) string {
-	if IsIPv6(host) {
-		return fmt.Sprintf("ncacn_ip_tcp:[%s][%s]", host, endpoint)
-	}
 	return fmt.Sprintf("ncacn_ip_tcp:%s[%s]", host, endpoint)
 }
 
