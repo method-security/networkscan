@@ -354,7 +354,7 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 		}
 
 		// Check if we got the expected "challenge_received" error, which means success for us
-		if err != nil && errors.Is(err, ErrChallengeReceived) {
+		if err != nil && (errors.Is(err, ErrChallengeReceived) || strings.Contains(err.Error(), "challenge_received")) {
 			log := svc1log.FromContext(ctx)
 			log.Debug("Successfully received NTLM challenge in stealth mode")
 

@@ -233,14 +233,14 @@ func GetLSASecretKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) (result
 			return
 		}
 	}
-	data, _, err = rpccon.QueryValue2(hSubKey, "")
-	if err != nil {
+	if VistaStyle {
+		data, _, err = rpccon.QueryValue2(hSubKey, "")
+		if err != nil {
+			_ = rpccon.CloseKeyHandle(hSubKey)
+			return
+		}
 		_ = rpccon.CloseKeyHandle(hSubKey)
-		return
-	}
-	_ = rpccon.CloseKeyHandle(hSubKey)
-
-	if !VistaStyle {
+	} else {
 		if modifyDacl {
 			hSubKey, err = rpccon.OpenSubKey(base, `Security\Policy\PolSecretEncryptionKey`)
 		} else {

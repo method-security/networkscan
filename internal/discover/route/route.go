@@ -234,7 +234,9 @@ func performTraceroute(ctx context.Context, target, targetIP string, config disc
 		result.Hops = append(result.Hops, &hop)
 
 		// Check if we reached the destination (use parsed IP comparison for correctness)
-		if hopIP != "" && net.ParseIP(hopIP).Equal(net.ParseIP(targetIP)) {
+		parsedHop := net.ParseIP(hopIP)
+		parsedTarget := net.ParseIP(targetIP)
+		if hopIP != "" && parsedHop != nil && parsedTarget != nil && parsedHop.Equal(parsedTarget) {
 			log.Info("Reached destination", svc1log.SafeParam("hop", ttl), svc1log.SafeParam("targetIP", targetIP))
 			result.Completed = true
 			break
