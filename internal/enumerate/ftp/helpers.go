@@ -275,9 +275,28 @@ func checkTLSForced(ctx context.Context, conn net.Conn, details *ftp.EnumerateFt
 		tlsResponse := string(response[:n])
 		log.Info("TLS response received", svc1log.SafeParam("response", tlsResponse))
 
-		tlsForced := strings.HasPrefix(tlsResponse, "234")
-		details.TlsForced = &tlsForced
-		log.Info("TLS Forced", svc1log.SafeParam("forced", tlsForced))
+		if strings.HasPrefix(tlsResponse, "234") {
+			tlsForced := true
+			details.TlsForced = &tlsForced
+			log.Info("TLS Forced", svc1log.SafeParam("forced", tlsForced))
+		} else {
+			// AUTH TLS rejected by server, try STARTTLS as protocol-level fallback
+			log.Info("AUTH TLS rejected, trying STARTTLS")
+			tlsForced := false
+			if _, writeErr := conn.Write([]byte("STARTTLS\r\n")); writeErr == nil {
+				if setErr := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); setErr == nil {
+					starttlsResp := make([]byte, bufferSize)
+					sn, readErr := conn.Read(starttlsResp)
+					_ = conn.SetReadDeadline(time.Time{})
+					if readErr == nil && sn > 0 {
+						starttlsResponse := string(starttlsResp[:sn])
+						tlsForced = strings.HasPrefix(starttlsResponse, "220")
+						log.Info("STARTTLS response", svc1log.SafeParam("response", starttlsResponse), svc1log.SafeParam("forced", tlsForced))
+					}
+				}
+			}
+			details.TlsForced = &tlsForced
+		}
 	} else {
 		details.TlsForced = new(bool)
 		*details.TlsForced = false

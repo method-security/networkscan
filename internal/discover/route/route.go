@@ -361,14 +361,14 @@ func (t *icmpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 
 			// Parse the original ICMP message from the TimeExceeded data
 			// For IPv4: data contains original IP header (variable length 20-60 bytes) + original ICMP message
-			// For IPv6: data contains original IPv6 header (40 bytes) + original ICMPv6 message
+			// For IPv6: kernel strips the inner IPv6 header, so data starts at the original ICMPv6 message
 			if len(timeExceeded.Data) < 1 {
 				continue // Not enough data
 			}
 
 			var ipHeaderLen int
 			if t.isIPv6 {
-				ipHeaderLen = 40 // IPv6 header is always 40 bytes
+				ipHeaderLen = 0 // kernel strips inner IPv6 header from ICMPv6 TimeExceeded
 			} else {
 				// Extract IP header length from IHL field (lower 4 bits of first byte)
 				// IHL is in 32-bit (4-byte) words, so multiply by 4 to get bytes
@@ -531,14 +531,14 @@ func (t *udpTracer) SendProbe(ttl int, timeout time.Duration) (string, error) {
 		}
 
 		// The ICMP data contains: original IP header + original UDP header (8 bytes) + payload
-		// For IPv4: variable length 20-60 bytes; For IPv6: fixed 40 bytes
+		// For IPv4: variable length 20-60 bytes; For IPv6: kernel strips inner header
 		if len(icmpData) < 1 {
 			continue // Not enough data to read IP header
 		}
 
 		var ipHeaderLen int
 		if t.isIPv6 {
-			ipHeaderLen = 40 // IPv6 header is always 40 bytes
+			ipHeaderLen = 0 // kernel strips inner IPv6 header from ICMPv6 TimeExceeded
 		} else {
 			// Extract IP header length from IHL field (lower 4 bits of first byte)
 			// IHL is in 32-bit (4-byte) words, so multiply by 4 to get bytes
