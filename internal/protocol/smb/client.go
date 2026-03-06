@@ -456,7 +456,10 @@ func (c *Client) TestCredentials(username, password, domain string) (bool, strin
 
 	err := testClient.Connect()
 	if err != nil {
-		_ = testClient.Close()
+		func() {
+			defer func() { _ = recover() }()
+			_ = testClient.Close()
+		}()
 		// Analyze error for specific failure types
 		errStr := err.Error()
 
