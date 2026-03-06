@@ -292,6 +292,12 @@ func checkTLSForced(ctx context.Context, conn net.Conn, details *ftp.EnumerateFt
 		} else {
 			// AUTH TLS rejected by server, try STARTTLS as protocol-level fallback
 			log.Info("AUTH TLS rejected, trying STARTTLS")
+			// Drain any remaining multi-line response data before sending next command
+			_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+			drainBuf := make([]byte, bufferSize)
+			_, _ = conn.Read(drainBuf)
+			_ = conn.SetReadDeadline(time.Time{})
+
 			tlsForced := false
 			if _, writeErr := conn.Write([]byte("STARTTLS\r\n")); writeErr == nil {
 				if setErr := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); setErr == nil {
