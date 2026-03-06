@@ -137,7 +137,7 @@ func (nr *nlRecord) unmarshal(data []byte) (err error) {
 	return
 }
 
-func pad64(data uint64) uint64 {
+func padDWORD(data uint64) uint64 {
 	if data&0x3 == 0 {
 		return data
 	}
@@ -624,8 +624,8 @@ func GetCachedHashes(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) (result
 			if err != nil {
 				continue
 			}
-			plaintext = plaintext[int(pad64(uint64(nlRecord.UserLength)))+int(pad64(uint64(nlRecord.DomainNameLength))):]
-			domainLong, err := encoder.FromUnicodeString(plaintext[:int(pad64(uint64(nlRecord.DNSDomainNameLength)))])
+			plaintext = plaintext[int(padDWORD(uint64(nlRecord.UserLength)))+int(padDWORD(uint64(nlRecord.DomainNameLength))):]
+			domainLong, err := encoder.FromUnicodeString(plaintext[:int(padDWORD(uint64(nlRecord.DNSDomainNameLength)))])
 			if err != nil {
 				continue
 			}
