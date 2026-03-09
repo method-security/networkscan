@@ -564,6 +564,16 @@ func (c *Client) Close() error {
 	return nil
 }
 
+// SafeClose closes the client with panic recovery.
+// The underlying go-smb library can panic during Close() in certain states.
+func (c *Client) SafeClose() {
+	if c == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	_ = c.Close()
+}
+
 // determineShareType determines the share type based on share name patterns
 func (c *Client) determineShareType(shareName string) commonprotocolfern.ShareType {
 	switch {
