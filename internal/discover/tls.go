@@ -489,8 +489,8 @@ func probeCompression(targetAddress, serverName string, dialer *net.Dialer) bool
 
 	sniExtension := buildSNIExtension(serverName)
 
-	// Build ClientHello offering DEFLATE + null compression
-	clientHello := buildClientHello(0x03, 0x01, sniExtension, []byte{0x01, 0x00}) // DEFLATE, null
+	// Build ClientHello offering DEFLATE + null compression (no SCSV — pure compression probe)
+	clientHello := buildClientHello(0x03, 0x01, baseCipherSuites, sniExtension, []byte{0x01, 0x00}) // DEFLATE, null
 
 	record := buildTLSRecord(0x16, 0x03, 0x01, clientHello)
 
@@ -550,7 +550,9 @@ func probeSecureRenegotiation(targetAddress, serverName string, dialer *net.Dial
 	extensions = append(extensions, sniExtension...)
 	extensions = append(extensions, renegExt...)
 
-	clientHello := buildClientHello(0x03, 0x01, extensions, []byte{0x00}) // null compression only
+	// Use base ciphers without SCSV — rely solely on the renegotiation_info
+	// extension to test server support, avoiding conflated signals.
+	clientHello := buildClientHello(0x03, 0x01, baseCipherSuites, extensions, []byte{0x00}) // null compression only
 
 	record := buildTLSRecord(0x16, 0x03, 0x01, clientHello)
 
@@ -635,22 +637,23 @@ func buildSNIExtension(serverName string) []byte {
 	return append(ext, nameBytes...)
 }
 
-// buildClientHello constructs a TLS ClientHello handshake message.
-func buildClientHello(versionMajor, versionMinor byte, extensions []byte, compressionMethods []byte) []byte {
-	// Common cipher suites for probing
-	cipherSuites := []byte{
-		0xc0, 0x2c, // TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
-		0xc0, 0x2b, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-		0xc0, 0x30, // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-		0xc0, 0x2f, // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-		0x00, 0x9e, // TLS_DHE_RSA_WITH_AES_128_GCM_SHA256
-		0x00, 0x9f, // TLS_DHE_RSA_WITH_AES_256_GCM_SHA384
-		0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
-		0x00, 0x35, // TLS_RSA_WITH_AES_256_CBC_SHA
-		0x00, 0x0a, // TLS_RSA_WITH_3DES_EDE_CBC_SHA
-		0x00, 0xff, // TLS_EMPTY_RENEGOTIATION_INFO_SCSV
-	}
+// baseCipherSuites is the common set of cipher suites used in TLS probes.
+// Does NOT include TLS_EMPTY_RENEGOTIATION_INFO_SCSV — probes that need
+// it must append 0x00, 0xff explicitly to avoid conflating signals.
+var baseCipherSuites = []byte{
+	0xc0, 0x2c, // TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+	0xc0, 0x2b, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+	0xc0, 0x30, // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+	0xc0, 0x2f, // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+	0x00, 0x9e, // TLS_DHE_RSA_WITH_AES_128_GCM_SHA256
+	0x00, 0x9f, // TLS_DHE_RSA_WITH_AES_256_GCM_SHA384
+	0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
+	0x00, 0x35, // TLS_RSA_WITH_AES_256_CBC_SHA
+	0x00, 0x0a, // TLS_RSA_WITH_3DES_EDE_CBC_SHA
+}
 
+// buildClientHello constructs a TLS ClientHello handshake message.
+func buildClientHello(versionMajor, versionMinor byte, cipherSuites, extensions, compressionMethods []byte) []byte {
 	random := make([]byte, 32)
 	_, _ = rand.Read(random)
 
