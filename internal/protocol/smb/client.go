@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 	"time"
@@ -134,6 +135,12 @@ type Client struct {
 func NewClient(host string, port int) *Client {
 	if port == 0 {
 		port = 445 // Default SMB port
+	}
+
+	// Wrap bare IPv6 addresses in brackets so the go-smb library's
+	// fmt.Sprintf("%s:%d", host, port) produces a valid dial address.
+	if net.ParseIP(host) != nil && strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+		host = "[" + host + "]"
 	}
 
 	return &Client{

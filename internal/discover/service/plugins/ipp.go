@@ -42,7 +42,7 @@ func detectIPPWithScheme(ctx context.Context, ip net.IP, port int, host string, 
 		transport = common.TransportTypeTcptls
 	}
 
-	url := fmt.Sprintf("%s://%s:%d/", scheme, ip.String(), port)
+	url := fmt.Sprintf("%s://%s/", scheme, net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
 
 	// IPP Get-Printer-Attributes request
 	ippGetAttributesRequest := []byte{
