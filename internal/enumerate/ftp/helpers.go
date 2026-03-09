@@ -242,14 +242,19 @@ func checkTLSForced(ctx context.Context, conn net.Conn, details *ftp.EnumerateFt
 
 	log.Info("Sending TLS commands to check if TLS is forced...")
 	errors := []string{}
+
+	// Track which command was sent so we check the correct response code
+	sentSTARTTLS := false
 	_, err := conn.Write([]byte("AUTH TLS\r\n"))
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("error sending AUTH TLS command: %v", err))
+		// AUTH TLS failed to send, try STARTTLS as fallback
 		_, err = conn.Write([]byte("STARTTLS\r\n"))
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("error sending STARTTLS command: %v", err))
 			return errors
 		}
+		sentSTARTTLS = true
 	}
 
 	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
@@ -274,9 +279,40 @@ func checkTLSForced(ctx context.Context, conn net.Conn, details *ftp.EnumerateFt
 		tlsResponse := string(response[:n])
 		log.Info("TLS response received", svc1log.SafeParam("response", tlsResponse))
 
-		tlsForced := strings.HasPrefix(tlsResponse, "234")
-		details.TlsForced = &tlsForced
-		log.Info("TLS Forced", svc1log.SafeParam("forced", tlsForced))
+		if sentSTARTTLS {
+			// We sent STARTTLS (AUTH TLS write failed); check for 220 success
+			tlsForced := strings.HasPrefix(tlsResponse, "220")
+			details.TlsForced = &tlsForced
+			log.Info("STARTTLS response", svc1log.SafeParam("forced", tlsForced))
+		} else if strings.HasPrefix(tlsResponse, "234") {
+			// AUTH TLS accepted
+			tlsForced := true
+			details.TlsForced = &tlsForced
+			log.Info("TLS Forced", svc1log.SafeParam("forced", tlsForced))
+		} else {
+			// AUTH TLS rejected by server, try STARTTLS as protocol-level fallback
+			log.Info("AUTH TLS rejected, trying STARTTLS")
+			// Drain any remaining multi-line response data before sending next command
+			_ = conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+			drainBuf := make([]byte, bufferSize)
+			_, _ = conn.Read(drainBuf)
+			_ = conn.SetReadDeadline(time.Time{})
+
+			tlsForced := false
+			if _, writeErr := conn.Write([]byte("STARTTLS\r\n")); writeErr == nil {
+				if setErr := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); setErr == nil {
+					starttlsResp := make([]byte, bufferSize)
+					sn, readErr := conn.Read(starttlsResp)
+					_ = conn.SetReadDeadline(time.Time{})
+					if readErr == nil && sn > 0 {
+						starttlsResponse := string(starttlsResp[:sn])
+						tlsForced = strings.HasPrefix(starttlsResponse, "220")
+						log.Info("STARTTLS response", svc1log.SafeParam("response", starttlsResponse), svc1log.SafeParam("forced", tlsForced))
+					}
+				}
+			}
+			details.TlsForced = &tlsForced
+		}
 	} else {
 		details.TlsForced = new(bool)
 		*details.TlsForced = false

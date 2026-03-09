@@ -107,19 +107,7 @@ func (kcm *ClientManager) CreateClientFromConfig(pentestConfig *kerberosfern.Pen
 
 // ParseTarget parses a target string into components
 func ParseTarget(targetStr string) (*Target, error) {
-	// Split target into host and port
-	parts := strings.Split(targetStr, ":")
-	if len(parts) < 2 {
-		return nil, fmt.Errorf("target must include port (e.g., dc.domain.com:88)")
-	}
-
-	host := parts[0]
-	port := 88 // Default Kerberos port
-	if len(parts) > 1 {
-		if p, err := fmt.Sscanf(parts[1], "%d", &port); err != nil || p != 1 {
-			port = 88 // Fall back to default
-		}
-	}
+	host, port := utils.ParseHostPort(targetStr, 88)
 
 	// Extract domain from hostname
 	domain := ""

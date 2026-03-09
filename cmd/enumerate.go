@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"errors"
+	"fmt"
 	"strings"
 
 	// Generated
@@ -42,7 +42,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 			}
 			serviceEnum, err := enumeratefern.NewSupportedServiceTypeFromString(strings.ToUpper(service))
 			if err != nil {
-				a.OutputSignal.AddError(errors.New("invalid service"))
+				a.OutputSignal.AddError(fmt.Errorf("invalid service '%s': %v", service, err))
 				return
 			}
 			timeout, err := cmd.Flags().GetInt("timeout")

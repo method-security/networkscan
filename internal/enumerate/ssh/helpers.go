@@ -138,16 +138,16 @@ func passwordAuthSupported(ctx context.Context, target string) (*bool, error) {
 		return nil, fmt.Errorf("password authentication failed for %s: %w", target, err)
 	}
 
-	err = client.Close()
-	if err != nil {
-		log.Error("Failed to close client for %s", svc1log.SafeParam("error", err.Error()))
-		return nil, fmt.Errorf("failed to close client for %s: %w", target, err)
-	}
-
 	err = session.Close()
 	if err != nil {
 		log.Error("Failed to close session for %s", svc1log.SafeParam("error", err.Error()))
 		return nil, fmt.Errorf("failed to close session for %s: %w", target, err)
+	}
+
+	err = client.Close()
+	if err != nil {
+		log.Error("Failed to close client for %s", svc1log.SafeParam("error", err.Error()))
+		return nil, fmt.Errorf("failed to close client for %s: %w", target, err)
 	}
 
 	fallback := true

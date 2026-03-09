@@ -2,6 +2,7 @@ package smb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -16,6 +17,9 @@ import (
 	"github.com/jfjallid/go-smb/spnego"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
+
+// ErrChallengeReceived is a sentinel error indicating the NTLM challenge was successfully received
+var ErrChallengeReceived = errors.New("challenge_received")
 
 // CapturingNTLM wraps the built-in NTLM initiator and captures the server's challenge
 type CapturingNTLM struct {
@@ -97,7 +101,7 @@ func (c *ChallengeOnlyNTLM) InitSecContext(inputToken []byte) ([]byte, error) {
 
 		// If we've received a challenge, stop the authentication process
 		if c.challengeReceived {
-			return nil, fmt.Errorf("challenge_received") // Special error to signal we got what we wanted
+			return nil, ErrChallengeReceived // Special error to signal we got what we wanted
 		}
 	}
 
@@ -130,6 +134,14 @@ type Client struct {
 func NewClient(host string, port int) *Client {
 	if port == 0 {
 		port = 445 // Default SMB port
+	}
+
+	// Wrap bare IPv6 addresses in brackets so the go-smb library's
+	// fmt.Sprintf("%s:%d", host, port) produces a valid dial address.
+	// net.ParseIP handles standard IPv6; the zone-scoped check (contains ":"
+	// but not bracketed) catches addresses like fe80::1%eth0.
+	if !strings.HasPrefix(host, "[") && strings.Contains(host, ":") {
+		host = "[" + host + "]"
 	}
 
 	return &Client{
@@ -350,7 +362,7 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 		}
 
 		// Check if we got the expected "challenge_received" error, which means success for us
-		if err != nil && strings.Contains(err.Error(), "challenge_received") {
+		if err != nil && (errors.Is(err, ErrChallengeReceived) || strings.Contains(err.Error(), "challenge_received")) {
 			log := svc1log.FromContext(ctx)
 			log.Debug("Successfully received NTLM challenge in stealth mode")
 
@@ -452,6 +464,10 @@ func (c *Client) TestCredentials(username, password, domain string) (bool, strin
 
 	err := testClient.Connect()
 	if err != nil {
+		func() {
+			defer func() { _ = recover() }()
+			_ = testClient.Close()
+		}()
 		// Analyze error for specific failure types
 		errStr := err.Error()
 
@@ -554,6 +570,16 @@ func (c *Client) Close() error {
 		c.isAuthenticated = false
 	}
 	return nil
+}
+
+// SafeClose closes the client with panic recovery.
+// The underlying go-smb library can panic during Close() in certain states.
+func (c *Client) SafeClose() {
+	if c == nil {
+		return
+	}
+	defer func() { _ = recover() }()
+	_ = c.Close()
 }
 
 // determineShareType determines the share type based on share name patterns

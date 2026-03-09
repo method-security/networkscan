@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	msrpcfern "github.com/Method-Security/networkscan/generated/go/pentest/msrpc"
+	"github.com/Method-Security/networkscan/utils"
 	"github.com/oiweiwei/go-msrpc/dcerpc"
 	"github.com/oiweiwei/go-msrpc/midl/uuid"
 	drsuapi "github.com/oiweiwei/go-msrpc/msrpc/drsr/drsuapi/v4"
@@ -42,7 +43,7 @@ func (c *DRSUAPIClient) Connect(ctx context.Context, drsuapiBinding dcerpc.Strin
 	secCtx := gssapi.NewSecurityContext(ctx)
 
 	// Create connection to DRSUAPI port
-	drsuapiTarget := fmt.Sprintf("ncacn_ip_tcp:%s[%s]", c.Host, drsuapiBinding.Endpoint)
+	drsuapiTarget := utils.FormatRPCBinding(c.Host, drsuapiBinding.Endpoint)
 
 	// Use auth options for connection
 	connOptions := c.AuthOptions
@@ -62,6 +63,8 @@ func (c *DRSUAPIClient) Connect(ctx context.Context, drsuapiBinding dcerpc.Strin
 	client, err := drsuapi.NewDrsuapiClient(secCtx, conn, dcerpc.WithSeal())
 	if err != nil {
 		log.Error("Failed to create DRSUAPI client", svc1log.SafeParam("error", err.Error()))
+		_ = conn.Close(ctx)
+		c.conn = nil
 		return fmt.Errorf("failed to create DRSUAPI client: %w", err)
 	}
 	c.client = client
@@ -355,19 +358,17 @@ func (c *DRSUAPIClient) ExtractUserCredentials(ctx context.Context, username, do
 					continue
 				}
 
-				if err == nil {
-					// NT hash should be exactly 16 bytes (128 bits)
-					// If we get more data, take the first 16 bytes
-					var ntHashBytes []byte
-					if len(decryptedHashBytes) >= 16 {
-						ntHashBytes = decryptedHashBytes[:16]
-					} else {
-						ntHashBytes = decryptedHashBytes
-					}
-
-					decryptedHash := hex.EncodeToString(ntHashBytes)
-					userEntry.NtHash = &decryptedHash
+				// NT hash should be exactly 16 bytes (128 bits)
+				// If we get more data, take the first 16 bytes
+				var ntHashBytes []byte
+				if len(decryptedHashBytes) >= 16 {
+					ntHashBytes = decryptedHashBytes[:16]
+				} else {
+					ntHashBytes = decryptedHashBytes
 				}
+
+				decryptedHash := hex.EncodeToString(ntHashBytes)
+				userEntry.NtHash = &decryptedHash
 			} else {
 				// Handle empty unicodePwd attribute (disabled accounts)
 				emptyPasswordHash := "31d6cfe0d16ae931b73c59d7e0c089c0"

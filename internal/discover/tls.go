@@ -4,6 +4,7 @@ package discover
 import (
 	// Standard
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
@@ -42,11 +43,11 @@ func lookupIPAddress(ctx context.Context, hostname string) (string, error) {
 // GetTLSInfo retrieves comprehensive TLS configuration and certificate details for a list of target addresses.
 // It establishes TLS connections to each target, probes multiple TLS versions, collects supported cipher suites,
 // and detects security issues. Returns a report containing detailed TLS configuration and any errors encountered.
-func GetTLSInfo(ctx context.Context, addresses []string, config discoverfern.DiscoverTlsConfig) (discoverfern.DiscoverTlsReport, error) {
+func GetTLSInfo(ctx context.Context, config discoverfern.DiscoverTlsConfig) (discoverfern.DiscoverTlsReport, error) {
 	errors := []string{}
 
 	serviceDetails := []*discoverfern.TlsSummary{}
-	for _, targetAddress := range addresses {
+	for _, targetAddress := range config.Targets {
 		// Check if the address includes a port
 		host, port, err := net.SplitHostPort(targetAddress)
 		if err != nil || port == "" {
@@ -131,8 +132,8 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	defaultState := defaultConn.ConnectionState()
 	negotiatedVersion := tlsVersionToString(defaultState.Version)
 	negotiatedCipherSuite := convertCipherSuiteToEnum(defaultState.CipherSuite)
-	compressionEnabled := defaultState.DidResume                   // Using DidResume as proxy - Go doesn't support compression
-	secureRenegotiation := defaultState.NegotiatedProtocolIsMutual // Best available proxy
+	compressionEnabled := probeCompression(targetAddress, serverName, dialer)
+	secureRenegotiation := probeSecureRenegotiation(targetAddress, serverName, dialer)
 	certificates := extractCertificates(defaultState.PeerCertificates)
 
 	_ = defaultConn.Close()
@@ -472,4 +473,218 @@ func probeSSLv3(targetAddress string, dialer *net.Dialer) bool {
 	}
 
 	return false
+}
+
+// probeCompression checks if the server supports TLS compression by sending a ClientHello
+// that offers DEFLATE compression (method 1) alongside null compression (method 0).
+// If the server selects a non-null compression method, compression is enabled.
+func probeCompression(targetAddress, serverName string, dialer *net.Dialer) bool {
+	conn, err := dialer.Dial("tcp", targetAddress)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	sniExtension := buildSNIExtension(serverName)
+
+	// Build ClientHello offering DEFLATE + null compression (no SCSV — pure compression probe)
+	clientHello := buildClientHello(0x03, 0x01, baseCipherSuites, sniExtension, []byte{0x01, 0x00}) // DEFLATE, null
+
+	record := buildTLSRecord(0x16, 0x03, 0x01, clientHello)
+
+	if _, err := conn.Write(record); err != nil {
+		return false
+	}
+
+	response := make([]byte, 4096)
+	n, err := conn.Read(response)
+	if err != nil || n < 44 {
+		return false
+	}
+
+	// Parse TLS record: type(1) version(2) length(2) -> handshake
+	if response[0] != 0x16 {
+		return false
+	}
+
+	// Parse handshake header: type(1) length(3) -> ServerHello
+	hsOffset := 5 // skip record header
+	if hsOffset >= n || response[hsOffset] != 0x02 {
+		return false
+	}
+
+	// ServerHello: version(2) random(32) session_id_len(1) session_id(...) cipher_suite(2) compression_method(1)
+	shOffset := hsOffset + 4 // skip handshake header
+	if shOffset+35 > n {
+		return false
+	}
+	sessionIDLen := int(response[shOffset+34])
+	compressionOffset := shOffset + 34 + 1 + sessionIDLen + 2 // +2 for cipher suite
+
+	if compressionOffset >= n {
+		return false
+	}
+
+	return response[compressionOffset] != 0x00
+}
+
+// probeSecureRenegotiation checks if the server supports RFC 5746 secure renegotiation
+// by sending a ClientHello with the renegotiation_info extension (0xff01) and checking
+// if the ServerHello includes the same extension in its response.
+func probeSecureRenegotiation(targetAddress, serverName string, dialer *net.Dialer) bool {
+	conn, err := dialer.Dial("tcp", targetAddress)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	sniExtension := buildSNIExtension(serverName)
+	// renegotiation_info extension (0xff01) with empty renegotiated_connection
+	renegExt := []byte{0xff, 0x01, 0x00, 0x01, 0x00}
+
+	var extensions []byte
+	extensions = append(extensions, sniExtension...)
+	extensions = append(extensions, renegExt...)
+
+	// Use base ciphers without SCSV — rely solely on the renegotiation_info
+	// extension to test server support, avoiding conflated signals.
+	clientHello := buildClientHello(0x03, 0x01, baseCipherSuites, extensions, []byte{0x00}) // null compression only
+
+	record := buildTLSRecord(0x16, 0x03, 0x01, clientHello)
+
+	if _, err := conn.Write(record); err != nil {
+		return false
+	}
+
+	response := make([]byte, 4096)
+	n, err := conn.Read(response)
+	if err != nil || n < 44 {
+		return false
+	}
+
+	if response[0] != 0x16 {
+		return false
+	}
+
+	// Parse through the ServerHello to find extensions
+	hsOffset := 5
+	if hsOffset >= n || response[hsOffset] != 0x02 {
+		return false
+	}
+
+	hsLen := int(response[hsOffset+1])<<16 | int(response[hsOffset+2])<<8 | int(response[hsOffset+3])
+	shOffset := hsOffset + 4
+	shEnd := shOffset + hsLen
+
+	if shEnd > n {
+		shEnd = n
+	}
+
+	// Skip version(2) + random(32) = 34
+	if shOffset+35 > shEnd {
+		return false
+	}
+	sessionIDLen := int(response[shOffset+34])
+	// Skip session_id + cipher_suite(2) + compression(1)
+	extListOffset := shOffset + 34 + 1 + sessionIDLen + 2 + 1
+
+	if extListOffset+2 > shEnd {
+		return false
+	}
+
+	extListLen := int(response[extListOffset])<<8 | int(response[extListOffset+1])
+	extOffset := extListOffset + 2
+	extEnd := extOffset + extListLen
+
+	if extEnd > shEnd {
+		extEnd = shEnd
+	}
+
+	// Walk extensions looking for renegotiation_info (0xff01)
+	for extOffset+4 <= extEnd {
+		extType := uint16(response[extOffset])<<8 | uint16(response[extOffset+1])
+		extLen := int(response[extOffset+2])<<8 | int(response[extOffset+3])
+
+		if extType == 0xff01 {
+			return true
+		}
+
+		extOffset += 4 + extLen
+	}
+
+	return false
+}
+
+// buildSNIExtension builds a TLS SNI (Server Name Indication) extension for the given hostname.
+func buildSNIExtension(serverName string) []byte {
+	if serverName == "" || net.ParseIP(serverName) != nil {
+		return nil
+	}
+	nameBytes := []byte(serverName)
+	nameLen := len(nameBytes)
+
+	ext := []byte{
+		0x00, 0x00, // Extension type: server_name
+		byte((nameLen + 5) >> 8), byte((nameLen + 5) & 0xff), // Extension length
+		byte((nameLen + 3) >> 8), byte((nameLen + 3) & 0xff), // Server name list length
+		0x00,                                     // Name type: host_name
+		byte(nameLen >> 8), byte(nameLen & 0xff), // Host name length
+	}
+	return append(ext, nameBytes...)
+}
+
+// baseCipherSuites is the common set of cipher suites used in TLS probes.
+// Does NOT include TLS_EMPTY_RENEGOTIATION_INFO_SCSV — probes that need
+// it must append 0x00, 0xff explicitly to avoid conflating signals.
+var baseCipherSuites = []byte{
+	0xc0, 0x2c, // TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+	0xc0, 0x2b, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+	0xc0, 0x30, // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+	0xc0, 0x2f, // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+	0x00, 0x9e, // TLS_DHE_RSA_WITH_AES_128_GCM_SHA256
+	0x00, 0x9f, // TLS_DHE_RSA_WITH_AES_256_GCM_SHA384
+	0x00, 0x2f, // TLS_RSA_WITH_AES_128_CBC_SHA
+	0x00, 0x35, // TLS_RSA_WITH_AES_256_CBC_SHA
+	0x00, 0x0a, // TLS_RSA_WITH_3DES_EDE_CBC_SHA
+}
+
+// buildClientHello constructs a TLS ClientHello handshake message.
+func buildClientHello(versionMajor, versionMinor byte, cipherSuites, extensions, compressionMethods []byte) []byte {
+	random := make([]byte, 32)
+	_, _ = rand.Read(random)
+
+	// Session ID: empty
+	sessionID := []byte{0x00}
+
+	// Cipher suites length (2 bytes) + cipher suites
+	cipherSuitesBlock := append([]byte{byte(len(cipherSuites) >> 8), byte(len(cipherSuites) & 0xff)}, cipherSuites...)
+
+	// Compression methods length (1 byte) + methods
+	compressionBlock := append([]byte{byte(len(compressionMethods))}, compressionMethods...)
+
+	// Assemble ClientHello body: version(2) + random(32) + session_id + cipher_suites + compression
+	body := []byte{versionMajor, versionMinor}
+	body = append(body, random...)
+	body = append(body, sessionID...)
+	body = append(body, cipherSuitesBlock...)
+	body = append(body, compressionBlock...)
+
+	if len(extensions) > 0 {
+		body = append(body, byte(len(extensions)>>8), byte(len(extensions)&0xff))
+		body = append(body, extensions...)
+	}
+
+	// Handshake header: type(1) + length(3)
+	handshake := []byte{0x01, byte(len(body) >> 16), byte(len(body) >> 8), byte(len(body) & 0xff)}
+	return append(handshake, body...)
+}
+
+// buildTLSRecord wraps a payload in a TLS record header.
+func buildTLSRecord(contentType, versionMajor, versionMinor byte, payload []byte) []byte {
+	header := []byte{contentType, versionMajor, versionMinor, byte(len(payload) >> 8), byte(len(payload) & 0xff)}
+	return append(header, payload...)
 }

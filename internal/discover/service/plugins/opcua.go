@@ -42,7 +42,7 @@ func (OpcuaFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host 
 
 	// OPC UA Hello message
 	// This establishes the secure channel
-	endpointURL := fmt.Sprintf("opc.tcp://%s:%d", host, port)
+	endpointURL := fmt.Sprintf("opc.tcp://%s", net.JoinHostPort(host, fmt.Sprintf("%d", port)))
 	helloMsg := buildOpcuaHelloMessage(endpointURL)
 
 	// Send Hello message
