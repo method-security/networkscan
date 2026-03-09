@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"reflect"
 	"strings"
 	"time"
@@ -139,7 +138,9 @@ func NewClient(host string, port int) *Client {
 
 	// Wrap bare IPv6 addresses in brackets so the go-smb library's
 	// fmt.Sprintf("%s:%d", host, port) produces a valid dial address.
-	if net.ParseIP(host) != nil && strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+	// net.ParseIP handles standard IPv6; the zone-scoped check (contains ":"
+	// but not bracketed) catches addresses like fe80::1%eth0.
+	if !strings.HasPrefix(host, "[") && strings.Contains(host, ":") {
 		host = "[" + host + "]"
 	}
 

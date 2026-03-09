@@ -131,8 +131,8 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	defaultState := defaultConn.ConnectionState()
 	negotiatedVersion := tlsVersionToString(defaultState.Version)
 	negotiatedCipherSuite := convertCipherSuiteToEnum(defaultState.CipherSuite)
-	compressionEnabled := probeCompression(targetAddress, serverName, dialer, config.VerifyTls)
-	secureRenegotiation := probeSecureRenegotiation(targetAddress, serverName, dialer, config.VerifyTls)
+	compressionEnabled := probeCompression(targetAddress, serverName, dialer)
+	secureRenegotiation := probeSecureRenegotiation(targetAddress, serverName, dialer)
 	certificates := extractCertificates(defaultState.PeerCertificates)
 
 	_ = defaultConn.Close()
@@ -477,7 +477,7 @@ func probeSSLv3(targetAddress string, dialer *net.Dialer) bool {
 // probeCompression checks if the server supports TLS compression by sending a ClientHello
 // that offers DEFLATE compression (method 1) alongside null compression (method 0).
 // If the server selects a non-null compression method, compression is enabled.
-func probeCompression(targetAddress, serverName string, dialer *net.Dialer, verifyTLS bool) bool {
+func probeCompression(targetAddress, serverName string, dialer *net.Dialer) bool {
 	conn, err := dialer.Dial("tcp", targetAddress)
 	if err != nil {
 		return false
@@ -532,7 +532,7 @@ func probeCompression(targetAddress, serverName string, dialer *net.Dialer, veri
 // probeSecureRenegotiation checks if the server supports RFC 5746 secure renegotiation
 // by sending a ClientHello with the renegotiation_info extension (0xff01) and checking
 // if the ServerHello includes the same extension in its response.
-func probeSecureRenegotiation(targetAddress, serverName string, dialer *net.Dialer, verifyTLS bool) bool {
+func probeSecureRenegotiation(targetAddress, serverName string, dialer *net.Dialer) bool {
 	conn, err := dialer.Dial("tcp", targetAddress)
 	if err != nil {
 		return false
