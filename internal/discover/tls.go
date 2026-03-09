@@ -4,6 +4,7 @@ package discover
 import (
 	// Standard
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
@@ -651,6 +652,7 @@ func buildClientHello(versionMajor, versionMinor byte, extensions []byte, compre
 	}
 
 	random := make([]byte, 32)
+	_, _ = rand.Read(random)
 
 	// Session ID: empty
 	sessionID := []byte{0x00}

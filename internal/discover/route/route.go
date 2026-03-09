@@ -122,7 +122,15 @@ func resolveTarget(target string) (string, error) {
 		return "", fmt.Errorf("no IP addresses found for hostname")
 	}
 
-	// Return the first resolved IP
+	// Prefer IPv4 to avoid breaking traceroute on IPv4-only networks,
+	// since net.LookupIP returns results in non-deterministic order.
+	for _, ip := range ips {
+		if ip.To4() != nil {
+			return ip.String(), nil
+		}
+	}
+
+	// No IPv4 found, use the first result (IPv6)
 	return ips[0].String(), nil
 }
 
