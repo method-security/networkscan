@@ -119,10 +119,17 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 		Timeout: time.Duration(config.Timeout) * time.Second,
 	}
 
-	// First, establish a connection with default settings to get negotiated values and certificates
+	// Establish a connection with InsecureSkipVerify to always collect TLS data.
+	// We use MinVersion=TLS 1.0 so we can connect to legacy servers.
+	// Verification errors are reported separately without blocking the scan.
+	var negotiatedVersion discoverfern.TlsVersion
+	var negotiatedCipherSuite discoverfern.CipherSuite
+	var certificates []*discoverfern.Certificate
+
 	defaultConn, err := tls.DialWithDialer(dialer, "tcp", targetAddress, &tls.Config{
 		ServerName:         serverName,
-		InsecureSkipVerify: !config.VerifyTls,
+		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS10, //nolint:gosec
 	})
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("Failed to establish TLS connection: %v", err))
@@ -130,13 +137,13 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	}
 
 	defaultState := defaultConn.ConnectionState()
-	negotiatedVersion := tlsVersionToString(defaultState.Version)
-	negotiatedCipherSuite := convertCipherSuiteToEnum(defaultState.CipherSuite)
+	negotiatedVersion = tlsVersionToString(defaultState.Version)
+	negotiatedCipherSuite = convertCipherSuiteToEnum(defaultState.CipherSuite)
+	certificates = extractCertificates(defaultState.PeerCertificates)
+	_ = defaultConn.Close()
+
 	compressionEnabled := probeCompression(targetAddress, serverName, dialer)
 	secureRenegotiation := probeSecureRenegotiation(targetAddress, serverName, dialer)
-	certificates := extractCertificates(defaultState.PeerCertificates)
-
-	_ = defaultConn.Close()
 
 	// Probe SSL versions using raw socket handshake (Go's crypto/tls doesn't support these)
 	ssl2Supported := probeSSLv2(targetAddress, dialer)
@@ -203,7 +210,7 @@ func probeTLSVersion(ctx context.Context, targetAddress, serverName string, vers
 	if version == tls.VersionTLS13 {
 		tlsConfig := &tls.Config{
 			ServerName:         serverName,
-			InsecureSkipVerify: !config.VerifyTls,
+			InsecureSkipVerify: true,
 			MinVersion:         version,
 			MaxVersion:         version,
 		}
@@ -223,7 +230,8 @@ func probeTLSVersion(ctx context.Context, targetAddress, serverName string, vers
 		return supportedCipherSuites
 	}
 
-	// For TLS 1.2 and below, probe each cipher suite
+	// For TLS 1.2 and below, probe each cipher suite.
+	// Always use InsecureSkipVerify here since we're probing for cipher support, not validating certs.
 	for _, cipherID := range allCipherSuites {
 		if seenCiphers[cipherID] {
 			continue
@@ -231,8 +239,8 @@ func probeTLSVersion(ctx context.Context, targetAddress, serverName string, vers
 
 		tlsConfig := &tls.Config{
 			ServerName:         serverName,
-			InsecureSkipVerify: !config.VerifyTls,
-			MinVersion:         version,
+			InsecureSkipVerify: true,
+			MinVersion:         version, //nolint:gosec
 			MaxVersion:         version,
 			CipherSuites:       []uint16{cipherID},
 		}

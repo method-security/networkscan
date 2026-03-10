@@ -445,14 +445,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			verifyTLS, err := cmd.Flags().GetBool("verify-tls")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-
 			// Generate the config
-			config := getDiscoverTLSConfig(targets, timeout, verifyTLS)
+			config := getDiscoverTLSConfig(targets, timeout)
 
 			// Generate the report
 			report, err := discover.GetTLSInfo(cmd.Context(), config)
@@ -465,8 +459,6 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	discoverTLSCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to analyze TLS configuration")
 	discoverTLSCmd.Flags().Int("timeout", 30, "Timeout in seconds for each TLS handshake attempt")
-	discoverTLSCmd.Flags().Bool("verify-tls", false, "Verify TLS certificates (default: false)")
-
 	// Mark Required Flags
 	_ = discoverTLSCmd.MarkFlagRequired("targets")
 
@@ -601,12 +593,10 @@ func getDiscoverServiceConfig(target string, timeout int, serviceType string, ud
 }
 
 // getDiscoverTLSConfig creates a configuration for TLS scanning with the provided parameters.
-// It configures the targets, timeout, and TLS verification settings.
-func getDiscoverTLSConfig(targets []string, timeout int, verifyTLS bool) discoverfern.DiscoverTlsConfig {
+func getDiscoverTLSConfig(targets []string, timeout int) discoverfern.DiscoverTlsConfig {
 	config := discoverfern.DiscoverTlsConfig{
-		Targets:   targets,
-		Timeout:   timeout,
-		VerifyTls: verifyTLS,
+		Targets: targets,
+		Timeout: timeout,
 	}
 	return config
 }
