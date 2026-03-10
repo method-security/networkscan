@@ -166,7 +166,7 @@ Flags:
   -h, --help               help for tls
       --targets strings    List of target addresses (IP:port or hostname:port) to analyze TLS configuration
       --timeout int        Timeout in seconds for each TLS handshake attempt (default 30)
-      --verify-tls         Verify TLS certificates (default: false)
+
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
