@@ -114,7 +114,6 @@ types:
     properties:
       targets: list<string>
       timeout: integer
-      verifyTls: boolean
   # Report Types
   DiscoverTlsReport:
     properties:

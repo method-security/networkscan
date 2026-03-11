@@ -178,7 +178,6 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 			} else {
 				fxCtx, cancel = context.WithCancel(ctx)
 			}
-			defer cancel()
 
 			resultChan := make(chan *plugins.Service, 1)
 			errChan := make(chan error, 1)
@@ -211,6 +210,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 				// fingerprintx failed - continue to Phase 3
 				_ = err
 			}
+			cancel()
 		}
 
 		/* --- Phase 3: Run custom fingerprinters on all ports (fallback) ---- */

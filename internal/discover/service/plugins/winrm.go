@@ -41,7 +41,7 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 		transport = common.TransportTypeTcptls
 	}
 
-	url := fmt.Sprintf("%s://%s:%d/wsman", scheme, ip.String(), port)
+	url := fmt.Sprintf("%s://%s/wsman", scheme, net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
 
 	// Create WinRM Identify request
 	requestBody := `<?xml version="1.0" encoding="UTF-8"?>

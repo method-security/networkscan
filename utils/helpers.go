@@ -248,6 +248,31 @@ func FormatHostPort(host string, port int) string {
 	return net.JoinHostPort(host, fmt.Sprintf("%d", port))
 }
 
+// IsIPv6 returns true if the host string is an IPv6 address.
+func IsIPv6(host string) bool {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	return ip.To4() == nil
+}
+
+// FormatLDAPURL constructs a properly formatted LDAP URL that handles IPv6 addresses.
+func FormatLDAPURL(host string, port int, useTLS bool) string {
+	scheme := "ldap"
+	if useTLS {
+		scheme = "ldaps"
+	}
+	return fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(host, fmt.Sprintf("%d", port)))
+}
+
+// FormatRPCBinding constructs an ncacn_ip_tcp binding string.
+// The string binding format uses '[' as the endpoint delimiter, so IPv6 colons
+// in the network address are unambiguous: ncacn_ip_tcp:2001:db8::1[135]
+func FormatRPCBinding(host string, endpoint string) string {
+	return fmt.Sprintf("ncacn_ip_tcp:%s[%s]", host, endpoint)
+}
+
 // DetectIPVersions analyzes a list of IP addresses and returns which IP versions are present.
 // Returns a slice containing "4" for IPv4 and/or "6" for IPv6.
 // This is used to configure scanners to support the appropriate IP versions.

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	// Generated
 	common "github.com/Method-Security/networkscan/generated/go/common"
@@ -129,7 +130,8 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 // It sets up scan options based on the provided configuration and returns discovered port details.
 func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([]*discoverfern.SocketDetails, error) {
 	// Hide OS args from Naabu
-	hideOsArgsFromNaabu()
+	restoreArgs := hideOsArgsFromNaabu()
+	defer restoreArgs()
 
 	// Temporarily redirect gologger output to stderr to prevent Naabu stdout pollution
 	originalWriter := writer.NewCLI() // Create a new CLI writer to restore later
@@ -146,6 +148,7 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 	// Detect IP versions present in targets
 	ipVersions := utils.DetectIPVersions(targetHosts)
 
+	var mu sync.Mutex
 	output := result.HostResult{}
 	hosts := []*discoverfern.SocketDetails{}
 	// These settings mimic naabu's default settings with hardcoded slower rate
@@ -166,8 +169,10 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		WarmUpTime:        2,
 		InputReadTimeout:  180000000000, // This is their default
 		OnResult: func(hr *result.HostResult) {
+			mu.Lock()
 			output = *hr
 			hosts = append(hosts, parsePortScanResult(&output, ipToHostname))
+			mu.Unlock()
 		},
 	}
 
@@ -303,9 +308,11 @@ func countOpenPorts(scanResults []*discoverfern.SocketDetails) int {
 
 // hideOsArgsFromNaabu prevents Naabu from processing command line arguments.
 // This is necessary because Naabu tries to parse all command line arguments, which can conflict with our CLI.
-func hideOsArgsFromNaabu() {
+// It returns a restore function that must be called after naabu init to restore the original os.Args.
+func hideOsArgsFromNaabu() func() {
 	orig := make([]string, len(os.Args))
 	copy(orig, os.Args)
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = os.Args[:1]
+	return func() { os.Args = orig }
 }

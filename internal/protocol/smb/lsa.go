@@ -67,10 +67,14 @@ type dpapiSystem struct {
 	UserKey    [20]byte
 }
 
-func (ds *dpapiSystem) unmarshal(data []byte) {
+func (ds *dpapiSystem) unmarshal(data []byte) error {
+	if len(data) < 44 {
+		return fmt.Errorf("dpapiSystem data too short: %d bytes", len(data))
+	}
 	ds.Version = binary.LittleEndian.Uint32(data[:4])
 	copy(ds.MachineKey[:], data[4:24])
 	copy(ds.UserKey[:], data[24:44])
+	return nil
 }
 
 type nlRecord struct {
@@ -133,11 +137,11 @@ func (nr *nlRecord) unmarshal(data []byte) (err error) {
 	return
 }
 
-func pad64(data uint64) uint64 {
-	if (data & 0x3) > 0 {
-		return data + (data & 0x3)
+func padDWORD(data uint64) uint64 {
+	if data&0x3 == 0 {
+		return data
 	}
-	return data
+	return data + (4 - (data & 0x3))
 }
 
 type PrintableLSASecret struct {
@@ -185,6 +189,9 @@ func decryptLSAKey(rpccon *msrrp.RPCCon, base []byte, data []byte) (result []byt
 		}
 		lsaSecretBlob := &lsaSecretBlob{}
 		lsaSecretBlob.unmarshal(plaintext)
+		if len(lsaSecretBlob.Secret) < 84 {
+			return nil, fmt.Errorf("LSA secret too short for key extraction: %d bytes", len(lsaSecretBlob.Secret))
+		}
 		result = lsaSecretBlob.Secret[52:84]
 	} else {
 		// Seems to be for Windows XP
@@ -220,27 +227,27 @@ func GetLSASecretKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) (result
 		hSubKey, err = rpccon.OpenSubKeyExt(base, `Security\Policy\PolEKList`, msrrp.RegOptionBackupRestore, msrrp.PermMaximumAllowed)
 	}
 	if err != nil {
-		if err == fmt.Errorf("ERROR_FILE_NOT_FOUND") {
+		if strings.Contains(err.Error(), "ERROR_FILE_NOT_FOUND") {
 			VistaStyle = false
 		} else {
 			return
 		}
 	}
-	data, _, err = rpccon.QueryValue2(hSubKey, "")
-	if err != nil {
+	if VistaStyle {
+		data, _, err = rpccon.QueryValue2(hSubKey, "")
+		if err != nil {
+			_ = rpccon.CloseKeyHandle(hSubKey)
+			return
+		}
 		_ = rpccon.CloseKeyHandle(hSubKey)
-		return
-	}
-	_ = rpccon.CloseKeyHandle(hSubKey)
-
-	if !VistaStyle {
+	} else {
 		if modifyDacl {
 			hSubKey, err = rpccon.OpenSubKey(base, `Security\Policy\PolSecretEncryptionKey`)
 		} else {
 			hSubKey, err = rpccon.OpenSubKeyExt(base, `Security\Policy\PolSecretEncryptionKey`, msrrp.RegOptionBackupRestore, msrrp.PermMaximumAllowed)
 		}
 		if err != nil {
-			if err == fmt.Errorf("ERROR_FILE_NOT_FOUND") {
+			if strings.Contains(err.Error(), "ERROR_FILE_NOT_FOUND") {
 				// Could not find LSA Secret key
 			} else {
 				return
@@ -373,7 +380,10 @@ func parseSecret(rpccon *msrrp.RPCCon, base []byte, name string, secretItem []by
 		result.secrets = append(result.secrets, secret)
 	} else if strings.HasPrefix(upperName, "DPAPI_SYSTEM") {
 		dpapi := &dpapiSystem{}
-		dpapi.unmarshal(secretItem)
+		if err2 := dpapi.unmarshal(secretItem); err2 != nil {
+			err = err2
+			return
+		}
 		secret = fmt.Sprintf("dpapi_machinekey: 0x%x", dpapi.MachineKey)
 		secret2 := fmt.Sprintf("dpapi_userkey: 0x%x", dpapi.UserKey)
 		result.secrets = append(result.secrets, secret)
@@ -614,8 +624,8 @@ func GetCachedHashes(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) (result
 			if err != nil {
 				continue
 			}
-			plaintext = plaintext[int(pad64(uint64(nlRecord.UserLength)))+int(pad64(uint64(nlRecord.DomainNameLength))):]
-			domainLong, err := encoder.FromUnicodeString(plaintext[:int(pad64(uint64(nlRecord.DNSDomainNameLength)))])
+			plaintext = plaintext[int(padDWORD(uint64(nlRecord.UserLength)))+int(padDWORD(uint64(nlRecord.DomainNameLength))):]
+			domainLong, err := encoder.FromUnicodeString(plaintext[:int(padDWORD(uint64(nlRecord.DNSDomainNameLength)))])
 			if err != nil {
 				continue
 			}
@@ -1060,19 +1070,5 @@ func DumpLSASecrets(ctx context.Context, rpccon *msrrp.RPCCon, hKey []byte, modi
 
 // ExtractLSASecrets extracts LSA secrets from the SECURITY registry hive
 func ExtractLSASecrets(session *gosmb.Connection) ([]LSASecret, error) {
-	var secrets []LSASecret
-
-	// This requires:
-	// 1. Opening HKLM\SECURITY registry key
-	// 2. Extracting LSA encryption keys
-	// 3. Decrypting stored secrets like service account passwords
-
-	// Example structure
-	secrets = append(secrets, LSASecret{
-		Name:        "DefaultPassword",
-		Secret:      "placeholder_secret",
-		Description: "Example LSA secret",
-	})
-
-	return secrets, nil
+	return nil, fmt.Errorf("not implemented")
 }
