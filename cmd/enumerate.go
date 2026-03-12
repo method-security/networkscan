@@ -51,11 +51,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				return
 			}
 
-			config := enumeratefern.EnumerateServiceConfig{
-				Targets: targets,
-				Service: serviceEnum,
-				Timeout: timeout,
-			}
+			config := newEnumerateServiceConfig(targets, serviceEnum, timeout)
 
 			// Generate the report
 			report, err := enumerate.RunServiceEnumerate(cmd.Context(), config)
@@ -79,4 +75,13 @@ func (a *NetworkScan) InitEnumerateCommand() {
 
 	// Add Command to 'Root' Command
 	a.RootCmd.AddCommand(enumerateCmd)
+}
+
+// newEnumerateServiceConfig creates a new EnumerateServiceConfig with the provided parameters.
+func newEnumerateServiceConfig(targets []string, serviceEnum enumeratefern.SupportedServiceType, timeout int) enumeratefern.EnumerateServiceConfig {
+	return enumeratefern.EnumerateServiceConfig{
+		Targets: targets,
+		Service: serviceEnum,
+		Timeout: timeout,
+	}
 }
