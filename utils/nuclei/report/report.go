@@ -78,9 +78,9 @@ func addOrMergeCWE(cwes *[]*nuclei.CweDetails, cweID string) {
 
 // addOrMergeCVE adds a CVE to the slice if it doesn't exist by ID, or merges additional fields if it does
 func addOrMergeCVE(cves *[]*nuclei.CveDetails, cveID string, cvssMetrics *string, cvssScore *float64, epssScore *float64, epssPercentile *float64, cpe *string) {
-	// Check if CVE with this ID already exists
+	// Check if CVE with this ID already exists (case-insensitive)
 	for _, existing := range *cves {
-		if existing.Id == cveID {
+		if strings.EqualFold(existing.Id, cveID) {
 			// Merge additional fields if they're not already set
 			if existing.CvssMetrics == nil && cvssMetrics != nil {
 				existing.CvssMetrics = cvssMetrics
@@ -123,10 +123,7 @@ func (b *Builder) PopulateProbes(eng *nucleilib.NucleiEngine) error {
 		if _, ok := b.probeIdx[id]; ok {
 			continue
 		}
-		probe := &nuclei.NucleiProbe{
-			Payloads:       []string{},
-			MatcherDetails: &nuclei.NucleiMatcherDetails{},
-		}
+		probe := &nuclei.NucleiProbe{}
 
 		// Check if RequestsHTTP is available, otherwise use RequestsHeadless
 		if len(template.RequestsHTTP) > 0 {
@@ -287,9 +284,11 @@ func (b *Builder) Consume(ev *nout.ResultEvent) {
 			addOrMergeCVE(&cves, cveID, cvssMetrics, cvssScore, epssScore, epssPercentile, cpe)
 		}
 	}
-	classificationDetails = &nuclei.ClassificationDetails{
-		Cwes: cwes,
-		Cves: cves,
+	if len(cwes) > 0 || len(cves) > 0 {
+		classificationDetails = &nuclei.ClassificationDetails{
+			Cwes: cwes,
+			Cves: cves,
+		}
 	}
 	severity := ev.Info.SeverityHolder.Severity.String()
 
@@ -327,6 +326,11 @@ func (b *Builder) Consume(ev *nout.ResultEvent) {
 		}
 	}
 
+	var probeForFinding *nuclei.NucleiProbe
+	if probe != nil && (len(probe.Payloads) > 0 || probe.MatcherDetails != nil) {
+		probeForFinding = probe
+	}
+
 	attemptInfo.Finding = &nuclei.NucleiFindingInfo{
 		Name:           name,
 		Description:    description,
@@ -336,7 +340,7 @@ func (b *Builder) Consume(ev *nout.ResultEvent) {
 		Classification: classificationDetails,
 		Severity:       &severity,
 		Finding:        ev.MatcherStatus,
-		Probe:          probe,
+		Probe:          probeForFinding,
 		Metadata:       metadata,
 	}
 
