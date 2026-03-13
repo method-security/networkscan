@@ -118,6 +118,7 @@ type Client struct {
 	Password        string
 	NTLMHash        string // NTLM hash for pass-the-hash authentication
 	Domain          string
+	LocalAuth       bool // If true, force local auth (don't use domain from server challenge)
 	UseAnonymous    bool
 	UseNullSession  bool
 	ChallengeOnly   bool // If true, only get NTLM challenge and exit without authentication
@@ -302,7 +303,7 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 		ntlmInitiator = &spnego.NTLMInitiator{
 			User:      c.Username,
 			Domain:    c.Domain,
-			LocalUser: false, // Don't assume local user
+			LocalUser: c.LocalAuth,
 		}
 
 		// Use hash if available, otherwise use password

@@ -384,38 +384,43 @@ func GetSMBNetbiosDomain(serverInfo *commonprotocolfern.SmbServerInfo) string {
 	return ""
 }
 
-// WindowsBuildMapping maps Windows build numbers to human-readable versions
+// WindowsBuildMapping maps Windows build numbers to human-readable versions.
+// Some builds are shared between client and server editions (e.g., 19041 is both
+// Windows 10 2004 and Windows Server 2019 v2004). NTLM challenges cannot distinguish
+// between them, so ambiguous builds show both possibilities.
 var WindowsBuildMapping = map[string]string{
-	// Windows Server builds (prioritized for server environments)
+	// Unambiguous Windows Server builds
 	"20348": "Windows Server 2022",
-	"17763": "Windows Server 2019",
-	"14393": "Windows Server 2016",
-	"9600":  "Windows Server 2012 R2",
-	"9200":  "Windows Server 2012",
-	"7601":  "Windows Server 2008 R2 SP1",
-	"6002":  "Windows Server 2008 SP2",
-	"6001":  "Windows Server 2008 SP1",
-	"6000":  "Windows Server 2008",
+
+	// Builds shared between Server and Client (show both)
+	"17763": "Windows 10 1809 / Server 2019",
+	"14393": "Windows 10 1607 / Server 2016",
+	"9600":  "Windows 8.1 / Server 2012 R2",
+	"9200":  "Windows 8 / Server 2012",
+	"7601":  "Windows 7 SP1 / Server 2008 R2 SP1",
+	"6002":  "Windows Vista SP2 / Server 2008 SP2",
+	"6001":  "Windows Vista SP1 / Server 2008 SP1",
+	"6000":  "Windows Vista / Server 2008",
 
 	// Windows 11 builds
 	"22631": "Windows 11 23H2",
 	"22621": "Windows 11 22H2",
 	"22000": "Windows 11 21H2",
 
-	// Windows 10 builds (client builds that don't conflict with server)
+	// Windows 10 builds shared with Server SAC releases
 	"19045": "Windows 10 22H2",
 	"19044": "Windows 10 21H2",
 	"19043": "Windows 10 21H1",
-	"19042": "Windows 10 20H2",
-	"19041": "Windows 10 2004",
-	"18363": "Windows 10 1909",
-	"18362": "Windows 10 1903",
-	"17134": "Windows 10 1803",
-	"16299": "Windows 10 1709",
+	"19042": "Windows 10 20H2 / Server 2019 20H2",
+	"19041": "Windows 10 2004 / Server 2019 v2004",
+	"18363": "Windows 10 1909 / Server 2019 1909",
+	"18362": "Windows 10 1903 / Server 2019 1903",
+	"17134": "Windows 10 1803 / Server, version 1803",
+	"16299": "Windows 10 1709 / Server, version 1709",
 	"15063": "Windows 10 1703",
 	"10586": "Windows 10 1511",
 	"10240": "Windows 10 1507",
 
 	// Older Windows versions
-	"7600": "Windows 7",
+	"7600": "Windows 7 / Server 2008 R2",
 }
