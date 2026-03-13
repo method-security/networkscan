@@ -409,14 +409,14 @@ var WindowsBuildMapping = map[string]string{
 
 	// Windows 10 builds shared with Server SAC releases
 	"19045": "Windows 10 22H2",
-	"19044": "Windows 10 21H2 / Server 2019 21H2",
+	"19044": "Windows 10 21H2",
 	"19043": "Windows 10 21H1",
 	"19042": "Windows 10 20H2 / Server 2019 20H2",
 	"19041": "Windows 10 2004 / Server 2019 v2004",
 	"18363": "Windows 10 1909 / Server 2019 1909",
 	"18362": "Windows 10 1903 / Server 2019 1903",
-	"17134": "Windows 10 1803 / Server 2019 1803",
-	"16299": "Windows 10 1709 / Server 2016 1709",
+	"17134": "Windows 10 1803 / Server, version 1803",
+	"16299": "Windows 10 1709 / Server, version 1709",
 	"15063": "Windows 10 1703",
 	"10586": "Windows 10 1511",
 	"10240": "Windows 10 1507",
