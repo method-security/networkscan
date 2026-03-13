@@ -2,11 +2,13 @@ package nuclei
 
 import (
 	// Standard
+	"bufio"
 	"context"
 	"embed"
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +25,10 @@ var All embed.FS
 // templatePaths can contain either:
 // - Complete paths to template files (e.g., "cve/2024/CVE-2024-13624.yaml")
 // - Folder paths (e.g., "cve/2024" or "cve") - will collect all .yaml/.yml files recursively from that folder
-func GetTemplateFileSystem(ctx context.Context, templatePaths []string) ([]fs.FS, error) {
+//
+// targetPorts filters templates to only those whose target-port metadata matches at least one
+// of the given ports. Pass nil or an empty slice to disable port filtering.
+func GetTemplateFileSystem(ctx context.Context, templatePaths []string, targetPorts []int) ([]fs.FS, error) {
 	log := svc1log.FromContext(ctx)
 
 	if len(templatePaths) == 0 {
@@ -71,6 +76,20 @@ func GetTemplateFileSystem(ctx context.Context, templatePaths []string) ([]fs.FS
 
 	if len(allTemplateFiles) == 0 {
 		return nil, fmt.Errorf("no valid template files found")
+	}
+
+	// Apply port filtering if target ports are specified
+	if len(targetPorts) > 0 {
+		beforeCount := len(allTemplateFiles)
+		allTemplateFiles = filterTemplatesByPorts(allTemplateFiles, targetPorts)
+		log.Info("Filtered templates by target ports",
+			svc1log.SafeParam("targetPorts", targetPorts),
+			svc1log.SafeParam("beforeCount", beforeCount),
+			svc1log.SafeParam("afterCount", len(allTemplateFiles)))
+
+		if len(allTemplateFiles) == 0 {
+			return nil, fmt.Errorf("no templates match target ports %v", targetPorts)
+		}
 	}
 
 	log.Info("Found template files", svc1log.SafeParam("templateCount", len(allTemplateFiles)))
@@ -255,3 +274,54 @@ func (d *dirInfo) Mode() fs.FileMode  { return fs.ModeDir | 0755 }
 func (d *dirInfo) ModTime() time.Time { return time.Time{} }
 func (d *dirInfo) IsDir() bool        { return true }
 func (d *dirInfo) Sys() interface{}   { return nil }
+
+// filterTemplatesByPorts returns only templates whose target-port metadata
+// matches at least one of the given ports. Templates without a target-port
+// field are excluded.
+func filterTemplatesByPorts(templateFiles []string, ports []int) []string {
+	wanted := make(map[string]bool, len(ports))
+	for _, p := range ports {
+		wanted[strconv.Itoa(p)] = true
+	}
+
+	var matched []string
+	for _, path := range templateFiles {
+		for _, tp := range extractTargetPorts(path) {
+			if wanted[tp] {
+				matched = append(matched, path)
+				break
+			}
+		}
+	}
+	return matched
+}
+
+// extractTargetPorts reads a template file from the embedded FS and returns
+// the list of ports from the target-port metadata field. The field may be a
+// single port ("21") or comma-separated ("21,6200").
+func extractTargetPorts(templatePath string) []string {
+	f, err := All.Open(templatePath)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = f.Close() }()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "target-port:") {
+			raw := strings.TrimPrefix(line, "target-port:")
+			raw = strings.TrimSpace(raw)
+			raw = strings.Trim(raw, "\"'")
+			var ports []string
+			for _, p := range strings.Split(raw, ",") {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					ports = append(ports, p)
+				}
+			}
+			return ports
+		}
+	}
+	return nil
+}
