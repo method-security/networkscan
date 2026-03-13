@@ -391,12 +391,12 @@ func GetSMBNetbiosDomain(serverInfo *commonprotocolfern.SmbServerInfo) string {
 var WindowsBuildMapping = map[string]string{
 	// Unambiguous Windows Server builds
 	"20348": "Windows Server 2022",
-	"9200":  "Windows Server 2012",
 
 	// Builds shared between Server and Client (show both)
 	"17763": "Windows 10 1809 / Server 2019",
 	"14393": "Windows 10 1607 / Server 2016",
 	"9600":  "Windows 8.1 / Server 2012 R2",
+	"9200":  "Windows 8 / Server 2012",
 	"7601":  "Windows 7 SP1 / Server 2008 R2 SP1",
 	"6002":  "Windows Vista SP2 / Server 2008 SP2",
 	"6001":  "Windows Vista SP1 / Server 2008 SP1",
