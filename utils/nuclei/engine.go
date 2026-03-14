@@ -3,7 +3,6 @@ package nuclei
 import (
 	// Standard
 	"context"
-	"io/fs"
 	"net"
 	"strconv"
 
@@ -19,57 +18,90 @@ import (
 )
 
 // RunNucleiEngine runs the Nuclei engine with the given config for network CVE scanning.
+// Targets are grouped by port so that each group only runs templates matching
+// its port. Bare-IP targets (no port) run all templates unfiltered.
 func RunNucleiEngine(ctx context.Context, config nuclei.NucleiConfig) ([]*nuclei.NucleiTargetInfo, error) {
 	log := svc1log.FromContext(ctx)
 	log.Info("Starting Nuclei Run")
 
-	// Parse ports from targets for template filtering
-	targetPorts := parsePortsFromTargets(config.Targets)
-	if len(targetPorts) > 0 {
-		log.Info("Parsed ports from targets for template filtering",
-			svc1log.SafeParam("targetPorts", targetPorts))
-	}
+	groups := groupTargetsByPort(config.Targets)
+	log.Info("Grouped targets by port", svc1log.SafeParam("groups", len(groups)))
 
-	// Get the template and workflow file systems
-	var templateFileSystems []fs.FS
-	var err error
+	builder := report.NewBuilder()
 
-	// Get template file systems, filtering by ports extracted from targets
-	if config.TemplatePaths != nil {
-		templateFileSystems, err = templates.GetTemplateFileSystem(ctx, config.TemplatePaths, targetPorts)
+	for _, g := range groups {
+		log.Info("Running scan group",
+			svc1log.SafeParam("port", g.port),
+			svc1log.SafeParam("targets", g.targets))
+
+		var portFilter []int
+		if g.port > 0 {
+			portFilter = []int{g.port}
+		}
+
+		if config.TemplatePaths == nil {
+			continue
+		}
+
+		templateFS, err := templates.GetTemplateFileSystem(ctx, config.TemplatePaths, portFilter)
 		if err != nil {
+			log.Warn("No templates for port group, skipping",
+				svc1log.SafeParam("port", g.port),
+				svc1log.SafeParam("error", err.Error()))
+			continue
+		}
+
+		groupConfig := config
+		groupConfig.Targets = g.targets
+
+		runnerConfig := runner.GetRunnerConfig(templateFS, groupConfig)
+		if _, err := runner.Run(ctx, runnerConfig, builder); err != nil {
 			return nil, err
 		}
 	}
 
-	// Get the runner config
-	runnerConfig := runner.GetRunnerConfig(templateFileSystems, config)
-
-	// Build the report builder and run the nuclei engine
-	builder := report.NewBuilder()
-	return runner.Run(ctx, runnerConfig, builder)
+	return builder.Final(), nil
 }
 
-// parsePortsFromTargets extracts unique port numbers from target strings.
-// Targets can be "host:port", "host", or bare IPs. Targets without an explicit
-// port are skipped so that no accidental filtering occurs.
-func parsePortsFromTargets(targets []string) []int {
-	seen := make(map[int]bool)
-	var ports []int
+// targetGroup represents a set of targets that share the same port.
+type targetGroup struct {
+	port    int // 0 means bare IP — no port filter
+	targets []string
+}
+
+// groupTargetsByPort partitions targets by their port number.
+// Bare-IP targets (no port) get port=0, meaning all templates should run.
+func groupTargetsByPort(targets []string) []targetGroup {
+	order := []int{}
+	groups := make(map[int][]string)
 
 	for _, target := range targets {
 		_, portStr, err := net.SplitHostPort(target)
 		if err != nil {
+			// Bare IP — group under port 0
+			if _, ok := groups[0]; !ok {
+				order = append(order, 0)
+			}
+			groups[0] = append(groups[0], target)
 			continue
 		}
 		port, err := strconv.Atoi(portStr)
 		if err != nil || port <= 0 {
+			if _, ok := groups[0]; !ok {
+				order = append(order, 0)
+			}
+			groups[0] = append(groups[0], target)
 			continue
 		}
-		if !seen[port] {
-			seen[port] = true
-			ports = append(ports, port)
+		if _, ok := groups[port]; !ok {
+			order = append(order, port)
 		}
+		groups[port] = append(groups[port], target)
 	}
-	return ports
+
+	result := make([]targetGroup, 0, len(order))
+	for _, p := range order {
+		result = append(result, targetGroup{port: p, targets: groups[p]})
+	}
+	return result
 }
