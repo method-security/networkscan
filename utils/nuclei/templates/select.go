@@ -2,7 +2,6 @@ package nuclei
 
 import (
 	// Standard
-	"bufio"
 	"context"
 	"embed"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
+	"gopkg.in/yaml.v3"
 )
 
 // All is the CVE templates
@@ -296,32 +296,41 @@ func filterTemplatesByPorts(templateFiles []string, ports []int) []string {
 	return matched
 }
 
+// templateMetadata is the minimal structure needed to extract target-port from
+// a Nuclei template. Using proper YAML parsing avoids issues with inline
+// comments, quoting styles, and other YAML syntax that break naive string parsing.
+type templateMetadata struct {
+	Info struct {
+		Metadata map[string]interface{} `yaml:"metadata"`
+	} `yaml:"info"`
+}
+
 // extractTargetPorts reads a template file from the embedded FS and returns
-// the list of ports from the target-port metadata field. The field may be a
-// single port ("21") or comma-separated ("21,6200").
+// the list of ports from the info.metadata.target-port field. The field may be
+// a single value (string or int) or a comma-separated string ("21,6200").
 func extractTargetPorts(templatePath string) []string {
-	f, err := All.Open(templatePath)
+	data, err := fs.ReadFile(All, templatePath)
 	if err != nil {
 		return nil
 	}
-	defer func() { _ = f.Close() }()
 
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, "target-port:") {
-			raw := strings.TrimPrefix(line, "target-port:")
-			raw = strings.TrimSpace(raw)
-			raw = strings.Trim(raw, "\"'")
-			var ports []string
-			for _, p := range strings.Split(raw, ",") {
-				p = strings.TrimSpace(p)
-				if p != "" {
-					ports = append(ports, p)
-				}
-			}
-			return ports
+	var tmpl templateMetadata
+	if err := yaml.Unmarshal(data, &tmpl); err != nil {
+		return nil
+	}
+
+	raw, ok := tmpl.Info.Metadata["target-port"]
+	if !ok || raw == nil {
+		return nil
+	}
+
+	portStr := fmt.Sprintf("%v", raw)
+	var ports []string
+	for _, p := range strings.Split(portStr, ",") {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			ports = append(ports, p)
 		}
 	}
-	return nil
+	return ports
 }

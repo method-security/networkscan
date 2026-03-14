@@ -20,7 +20,8 @@ import (
 // RunNucleiEngine runs the Nuclei engine with the given config for network CVE scanning.
 // Targets are grouped by port so that each group only runs templates matching
 // its port. Bare-IP targets (no port) run all templates unfiltered.
-func RunNucleiEngine(ctx context.Context, config nuclei.NucleiConfig) ([]*nuclei.NucleiTargetInfo, error) {
+// Non-fatal errors (e.g. no templates matched a port) are returned in the warnings slice.
+func RunNucleiEngine(ctx context.Context, config nuclei.NucleiConfig) ([]*nuclei.NucleiTargetInfo, []string, error) {
 	log := svc1log.FromContext(ctx)
 	log.Info("Starting Nuclei Run")
 
@@ -28,6 +29,7 @@ func RunNucleiEngine(ctx context.Context, config nuclei.NucleiConfig) ([]*nuclei
 	log.Info("Grouped targets by port", svc1log.SafeParam("groups", len(groups)))
 
 	builder := report.NewBuilder()
+	var warnings []string
 
 	for _, g := range groups {
 		log.Info("Running scan group",
@@ -48,6 +50,7 @@ func RunNucleiEngine(ctx context.Context, config nuclei.NucleiConfig) ([]*nuclei
 			log.Warn("No templates for port group, skipping",
 				svc1log.SafeParam("port", g.port),
 				svc1log.SafeParam("error", err.Error()))
+			warnings = append(warnings, err.Error())
 			continue
 		}
 
@@ -56,11 +59,11 @@ func RunNucleiEngine(ctx context.Context, config nuclei.NucleiConfig) ([]*nuclei
 
 		runnerConfig := runner.GetRunnerConfig(templateFS, groupConfig)
 		if _, err := runner.Run(ctx, runnerConfig, builder); err != nil {
-			return nil, err
+			return nil, warnings, err
 		}
 	}
 
-	return builder.Final(), nil
+	return builder.Final(), warnings, nil
 }
 
 // targetGroup represents a set of targets that share the same port.
