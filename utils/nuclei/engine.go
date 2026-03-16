@@ -59,7 +59,7 @@ func RunNucleiEngine(ctx context.Context, config nuclei.NucleiConfig) ([]*nuclei
 
 		runnerConfig := runner.GetRunnerConfig(templateFS, groupConfig)
 		if _, err := runner.Run(ctx, runnerConfig, builder); err != nil {
-			return nil, warnings, err
+			return builder.Final(), warnings, err
 		}
 	}
 
