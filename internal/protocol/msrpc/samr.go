@@ -14,6 +14,18 @@ import (
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
+const (
+	// BuiltinDomainName is the well-known SAM domain for local groups (aliases)
+	BuiltinDomainName = "Builtin"
+	// AdministratorsRID is the RID of the local Administrators alias (S-1-5-32-544)
+	AdministratorsRID = uint32(544)
+)
+
+// LocalGroupMemberInfo represents a member of a local group discovered via SAM-R
+type LocalGroupMemberInfo struct {
+	SID string
+}
+
 // UserEntry represents a domain user with RID information for SID construction
 type UserEntry struct {
 	Username string
@@ -136,4 +148,90 @@ func (c *SAMRClient) EnumerateDomainUsers(ctx context.Context, domain string) (*
 	}
 
 	return domainInfo, nil
+}
+
+// EnumerateLocalGroupMembers connects to SAM-R on the target host and enumerates
+// members of a local group (alias) by RID. Use AdministratorsRID (544) for the
+// local Administrators group. Returns member SIDs.
+func (c *SAMRClient) EnumerateLocalGroupMembers(ctx context.Context, aliasRID uint32) ([]LocalGroupMemberInfo, error) {
+	log := svc1log.FromContext(ctx)
+
+	secCtx := gssapi.NewSecurityContext(ctx)
+
+	endpointOpts := append(c.AuthOptions, epm.EndpointMapper(secCtx, c.Host))
+	conn, err := dcerpc.Dial(secCtx, c.Host, endpointOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to SAMR service on %s: %w", c.Host, err)
+	}
+	defer func() {
+		if closeErr := conn.Close(ctx); closeErr != nil {
+			log.Warn("Failed to close SAMR connection", svc1log.SafeParam("error", closeErr.Error()))
+		}
+	}()
+
+	samrClient, err := samr.NewSamrClient(secCtx, conn, dcerpc.WithSeal())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SAMR client: %w", err)
+	}
+
+	serverHandle, err := samrClient.Connect(secCtx, &samr.ConnectRequest{
+		DesiredAccess: dtyp.AccessMaskGenericRead | dtyp.AccessMaskGenericExecute,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to SAM server: %w", err)
+	}
+
+	// Look up the Builtin domain (contains local groups/aliases)
+	builtinLookup, err := samrClient.LookupDomainInSAMServer(secCtx, &samr.LookupDomainInSAMServerRequest{
+		Server: serverHandle.Server,
+		Name:   &dtyp.UnicodeString{Buffer: BuiltinDomainName},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup Builtin domain: %w", err)
+	}
+
+	builtinHandle, err := samrClient.OpenDomain(secCtx, &samr.OpenDomainRequest{
+		Server:        serverHandle.Server,
+		DesiredAccess: dtyp.AccessMaskGenericRead | dtyp.AccessMaskGenericExecute,
+		DomainID:      builtinLookup.DomainID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to open Builtin domain: %w", err)
+	}
+
+	// Open the alias (local group) by RID
+	aliasHandle, err := samrClient.OpenAlias(secCtx, &samr.OpenAliasRequest{
+		Domain:        builtinHandle.Domain,
+		DesiredAccess: dtyp.AccessMaskGenericRead,
+		AliasID:       aliasRID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to open alias RID %d: %w", aliasRID, err)
+	}
+
+	// Get members of the alias
+	membersResp, err := samrClient.GetMembersInAlias(secCtx, &samr.GetMembersInAliasRequest{
+		AliasHandle: aliasHandle.AliasHandle,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get members in alias RID %d: %w", aliasRID, err)
+	}
+
+	var members []LocalGroupMemberInfo
+	if membersResp.Members != nil {
+		for _, sidInfo := range membersResp.Members.SIDs {
+			if sidInfo.SIDPointer != nil {
+				members = append(members, LocalGroupMemberInfo{
+					SID: sidInfo.SIDPointer.String(),
+				})
+			}
+		}
+	}
+
+	log.Info("Enumerated local group members via SAM-R",
+		svc1log.SafeParam("host", c.Host),
+		svc1log.SafeParam("aliasRID", aliasRID),
+		svc1log.SafeParam("memberCount", len(members)))
+
+	return members, nil
 }
