@@ -10,6 +10,7 @@ import (
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	ikefern "github.com/Method-Security/networkscan/generated/go/enumerate/ike"
+	ikeprotocol "github.com/Method-Security/networkscan/internal/protocol/ike"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
@@ -41,7 +42,7 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 	details.Target = host
 	details.Port = port
 	// IKEv2 probe
-	ikev2Response, err := probeUDP(ctx, target, buildIKEv2SAInitRequest())
+	ikev2Response, err := probeUDP(ctx, target, ikeprotocol.BuildIKEv2SAInitRequest())
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("IKEv2 probe failed on %s: %v", target, err))
 		log.Warn("IKEv2 probe failed", svc1log.SafeParam("target", target), svc1log.SafeParam("error", err))
@@ -49,11 +50,11 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 		ikev2 := true
 		serverInfo.Ikev2Supported = &ikev2
 		log.Info("IKEv2 response received", svc1log.SafeParam("target", target))
-		if header, parseErr := parseIKEHeader(ikev2Response); parseErr == nil {
+		if header, parseErr := ikeprotocol.ParseIKEHeader(ikev2Response); parseErr == nil {
 			version := fmt.Sprintf("IKEv%d", header.MajorVersion)
 			initiatorSPI := hex.EncodeToString(header.InitiatorSPI[:])
 			responderSPI := hex.EncodeToString(header.ResponderSPI[:])
-			exchangeType := getExchangeTypeName(header.ExchangeType)
+			exchangeType := ikeprotocol.GetExchangeTypeName(header.ExchangeType)
 			flags := fmt.Sprintf("0x%02x", header.Flags)
 			messageID := fmt.Sprintf("%d", header.MessageID)
 			serverInfo.Version = &version
@@ -62,7 +63,7 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 			serverInfo.ExchangeType = &exchangeType
 			serverInfo.Flags = &flags
 			serverInfo.MessageId = &messageID
-			vendorIDs, proposals := parseIKEPayloads(ikev2Response[28:], header.NextPayload)
+			vendorIDs, proposals := ikeprotocol.ParseIKEPayloads(ikev2Response[28:], header.NextPayload)
 			serverInfo.VendorIds = vendorIDs
 			serverInfo.EncryptionAlgorithms = proposals.EncryptionAlgs
 			serverInfo.HashAlgorithms = proposals.HashAlgs
@@ -87,7 +88,7 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 	// NAT-T probe on UDP 4500 (only if not already probing 4500)
 	if portStr != "4500" {
 		natTarget := net.JoinHostPort(host, "4500")
-		_, natErr := probeUDP(ctx, natTarget, buildIKEv2SAInitRequest())
+		_, natErr := probeUDP(ctx, natTarget, ikeprotocol.BuildIKEv2SAInitRequest())
 		if natErr == nil {
 			natT := true
 			serverInfo.NatTraversalSupported = &natT
