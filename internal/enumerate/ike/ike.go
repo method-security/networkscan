@@ -47,10 +47,10 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 		errors = append(errors, fmt.Sprintf("IKEv2 probe failed on %s: %v", target, err))
 		log.Warn("IKEv2 probe failed", svc1log.SafeParam("target", target), svc1log.SafeParam("error", err))
 	} else if len(ikev2Response) >= 28 {
-		ikev2 := true
-		serverInfo.Ikev2Supported = &ikev2
-		log.Info("IKEv2 response received", svc1log.SafeParam("target", target))
 		if header, parseErr := ikeprotocol.ParseIKEHeader(ikev2Response); parseErr == nil {
+			ikev2 := header.MajorVersion == 2
+			serverInfo.Ikev2Supported = &ikev2
+			log.Info("IKEv2 response received", svc1log.SafeParam("target", target), svc1log.SafeParam("ikev2", ikev2))
 			version := fmt.Sprintf("IKEv%d", header.MajorVersion)
 			initiatorSPI := hex.EncodeToString(header.InitiatorSPI[:])
 			responderSPI := hex.EncodeToString(header.ResponderSPI[:])
