@@ -1,0 +1,8 @@
+imports:
+  ikeProtocol: ../../common/protocol/ike.yml
+types:
+  EnumerateIkeDetails:
+    properties:
+      target: string
+      port: integer
+      serverInfo: optional<ikeProtocol.IkeServerInfo>

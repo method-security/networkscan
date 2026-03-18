@@ -13,6 +13,7 @@ import (
 	// Internal
 	ftp "github.com/Method-Security/networkscan/internal/enumerate/ftp"
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
+	ike "github.com/Method-Security/networkscan/internal/enumerate/ike"
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
@@ -143,6 +144,8 @@ func getEngine(serviceType enumeratefern.SupportedServiceType) (NetworkApplicati
 		return NetworkApplicationEngine{Library: &smb.LibraryEnumerateSMB{}}, nil
 	case enumeratefern.SupportedServiceTypeLdap:
 		return NetworkApplicationEngine{Library: &ldap.LibraryEnumerateLDAP{}}, nil
+	case enumeratefern.SupportedServiceTypeIke:
+		return NetworkApplicationEngine{Library: &ike.LibraryEnumerateIKE{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", serviceType)
 	}

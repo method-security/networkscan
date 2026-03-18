@@ -18,3 +18,12 @@ types:
       hashAlgorithms: optional<list<string>>
       authenticationMethods: optional<list<string>>
       dhGroups: optional<list<string>>
+
+      # Security assessment fields
+      aggressiveModeEnabled: optional<boolean>
+      ikev1Supported: optional<boolean>
+      ikev2Supported: optional<boolean>
+      natTraversalSupported: optional<boolean>
+      deadPeerDetectionSupported: optional<boolean>
+      weakAlgorithmsDetected: optional<list<string>>
+      vendorIdentification: optional<string>
