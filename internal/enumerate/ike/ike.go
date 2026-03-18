@@ -85,10 +85,13 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 			svc1log.SafeParam("aggressiveMode", aggressiveMode),
 			svc1log.SafeParam("ikev1", ikev1))
 	}
-	// NAT-T probe on UDP 4500 (only if not already probing 4500)
+	// NAT-T probe on UDP 4500 (only if not already probing 4500).
+	// RFC 3948 §2.3 requires a 4-byte Non-ESP marker (0x00000000) before IKE
+	// packets on port 4500; without it the receiver treats the initiator SPI
+	// bytes as an ESP SPI and silently drops the packet.
 	if portStr != "4500" {
 		natTarget := net.JoinHostPort(host, "4500")
-		_, natErr := probeUDP(ctx, natTarget, ikeprotocol.BuildIKEv2SAInitRequest())
+		_, natErr := probeUDP(ctx, natTarget, ikeprotocol.BuildNATTIKEv2SAInitRequest())
 		if natErr == nil {
 			natT := true
 			serverInfo.NatTraversalSupported = &natT

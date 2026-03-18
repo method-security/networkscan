@@ -118,6 +118,7 @@ func ParseSAPayload(data []byte, proposals *SecurityProposals) {
 }
 
 // BuildIKEv2SAInitRequest creates a minimal IKEv2 IKE_SA_INIT request packet.
+// Use this for the standard IKE port (UDP 500).
 func BuildIKEv2SAInitRequest() []byte {
 	packet := make([]byte, 28)
 	copy(packet[0:8], []byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef}) // initiator SPI
@@ -127,6 +128,18 @@ func BuildIKEv2SAInitRequest() []byte {
 	packet[19] = 0x08                                                         // flags: initiator
 	binary.BigEndian.PutUint32(packet[24:28], 28)
 	return packet
+}
+
+// BuildNATTIKEv2SAInitRequest creates an IKEv2 IKE_SA_INIT request framed for
+// UDP port 4500 per RFC 3948 §2.3: a 4-byte Non-ESP marker (0x00000000) is
+// prepended so the receiver can distinguish IKE traffic from ESP packets.
+func BuildNATTIKEv2SAInitRequest() []byte {
+	ike := BuildIKEv2SAInitRequest()
+	framed := make([]byte, 4+len(ike))
+	// Non-ESP marker: four zero bytes (RFC 3948 §2.3)
+	binary.BigEndian.PutUint32(framed[0:4], 0)
+	copy(framed[4:], ike)
+	return framed
 }
 
 // GetExchangeTypeName returns the human-readable name for an IKE exchange type.
