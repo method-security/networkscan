@@ -44,6 +44,9 @@ go.work.sum
 # Other
 .DS_Store
 
+# Build binary
+/networkscan
+
 # Ignore contents of generated, but not the folder itself
 generated/**
 

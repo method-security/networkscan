@@ -133,11 +133,15 @@ func buildIKEv1AggressiveModeProbe() []byte {
 }
 
 // isIKEv1AggressiveResponse checks if a raw IKE response is from an IKEv1
-// server that has Aggressive Mode enabled. Only exchange type 4 (Aggressive
-// Mode) is treated as proof that AM is enabled. Exchange type 5
-// (INFORMATIONAL) is not sufficient evidence, because a server may send an
-// informational notification that rejects the exchange type itself while only
-// supporting Main Mode.
+// server that has Aggressive Mode enabled.
+//
+// Exchange type 4 (Aggressive Mode) is direct confirmation. Exchange type 5
+// (INFORMATIONAL) is also treated as confirmation unless the Notification
+// payload contains INVALID-EXCHANGE-TYPE (type 7), which means the server
+// explicitly rejected the AM exchange type and only supports Main Mode. Any
+// other notification type (e.g. NO-PROPOSAL-CHOSEN=14, INVALID-ID-INFORMATION=18)
+// means the server accepted the AM exchange type but rejected our specific
+// proposal or identity — so AM is supported.
 //
 // It first validates the packet is a plausible IKE packet by checking the
 // length field matches the actual data, to avoid false positives from non-IKE
@@ -150,8 +154,16 @@ func isIKEv1AggressiveResponse(data []byte) (aggressiveMode bool, ikev1Supported
 	exchangeType := data[18]
 	if majorVersion == 1 {
 		ikev1Supported = true
-		// Exchange type 4 = Aggressive Mode.
-		aggressiveMode = exchangeType == 4
+		switch exchangeType {
+		case 4: // Aggressive Mode — direct confirmation
+			aggressiveMode = true
+		case 5: // Informational — infer from notification type
+			// INVALID-EXCHANGE-TYPE (7) means server rejected AM entirely.
+			// Any other non-zero notification means AM was accepted but our SA or ID was rejected.
+			const invalidExchangeType = 7
+			notifyType := ikeprotocol.ParseIKEv1NotificationType(data)
+			aggressiveMode = notifyType != 0 && notifyType != invalidExchangeType
+		}
 	}
 	return aggressiveMode, ikev1Supported
 }

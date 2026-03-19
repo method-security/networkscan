@@ -100,11 +100,42 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 	if portStr != "4500" {
 		natTarget := net.JoinHostPort(host, "4500")
 		// IKEv2 NAT-T probe
-		_, natErr := probeUDP(ctx, natTarget, ikeprotocol.BuildNATTIKEv2SAInitRequest())
+		natv2Response, natErr := probeUDP(ctx, natTarget, ikeprotocol.BuildNATTIKEv2SAInitRequest())
 		if natErr == nil {
 			natT := true
 			serverInfo.NatTraversalSupported = &natT
-			log.Info("NAT-T port 4500 responded to IKEv2", svc1log.SafeParam("host", host))
+			log.Info("NAT-T port 4500 responded to IKEv2", svc1log.SafeParam("host", host), svc1log.SafeParam("responseBytes", len(natv2Response)))
+			// If port 500 probes failed, parse the NAT-T response to populate serverInfo.
+			if serverInfo.Version == nil && len(natv2Response) >= 28 {
+				data := natv2Response
+				if data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 0 {
+					data = data[4:]
+				}
+				if isPlausibleIKEPacket(data) {
+					if header, parseErr := ikeprotocol.ParseIKEHeader(data); parseErr == nil {
+						ikev2 := header.MajorVersion == 2
+						serverInfo.Ikev2Supported = &ikev2
+						version := fmt.Sprintf("IKEv%d", header.MajorVersion)
+						initiatorSPI := hex.EncodeToString(header.InitiatorSPI[:])
+						responderSPI := hex.EncodeToString(header.ResponderSPI[:])
+						exchangeType := ikeprotocol.GetExchangeTypeName(header.ExchangeType)
+						flags := fmt.Sprintf("0x%02x", header.Flags)
+						messageID := fmt.Sprintf("%d", header.MessageID)
+						serverInfo.Version = &version
+						serverInfo.InitiatorSpi = &initiatorSPI
+						serverInfo.ResponderSpi = &responderSPI
+						serverInfo.ExchangeType = &exchangeType
+						serverInfo.Flags = &flags
+						serverInfo.MessageId = &messageID
+						vendorIDs, proposals := ikeprotocol.ParseIKEPayloads(data[28:], header.NextPayload)
+						serverInfo.VendorIds = vendorIDs
+						serverInfo.EncryptionAlgorithms = proposals.EncryptionAlgs
+						serverInfo.HashAlgorithms = proposals.HashAlgs
+						serverInfo.AuthenticationMethods = proposals.AuthMethods
+						serverInfo.DhGroups = proposals.DHGroups
+					}
+				}
+			}
 		}
 		// IKEv1 AM NAT-T probe — some devices only respond to AM on port 4500
 		natAMResponse, natAMErr := probeUDP(ctx, natTarget, ikeprotocol.BuildNATTIKEv1AMRequest(buildIKEv1AggressiveModeProbe()))

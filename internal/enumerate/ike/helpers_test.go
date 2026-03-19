@@ -13,6 +13,25 @@ func makeIKEHeader(majorVersion, exchangeType byte) []byte {
 	return packet
 }
 
+// makeIKEv1InformationalWithNotify builds a minimal IKEv1 Informational packet
+// with a single Notification payload carrying the given notify type.
+func makeIKEv1InformationalWithNotify(notifyType uint16) []byte {
+	// Notification payload: generic header (4) + DOI (4) + Protocol-ID (1) + SPI-size (1) + Notify type (2) = 12 bytes
+	notify := make([]byte, 12)
+	notify[0] = 0 // next payload: none
+	binary.BigEndian.PutUint16(notify[2:4], 12)        // payload length
+	binary.BigEndian.PutUint32(notify[4:8], 1)         // DOI: IPSEC
+	notify[8] = 0                                      // Protocol-ID
+	notify[9] = 0                                      // SPI size
+	binary.BigEndian.PutUint16(notify[10:12], notifyType)
+	packet := make([]byte, 28)
+	packet[16] = 11   // next payload: Notification
+	packet[17] = 1 << 4 // IKEv1
+	packet[18] = 5    // exchange type: Informational
+	binary.BigEndian.PutUint32(packet[24:28], uint32(28+len(notify)))
+	return append(packet, notify...)
+}
+
 func TestIsIKEv1AggressiveResponse(t *testing.T) {
 	t.Parallel()
 
@@ -29,9 +48,27 @@ func TestIsIKEv1AggressiveResponse(t *testing.T) {
 			wantIkev1Supported: true,
 		},
 		{
-			name:               "ikev1_informational_exchange",
+			name:               "ikev1_informational_no_payload",
 			packet:             makeIKEHeader(1, 5),
 			wantAggressiveMode: false,
+			wantIkev1Supported: true,
+		},
+		{
+			name:               "ikev1_informational_invalid_exchange_type",
+			packet:             makeIKEv1InformationalWithNotify(7),
+			wantAggressiveMode: false,
+			wantIkev1Supported: true,
+		},
+		{
+			name:               "ikev1_informational_no_proposal_chosen",
+			packet:             makeIKEv1InformationalWithNotify(14),
+			wantAggressiveMode: true,
+			wantIkev1Supported: true,
+		},
+		{
+			name:               "ikev1_informational_invalid_id_information",
+			packet:             makeIKEv1InformationalWithNotify(18),
+			wantAggressiveMode: true,
 			wantIkev1Supported: true,
 		},
 		{

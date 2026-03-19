@@ -506,6 +506,41 @@ func GetIKEv1HashName(id uint16) string {
 	}
 }
 
+// ParseIKEv1NotificationType returns the Notify Message Type from the first
+// Notification payload (type 11) in an IKEv1 Informational message, or 0 if
+// no notification payload is found or the packet is too short to parse.
+//
+// IKEv1 Notification payload layout (RFC 2408 §3.14):
+//
+//	generic header (4): next, reserved, length
+//	DOI             (4)
+//	Protocol-ID     (1)
+//	SPI-size        (1)
+//	Notify type     (2)
+func ParseIKEv1NotificationType(data []byte) uint16 {
+	if len(data) < 28 {
+		return 0
+	}
+	nextPayload := data[16]
+	offset := 28
+	for offset+4 <= len(data) && nextPayload != 0 {
+		payloadNext := data[offset]
+		payloadLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
+		if payloadLen < 4 || offset+payloadLen > len(data) {
+			break
+		}
+		if nextPayload == 11 { // Notification payload
+			// Need at least 12 bytes: generic header (4) + DOI (4) + Protocol-ID (1) + SPI-size (1) + Notify type (2)
+			if payloadLen >= 12 {
+				return binary.BigEndian.Uint16(data[offset+10 : offset+12])
+			}
+		}
+		nextPayload = payloadNext
+		offset += payloadLen
+	}
+	return 0
+}
+
 // AppendUnique appends item to slice only if it is not already present.
 func AppendUnique(slice []string, item string) []string {
 	for _, s := range slice {
