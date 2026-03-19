@@ -44,7 +44,6 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 	// IKEv2 probe
 	ikev2Response, err := probeUDP(ctx, target, ikeprotocol.BuildIKEv2SAInitRequest())
 	if err != nil {
-		errors = append(errors, fmt.Sprintf("IKEv2 probe failed on %s: %v", target, err))
 		log.Warn("IKEv2 probe failed", svc1log.SafeParam("target", target), svc1log.SafeParam("error", err))
 	} else if len(ikev2Response) >= 28 {
 		if header, parseErr := ikeprotocol.ParseIKEHeader(ikev2Response); parseErr == nil {
@@ -74,28 +73,72 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 	// IKEv1 Aggressive Mode probe
 	amResponse, err := probeUDP(ctx, target, buildIKEv1AggressiveModeProbe())
 	if err != nil {
-		errors = append(errors, fmt.Sprintf("IKEv1 AM probe failed on %s: %v", target, err))
 		log.Warn("IKEv1 AM probe failed", svc1log.SafeParam("target", target), svc1log.SafeParam("error", err))
 	} else if len(amResponse) >= 28 {
 		aggressiveMode, ikev1 := isIKEv1AggressiveResponse(amResponse)
 		serverInfo.AggressiveModeEnabled = &aggressiveMode
 		serverInfo.Ikev1Supported = &ikev1
+		ikev1Proposals := ikeprotocol.ParseIKEv1SAResponse(amResponse)
+		for _, a := range ikev1Proposals.EncryptionAlgs {
+			serverInfo.EncryptionAlgorithms = ikeprotocol.AppendUnique(serverInfo.EncryptionAlgorithms, a)
+		}
+		for _, a := range ikev1Proposals.HashAlgs {
+			serverInfo.HashAlgorithms = ikeprotocol.AppendUnique(serverInfo.HashAlgorithms, a)
+		}
+		for _, g := range ikev1Proposals.DHGroups {
+			serverInfo.DhGroups = ikeprotocol.AppendUnique(serverInfo.DhGroups, g)
+		}
 		log.Info("IKEv1 AM probe response",
 			svc1log.SafeParam("target", target),
 			svc1log.SafeParam("aggressiveMode", aggressiveMode),
 			svc1log.SafeParam("ikev1", ikev1))
 	}
-	// NAT-T probe on UDP 4500 (only if not already probing 4500).
+	// NAT-T probes on UDP 4500 (only if not already probing 4500).
 	// RFC 3948 §2.3 requires a 4-byte Non-ESP marker (0x00000000) before IKE
 	// packets on port 4500; without it the receiver treats the initiator SPI
 	// bytes as an ESP SPI and silently drops the packet.
 	if portStr != "4500" {
 		natTarget := net.JoinHostPort(host, "4500")
+		// IKEv2 NAT-T probe
 		_, natErr := probeUDP(ctx, natTarget, ikeprotocol.BuildNATTIKEv2SAInitRequest())
 		if natErr == nil {
 			natT := true
 			serverInfo.NatTraversalSupported = &natT
-			log.Info("NAT-T port 4500 responded", svc1log.SafeParam("host", host))
+			log.Info("NAT-T port 4500 responded to IKEv2", svc1log.SafeParam("host", host))
+		}
+		// IKEv1 AM NAT-T probe — some devices only respond to AM on port 4500
+		natAMResponse, natAMErr := probeUDP(ctx, natTarget, ikeprotocol.BuildNATTIKEv1AMRequest(buildIKEv1AggressiveModeProbe()))
+		if natAMErr == nil {
+			natT := true
+			serverInfo.NatTraversalSupported = &natT
+			if len(natAMResponse) >= 28 {
+				// Strip Non-ESP marker (0x00000000) if present per RFC 3948 §2.3.
+				// Some implementations omit it, so only strip if the first 4 bytes are zeros.
+				data := natAMResponse
+				if data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 0 {
+					data = data[4:]
+				}
+				aggressiveMode, ikev1 := isIKEv1AggressiveResponse(data)
+				if aggressiveMode {
+					serverInfo.AggressiveModeEnabled = &aggressiveMode
+				}
+				if ikev1 {
+					serverInfo.Ikev1Supported = &ikev1
+				}
+				ikev1Proposals := ikeprotocol.ParseIKEv1SAResponse(data)
+				for _, a := range ikev1Proposals.EncryptionAlgs {
+					serverInfo.EncryptionAlgorithms = ikeprotocol.AppendUnique(serverInfo.EncryptionAlgorithms, a)
+				}
+				for _, a := range ikev1Proposals.HashAlgs {
+					serverInfo.HashAlgorithms = ikeprotocol.AppendUnique(serverInfo.HashAlgorithms, a)
+				}
+				for _, g := range ikev1Proposals.DHGroups {
+					serverInfo.DhGroups = ikeprotocol.AppendUnique(serverInfo.DhGroups, g)
+				}
+				log.Info("NAT-T port 4500 responded to IKEv1 AM",
+					svc1log.SafeParam("host", host),
+					svc1log.SafeParam("aggressiveMode", aggressiveMode))
+			}
 		}
 	}
 	// Vendor ID analysis
