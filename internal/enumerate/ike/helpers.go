@@ -133,11 +133,15 @@ func buildIKEv1AggressiveModeProbe() []byte {
 }
 
 // isIKEv1AggressiveResponse checks if a raw IKE response is from an IKEv1
-// server that has Aggressive Mode enabled. Any IKEv1 response to an AM probe
-// (exchange type 4 = accepted, or 5 = INFORMATIONAL/NO_PROPOSAL_CHOSEN) means
-// AM is active — a server with AM disabled would not respond to AM probes at all.
-// It first validates the packet is a plausible IKE packet by checking the length
-// field matches the actual data, to avoid false positives from non-IKE protocols.
+// server that has Aggressive Mode enabled. Only exchange type 4 (Aggressive
+// Mode) is treated as proof that AM is enabled. Exchange type 5
+// (INFORMATIONAL) is not sufficient evidence, because a server may send an
+// informational notification that rejects the exchange type itself while only
+// supporting Main Mode.
+//
+// It first validates the packet is a plausible IKE packet by checking the
+// length field matches the actual data, to avoid false positives from non-IKE
+// protocols.
 func isIKEv1AggressiveResponse(data []byte) (aggressiveMode bool, ikev1Supported bool) {
 	if !isPlausibleIKEPacket(data) {
 		return false, false
@@ -146,11 +150,8 @@ func isIKEv1AggressiveResponse(data []byte) (aggressiveMode bool, ikev1Supported
 	exchangeType := data[18]
 	if majorVersion == 1 {
 		ikev1Supported = true
-		// Exchange type 4 = full AM handshake accepted.
-		// Exchange type 5 = INFORMATIONAL (e.g. NO_PROPOSAL_CHOSEN): the server
-		// processed the AM request but rejected our specific proposals, which
-		// still proves AM is enabled.
-		aggressiveMode = exchangeType == 4 || exchangeType == 5
+		// Exchange type 4 = Aggressive Mode.
+		aggressiveMode = exchangeType == 4
 	}
 	return aggressiveMode, ikev1Supported
 }

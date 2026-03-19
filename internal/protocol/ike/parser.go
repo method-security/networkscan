@@ -130,7 +130,7 @@ func BuildIKEv2SAInitRequest() []byte {
 	// --- Transforms (8 bytes each, no variable-length attributes) ---
 	// Last/More byte: 0x03 = more transforms, 0x00 = last transform.
 	transforms := []byte{
-		0x03, 0x00, 0x00, 0x08, 0x01, 0x00, 0x00, 0x05, // Enc:  3DES-CBC      (type 1, id 5)
+		0x03, 0x00, 0x00, 0x08, 0x01, 0x00, 0x00, 0x03, // Enc:  3DES-CBC      (type 1, id 3)
 		0x03, 0x00, 0x00, 0x08, 0x02, 0x00, 0x00, 0x02, // PRF:  HMAC-SHA1     (type 2, id 2)
 		0x03, 0x00, 0x00, 0x08, 0x03, 0x00, 0x00, 0x02, // Auth: HMAC-SHA1-96  (type 3, id 2)
 		0x00, 0x00, 0x00, 0x08, 0x04, 0x00, 0x00, 0x02, // DH:   MODP-1024     (type 4, id 2)
@@ -231,15 +231,17 @@ func GetExchangeTypeName(t byte) string {
 func GetEncryptionAlgorithmName(id uint16) string {
 	switch id {
 	case 1:
-		return "DES-CBC"
+		return "DES-IV64"
 	case 2:
-		return "IDEA-CBC"
+		return "DES"
 	case 3:
-		return "Blowfish-CBC"
-	case 5:
 		return "3DES-CBC"
-	case 7:
+	case 5:
+		return "IDEA-CBC"
+	case 6:
 		return "CAST-CBC"
+	case 7:
+		return "Blowfish-CBC"
 	case 11:
 		return "NULL"
 	case 12:
