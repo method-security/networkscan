@@ -425,7 +425,13 @@ func parseIKEv1Proposals(data []byte, proposals *SecurityProposals) {
 			if txLen < 8 {
 				break
 			}
-			parseIKEv1TransformAttrs(data[txOffset+8:txOffset+txLen], proposals)
+			transformEnd := txOffset + txLen
+			// txLen is untrusted network input; ensure it cannot overrun the
+			// proposal bounds before slicing transform attributes.
+			if transformEnd > offset+propLen || transformEnd > len(data) {
+				break
+			}
+			parseIKEv1TransformAttrs(data[txOffset+8:transformEnd], proposals)
 			txOffset += txLen
 		}
 		if data[offset] == 0 {
