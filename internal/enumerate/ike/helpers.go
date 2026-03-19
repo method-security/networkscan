@@ -3,10 +3,13 @@ package ike
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
+	"fmt"
 	"net"
 	"strings"
 	"time"
 
+	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	ikeprotocol "github.com/Method-Security/networkscan/internal/protocol/ike"
 )
 
@@ -216,4 +219,57 @@ func extractVendorIdentification(vendorIDs []string) *string {
 		}
 	}
 	return nil
+}
+
+// stripNonESPMarker removes the 4-byte RFC 3948 Non-ESP marker (0x00000000)
+// from the front of data if present, returning the remaining bytes.
+func stripNonESPMarker(data []byte) []byte {
+	if len(data) >= 4 && data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 0 {
+		return data[4:]
+	}
+	return data
+}
+
+// applyIKEv2ResponseToServerInfo parses an IKEv2 response packet and populates
+// the corresponding fields on si. The caller must ensure data is a valid IKE
+// packet (len >= 28) with any Non-ESP marker already stripped.
+func applyIKEv2ResponseToServerInfo(data []byte, si *commonprotocolfern.IkeServerInfo) {
+	header, err := ikeprotocol.ParseIKEHeader(data)
+	if err != nil {
+		return
+	}
+	ikev2 := header.MajorVersion == 2
+	si.Ikev2Supported = &ikev2
+	version := fmt.Sprintf("IKEv%d", header.MajorVersion)
+	initiatorSPI := hex.EncodeToString(header.InitiatorSPI[:])
+	responderSPI := hex.EncodeToString(header.ResponderSPI[:])
+	exchangeType := ikeprotocol.GetExchangeTypeName(header.ExchangeType)
+	flags := fmt.Sprintf("0x%02x", header.Flags)
+	messageID := fmt.Sprintf("%d", header.MessageID)
+	si.Version = &version
+	si.InitiatorSpi = &initiatorSPI
+	si.ResponderSpi = &responderSPI
+	si.ExchangeType = &exchangeType
+	si.Flags = &flags
+	si.MessageId = &messageID
+	vendorIDs, proposals := ikeprotocol.ParseIKEPayloads(data[28:], header.NextPayload)
+	si.VendorIds = vendorIDs
+	si.EncryptionAlgorithms = proposals.EncryptionAlgs
+	si.HashAlgorithms = proposals.HashAlgs
+	si.AuthenticationMethods = proposals.AuthMethods
+	si.DhGroups = proposals.DHGroups
+}
+
+// mergeIKEv1ProposalsIntoServerInfo appends unique algorithm names from
+// proposals into the corresponding si slices.
+func mergeIKEv1ProposalsIntoServerInfo(proposals *ikeprotocol.SecurityProposals, si *commonprotocolfern.IkeServerInfo) {
+	for _, a := range proposals.EncryptionAlgs {
+		si.EncryptionAlgorithms = ikeprotocol.AppendUnique(si.EncryptionAlgorithms, a)
+	}
+	for _, a := range proposals.HashAlgs {
+		si.HashAlgorithms = ikeprotocol.AppendUnique(si.HashAlgorithms, a)
+	}
+	for _, g := range proposals.DHGroups {
+		si.DhGroups = ikeprotocol.AppendUnique(si.DhGroups, g)
+	}
 }

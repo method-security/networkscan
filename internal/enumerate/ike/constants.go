@@ -18,7 +18,10 @@ var knownVendorIDs = map[string]string{
 const dpdVendorIDPrefix = "afcad71368a1f1c96b8696fc7757"
 
 // weakEncryptionAlgorithms are encryption algorithms considered cryptographically insecure.
+// Includes both IKEv2 names (DES-IV64, DES, NULL) and IKEv1 names (DES-CBC).
 var weakEncryptionAlgorithms = []string{
+	"DES-IV64",
+	"DES",
 	"DES-CBC",
 	"NULL",
 }

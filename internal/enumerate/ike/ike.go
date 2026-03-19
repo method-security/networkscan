@@ -2,7 +2,6 @@ package ike
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"net"
 	"strconv"
@@ -46,28 +45,9 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 	if err != nil {
 		log.Warn("IKEv2 probe failed", svc1log.SafeParam("target", target), svc1log.SafeParam("error", err))
 	} else if len(ikev2Response) >= 28 {
-		if header, parseErr := ikeprotocol.ParseIKEHeader(ikev2Response); parseErr == nil {
-			ikev2 := header.MajorVersion == 2
-			serverInfo.Ikev2Supported = &ikev2
-			log.Info("IKEv2 response received", svc1log.SafeParam("target", target), svc1log.SafeParam("ikev2", ikev2))
-			version := fmt.Sprintf("IKEv%d", header.MajorVersion)
-			initiatorSPI := hex.EncodeToString(header.InitiatorSPI[:])
-			responderSPI := hex.EncodeToString(header.ResponderSPI[:])
-			exchangeType := ikeprotocol.GetExchangeTypeName(header.ExchangeType)
-			flags := fmt.Sprintf("0x%02x", header.Flags)
-			messageID := fmt.Sprintf("%d", header.MessageID)
-			serverInfo.Version = &version
-			serverInfo.InitiatorSpi = &initiatorSPI
-			serverInfo.ResponderSpi = &responderSPI
-			serverInfo.ExchangeType = &exchangeType
-			serverInfo.Flags = &flags
-			serverInfo.MessageId = &messageID
-			vendorIDs, proposals := ikeprotocol.ParseIKEPayloads(ikev2Response[28:], header.NextPayload)
-			serverInfo.VendorIds = vendorIDs
-			serverInfo.EncryptionAlgorithms = proposals.EncryptionAlgs
-			serverInfo.HashAlgorithms = proposals.HashAlgs
-			serverInfo.AuthenticationMethods = proposals.AuthMethods
-			serverInfo.DhGroups = proposals.DHGroups
+		applyIKEv2ResponseToServerInfo(ikev2Response, &serverInfo)
+		if serverInfo.Ikev2Supported != nil {
+			log.Info("IKEv2 response received", svc1log.SafeParam("target", target), svc1log.SafeParam("ikev2", *serverInfo.Ikev2Supported))
 		}
 	}
 	// IKEv1 Aggressive Mode probe
@@ -78,16 +58,7 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 		aggressiveMode, ikev1 := isIKEv1AggressiveResponse(amResponse)
 		serverInfo.AggressiveModeEnabled = &aggressiveMode
 		serverInfo.Ikev1Supported = &ikev1
-		ikev1Proposals := ikeprotocol.ParseIKEv1SAResponse(amResponse)
-		for _, a := range ikev1Proposals.EncryptionAlgs {
-			serverInfo.EncryptionAlgorithms = ikeprotocol.AppendUnique(serverInfo.EncryptionAlgorithms, a)
-		}
-		for _, a := range ikev1Proposals.HashAlgs {
-			serverInfo.HashAlgorithms = ikeprotocol.AppendUnique(serverInfo.HashAlgorithms, a)
-		}
-		for _, g := range ikev1Proposals.DHGroups {
-			serverInfo.DhGroups = ikeprotocol.AppendUnique(serverInfo.DhGroups, g)
-		}
+		mergeIKEv1ProposalsIntoServerInfo(ikeprotocol.ParseIKEv1SAResponse(amResponse), &serverInfo)
 		log.Info("IKEv1 AM probe response",
 			svc1log.SafeParam("target", target),
 			svc1log.SafeParam("aggressiveMode", aggressiveMode),
@@ -106,34 +77,10 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 			serverInfo.NatTraversalSupported = &natT
 			log.Info("NAT-T port 4500 responded to IKEv2", svc1log.SafeParam("host", host), svc1log.SafeParam("responseBytes", len(natv2Response)))
 			// If port 500 probes failed, parse the NAT-T response to populate serverInfo.
-			if serverInfo.Version == nil && len(natv2Response) >= 28 {
-				data := natv2Response
-				if data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 0 {
-					data = data[4:]
-				}
+			if serverInfo.Version == nil {
+				data := stripNonESPMarker(natv2Response)
 				if isPlausibleIKEPacket(data) {
-					if header, parseErr := ikeprotocol.ParseIKEHeader(data); parseErr == nil {
-						ikev2 := header.MajorVersion == 2
-						serverInfo.Ikev2Supported = &ikev2
-						version := fmt.Sprintf("IKEv%d", header.MajorVersion)
-						initiatorSPI := hex.EncodeToString(header.InitiatorSPI[:])
-						responderSPI := hex.EncodeToString(header.ResponderSPI[:])
-						exchangeType := ikeprotocol.GetExchangeTypeName(header.ExchangeType)
-						flags := fmt.Sprintf("0x%02x", header.Flags)
-						messageID := fmt.Sprintf("%d", header.MessageID)
-						serverInfo.Version = &version
-						serverInfo.InitiatorSpi = &initiatorSPI
-						serverInfo.ResponderSpi = &responderSPI
-						serverInfo.ExchangeType = &exchangeType
-						serverInfo.Flags = &flags
-						serverInfo.MessageId = &messageID
-						vendorIDs, proposals := ikeprotocol.ParseIKEPayloads(data[28:], header.NextPayload)
-						serverInfo.VendorIds = vendorIDs
-						serverInfo.EncryptionAlgorithms = proposals.EncryptionAlgs
-						serverInfo.HashAlgorithms = proposals.HashAlgs
-						serverInfo.AuthenticationMethods = proposals.AuthMethods
-						serverInfo.DhGroups = proposals.DHGroups
-					}
+					applyIKEv2ResponseToServerInfo(data, &serverInfo)
 				}
 			}
 		}
@@ -145,10 +92,7 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 			if len(natAMResponse) >= 28 {
 				// Strip Non-ESP marker (0x00000000) if present per RFC 3948 §2.3.
 				// Some implementations omit it, so only strip if the first 4 bytes are zeros.
-				data := natAMResponse
-				if data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 0 {
-					data = data[4:]
-				}
+				data := stripNonESPMarker(natAMResponse)
 				aggressiveMode, ikev1 := isIKEv1AggressiveResponse(data)
 				if aggressiveMode {
 					serverInfo.AggressiveModeEnabled = &aggressiveMode
@@ -156,16 +100,7 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 				if ikev1 {
 					serverInfo.Ikev1Supported = &ikev1
 				}
-				ikev1Proposals := ikeprotocol.ParseIKEv1SAResponse(data)
-				for _, a := range ikev1Proposals.EncryptionAlgs {
-					serverInfo.EncryptionAlgorithms = ikeprotocol.AppendUnique(serverInfo.EncryptionAlgorithms, a)
-				}
-				for _, a := range ikev1Proposals.HashAlgs {
-					serverInfo.HashAlgorithms = ikeprotocol.AppendUnique(serverInfo.HashAlgorithms, a)
-				}
-				for _, g := range ikev1Proposals.DHGroups {
-					serverInfo.DhGroups = ikeprotocol.AppendUnique(serverInfo.DhGroups, g)
-				}
+				mergeIKEv1ProposalsIntoServerInfo(ikeprotocol.ParseIKEv1SAResponse(data), &serverInfo)
 				log.Info("NAT-T port 4500 responded to IKEv1 AM",
 					svc1log.SafeParam("host", host),
 					svc1log.SafeParam("aggressiveMode", aggressiveMode))
