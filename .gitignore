@@ -47,4 +47,3 @@ go.work.sum
 # Ignore contents of generated, but not the folder itself
 generated/**
 
-/networkscan
