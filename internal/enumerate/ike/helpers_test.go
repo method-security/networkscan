@@ -3,6 +3,8 @@ package ike
 import (
 	"encoding/binary"
 	"testing"
+
+	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 )
 
 func makeIKEHeader(majorVersion, exchangeType byte) []byte {
@@ -102,5 +104,37 @@ func TestIsIKEv1AggressiveResponse(t *testing.T) {
 				t.Fatalf("ikev1Supported = %v, want %v", gotIkev1Supported, tt.wantIkev1Supported)
 			}
 		})
+	}
+}
+
+func TestApplyIKEv2ResponseToServerInfoPreservesExistingIKEv1Data(t *testing.T) {
+	t.Parallel()
+
+	si := commonprotocolfern.IkeServerInfo{
+		VendorIds:              []string{"ikev1-vendor"},
+		EncryptionAlgorithms:   []string{"DES-CBC"},
+		HashAlgorithms:         []string{"MD5"},
+		AuthenticationMethods:  []string{"PSK"},
+		DhGroups:               []string{"MODP-768"},
+	}
+
+	// Minimal valid IKEv2 packet with no payloads.
+	packet := makeIKEHeader(2, 34)
+	applyIKEv2ResponseToServerInfo(packet, &si)
+
+	if len(si.VendorIds) != 1 || si.VendorIds[0] != "ikev1-vendor" {
+		t.Fatalf("VendorIds overwritten: got %v", si.VendorIds)
+	}
+	if len(si.EncryptionAlgorithms) != 1 || si.EncryptionAlgorithms[0] != "DES-CBC" {
+		t.Fatalf("EncryptionAlgorithms overwritten: got %v", si.EncryptionAlgorithms)
+	}
+	if len(si.HashAlgorithms) != 1 || si.HashAlgorithms[0] != "MD5" {
+		t.Fatalf("HashAlgorithms overwritten: got %v", si.HashAlgorithms)
+	}
+	if len(si.AuthenticationMethods) != 1 || si.AuthenticationMethods[0] != "PSK" {
+		t.Fatalf("AuthenticationMethods overwritten: got %v", si.AuthenticationMethods)
+	}
+	if len(si.DhGroups) != 1 || si.DhGroups[0] != "MODP-768" {
+		t.Fatalf("DhGroups overwritten: got %v", si.DhGroups)
 	}
 }

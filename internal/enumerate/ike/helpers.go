@@ -253,11 +253,21 @@ func applyIKEv2ResponseToServerInfo(data []byte, si *commonprotocolfern.IkeServe
 	si.Flags = &flags
 	si.MessageId = &messageID
 	vendorIDs, proposals := ikeprotocol.ParseIKEPayloads(data[28:], header.NextPayload)
-	si.VendorIds = vendorIDs
-	si.EncryptionAlgorithms = proposals.EncryptionAlgs
-	si.HashAlgorithms = proposals.HashAlgs
-	si.AuthenticationMethods = proposals.AuthMethods
-	si.DhGroups = proposals.DHGroups
+	for _, vid := range vendorIDs {
+		si.VendorIds = ikeprotocol.AppendUnique(si.VendorIds, vid)
+	}
+	for _, a := range proposals.EncryptionAlgs {
+		si.EncryptionAlgorithms = ikeprotocol.AppendUnique(si.EncryptionAlgorithms, a)
+	}
+	for _, a := range proposals.HashAlgs {
+		si.HashAlgorithms = ikeprotocol.AppendUnique(si.HashAlgorithms, a)
+	}
+	for _, a := range proposals.AuthMethods {
+		si.AuthenticationMethods = ikeprotocol.AppendUnique(si.AuthenticationMethods, a)
+	}
+	for _, g := range proposals.DHGroups {
+		si.DhGroups = ikeprotocol.AppendUnique(si.DhGroups, g)
+	}
 }
 
 // mergeIKEv1ProposalsIntoServerInfo appends unique algorithm names from
