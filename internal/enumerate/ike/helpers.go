@@ -173,30 +173,47 @@ func isIKEv1AggressiveResponse(data []byte) (aggressiveMode bool, ikev1Supported
 
 // --- Security Assessment Helpers ---
 // detectWeakAlgorithms returns a list of weak algorithm names found in the SA proposals.
-func detectWeakAlgorithms(encAlgs, hashAlgs, dhGroups []string) []string {
+func detectWeakAlgorithms(
+	encAlgs []commonprotocolfern.IkeEncryptionAlgorithm,
+	hashAlgs []commonprotocolfern.IkeHashAlgorithm,
+	dhGroups []commonprotocolfern.IkeDhGroup,
+) []string {
 	var weak []string
+	weakEncryptionSet := weakAlgorithmSet(weakEncryptionAlgorithms)
+	weakHashSet := weakAlgorithmSet(weakHashAlgorithms)
+	weakDHSet := weakAlgorithmSet(weakDHGroups)
+
 	for _, alg := range encAlgs {
-		for _, w := range weakEncryptionAlgorithms {
-			if alg == w {
-				weak = ikeprotocol.AppendUnique(weak, alg)
-			}
+		normalized := normalizeAlgorithmName(string(alg))
+		if _, ok := weakEncryptionSet[normalized]; ok {
+			weak = ikeprotocol.AppendUnique(weak, normalized)
 		}
 	}
 	for _, alg := range hashAlgs {
-		for _, w := range weakHashAlgorithms {
-			if alg == w {
-				weak = ikeprotocol.AppendUnique(weak, alg)
-			}
+		normalized := normalizeAlgorithmName(string(alg))
+		if _, ok := weakHashSet[normalized]; ok {
+			weak = ikeprotocol.AppendUnique(weak, normalized)
 		}
 	}
 	for _, g := range dhGroups {
-		for _, w := range weakDHGroups {
-			if g == w {
-				weak = ikeprotocol.AppendUnique(weak, g)
-			}
+		normalized := normalizeAlgorithmName(string(g))
+		if _, ok := weakDHSet[normalized]; ok {
+			weak = ikeprotocol.AppendUnique(weak, normalized)
 		}
 	}
 	return weak
+}
+
+func weakAlgorithmSet(items []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		set[normalizeAlgorithmName(item)] = struct{}{}
+	}
+	return set
+}
+
+func normalizeAlgorithmName(name string) string {
+	return strings.ReplaceAll(name, "_", "-")
 }
 
 // checkDPDSupport returns true if any vendor ID matches the Dead Peer Detection magic.
@@ -256,30 +273,17 @@ func applyIKEv2ResponseToServerInfo(data []byte, si *commonprotocolfern.IkeServe
 	for _, vid := range vendorIDs {
 		si.VendorIds = ikeprotocol.AppendUnique(si.VendorIds, vid)
 	}
-	for _, a := range proposals.EncryptionAlgs {
-		si.EncryptionAlgorithms = ikeprotocol.AppendUnique(si.EncryptionAlgorithms, a)
-	}
-	for _, a := range proposals.HashAlgs {
-		si.HashAlgorithms = ikeprotocol.AppendUnique(si.HashAlgorithms, a)
-	}
-	for _, a := range proposals.AuthMethods {
-		si.AuthenticationMethods = ikeprotocol.AppendUnique(si.AuthenticationMethods, a)
-	}
-	for _, g := range proposals.DHGroups {
-		si.DhGroups = ikeprotocol.AppendUnique(si.DhGroups, g)
-	}
+	si.EncryptionAlgorithms = ikeprotocol.MergeFernEncryptionAlgorithms(si.EncryptionAlgorithms, proposals.EncryptionAlgs)
+	si.HashAlgorithms = ikeprotocol.MergeFernHashAlgorithms(si.HashAlgorithms, proposals.HashAlgs)
+	si.AuthenticationMethods = ikeprotocol.MergeFernAuthenticationMethods(si.AuthenticationMethods, proposals.AuthMethods)
+	si.DhGroups = ikeprotocol.MergeFernDHGroups(si.DhGroups, proposals.DHGroups)
 }
 
 // mergeIKEv1ProposalsIntoServerInfo appends unique algorithm names from
 // proposals into the corresponding si slices.
 func mergeIKEv1ProposalsIntoServerInfo(proposals *ikeprotocol.SecurityProposals, si *commonprotocolfern.IkeServerInfo) {
-	for _, a := range proposals.EncryptionAlgs {
-		si.EncryptionAlgorithms = ikeprotocol.AppendUnique(si.EncryptionAlgorithms, a)
-	}
-	for _, a := range proposals.HashAlgs {
-		si.HashAlgorithms = ikeprotocol.AppendUnique(si.HashAlgorithms, a)
-	}
-	for _, g := range proposals.DHGroups {
-		si.DhGroups = ikeprotocol.AppendUnique(si.DhGroups, g)
-	}
+	si.EncryptionAlgorithms = ikeprotocol.MergeFernEncryptionAlgorithms(si.EncryptionAlgorithms, proposals.EncryptionAlgs)
+	si.HashAlgorithms = ikeprotocol.MergeFernHashAlgorithms(si.HashAlgorithms, proposals.HashAlgs)
+	si.AuthenticationMethods = ikeprotocol.MergeFernAuthenticationMethods(si.AuthenticationMethods, proposals.AuthMethods)
+	si.DhGroups = ikeprotocol.MergeFernDHGroups(si.DhGroups, proposals.DHGroups)
 }

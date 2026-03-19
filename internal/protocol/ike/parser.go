@@ -455,6 +455,8 @@ func parseIKEv1TransformAttrs(data []byte, proposals *SecurityProposals) {
 				proposals.EncryptionAlgs = AppendUnique(proposals.EncryptionAlgs, GetIKEv1EncryptionName(attrVal))
 			case 2: // Hash Algorithm
 				proposals.HashAlgs = AppendUnique(proposals.HashAlgs, GetIKEv1HashName(attrVal))
+			case 3: // Authentication Method
+				proposals.AuthMethods = AppendUnique(proposals.AuthMethods, GetIKEv1AuthMethodName(attrVal))
 			case 4: // Group Description — same numeric IDs as IKEv2
 				proposals.DHGroups = AppendUnique(proposals.DHGroups, GetDHGroupName(attrVal))
 			}
@@ -503,6 +505,27 @@ func GetIKEv1HashName(id uint16) string {
 		return "SHA512"
 	default:
 		return fmt.Sprintf("HASH_%d", id)
+	}
+}
+
+// GetIKEv1AuthMethodName returns the name for an IKEv1 authentication method ID
+// (RFC 2409 / IANA "ISAKMP Authentication Method" registry).
+func GetIKEv1AuthMethodName(id uint16) string {
+	switch id {
+	case 1:
+		return "PSK"
+	case 2:
+		return "DSS_SIGNATURE"
+	case 3:
+		return "RSA_SIGNATURE"
+	case 9:
+		return "ECDSA_SHA256_P256"
+	case 10:
+		return "ECDSA_SHA384_P384"
+	case 11:
+		return "ECDSA_SHA512_P521"
+	default:
+		return fmt.Sprintf("AUTH_METHOD_%d", id)
 	}
 }
 
