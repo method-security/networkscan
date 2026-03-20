@@ -3,12 +3,28 @@ package ike
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
+	"fmt"
 	"net"
 	"strings"
 	"time"
 
+	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	ikeprotocol "github.com/Method-Security/networkscan/internal/protocol/ike"
 )
+
+// isPlausibleIKEPacket performs a sanity check on raw data before trusting IKE header fields.
+// It validates that the length field in the IKE header matches the actual data length,
+// rejecting non-IKE packets that happen to have coincidental byte values.
+func isPlausibleIKEPacket(data []byte) bool {
+	if len(data) < 28 {
+		return false
+	}
+	declaredLen := binary.BigEndian.Uint32(data[24:28])
+	// The declared length must match actual data length exactly (±0 for UDP).
+	// Allow declared <= actual to handle truncation by intermediate devices.
+	return declaredLen >= 28 && int(declaredLen) <= len(data)
+}
 
 // --- UDP Probe ---
 // probeUDP sends a UDP packet to addr and returns the response.
@@ -27,11 +43,7 @@ func probeUDP(ctx context.Context, addr string, packet []byte) ([]byte, error) {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = conn.SetReadDeadline(deadline)
-	} else {
-		_ = conn.SetReadDeadline(time.Now().Add(timeout))
-	}
+	_ = conn.SetReadDeadline(time.Now().Add(timeout))
 	if _, err := conn.Write(packet); err != nil {
 		return nil, err
 	}
@@ -48,26 +60,47 @@ func probeUDP(ctx context.Context, addr string, packet []byte) ([]byte, error) {
 // It proposes DES-CBC + MD5 + PSK + MODP-768 — the weakest common set — to
 // maximize the chance that a configured server will accept and respond.
 func buildIKEv1AggressiveModeProbe() []byte {
-	// Transform: DES-CBC / MD5 / PSK / DH-Group1 (MODP-768)
-	// Attributes use TV (Type-Value) format: MSB of type byte = 1
-	transform := []byte{
-		0x00, 0x00, 0x00, 0x20, // next=0(last), reserved, len=32
-		0x01, 0x01, 0x00, 0x00, // transform#=1, ID=KEY_IKE, reserved2
-		0x80, 0x01, 0x00, 0x01, // Encryption: DES-CBC
-		0x80, 0x02, 0x00, 0x01, // Hash: MD5
+	// Three transforms, all using MODP-1024 to match the single KE payload.
+	// Attributes use TV (Type-Value) format: MSB of type byte = 1.
+	// Last/More byte: 0x03 = more transforms, 0x00 = last transform.
+	transforms := []byte{
+		// Transform 1: 3DES-CBC + SHA1 + PSK + MODP-1024 (most widely supported)
+		0x03, 0x00, 0x00, 0x20, 0x01, 0x01, 0x00, 0x00,
+		0x80, 0x01, 0x00, 0x05, // Encryption: 3DES-CBC
+		0x80, 0x02, 0x00, 0x02, // Hash: SHA1
 		0x80, 0x03, 0x00, 0x01, // Auth: PSK
-		0x80, 0x04, 0x00, 0x01, // DH Group: MODP-768
+		0x80, 0x04, 0x00, 0x02, // DH Group: MODP-1024
 		0x80, 0x0b, 0x00, 0x01, // Life Type: seconds
-		0x80, 0x0c, 0x70, 0x80, // Life Duration: 28800s (TV format)
+		0x80, 0x0c, 0x70, 0x80, // Life Duration: 28800s
+
+		// Transform 2: AES-128-CBC + SHA1 + PSK + MODP-1024
+		0x03, 0x00, 0x00, 0x24, 0x02, 0x01, 0x00, 0x00,
+		0x80, 0x01, 0x00, 0x07, // Encryption: AES-CBC
+		0x80, 0x0e, 0x00, 0x80, // Key Length: 128 bits
+		0x80, 0x02, 0x00, 0x02, // Hash: SHA1
+		0x80, 0x03, 0x00, 0x01, // Auth: PSK
+		0x80, 0x04, 0x00, 0x02, // DH Group: MODP-1024
+		0x80, 0x0b, 0x00, 0x01, // Life Type: seconds
+		0x80, 0x0c, 0x70, 0x80, // Life Duration: 28800s
+
+		// Transform 3: AES-256-CBC + SHA1 + PSK + MODP-1024 (last)
+		0x00, 0x00, 0x00, 0x24, 0x03, 0x01, 0x00, 0x00,
+		0x80, 0x01, 0x00, 0x07, // Encryption: AES-CBC
+		0x80, 0x0e, 0x01, 0x00, // Key Length: 256 bits
+		0x80, 0x02, 0x00, 0x02, // Hash: SHA1
+		0x80, 0x03, 0x00, 0x01, // Auth: PSK
+		0x80, 0x04, 0x00, 0x02, // DH Group: MODP-1024
+		0x80, 0x0b, 0x00, 0x01, // Life Type: seconds
+		0x80, 0x0c, 0x70, 0x80, // Life Duration: 28800s
 	}
-	// Proposal: protocol=ISAKMP, SPI-size=0, 1 transform
-	proposal := make([]byte, 8+len(transform))
+	// Proposal: protocol=ISAKMP, SPI-size=0, 3 transforms
+	proposal := make([]byte, 8+len(transforms))
 	proposal[4] = 0x01 // proposal #1
 	proposal[5] = 0x01 // protocol: ISAKMP
 	proposal[6] = 0x00 // SPI size: 0
-	proposal[7] = 0x01 // # transforms: 1
+	proposal[7] = 0x03 // # transforms: 3
 	binary.BigEndian.PutUint16(proposal[2:4], uint16(len(proposal)))
-	copy(proposal[8:], transform)
+	copy(proposal[8:], transforms)
 	// SA payload: next=KE(4), DOI=IPSEC, Situation=SIT_IDENTITY_ONLY
 	saPayload := make([]byte, 4+4+4+len(proposal))
 	saPayload[0] = 0x04 // next: KE
@@ -75,8 +108,8 @@ func buildIKEv1AggressiveModeProbe() []byte {
 	binary.BigEndian.PutUint32(saPayload[4:8], 1)  // DOI: IPSEC
 	binary.BigEndian.PutUint32(saPayload[8:12], 1) // Situation: SIT_IDENTITY_ONLY
 	copy(saPayload[12:], proposal)
-	// KE payload: MODP-768 = 96 bytes of zeros; next=Nonce(10)
-	kePayload := make([]byte, 4+96)
+	// KE payload: MODP-1024 = 128 bytes of zeros; next=Nonce(10)
+	kePayload := make([]byte, 4+128)
 	kePayload[0] = 0x0a // next: Nonce
 	binary.BigEndian.PutUint16(kePayload[2:4], uint16(len(kePayload)))
 	// Nonce payload: 16 zero bytes; next=ID(5)
@@ -102,46 +135,85 @@ func buildIKEv1AggressiveModeProbe() []byte {
 	return append(header, body...)
 }
 
-// isIKEv1AggressiveResponse checks if a raw IKE response is an IKEv1 Aggressive Mode reply.
+// isIKEv1AggressiveResponse checks if a raw IKE response is from an IKEv1
+// server that has Aggressive Mode enabled.
+//
+// Exchange type 4 (Aggressive Mode) is direct confirmation. Exchange type 5
+// (INFORMATIONAL) is also treated as confirmation unless the Notification
+// payload contains INVALID-EXCHANGE-TYPE (type 7), which means the server
+// explicitly rejected the AM exchange type and only supports Main Mode. Any
+// other notification type (e.g. NO-PROPOSAL-CHOSEN=14, INVALID-ID-INFORMATION=18)
+// means the server accepted the AM exchange type but rejected our specific
+// proposal or identity — so AM is supported.
+//
+// It first validates the packet is a plausible IKE packet by checking the
+// length field matches the actual data, to avoid false positives from non-IKE
+// protocols.
 func isIKEv1AggressiveResponse(data []byte) (aggressiveMode bool, ikev1Supported bool) {
-	if len(data) < 28 {
+	if !isPlausibleIKEPacket(data) {
 		return false, false
 	}
 	majorVersion := (data[17] & 0xF0) >> 4
 	exchangeType := data[18]
 	if majorVersion == 1 {
 		ikev1Supported = true
-		aggressiveMode = exchangeType == 4
+		switch exchangeType {
+		case 4: // Aggressive Mode — direct confirmation
+			aggressiveMode = true
+		case 5: // Informational — infer from notification type
+			// INVALID-EXCHANGE-TYPE (7) means server rejected AM entirely.
+			// Any other non-zero notification means AM was accepted but our SA or ID was rejected.
+			const invalidExchangeType = 7
+			notifyType := ikeprotocol.ParseIKEv1NotificationType(data)
+			aggressiveMode = notifyType != 0 && notifyType != invalidExchangeType
+		}
 	}
 	return aggressiveMode, ikev1Supported
 }
 
 // --- Security Assessment Helpers ---
 // detectWeakAlgorithms returns a list of weak algorithm names found in the SA proposals.
-func detectWeakAlgorithms(encAlgs, hashAlgs, dhGroups []string) []string {
+func detectWeakAlgorithms(
+	encAlgs []commonprotocolfern.IkeEncryptionAlgorithm,
+	hashAlgs []commonprotocolfern.IkeHashAlgorithm,
+	dhGroups []commonprotocolfern.IkeDhGroup,
+) []string {
 	var weak []string
+	weakEncryptionSet := weakAlgorithmSet(weakEncryptionAlgorithms)
+	weakHashSet := weakAlgorithmSet(weakHashAlgorithms)
+	weakDHSet := weakAlgorithmSet(weakDHGroups)
+
 	for _, alg := range encAlgs {
-		for _, w := range weakEncryptionAlgorithms {
-			if alg == w {
-				weak = ikeprotocol.AppendUnique(weak, alg)
-			}
+		normalized := normalizeAlgorithmName(string(alg))
+		if _, ok := weakEncryptionSet[normalized]; ok {
+			weak = ikeprotocol.AppendUnique(weak, normalized)
 		}
 	}
 	for _, alg := range hashAlgs {
-		for _, w := range weakHashAlgorithms {
-			if alg == w {
-				weak = ikeprotocol.AppendUnique(weak, alg)
-			}
+		normalized := normalizeAlgorithmName(string(alg))
+		if _, ok := weakHashSet[normalized]; ok {
+			weak = ikeprotocol.AppendUnique(weak, normalized)
 		}
 	}
 	for _, g := range dhGroups {
-		for _, w := range weakDHGroups {
-			if g == w {
-				weak = ikeprotocol.AppendUnique(weak, g)
-			}
+		normalized := normalizeAlgorithmName(string(g))
+		if _, ok := weakDHSet[normalized]; ok {
+			weak = ikeprotocol.AppendUnique(weak, normalized)
 		}
 	}
 	return weak
+}
+
+func weakAlgorithmSet(items []string) map[string]struct{} {
+	set := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		set[normalizeAlgorithmName(item)] = struct{}{}
+	}
+	return set
+}
+
+func normalizeAlgorithmName(name string) string {
+	return strings.ReplaceAll(name, "_", "-")
 }
 
 // checkDPDSupport returns true if any vendor ID matches the Dead Peer Detection magic.
@@ -164,4 +236,54 @@ func extractVendorIdentification(vendorIDs []string) *string {
 		}
 	}
 	return nil
+}
+
+// stripNonESPMarker removes the 4-byte RFC 3948 Non-ESP marker (0x00000000)
+// from the front of data if present, returning the remaining bytes.
+func stripNonESPMarker(data []byte) []byte {
+	if len(data) >= 4 && data[0] == 0 && data[1] == 0 && data[2] == 0 && data[3] == 0 {
+		return data[4:]
+	}
+	return data
+}
+
+// applyIKEv2ResponseToServerInfo parses an IKEv2 response packet and populates
+// the corresponding fields on si. The caller must ensure data is a valid IKE
+// packet (len >= 28) with any Non-ESP marker already stripped.
+func applyIKEv2ResponseToServerInfo(data []byte, si *commonprotocolfern.IkeServerInfo) {
+	header, err := ikeprotocol.ParseIKEHeader(data)
+	if err != nil {
+		return
+	}
+	ikev2 := header.MajorVersion == 2
+	si.Ikev2Supported = &ikev2
+	version := fmt.Sprintf("IKEv%d", header.MajorVersion)
+	initiatorSPI := hex.EncodeToString(header.InitiatorSPI[:])
+	responderSPI := hex.EncodeToString(header.ResponderSPI[:])
+	exchangeType := ikeprotocol.GetExchangeTypeName(header.ExchangeType)
+	flags := fmt.Sprintf("0x%02x", header.Flags)
+	messageID := fmt.Sprintf("%d", header.MessageID)
+	si.Version = &version
+	si.InitiatorSpi = &initiatorSPI
+	si.ResponderSpi = &responderSPI
+	si.ExchangeType = &exchangeType
+	si.Flags = &flags
+	si.MessageId = &messageID
+	vendorIDs, proposals := ikeprotocol.ParseIKEPayloads(data[28:], header.NextPayload)
+	for _, vid := range vendorIDs {
+		si.VendorIds = ikeprotocol.AppendUnique(si.VendorIds, vid)
+	}
+	si.EncryptionAlgorithms = ikeprotocol.MergeFernEncryptionAlgorithms(si.EncryptionAlgorithms, proposals.EncryptionAlgs)
+	si.HashAlgorithms = ikeprotocol.MergeFernHashAlgorithms(si.HashAlgorithms, proposals.HashAlgs)
+	si.AuthenticationMethods = ikeprotocol.MergeFernAuthenticationMethods(si.AuthenticationMethods, proposals.AuthMethods)
+	si.DhGroups = ikeprotocol.MergeFernDHGroups(si.DhGroups, proposals.DHGroups)
+}
+
+// mergeIKEv1ProposalsIntoServerInfo appends unique algorithm names from
+// proposals into the corresponding si slices.
+func mergeIKEv1ProposalsIntoServerInfo(proposals *ikeprotocol.SecurityProposals, si *commonprotocolfern.IkeServerInfo) {
+	si.EncryptionAlgorithms = ikeprotocol.MergeFernEncryptionAlgorithms(si.EncryptionAlgorithms, proposals.EncryptionAlgs)
+	si.HashAlgorithms = ikeprotocol.MergeFernHashAlgorithms(si.HashAlgorithms, proposals.HashAlgs)
+	si.AuthenticationMethods = ikeprotocol.MergeFernAuthenticationMethods(si.AuthenticationMethods, proposals.AuthMethods)
+	si.DhGroups = ikeprotocol.MergeFernDHGroups(si.DhGroups, proposals.DHGroups)
 }

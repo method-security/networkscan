@@ -79,16 +79,16 @@ func (IKEFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		metadata.VendorIds = vendorIDs
 	}
 	if len(proposals.EncryptionAlgs) > 0 {
-		metadata.EncryptionAlgorithms = proposals.EncryptionAlgs
+		metadata.EncryptionAlgorithms = ikeprotocol.MergeFernEncryptionAlgorithms(metadata.EncryptionAlgorithms, proposals.EncryptionAlgs)
 	}
 	if len(proposals.HashAlgs) > 0 {
-		metadata.HashAlgorithms = proposals.HashAlgs
+		metadata.HashAlgorithms = ikeprotocol.MergeFernHashAlgorithms(metadata.HashAlgorithms, proposals.HashAlgs)
 	}
 	if len(proposals.AuthMethods) > 0 {
-		metadata.AuthenticationMethods = proposals.AuthMethods
+		metadata.AuthenticationMethods = ikeprotocol.MergeFernAuthenticationMethods(metadata.AuthenticationMethods, proposals.AuthMethods)
 	}
 	if len(proposals.DHGroups) > 0 {
-		metadata.DhGroups = proposals.DHGroups
+		metadata.DhGroups = ikeprotocol.MergeFernDHGroups(metadata.DhGroups, proposals.DHGroups)
 	}
 
 	result := &discoverfern.ServiceDetails{

@@ -117,17 +117,85 @@ func ParseSAPayload(data []byte, proposals *SecurityProposals) {
 	}
 }
 
-// BuildIKEv2SAInitRequest creates a minimal IKEv2 IKE_SA_INIT request packet.
+// BuildIKEv2SAInitRequest creates a well-formed IKEv2 IKE_SA_INIT request
+// with SA, KE, and Nonce payloads. The SA proposes 3DES-CBC + HMAC-SHA1 +
+// HMAC-SHA1-96 + MODP-1024 — a widely supported set that does not require
+// key-length attributes. The KE carries 128 zero bytes (valid MODP-1024 size)
+// and the Nonce carries 32 bytes. Together these satisfy the RFC 7296 §1.2
+// minimum and will elicit an IKE_SA_INIT response (or a NOTIFY error) from
+// any conformant responder.
+//
 // Use this for the standard IKE port (UDP 500).
 func BuildIKEv2SAInitRequest() []byte {
-	packet := make([]byte, 28)
-	copy(packet[0:8], []byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef}) // initiator SPI
-	packet[16] = 33                                                           // next payload: SA
-	packet[17] = 0x20                                                         // version: IKEv2
-	packet[18] = 34                                                           // exchange type: IKE_SA_INIT
-	packet[19] = 0x08                                                         // flags: initiator
-	binary.BigEndian.PutUint32(packet[24:28], 28)
-	return packet
+	// --- Transforms (8 bytes each, no variable-length attributes) ---
+	// Last/More byte: 0x03 = more transforms, 0x00 = last transform.
+	transforms := []byte{
+		0x03, 0x00, 0x00, 0x08, 0x01, 0x00, 0x00, 0x03, // Enc:  3DES-CBC      (type 1, id 3)
+		0x03, 0x00, 0x00, 0x08, 0x02, 0x00, 0x00, 0x02, // PRF:  HMAC-SHA1     (type 2, id 2)
+		0x03, 0x00, 0x00, 0x08, 0x03, 0x00, 0x00, 0x02, // Auth: HMAC-SHA1-96  (type 3, id 2)
+		0x00, 0x00, 0x00, 0x08, 0x04, 0x00, 0x00, 0x02, // DH:   MODP-1024     (type 4, id 2)
+	}
+
+	// --- Proposal (8-byte header + transforms) ---
+	proposalLen := 8 + len(transforms)
+	proposal := make([]byte, proposalLen)
+	proposal[0] = 0x00 // last proposal
+	binary.BigEndian.PutUint16(proposal[2:4], uint16(proposalLen))
+	proposal[4] = 0x01 // proposal #1
+	proposal[5] = 0x01 // protocol: IKE
+	proposal[6] = 0x00 // SPI size: 0
+	proposal[7] = 0x04 // # transforms: 4
+	copy(proposal[8:], transforms)
+
+	// --- SA payload (generic header + proposal) ---
+	saLen := 4 + len(proposal)
+	sa := make([]byte, saLen)
+	sa[0] = 34 // next payload: KE
+	binary.BigEndian.PutUint16(sa[2:4], uint16(saLen))
+	copy(sa[4:], proposal)
+
+	// --- KE payload: MODP-1024 requires 128 bytes of key material ---
+	keBody := make([]byte, 4+128)              // DH-group (2) + reserved (2) + 128 zeros
+	binary.BigEndian.PutUint16(keBody[0:2], 2) // DH Group: MODP-1024
+	keLen := 4 + len(keBody)
+	ke := make([]byte, keLen)
+	ke[0] = 40 // next payload: Nonce
+	binary.BigEndian.PutUint16(ke[2:4], uint16(keLen))
+	copy(ke[4:], keBody)
+
+	// --- Nonce payload: 32 bytes ---
+	nonceData := make([]byte, 32)
+	for i := range nonceData {
+		nonceData[i] = byte(i + 1)
+	}
+	nonceLen := 4 + len(nonceData)
+	nonce := make([]byte, nonceLen)
+	nonce[0] = 0x00 // next payload: none
+	binary.BigEndian.PutUint16(nonce[2:4], uint16(nonceLen))
+	copy(nonce[4:], nonceData)
+
+	// --- Assemble body and IKE header ---
+	body := append(sa, ke...)
+	body = append(body, nonce...)
+
+	header := make([]byte, 28)
+	copy(header[0:8], []byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef}) // initiator SPI
+	header[16] = 33                                                           // next payload: SA
+	header[17] = 0x20                                                         // version: IKEv2
+	header[18] = 34                                                           // exchange type: IKE_SA_INIT
+	header[19] = 0x08                                                         // flags: initiator
+	binary.BigEndian.PutUint32(header[24:28], uint32(28+len(body)))
+	return append(header, body...)
+}
+
+// BuildNATTIKEv1AMRequest wraps an IKEv1 Aggressive Mode packet with the
+// 4-byte Non-ESP marker required by RFC 3948 §2.3 for UDP port 4500.
+// The caller supplies the raw IKEv1 AM probe bytes.
+func BuildNATTIKEv1AMRequest(ikev1AM []byte) []byte {
+	framed := make([]byte, 4+len(ikev1AM))
+	binary.BigEndian.PutUint32(framed[0:4], 0)
+	copy(framed[4:], ikev1AM)
+	return framed
 }
 
 // BuildNATTIKEv2SAInitRequest creates an IKEv2 IKE_SA_INIT request framed for
@@ -163,15 +231,17 @@ func GetExchangeTypeName(t byte) string {
 func GetEncryptionAlgorithmName(id uint16) string {
 	switch id {
 	case 1:
-		return "DES-CBC"
+		return "DES-IV64"
 	case 2:
-		return "IDEA-CBC"
+		return "DES"
 	case 3:
-		return "Blowfish-CBC"
-	case 5:
 		return "3DES-CBC"
-	case 7:
+	case 5:
+		return "IDEA-CBC"
+	case 6:
 		return "CAST-CBC"
+	case 7:
+		return "Blowfish-CBC"
 	case 11:
 		return "NULL"
 	case 12:
@@ -308,6 +378,190 @@ func GetDHGroupName(id uint16) string {
 	default:
 		return fmt.Sprintf("DH_%d", id)
 	}
+}
+
+// ParseIKEv1SAResponse walks the payload chain of an IKEv1 response packet and
+// extracts the encryption algorithm, hash algorithm, and DH group from the SA
+// payload. It is tolerant of missing or malformed payloads and returns whatever
+// it can parse. On a successful IKEv1 AM exchange (type 4) the server includes
+// the selected proposal; on INFORMATIONAL (type 5) there is no SA, so the
+// result will be empty — that is handled gracefully.
+func ParseIKEv1SAResponse(data []byte) *SecurityProposals {
+	proposals := &SecurityProposals{}
+	if len(data) < 28 {
+		return proposals
+	}
+	nextPayload := data[16]
+	offset := 28
+	for offset+4 <= len(data) && nextPayload != 0 {
+		payloadNext := data[offset]
+		payloadLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
+		if payloadLen < 4 || offset+payloadLen > len(data) {
+			break
+		}
+		if nextPayload == 1 { // SA payload
+			// SA body: skip generic header (4), DOI (4), Situation (4)
+			if payloadLen > 12 {
+				parseIKEv1Proposals(data[offset+12:offset+payloadLen], proposals)
+			}
+			break
+		}
+		nextPayload = payloadNext
+		offset += payloadLen
+	}
+	return proposals
+}
+
+func parseIKEv1Proposals(data []byte, proposals *SecurityProposals) {
+	offset := 0
+	for offset+8 <= len(data) {
+		propLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
+		if propLen < 8 || offset+propLen > len(data) {
+			break
+		}
+		spiSize := int(data[offset+6])
+		numTransforms := int(data[offset+7])
+		txOffset := offset + 8 + spiSize
+		for i := 0; i < numTransforms && txOffset+8 <= offset+propLen; i++ {
+			txLen := int(binary.BigEndian.Uint16(data[txOffset+2 : txOffset+4]))
+			if txLen < 8 {
+				break
+			}
+			transformEnd := txOffset + txLen
+			// txLen is untrusted network input; ensure it cannot overrun the
+			// proposal bounds before slicing transform attributes.
+			if transformEnd > offset+propLen || transformEnd > len(data) {
+				break
+			}
+			parseIKEv1TransformAttrs(data[txOffset+8:transformEnd], proposals)
+			txOffset += txLen
+		}
+		if data[offset] == 0 {
+			break
+		}
+		offset += propLen
+	}
+}
+
+func parseIKEv1TransformAttrs(data []byte, proposals *SecurityProposals) {
+	offset := 0
+	for offset+4 <= len(data) {
+		attrType := binary.BigEndian.Uint16(data[offset : offset+2])
+		attrVal := binary.BigEndian.Uint16(data[offset+2 : offset+4])
+		if attrType&0x8000 != 0 {
+			// TV format (type-value, 4 bytes total)
+			switch attrType & 0x7FFF {
+			case 1: // Encryption Algorithm
+				proposals.EncryptionAlgs = AppendUnique(proposals.EncryptionAlgs, GetIKEv1EncryptionName(attrVal))
+			case 2: // Hash Algorithm
+				proposals.HashAlgs = AppendUnique(proposals.HashAlgs, GetIKEv1HashName(attrVal))
+			case 3: // Authentication Method
+				proposals.AuthMethods = AppendUnique(proposals.AuthMethods, GetIKEv1AuthMethodName(attrVal))
+			case 4: // Group Description — same numeric IDs as IKEv2
+				proposals.DHGroups = AppendUnique(proposals.DHGroups, GetDHGroupName(attrVal))
+			}
+			offset += 4
+		} else {
+			// TLV format — skip value bytes
+			offset += 4 + int(attrVal)
+		}
+	}
+}
+
+// GetIKEv1EncryptionName returns the name for an IKEv1 encryption algorithm ID
+// (RFC 2409 / IANA "ISAKMP Encryption Algorithm" registry).
+func GetIKEv1EncryptionName(id uint16) string {
+	switch id {
+	case 1:
+		return "DES-CBC"
+	case 3:
+		return "Blowfish-CBC"
+	case 5:
+		return "3DES-CBC"
+	case 6:
+		return "CAST-CBC"
+	case 7:
+		return "AES-CBC"
+	case 8:
+		return "Camellia-CBC"
+	default:
+		return fmt.Sprintf("ENC_%d", id)
+	}
+}
+
+// GetIKEv1HashName returns the name for an IKEv1 hash algorithm ID
+// (RFC 2409 / IANA "ISAKMP Hash Algorithm" registry).
+func GetIKEv1HashName(id uint16) string {
+	switch id {
+	case 1:
+		return "MD5"
+	case 2:
+		return "SHA1"
+	case 4:
+		return "SHA256"
+	case 5:
+		return "SHA384"
+	case 6:
+		return "SHA512"
+	default:
+		return fmt.Sprintf("HASH_%d", id)
+	}
+}
+
+// GetIKEv1AuthMethodName returns the name for an IKEv1 authentication method ID
+// (RFC 2409 / IANA "ISAKMP Authentication Method" registry).
+func GetIKEv1AuthMethodName(id uint16) string {
+	switch id {
+	case 1:
+		return "PSK"
+	case 2:
+		return "DSS_SIGNATURE"
+	case 3:
+		return "RSA_SIGNATURE"
+	case 9:
+		return "ECDSA_SHA256_P256"
+	case 10:
+		return "ECDSA_SHA384_P384"
+	case 11:
+		return "ECDSA_SHA512_P521"
+	default:
+		return fmt.Sprintf("AUTH_METHOD_%d", id)
+	}
+}
+
+// ParseIKEv1NotificationType returns the Notify Message Type from the first
+// Notification payload (type 11) in an IKEv1 Informational message, or 0 if
+// no notification payload is found or the packet is too short to parse.
+//
+// IKEv1 Notification payload layout (RFC 2408 §3.14):
+//
+//	generic header (4): next, reserved, length
+//	DOI             (4)
+//	Protocol-ID     (1)
+//	SPI-size        (1)
+//	Notify type     (2)
+func ParseIKEv1NotificationType(data []byte) uint16 {
+	if len(data) < 28 {
+		return 0
+	}
+	nextPayload := data[16]
+	offset := 28
+	for offset+4 <= len(data) && nextPayload != 0 {
+		payloadNext := data[offset]
+		payloadLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
+		if payloadLen < 4 || offset+payloadLen > len(data) {
+			break
+		}
+		if nextPayload == 11 { // Notification payload
+			// Need at least 12 bytes: generic header (4) + DOI (4) + Protocol-ID (1) + SPI-size (1) + Notify type (2)
+			if payloadLen >= 12 {
+				return binary.BigEndian.Uint16(data[offset+10 : offset+12])
+			}
+		}
+		nextPayload = payloadNext
+		offset += payloadLen
+	}
+	return 0
 }
 
 // AppendUnique appends item to slice only if it is not already present.

@@ -18,17 +18,23 @@ var knownVendorIDs = map[string]string{
 const dpdVendorIDPrefix = "afcad71368a1f1c96b8696fc7757"
 
 // weakEncryptionAlgorithms are encryption algorithms considered cryptographically insecure.
+// Includes both IKEv2 names (DES-IV64, DES, NULL) and IKEv1 names (DES-CBC).
 var weakEncryptionAlgorithms = []string{
+	"DES-IV64",
+	"DES",
 	"DES-CBC",
 	"NULL",
 }
 
 // weakHashAlgorithms are hash/integrity algorithms considered cryptographically weak.
+// Includes both IKEv2 names (PRF-HMAC-*, HMAC-*) and IKEv1 names (MD5, SHA1).
 var weakHashAlgorithms = []string{
 	"PRF-HMAC-MD5",
 	"HMAC-MD5-96",
+	"MD5",
 	"PRF-HMAC-SHA1",
 	"HMAC-SHA1-96",
+	"SHA1",
 }
 
 // weakDHGroups are Diffie-Hellman groups that are too small to be secure.
