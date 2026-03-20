@@ -1,8 +1,6 @@
 types:
   # IKE Algorithm ENUMs
   IkeEncryptionAlgorithm:
-    # UNKNOWN is an explicit fallback for unrecognized on-wire IDs
-    # (forward compatibility and malformed/private registry values).
     enum:
       - DES_IV64
       - DES
@@ -19,11 +17,8 @@ types:
       - AES_GCM_16
       - CAMELLIA_CBC
       - CHACHA20_POLY1305
-      - UNKNOWN
 
   IkeHashAlgorithm:
-    # UNKNOWN is an explicit fallback for unrecognized on-wire IDs
-    # (forward compatibility and malformed/private registry values).
     enum:
       - PRF_HMAC_MD5
       - PRF_HMAC_SHA1
@@ -53,11 +48,8 @@ types:
       - SHA256
       - SHA384
       - SHA512
-      - UNKNOWN
 
   IkeAuthenticationMethod:
-    # UNKNOWN is an explicit fallback for unrecognized on-wire IDs
-    # (forward compatibility and malformed/private registry values).
     enum:
       - PSK
       - RSA_SIGNATURE
@@ -65,11 +57,8 @@ types:
       - ECDSA_SHA256_P256
       - ECDSA_SHA384_P384
       - ECDSA_SHA512_P521
-      - UNKNOWN
 
   IkeDhGroup:
-    # UNKNOWN is an explicit fallback for unrecognized on-wire IDs
-    # (forward compatibility and malformed/private registry values).
     enum:
       - MODP_768
       - MODP_1024
@@ -93,7 +82,6 @@ types:
       - ECP_512_BP
       - CURVE25519
       - CURVE448
-      - UNKNOWN
 
   # IKE Server Information
   IkeServerInfo:
