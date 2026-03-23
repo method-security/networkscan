@@ -1,4 +1,88 @@
 types:
+  # IKE Algorithm ENUMs
+  IkeEncryptionAlgorithm:
+    enum:
+      - DES_IV64
+      - DES
+      - DES_CBC
+      - THREE_DES_CBC
+      - IDEA_CBC
+      - CAST_CBC
+      - BLOWFISH_CBC
+      - "NULL"
+      - AES_CBC
+      - AES_CTR
+      - AES_GCM_8
+      - AES_GCM_12
+      - AES_GCM_16
+      - CAMELLIA_CBC
+      - CHACHA20_POLY1305
+
+  IkeHashAlgorithm:
+    enum:
+      - PRF_HMAC_MD5
+      - PRF_HMAC_SHA1
+      - PRF_HMAC_TIGER
+      - PRF_AES128_XCBC
+      - PRF_HMAC_SHA256
+      - PRF_HMAC_SHA384
+      - PRF_HMAC_SHA512
+      - PRF_AES128_CMAC
+      - NONE
+      - HMAC_MD5_96
+      - HMAC_SHA1_96
+      - DES_MAC
+      - KPDK_MD5
+      - AES_XCBC_96
+      - HMAC_MD5_128
+      - HMAC_SHA1_160
+      - AES_CMAC_96
+      - AES_128_GMAC
+      - AES_192_GMAC
+      - AES_256_GMAC
+      - HMAC_SHA256_128
+      - HMAC_SHA384_192
+      - HMAC_SHA512_256
+      - MD5
+      - SHA1
+      - SHA256
+      - SHA384
+      - SHA512
+
+  IkeAuthenticationMethod:
+    enum:
+      - PSK
+      - RSA_SIGNATURE
+      - DSS_SIGNATURE
+      - ECDSA_SHA256_P256
+      - ECDSA_SHA384_P384
+      - ECDSA_SHA512_P521
+
+  IkeDhGroup:
+    enum:
+      - MODP_768
+      - MODP_1024
+      - MODP_1536
+      - MODP_2048
+      - MODP_3072
+      - MODP_4096
+      - MODP_6144
+      - MODP_8192
+      - MODP_1024_160
+      - MODP_2048_224
+      - MODP_2048_256
+      - ECP_192
+      - ECP_224
+      - ECP_256
+      - ECP_384
+      - ECP_521
+      - ECP_224_BP
+      - ECP_256_BP
+      - ECP_384_BP
+      - ECP_512_BP
+      - CURVE25519
+      - CURVE448
+
   # IKE Server Information
   IkeServerInfo:
     properties:
@@ -14,7 +98,16 @@ types:
       vendorIds: optional<list<string>>
 
       # Security Association details
-      encryptionAlgorithms: optional<list<string>>
-      hashAlgorithms: optional<list<string>>
-      authenticationMethods: optional<list<string>>
-      dhGroups: optional<list<string>>
+      encryptionAlgorithms: optional<list<IkeEncryptionAlgorithm>>
+      hashAlgorithms: optional<list<IkeHashAlgorithm>>
+      authenticationMethods: optional<list<IkeAuthenticationMethod>>
+      dhGroups: optional<list<IkeDhGroup>>
+
+      # Security assessment fields
+      aggressiveModeEnabled: optional<boolean>
+      ikev1Supported: optional<boolean>
+      ikev2Supported: optional<boolean>
+      natTraversalSupported: optional<boolean>
+      deadPeerDetectionSupported: optional<boolean>
+      weakAlgorithmsDetected: optional<list<string>>
+      vendorIdentification: optional<string>

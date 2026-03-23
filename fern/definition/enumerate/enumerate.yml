@@ -5,6 +5,7 @@ imports:
   grpc: ./grpc/grpc.yml
   smb: ./smb/smb.yml
   ldap: ./ldap/ldap.yml
+  ike: ./ike/ike.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -15,6 +16,7 @@ types:
       - GRPC
       - SMB
       - LDAP
+      - IKE
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -24,6 +26,7 @@ types:
       EnumerateGrpcDetails: grpc.EnumerateGrpcDetails
       EnumerateSmbDetails: smb.EnumerateSmbDetails
       EnumerateLdapDetails: ldap.EnumerateLdapDetails
+      EnumerateIkeDetails: ike.EnumerateIkeDetails
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>
