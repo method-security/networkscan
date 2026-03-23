@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -230,10 +229,7 @@ func getTopPortsConfig() (map[string]string, error) {
 		return topPortsConfig.PortLists, nil
 	}
 
-	resolver := utils.GetDefaultWordlistResolver()
-	filePath := resolver.GetConfigFilePath("discover/port/top_ports.json")
-
-	data, err := os.ReadFile(filePath)
+	data, err := utils.LoadEmbeddedConfigFile("discover/port/top_ports.json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read top ports config: %w", err)
 	}

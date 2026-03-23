@@ -1,22 +1,16 @@
 package utils
 
 import (
-	"path/filepath"
+	"path"
 	"strings"
 
+	"github.com/Method-Security/networkscan/configs"
 	"github.com/Method-Security/networkscan/generated/go/pentest"
 )
 
-// loadNamesFromFile loads names from config files using the existing resolver pattern
+// loadNamesFromFile loads names from embedded config files
 func loadNamesFromFile(filename string) ([]string, error) {
-	// Use the same resolver that wordlists use for consistent path handling
-	resolver := GetDefaultWordlistResolver()
-	filePath := resolver.GetConfigFilePath(filepath.Join("pentest", "spray", filename))
-	entries, err := GetEntriesFromTXTFiles([]string{filePath})
-	if err != nil {
-		return nil, err
-	}
-	return entries, nil
+	return configs.ReadLines(path.Join("pentest", "spray", filename))
 }
 
 // getFirstNames loads first names from file
