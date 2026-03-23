@@ -3,7 +3,6 @@ package configs
 import (
 	"embed"
 	"fmt"
-	"io/fs"
 	"strings"
 )
 
@@ -22,11 +21,15 @@ func ReadLines(path string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read embedded config %s: %w", path, err)
 	}
-	content := strings.TrimRight(string(data), "\n")
+	content := strings.TrimRight(string(data), "\r\n")
 	if content == "" {
 		return []string{}, nil
 	}
-	return strings.Split(content, "\n"), nil
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, "\r")
+	}
+	return lines, nil
 }
 
 // ReadMultipleLineFiles reads multiple text files and combines their lines.
@@ -40,9 +43,4 @@ func ReadMultipleLineFiles(paths []string) ([]string, error) {
 		entries = append(entries, lines...)
 	}
 	return entries, nil
-}
-
-// FS returns the embedded filesystem for direct access if needed.
-func FS() fs.FS {
-	return configFS
 }

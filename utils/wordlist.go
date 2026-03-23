@@ -3,7 +3,6 @@ package utils
 
 import (
 	"fmt"
-	"path"
 
 	"github.com/Method-Security/networkscan/configs"
 	pentestfern "github.com/Method-Security/networkscan/generated/go/pentest"
@@ -75,21 +74,9 @@ func GetUsernameWordlists(usernameLists []pentestfern.WordlistType) ([]string, e
 	return LoadWordlistEntries(usernameLists)
 }
 
-// LoadEmbeddedConfigLines reads a text file from the embedded configs directory.
-// The path should be relative to configs/ (e.g., "pentest/spray/first_names.txt").
-func LoadEmbeddedConfigLines(relativePath string) ([]string, error) {
-	return configs.ReadLines(relativePath)
-}
-
 // LoadEmbeddedConfigFile reads a raw file from the embedded configs directory.
 func LoadEmbeddedConfigFile(relativePath string) ([]byte, error) {
 	return configs.ReadFile(relativePath)
-}
-
-// GetConfigPath returns the embedded path for a config file.
-// This is used for configs that are loaded by path (e.g., top_ports.json).
-func GetConfigPath(relativePath string) string {
-	return path.Clean(relativePath)
 }
 
 // ParseWordlistTypes converts string slice to WordlistType enums
