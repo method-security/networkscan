@@ -8,8 +8,8 @@ import (
 	pentestfern "github.com/Method-Security/networkscan/generated/go/pentest"
 )
 
-// ResolveWordlistPaths returns the embedded config paths for the given wordlist types.
-func ResolveWordlistPaths(wordlistTypes []pentestfern.WordlistType) ([]string, error) {
+// resolveWordlistPaths returns the embedded config paths for the given wordlist types.
+func resolveWordlistPaths(wordlistTypes []pentestfern.WordlistType) ([]string, error) {
 	if len(wordlistTypes) == 0 {
 		return []string{}, nil
 	}
@@ -50,9 +50,9 @@ func getWordlistConfigPath(wordlistType pentestfern.WordlistType) (string, error
 	}
 }
 
-// LoadWordlistEntries loads entries from embedded wordlists for the given types.
-func LoadWordlistEntries(wordlistTypes []pentestfern.WordlistType) ([]string, error) {
-	paths, err := ResolveWordlistPaths(wordlistTypes)
+// loadWordlistEntries loads entries from embedded wordlists for the given types.
+func loadWordlistEntries(wordlistTypes []pentestfern.WordlistType) ([]string, error) {
+	paths, err := resolveWordlistPaths(wordlistTypes)
 	if err != nil {
 		return nil, err
 	}
@@ -66,17 +66,12 @@ func LoadWordlistEntries(wordlistTypes []pentestfern.WordlistType) ([]string, er
 
 // GetPasswordWordlists loads password wordlists based on the config.
 func GetPasswordWordlists(passwordLists []pentestfern.WordlistType) ([]string, error) {
-	return LoadWordlistEntries(passwordLists)
+	return loadWordlistEntries(passwordLists)
 }
 
 // GetUsernameWordlists loads username wordlists based on the config.
 func GetUsernameWordlists(usernameLists []pentestfern.WordlistType) ([]string, error) {
-	return LoadWordlistEntries(usernameLists)
-}
-
-// LoadEmbeddedConfigFile reads a raw file from the embedded configs directory.
-func LoadEmbeddedConfigFile(relativePath string) ([]byte, error) {
-	return configs.ReadFile(relativePath)
+	return loadWordlistEntries(usernameLists)
 }
 
 // ParseWordlistTypes converts string slice to WordlistType enums

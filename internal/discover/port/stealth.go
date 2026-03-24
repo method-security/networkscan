@@ -17,7 +17,9 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 
 	// Internal
+	"github.com/Method-Security/networkscan/configs"
 	"github.com/Method-Security/networkscan/utils"
+
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -229,7 +231,7 @@ func getTopPortsConfig() (map[string]string, error) {
 		return topPortsConfig.PortLists, nil
 	}
 
-	data, err := utils.LoadEmbeddedConfigFile("discover/port/top_ports.json")
+	data, err := configs.ReadFile("discover/port/top_ports.json")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read top ports config: %w", err)
 	}
