@@ -3,96 +3,56 @@ package utils
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
+	"github.com/Method-Security/networkscan/configs"
 	pentestfern "github.com/Method-Security/networkscan/generated/go/pentest"
 )
 
-// WordlistResolver provides functionality to resolve wordlist enums to file paths
-type WordlistResolver struct {
-	baseConfigDir string
-}
-
-// NewWordlistResolver creates a new WordlistResolver with the specified base config directory
-func NewWordlistResolver(baseConfigDir string) *WordlistResolver {
-	return &WordlistResolver{
-		baseConfigDir: baseConfigDir,
-	}
-}
-
-// GetDefaultWordlistResolver returns a WordlistResolver configured for the container environment
-func GetDefaultWordlistResolver() *WordlistResolver {
-	// In container, configs are mounted at /opt/method/networkscan/var/conf/
-	return NewWordlistResolver("/opt/method/networkscan/var/conf")
-}
-
-// GetConfigFilePath returns the full path for a file within the config directory
-// It automatically handles container vs development environment paths
-func (wr *WordlistResolver) GetConfigFilePath(relativePath string) string {
-	// Try multiple possible config paths (container vs local development)
-	possiblePaths := []string{
-		filepath.Join(wr.baseConfigDir, relativePath), // Configured base path (container)
-		filepath.Join("configs", relativePath),        // Local development path
-	}
-
-	// Return the first path that exists
-	for _, path := range possiblePaths {
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
-	}
-
-	// If none exist, return the configured path (original behavior)
-	return filepath.Join(wr.baseConfigDir, relativePath)
-}
-
-// ResolveWordlistPaths takes wordlist types and resolves them to actual file paths
-func (wr *WordlistResolver) ResolveWordlistPaths(wordlistTypes []pentestfern.WordlistType) ([]string, error) {
+// resolveWordlistPaths returns the embedded config paths for the given wordlist types.
+func resolveWordlistPaths(wordlistTypes []pentestfern.WordlistType) ([]string, error) {
 	if len(wordlistTypes) == 0 {
 		return []string{}, nil
 	}
 
 	var paths []string
 	for _, wordlistType := range wordlistTypes {
-		path, err := wr.getWordlistPath(wordlistType)
+		p, err := getWordlistConfigPath(wordlistType)
 		if err != nil {
 			return nil, err
 		}
-		if path != "" {
-			paths = append(paths, path)
+		if p != "" {
+			paths = append(paths, p)
 		}
 	}
 
 	return paths, nil
 }
 
-// getWordlistPath returns the file path for a specific wordlist type
-func (wr *WordlistResolver) getWordlistPath(wordlistType pentestfern.WordlistType) (string, error) {
+// getWordlistConfigPath returns the embedded config path for a specific wordlist type.
+func getWordlistConfigPath(wordlistType pentestfern.WordlistType) (string, error) {
 	switch wordlistType {
 	case pentestfern.WordlistTypeSystemPasswords:
-		return filepath.Join(wr.baseConfigDir, "pentest", "spray", "system_passwords.txt"), nil
+		return "pentest/spray/system_passwords.txt", nil
 	case pentestfern.WordlistTypeSystemUsernames:
-		return filepath.Join(wr.baseConfigDir, "pentest", "spray", "system_usernames.txt"), nil
+		return "pentest/spray/system_usernames.txt", nil
 	case pentestfern.WordlistTypeDomainPasswords:
-		return filepath.Join(wr.baseConfigDir, "pentest", "spray", "domain_passwords.txt"), nil
+		return "pentest/spray/domain_passwords.txt", nil
 	case pentestfern.WordlistTypeDomainUsernames:
-		return filepath.Join(wr.baseConfigDir, "pentest", "spray", "domain_usernames.txt"), nil
+		return "pentest/spray/domain_usernames.txt", nil
 	case pentestfern.WordlistTypeServicePasswords:
-		return filepath.Join(wr.baseConfigDir, "pentest", "spray", "service_passwords.txt"), nil
+		return "pentest/spray/service_passwords.txt", nil
 	case pentestfern.WordlistTypeServiceUsernames:
-		return filepath.Join(wr.baseConfigDir, "pentest", "spray", "service_usernames.txt"), nil
+		return "pentest/spray/service_usernames.txt", nil
 	case pentestfern.WordlistTypeCustom:
-		// Custom wordlists should be handled elsewhere - return empty path
 		return "", nil
 	default:
 		return "", fmt.Errorf("unsupported wordlist type: %s", wordlistType)
 	}
 }
 
-// LoadWordlistEntries loads entries from resolved wordlist paths
-func (wr *WordlistResolver) LoadWordlistEntries(wordlistTypes []pentestfern.WordlistType) ([]string, error) {
-	paths, err := wr.ResolveWordlistPaths(wordlistTypes)
+// loadWordlistEntries loads entries from embedded wordlists for the given types.
+func loadWordlistEntries(wordlistTypes []pentestfern.WordlistType) ([]string, error) {
+	paths, err := resolveWordlistPaths(wordlistTypes)
 	if err != nil {
 		return nil, err
 	}
@@ -101,17 +61,17 @@ func (wr *WordlistResolver) LoadWordlistEntries(wordlistTypes []pentestfern.Word
 		return []string{}, nil
 	}
 
-	return GetEntriesFromTXTFiles(paths)
+	return configs.ReadMultipleLineFiles(paths)
 }
 
-// GetPasswordWordlists loads password wordlists based on the config
-func (wr *WordlistResolver) GetPasswordWordlists(passwordLists []pentestfern.WordlistType) ([]string, error) {
-	return wr.LoadWordlistEntries(passwordLists)
+// GetPasswordWordlists loads password wordlists based on the config.
+func GetPasswordWordlists(passwordLists []pentestfern.WordlistType) ([]string, error) {
+	return loadWordlistEntries(passwordLists)
 }
 
-// GetUsernameWordlists loads username wordlists based on the config
-func (wr *WordlistResolver) GetUsernameWordlists(usernameLists []pentestfern.WordlistType) ([]string, error) {
-	return wr.LoadWordlistEntries(usernameLists)
+// GetUsernameWordlists loads username wordlists based on the config.
+func GetUsernameWordlists(usernameLists []pentestfern.WordlistType) ([]string, error) {
+	return loadWordlistEntries(usernameLists)
 }
 
 // ParseWordlistTypes converts string slice to WordlistType enums
