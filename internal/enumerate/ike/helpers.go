@@ -57,8 +57,8 @@ func probeUDP(ctx context.Context, addr string, packet []byte) ([]byte, error) {
 
 // --- IKEv1 Aggressive Mode Packet Builder ---
 // buildIKEv1AggressiveModeProbe creates an IKEv1 Aggressive Mode probe packet.
-// It proposes DES-CBC + MD5 + PSK + MODP-768 — the weakest common set — to
-// maximize the chance that a configured server will accept and respond.
+// It proposes three transforms (3DES-CBC, AES-128, AES-256) all with SHA1 +
+// PSK + MODP-1024 to maximize the chance that a configured server will respond.
 func buildIKEv1AggressiveModeProbe() []byte {
 	// Three transforms, all using MODP-1024 to match the single KE payload.
 	// Attributes use TV (Type-Value) format: MSB of type byte = 1.
@@ -139,12 +139,12 @@ func buildIKEv1AggressiveModeProbe() []byte {
 // server that has Aggressive Mode enabled.
 //
 // Exchange type 4 (Aggressive Mode) is direct confirmation. Exchange type 5
-// (INFORMATIONAL) is also treated as confirmation unless the Notification
-// payload contains INVALID-EXCHANGE-TYPE (type 7), which means the server
-// explicitly rejected the AM exchange type and only supports Main Mode. Any
-// other notification type (e.g. NO-PROPOSAL-CHOSEN=14, INVALID-ID-INFORMATION=18)
-// means the server accepted the AM exchange type but rejected our specific
-// proposal or identity — so AM is supported.
+// (INFORMATIONAL) is treated as confirmation only when the Notification
+// payload contains a type that implies the server accepted the AM exchange
+// but rejected our specific proposal or identity (NO-PROPOSAL-CHOSEN=14,
+// INVALID-ID-INFORMATION=18). Other notification types (e.g.
+// INVALID-EXCHANGE-TYPE=7, DOI-NOT-SUPPORTED=2, INVALID-COOKIE=4) do not
+// imply AM support.
 //
 // It first validates the packet is a plausible IKE packet by checking the
 // length field matches the actual data, to avoid false positives from non-IKE
@@ -161,14 +161,26 @@ func isIKEv1AggressiveResponse(data []byte) (aggressiveMode bool, ikev1Supported
 		case 4: // Aggressive Mode — direct confirmation
 			aggressiveMode = true
 		case 5: // Informational — infer from notification type
-			// INVALID-EXCHANGE-TYPE (7) means server rejected AM entirely.
-			// Any other non-zero notification means AM was accepted but our SA or ID was rejected.
-			const invalidExchangeType = 7
 			notifyType := ikeprotocol.ParseIKEv1NotificationType(data)
-			aggressiveMode = notifyType != 0 && notifyType != invalidExchangeType
+			aggressiveMode = isAMConfirmingNotification(notifyType)
 		}
 	}
 	return aggressiveMode, ikev1Supported
+}
+
+// isAMConfirmingNotification returns true for IKEv1 notification types that
+// indicate the server accepted the Aggressive Mode exchange type but rejected
+// our specific proposal or identity. Per RFC 2408 §3.14.1:
+//   - NO-PROPOSAL-CHOSEN (14): AM supported, SA proposals didn't match
+//   - INVALID-ID-INFORMATION (18): AM supported, identity was rejected
+//   - AUTHENTICATION-FAILED (24): AM supported, auth check failed
+func isAMConfirmingNotification(notifyType uint16) bool {
+	switch notifyType {
+	case 14, 18, 24:
+		return true
+	default:
+		return false
+	}
 }
 
 // --- Security Assessment Helpers ---
