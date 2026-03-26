@@ -56,49 +56,92 @@ func probeUDP(ctx context.Context, addr string, packet []byte) ([]byte, error) {
 }
 
 // --- IKEv1 Aggressive Mode Packet Builder ---
-// buildIKEv1AggressiveModeProbe creates an IKEv1 Aggressive Mode probe packet.
-// It proposes three transforms (3DES-CBC, AES-128, AES-256) all with SHA1 +
-// PSK + MODP-1024 to maximize the chance that a configured server will respond.
+// buildIKEv1AggressiveModeProbe creates an IKEv1 Aggressive Mode probe with
+// MODP-1024 KE. Covers SHA-1 and SHA-256 hash variants.
 func buildIKEv1AggressiveModeProbe() []byte {
-	// Three transforms, all using MODP-1024 to match the single KE payload.
+	return buildIKEv1AMProbeForDH(0x02, 128) // MODP-1024
+}
+
+// buildIKEv1AMProbeModp2048 creates an IKEv1 Aggressive Mode probe with
+// MODP-2048 KE for servers that require stronger DH groups.
+func buildIKEv1AMProbeModp2048() []byte {
+	return buildIKEv1AMProbeForDH(0x0e, 256) // MODP-2048
+}
+
+// buildIKEv1AMProbeForDH builds an IKEv1 Aggressive Mode probe packet with the
+// specified DH group. It proposes six transforms (3DES-CBC, AES-128, AES-256
+// each paired with SHA-1 and SHA-256) all with PSK auth.
+func buildIKEv1AMProbeForDH(dhGroupID uint16, keSize int) []byte {
+	dhHi := byte(dhGroupID >> 8)
+	dhLo := byte(dhGroupID & 0xFF)
+	// Six transforms covering SHA-1 and SHA-256 with the specified DH group.
 	// Attributes use TV (Type-Value) format: MSB of type byte = 1.
 	// Last/More byte: 0x03 = more transforms, 0x00 = last transform.
 	transforms := []byte{
-		// Transform 1: 3DES-CBC + SHA1 + PSK + MODP-1024 (most widely supported)
+		// Transform 1: 3DES-CBC + SHA1 + PSK + DH
 		0x03, 0x00, 0x00, 0x20, 0x01, 0x01, 0x00, 0x00,
 		0x80, 0x01, 0x00, 0x05, // Encryption: 3DES-CBC
 		0x80, 0x02, 0x00, 0x02, // Hash: SHA1
 		0x80, 0x03, 0x00, 0x01, // Auth: PSK
-		0x80, 0x04, 0x00, 0x02, // DH Group: MODP-1024
+		0x80, 0x04, dhHi, dhLo, // DH Group
 		0x80, 0x0b, 0x00, 0x01, // Life Type: seconds
 		0x80, 0x0c, 0x70, 0x80, // Life Duration: 28800s
 
-		// Transform 2: AES-128-CBC + SHA1 + PSK + MODP-1024
+		// Transform 2: AES-128-CBC + SHA1 + PSK + DH
 		0x03, 0x00, 0x00, 0x24, 0x02, 0x01, 0x00, 0x00,
 		0x80, 0x01, 0x00, 0x07, // Encryption: AES-CBC
 		0x80, 0x0e, 0x00, 0x80, // Key Length: 128 bits
 		0x80, 0x02, 0x00, 0x02, // Hash: SHA1
 		0x80, 0x03, 0x00, 0x01, // Auth: PSK
-		0x80, 0x04, 0x00, 0x02, // DH Group: MODP-1024
+		0x80, 0x04, dhHi, dhLo, // DH Group
 		0x80, 0x0b, 0x00, 0x01, // Life Type: seconds
 		0x80, 0x0c, 0x70, 0x80, // Life Duration: 28800s
 
-		// Transform 3: AES-256-CBC + SHA1 + PSK + MODP-1024 (last)
-		0x00, 0x00, 0x00, 0x24, 0x03, 0x01, 0x00, 0x00,
+		// Transform 3: AES-256-CBC + SHA1 + PSK + DH
+		0x03, 0x00, 0x00, 0x24, 0x03, 0x01, 0x00, 0x00,
 		0x80, 0x01, 0x00, 0x07, // Encryption: AES-CBC
 		0x80, 0x0e, 0x01, 0x00, // Key Length: 256 bits
 		0x80, 0x02, 0x00, 0x02, // Hash: SHA1
 		0x80, 0x03, 0x00, 0x01, // Auth: PSK
-		0x80, 0x04, 0x00, 0x02, // DH Group: MODP-1024
+		0x80, 0x04, dhHi, dhLo, // DH Group
+		0x80, 0x0b, 0x00, 0x01, // Life Type: seconds
+		0x80, 0x0c, 0x70, 0x80, // Life Duration: 28800s
+
+		// Transform 4: 3DES-CBC + SHA256 + PSK + DH
+		0x03, 0x00, 0x00, 0x20, 0x04, 0x01, 0x00, 0x00,
+		0x80, 0x01, 0x00, 0x05, // Encryption: 3DES-CBC
+		0x80, 0x02, 0x00, 0x04, // Hash: SHA256
+		0x80, 0x03, 0x00, 0x01, // Auth: PSK
+		0x80, 0x04, dhHi, dhLo, // DH Group
+		0x80, 0x0b, 0x00, 0x01, // Life Type: seconds
+		0x80, 0x0c, 0x70, 0x80, // Life Duration: 28800s
+
+		// Transform 5: AES-128-CBC + SHA256 + PSK + DH
+		0x03, 0x00, 0x00, 0x24, 0x05, 0x01, 0x00, 0x00,
+		0x80, 0x01, 0x00, 0x07, // Encryption: AES-CBC
+		0x80, 0x0e, 0x00, 0x80, // Key Length: 128 bits
+		0x80, 0x02, 0x00, 0x04, // Hash: SHA256
+		0x80, 0x03, 0x00, 0x01, // Auth: PSK
+		0x80, 0x04, dhHi, dhLo, // DH Group
+		0x80, 0x0b, 0x00, 0x01, // Life Type: seconds
+		0x80, 0x0c, 0x70, 0x80, // Life Duration: 28800s
+
+		// Transform 6: AES-256-CBC + SHA256 + PSK + DH (last)
+		0x00, 0x00, 0x00, 0x24, 0x06, 0x01, 0x00, 0x00,
+		0x80, 0x01, 0x00, 0x07, // Encryption: AES-CBC
+		0x80, 0x0e, 0x01, 0x00, // Key Length: 256 bits
+		0x80, 0x02, 0x00, 0x04, // Hash: SHA256
+		0x80, 0x03, 0x00, 0x01, // Auth: PSK
+		0x80, 0x04, dhHi, dhLo, // DH Group
 		0x80, 0x0b, 0x00, 0x01, // Life Type: seconds
 		0x80, 0x0c, 0x70, 0x80, // Life Duration: 28800s
 	}
-	// Proposal: protocol=ISAKMP, SPI-size=0, 3 transforms
+	// Proposal: protocol=ISAKMP, SPI-size=0, 6 transforms
 	proposal := make([]byte, 8+len(transforms))
 	proposal[4] = 0x01 // proposal #1
 	proposal[5] = 0x01 // protocol: ISAKMP
 	proposal[6] = 0x00 // SPI size: 0
-	proposal[7] = 0x03 // # transforms: 3
+	proposal[7] = 0x06 // # transforms: 6
 	binary.BigEndian.PutUint16(proposal[2:4], uint16(len(proposal)))
 	copy(proposal[8:], transforms)
 	// SA payload: next=KE(4), DOI=IPSEC, Situation=SIT_IDENTITY_ONLY
@@ -108,8 +151,8 @@ func buildIKEv1AggressiveModeProbe() []byte {
 	binary.BigEndian.PutUint32(saPayload[4:8], 1)  // DOI: IPSEC
 	binary.BigEndian.PutUint32(saPayload[8:12], 1) // Situation: SIT_IDENTITY_ONLY
 	copy(saPayload[12:], proposal)
-	// KE payload: MODP-1024 = 128 bytes of zeros; next=Nonce(10)
-	kePayload := make([]byte, 4+128)
+	// KE payload: keSize bytes of zeros; next=Nonce(10)
+	kePayload := make([]byte, 4+keSize)
 	kePayload[0] = 0x0a // next: Nonce
 	binary.BigEndian.PutUint16(kePayload[2:4], uint16(len(kePayload)))
 	// Nonce payload: 16 zero bytes; next=ID(5)
@@ -138,17 +181,11 @@ func buildIKEv1AggressiveModeProbe() []byte {
 // isIKEv1AggressiveResponse checks if a raw IKE response is from an IKEv1
 // server that has Aggressive Mode enabled.
 //
-// Exchange type 4 (Aggressive Mode) is direct confirmation. Exchange type 5
-// (INFORMATIONAL) is treated as confirmation only when the Notification
-// payload contains a type that implies the server accepted the AM exchange
-// but rejected our specific proposal or identity (NO-PROPOSAL-CHOSEN=14,
-// INVALID-ID-INFORMATION=18). Other notification types (e.g.
-// INVALID-EXCHANGE-TYPE=7, DOI-NOT-SUPPORTED=2, INVALID-COOKIE=4) do not
-// imply AM support.
-//
-// It first validates the packet is a plausible IKE packet by checking the
-// length field matches the actual data, to avoid false positives from non-IKE
-// protocols.
+// Only exchange type 4 (Aggressive Mode) is treated as confirmation.
+// INFORMATIONAL responses (exchange type 5) are NOT used to infer AM support
+// because buggy Main-Mode-only implementations may respond with notifications
+// like NO-PROPOSAL-CHOSEN without validating the exchange type, causing false
+// positives.
 func isIKEv1AggressiveResponse(data []byte) (aggressiveMode bool, ikev1Supported bool) {
 	if !isPlausibleIKEPacket(data) {
 		return false, false
@@ -157,30 +194,11 @@ func isIKEv1AggressiveResponse(data []byte) (aggressiveMode bool, ikev1Supported
 	exchangeType := data[18]
 	if majorVersion == 1 {
 		ikev1Supported = true
-		switch exchangeType {
-		case 4: // Aggressive Mode — direct confirmation
+		if exchangeType == 4 {
 			aggressiveMode = true
-		case 5: // Informational — infer from notification type
-			notifyType := ikeprotocol.ParseIKEv1NotificationType(data)
-			aggressiveMode = isAMConfirmingNotification(notifyType)
 		}
 	}
 	return aggressiveMode, ikev1Supported
-}
-
-// isAMConfirmingNotification returns true for IKEv1 notification types that
-// indicate the server accepted the Aggressive Mode exchange type but rejected
-// our specific proposal or identity. Per RFC 2408 §3.14.1:
-//   - NO-PROPOSAL-CHOSEN (14): AM supported, SA proposals didn't match
-//   - INVALID-ID-INFORMATION (18): AM supported, identity was rejected
-//   - AUTHENTICATION-FAILED (24): AM supported, auth check failed
-func isAMConfirmingNotification(notifyType uint16) bool {
-	switch notifyType {
-	case 14, 18, 24:
-		return true
-	default:
-		return false
-	}
 }
 
 // --- Security Assessment Helpers ---
