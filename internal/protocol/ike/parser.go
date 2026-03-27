@@ -94,9 +94,10 @@ func ParseSAPayload(data []byte, proposals *SecurityProposals) {
 			offset += proposalLen
 			continue
 		}
-		for i := 0; i < numTransforms && txOffset+8 <= len(data); i++ {
+		proposalEnd := offset + proposalLen
+		for i := 0; i < numTransforms && txOffset+8 <= proposalEnd; i++ {
 			txLen := int(binary.BigEndian.Uint16(data[txOffset+2 : txOffset+4]))
-			if txLen < 8 {
+			if txLen < 8 || txOffset+txLen > proposalEnd {
 				break
 			}
 			txType := data[txOffset+4]

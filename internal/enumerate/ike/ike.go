@@ -44,25 +44,46 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 	ikev2Response, err := probeUDP(ctx, target, ikeprotocol.BuildIKEv2SAInitRequest())
 	if err != nil {
 		log.Warn("IKEv2 probe failed", svc1log.SafeParam("target", target), svc1log.SafeParam("error", err))
-	} else if len(ikev2Response) >= 28 {
+	} else if len(ikev2Response) >= 28 && isPlausibleIKEPacket(ikev2Response) {
 		applyIKEv2ResponseToServerInfo(ikev2Response, &serverInfo)
 		if serverInfo.Ikev2Supported != nil {
 			log.Info("IKEv2 response received", svc1log.SafeParam("target", target), svc1log.SafeParam("ikev2", *serverInfo.Ikev2Supported))
 		}
 	}
-	// IKEv1 Aggressive Mode probe
-	amResponse, err := probeUDP(ctx, target, buildIKEv1AggressiveModeProbe())
-	if err != nil {
-		log.Warn("IKEv1 AM probe failed", svc1log.SafeParam("target", target), svc1log.SafeParam("error", err))
-	} else if len(amResponse) >= 28 {
+	// IKEv1 Aggressive Mode probes — two rounds with different DH groups
+	// to avoid false negatives when a server only accepts MODP-2048.
+	amDetected := false
+	for _, amProbe := range [][]byte{buildIKEv1AggressiveModeProbe(), buildIKEv1AMProbeModp2048()} {
+		if amDetected {
+			break
+		}
+		amResponse, amErr := probeUDP(ctx, target, amProbe)
+		if amErr != nil {
+			log.Warn("IKEv1 AM probe failed", svc1log.SafeParam("target", target), svc1log.SafeParam("error", amErr))
+			continue
+		}
+		if len(amResponse) < 28 {
+			continue
+		}
 		aggressiveMode, ikev1 := isIKEv1AggressiveResponse(amResponse)
-		serverInfo.AggressiveModeEnabled = &aggressiveMode
-		serverInfo.Ikev1Supported = &ikev1
-		mergeIKEv1ProposalsIntoServerInfo(ikeprotocol.ParseIKEv1SAResponse(amResponse), &serverInfo)
+		if aggressiveMode {
+			serverInfo.AggressiveModeEnabled = &aggressiveMode
+			amDetected = true
+		}
+		if ikev1 {
+			serverInfo.Ikev1Supported = &ikev1
+			mergeIKEv1ProposalsIntoServerInfo(ikeprotocol.ParseIKEv1SAResponse(amResponse), &serverInfo)
+		}
 		log.Info("IKEv1 AM probe response",
 			svc1log.SafeParam("target", target),
 			svc1log.SafeParam("aggressiveMode", aggressiveMode),
 			svc1log.SafeParam("ikev1", ikev1))
+	}
+	// Explicitly set AggressiveModeEnabled to false if no probe confirmed it,
+	// so consumers can distinguish "not supported" from "not tested".
+	if serverInfo.AggressiveModeEnabled == nil {
+		amFalse := false
+		serverInfo.AggressiveModeEnabled = &amFalse
 	}
 	// NAT-T probes on UDP 4500 (only if not already probing 4500).
 	// RFC 3948 §2.3 requires a 4-byte Non-ESP marker (0x00000000) before IKE
@@ -72,40 +93,59 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 		natTarget := net.JoinHostPort(host, "4500")
 		// IKEv2 NAT-T probe
 		natv2Response, natErr := probeUDP(ctx, natTarget, ikeprotocol.BuildNATTIKEv2SAInitRequest())
-		if natErr == nil {
-			natT := true
-			serverInfo.NatTraversalSupported = &natT
-			log.Info("NAT-T port 4500 responded to IKEv2", svc1log.SafeParam("host", host), svc1log.SafeParam("responseBytes", len(natv2Response)))
-			// If port 500 probes failed, parse the NAT-T response to populate serverInfo.
-			if serverInfo.Version == nil {
-				data := stripNonESPMarker(natv2Response)
-				if isPlausibleIKEPacket(data) {
+		if natErr == nil && len(natv2Response) >= 4 {
+			data := stripNonESPMarker(natv2Response)
+			if isPlausibleIKEPacket(data) {
+				natT := true
+				serverInfo.NatTraversalSupported = &natT
+				log.Info("NAT-T port 4500 responded to IKEv2", svc1log.SafeParam("host", host), svc1log.SafeParam("responseBytes", len(natv2Response)))
+				if serverInfo.Version == nil {
 					applyIKEv2ResponseToServerInfo(data, &serverInfo)
 				}
 			}
 		}
-		// IKEv1 AM NAT-T probe — some devices only respond to AM on port 4500
-		natAMResponse, natAMErr := probeUDP(ctx, natTarget, ikeprotocol.BuildNATTIKEv1AMRequest(buildIKEv1AggressiveModeProbe()))
-		if natAMErr == nil {
+		// IKEv1 AM NAT-T probes — some devices only respond to AM on port 4500.
+		// Try both MODP-1024 and MODP-2048 for the same coverage as the main probes.
+		for _, natAMProbe := range [][]byte{buildIKEv1AggressiveModeProbe(), buildIKEv1AMProbeModp2048()} {
+			natAMResponse, natAMErr := probeUDP(ctx, natTarget, ikeprotocol.BuildNATTIKEv1AMRequest(natAMProbe))
+			if natAMErr != nil || len(natAMResponse) < 4 {
+				continue
+			}
+			// Strip Non-ESP marker (0x00000000) if present per RFC 3948 §2.3.
+			// Some implementations omit it, so only strip if the first 4 bytes are zeros.
+			data := stripNonESPMarker(natAMResponse)
+			if !isPlausibleIKEPacket(data) {
+				continue
+			}
 			natT := true
 			serverInfo.NatTraversalSupported = &natT
-			if len(natAMResponse) >= 28 {
-				// Strip Non-ESP marker (0x00000000) if present per RFC 3948 §2.3.
-				// Some implementations omit it, so only strip if the first 4 bytes are zeros.
-				data := stripNonESPMarker(natAMResponse)
-				aggressiveMode, ikev1 := isIKEv1AggressiveResponse(data)
-				if aggressiveMode {
-					serverInfo.AggressiveModeEnabled = &aggressiveMode
-				}
-				if ikev1 {
-					serverInfo.Ikev1Supported = &ikev1
-				}
+			aggressiveMode, ikev1 := isIKEv1AggressiveResponse(data)
+			if aggressiveMode {
+				serverInfo.AggressiveModeEnabled = &aggressiveMode
+			}
+			if ikev1 {
+				serverInfo.Ikev1Supported = &ikev1
 				mergeIKEv1ProposalsIntoServerInfo(ikeprotocol.ParseIKEv1SAResponse(data), &serverInfo)
-				log.Info("NAT-T port 4500 responded to IKEv1 AM",
-					svc1log.SafeParam("host", host),
-					svc1log.SafeParam("aggressiveMode", aggressiveMode))
+			}
+			log.Info("NAT-T port 4500 responded to IKEv1 AM",
+				svc1log.SafeParam("host", host),
+				svc1log.SafeParam("aggressiveMode", aggressiveMode))
+			if aggressiveMode {
+				break // no need for additional probes
 			}
 		}
+	}
+	// Reconcile the version field based on all detected protocol support.
+	// applyIKEv2ResponseToServerInfo sets version from the IKEv2 response
+	// header alone, so it won't reflect IKEv1 support detected by the AM probe.
+	ikev1 := serverInfo.Ikev1Supported != nil && *serverInfo.Ikev1Supported
+	ikev2 := serverInfo.Ikev2Supported != nil && *serverInfo.Ikev2Supported
+	if ikev1 && ikev2 {
+		v := "IKEv1/IKEv2"
+		serverInfo.Version = &v
+	} else if ikev1 && serverInfo.Version == nil {
+		v := "IKEv1"
+		serverInfo.Version = &v
 	}
 	// Vendor ID analysis
 	if len(serverInfo.VendorIds) > 0 {
