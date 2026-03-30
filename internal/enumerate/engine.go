@@ -17,6 +17,7 @@ import (
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
+	snmp "github.com/Method-Security/networkscan/internal/enumerate/snmp"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
 
 	// External
@@ -146,6 +147,8 @@ func getEngine(serviceType enumeratefern.SupportedServiceType) (NetworkApplicati
 		return NetworkApplicationEngine{Library: &ldap.LibraryEnumerateLDAP{}}, nil
 	case enumeratefern.SupportedServiceTypeIke:
 		return NetworkApplicationEngine{Library: &ike.LibraryEnumerateIKE{}}, nil
+	case enumeratefern.SupportedServiceTypeSnmp:
+		return NetworkApplicationEngine{Library: &snmp.LibraryEnumerateSNMP{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", serviceType)
 	}

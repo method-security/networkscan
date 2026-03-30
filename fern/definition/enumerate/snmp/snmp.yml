@@ -1,0 +1,9 @@
+types:
+  # SNMP Enumeration Details - focused on authentication testing
+  EnumerateSnmpDetails:
+    properties:
+      target: optional<string>
+      v3Detected: optional<boolean> # Whether SNMPv3 engine was found
+      v3NoAuthAccess: optional<boolean> # Whether NoAuthNoPriv grants read access (misconfiguration if true)
+      v3UnauthenticatedUsernames: optional<list<string>> # Usernames that work with NoAuthNoPriv
+      v3RequiredSecurityLevel: optional<string> # Minimum required: noAuthNoPriv, authNoPriv, or authPriv
