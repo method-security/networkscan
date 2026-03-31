@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	ftpfern "github.com/Method-Security/networkscan/generated/go/pentest/ftp"
 	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
 	msrpcfern "github.com/Method-Security/networkscan/generated/go/pentest/msrpc"
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
@@ -259,6 +260,7 @@ var (
 	telnetParserInstance *TelnetActionParser
 	ldapParserInstance   *LDAPActionParser
 	msrpcParserInstance  *MSRPCActionParser
+	ftpParserInstance    *FTPActionParser
 	winrmParserInstance  *WinRMActionParser
 )
 
@@ -302,10 +304,56 @@ func GetMSRPCParser() *MSRPCActionParser {
 	return msrpcParserInstance
 }
 
+// GetFTPParser returns the singleton FTP action parser
+func GetFTPParser() *FTPActionParser {
+	if ftpParserInstance == nil {
+		ftpParserInstance = &FTPActionParser{}
+	}
+	return ftpParserInstance
+}
+
 // GetWinRMParser returns the singleton WinRM action parser
 func GetWinRMParser() *WinRMActionParser {
 	if winrmParserInstance == nil {
 		winrmParserInstance = &WinRMActionParser{}
 	}
 	return winrmParserInstance
+}
+
+// FTPActionParser handles FTP-specific action parsing
+type FTPActionParser struct{}
+
+func (p *FTPActionParser) ParseActions(actionStrings []string) ([]ftpfern.PentestFtpAction, error) {
+	var actions []ftpfern.PentestFtpAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			ftpAction, err := ftpfern.NewPentestFtpActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid FTP action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, ftpAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *FTPActionParser) GetValidActions() []string {
+	return []string{"INFO", "LIST", "WRITE_TEST", "DOWNLOAD", "UPLOAD"}
+}
+
+func (p *FTPActionParser) ContainsAction(actions []ftpfern.PentestFtpAction, target ftpfern.PentestFtpAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
 }

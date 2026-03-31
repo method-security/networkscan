@@ -1,0 +1,40 @@
+types:
+  # FTP Protocol Objects
+  FtpServerInfo:
+    properties:
+      target: optional<string>
+      banner: optional<string>
+      systemType: optional<string>                # SYST response
+      currentDirectory: optional<string>          # PWD response
+      features: optional<list<string>>            # FEAT response lines
+      supportedCommands: optional<list<string>>    # HELP response commands
+      siteCommands: optional<list<string>>         # SITE HELP response commands
+
+  FtpDirectoryEntry:
+    properties:
+      name: string
+      path: string
+      isDirectory: boolean
+      size: optional<long>
+      permissions: optional<string>               # e.g. "drwxr-xr-x"
+      modifiedTime: optional<string>
+      owner: optional<string>
+      group: optional<string>
+
+  FtpWriteTestEntry:
+    properties:
+      path: string                                # Directory tested
+      canMkdir: optional<boolean>                 # MKD/RMD test result
+      canUpload: optional<boolean>                # STOR/DELE test result
+      canRename: optional<boolean>                # RNFR/RNTO test result
+      errors: optional<list<string>>
+
+  FtpFileTransfer:
+    properties:
+      localPath: optional<string>
+      remotePath: string
+      direction: string                           # "upload" or "download"
+      success: boolean
+      size: optional<long>
+      message: optional<string>
+      timestamp: datetime
