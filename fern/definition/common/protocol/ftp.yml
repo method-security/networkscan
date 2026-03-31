@@ -1,15 +1,5 @@
 types:
   # FTP Protocol Objects
-  FtpServerInfo:
-    properties:
-      target: optional<string>
-      banner: optional<string>
-      systemType: optional<string>                # SYST response
-      currentDirectory: optional<string>          # PWD response
-      features: optional<list<string>>            # FEAT response lines
-      supportedCommands: optional<list<string>>    # HELP response commands
-      siteCommands: optional<list<string>>         # SITE HELP response commands
-
   FtpDirectoryEntry:
     properties:
       name: string
@@ -29,12 +19,19 @@ types:
       canRename: optional<boolean>                # RNFR/RNTO test result
       errors: optional<list<string>>
 
-  FtpFileTransfer:
+  FtpDownloadEntry:
     properties:
-      localPath: optional<string>
       remotePath: string
-      direction: string                           # "upload" or "download"
-      success: boolean
+      content: optional<string>                   # Base64-encoded file content
       size: optional<long>
+      success: boolean
+      message: optional<string>
+      timestamp: datetime
+
+  FtpUploadEntry:
+    properties:
+      remotePath: string
+      size: optional<long>
+      success: boolean
       message: optional<string>
       timestamp: datetime

@@ -346,7 +346,7 @@ func (p *FTPActionParser) ParseActions(actionStrings []string) ([]ftpfern.Pentes
 }
 
 func (p *FTPActionParser) GetValidActions() []string {
-	return []string{"INFO", "LIST", "WRITE_TEST", "DOWNLOAD", "UPLOAD"}
+	return []string{"LIST", "WRITE_TEST", "DOWNLOAD", "UPLOAD"}
 }
 
 func (p *FTPActionParser) ContainsAction(actions []ftpfern.PentestFtpAction, target ftpfern.PentestFtpAction) bool {
