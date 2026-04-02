@@ -12,6 +12,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	smtputil "github.com/Method-Security/networkscan/internal/protocol/smtp"
 )
 
 type SMTPFingerprinter struct{}
@@ -62,7 +63,7 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	banner := bannerLines[0]
 
 	// Parse banner for server info
-	serverName, softwareName, softwareVersion := parseSMTPBanner(banner)
+	serverName, softwareName, softwareVersion := smtputil.ParseBanner(banner)
 	esmtp := strings.Contains(banner, "ESMTP")
 
 	// Send EHLO to discover capabilities
@@ -158,56 +159,4 @@ func buildSMTPResult(host string, ip net.IP, port int, banner, serverName, softw
 		Version:   &version,
 		Metadata:  discoverfern.NewServiceMetadataFromSmtp(metadata),
 	}
-}
-
-// parseSMTPBanner extracts server name and software info from a 220 banner.
-// Common formats:
-//
-//	"220 mail.example.com ESMTP Postfix"
-//	"220 mail.example.com ESMTP hMailServer 5.6.9"
-//	"220-mail.example.com ESMTP"
-func parseSMTPBanner(banner string) (serverName, softwareName, softwareVersion string) {
-	// Strip the 220 code and any continuation marker
-	line := banner
-	if strings.HasPrefix(line, "220-") {
-		line = line[4:]
-	} else if strings.HasPrefix(line, "220 ") {
-		line = line[4:]
-	} else {
-		return
-	}
-
-	parts := strings.Fields(line)
-	if len(parts) == 0 {
-		return
-	}
-
-	serverName = parts[0]
-
-	// Skip ESMTP/SMTP marker to find software name
-	idx := 1
-	for idx < len(parts) {
-		upper := strings.ToUpper(parts[idx])
-		if upper == "ESMTP" || upper == "SMTP" {
-			idx++
-			break
-		}
-		idx++
-	}
-
-	if idx < len(parts) {
-		// Remaining parts are software name + possible version
-		remaining := parts[idx:]
-		// Try to find version-like token (starts with digit)
-		for i, token := range remaining {
-			if len(token) > 0 && token[0] >= '0' && token[0] <= '9' {
-				softwareName = strings.Join(remaining[:i], " ")
-				softwareVersion = strings.Join(remaining[i:], " ")
-				return
-			}
-		}
-		softwareName = strings.Join(remaining, " ")
-	}
-
-	return
 }

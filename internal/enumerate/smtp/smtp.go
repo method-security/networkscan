@@ -13,6 +13,8 @@ import (
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	smtp "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
 
+	// Internal
+	smtputil "github.com/Method-Security/networkscan/internal/protocol/smtp"
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -81,10 +83,10 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	log.Info("Connected to target", svc1log.SafeParam("target", target))
 
 	// Read the SMTP banner, wrapping the connection so NewClient can replay it
-	conn, banner, bannerErr := readBanner(conn)
+	conn, banner, bannerErr := smtputil.ReadBannerFromConn(conn)
 	if bannerErr == nil && banner != "" {
 		detail.Banner = &banner
-		serverName, softwareName, softwareVersion := parseSMTPBanner(banner)
+		serverName, softwareName, softwareVersion := smtputil.ParseBanner(banner)
 		if serverName != "" {
 			detail.ServerName = &serverName
 		}
