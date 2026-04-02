@@ -80,7 +80,25 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	detail.CanConnect = &canConnect
 	log.Info("Connected to target", svc1log.SafeParam("target", target))
 
-	// Create SMTP client
+	// Read the SMTP banner, wrapping the connection so NewClient can replay it
+	conn, banner, bannerErr := readBanner(conn)
+	if bannerErr == nil && banner != "" {
+		detail.Banner = &banner
+		serverName, softwareName, softwareVersion := parseSMTPBanner(banner)
+		if serverName != "" {
+			detail.ServerName = &serverName
+		}
+		if softwareName != "" {
+			detail.SoftwareName = &softwareName
+		}
+		if softwareVersion != "" {
+			detail.SoftwareVersion = &softwareVersion
+		}
+		esmtp := strings.Contains(banner, "ESMTP")
+		detail.EsmtpSupported = &esmtp
+	}
+
+	// Create SMTP client from existing connection (banner already consumed)
 	client, err := netsmtp.NewClient(conn, hostname)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("SMTP client creation failed: %v", err))
@@ -103,7 +121,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 		}
 	}
 
-	// Check authentication methods
+	// Check authentication methods and collect supported extensions
 	log.Debug("Checking authentication methods")
 	if ok, param := client.Extension("AUTH"); ok {
 		authMethods := parseAuthMethods(strings.Split(param, " "))
@@ -111,6 +129,12 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 		log.Debug("Supported auth methods", svc1log.SafeParam("authMethods", authMethods))
 	} else {
 		log.Debug("No authentication methods found")
+	}
+
+	// Collect supported EHLO extensions
+	extensions := collectExtensions(client)
+	if len(extensions) > 0 {
+		detail.SupportedExtensions = extensions
 	}
 
 	// Test if unauthenticated email is allowed

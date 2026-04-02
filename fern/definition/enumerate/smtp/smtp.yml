@@ -13,7 +13,13 @@ types:
     properties:
       target: string
       canConnect: optional<boolean>
+      banner: optional<string>
+      serverName: optional<string>
+      softwareName: optional<string>
+      softwareVersion: optional<string>
+      esmtpSupported: optional<boolean>
       tlsSupported: optional<boolean>
       forceTLS: optional<boolean>
       authCommands: optional<list<AuthCommand>>
+      supportedExtensions: optional<list<string>>
       allowsUnauthenticatedEmail: optional<boolean>
