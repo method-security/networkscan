@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	// Generated
-	smtp "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -29,14 +29,34 @@ func tryTLSConnection(target string, hostname string) (net.Conn, error) {
 	return tls.DialWithDialer(&dialer, "tcp", target, tlsConfig)
 }
 
-func parseAuthMethods(methods []string) []smtp.AuthCommand {
-	var result []smtp.AuthCommand
+func parseAuthMethods(methods []string) []protocol.SmtpAuthCommand {
+	var result []protocol.SmtpAuthCommand
 	for _, method := range methods {
 		if auth, ok := authCommands[strings.ToUpper(method)]; ok {
 			result = append(result, auth)
 		}
 	}
 	return result
+}
+
+// collectExtensions checks for common SMTP extensions via the client's Extension method.
+func collectExtensions(c *netsmtp.Client) []string {
+	knownExtensions := []string{
+		"8BITMIME", "AUTH", "BINARYMIME", "CHUNKING", "DSN",
+		"ENHANCEDSTATUSCODES", "ETRN", "PIPELINING", "SIZE",
+		"STARTTLS", "TURN", "VRFY",
+	}
+	var found []string
+	for _, ext := range knownExtensions {
+		if ok, param := c.Extension(ext); ok {
+			if param != "" {
+				found = append(found, ext+" "+param)
+			} else {
+				found = append(found, ext)
+			}
+		}
+	}
+	return found
 }
 
 func testUnauthenticatedEmail(ctx context.Context, c *netsmtp.Client, hostname string) bool {

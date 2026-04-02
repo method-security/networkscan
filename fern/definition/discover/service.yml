@@ -39,6 +39,7 @@ imports:
   foxProtocol: ../common/protocol/fox.yml
   memcachedProtocol: ../common/protocol/memcached.yml
   unistreamProtocol: ../common/protocol/unistream.yml
+  smtpProtocol: ../common/protocol/smtp.yml
 
 types:
   # Generic metadata for fingerprintx and other sources
@@ -90,6 +91,7 @@ types:
       fox: foxProtocol.FoxServerInfo
       memcached: memcachedProtocol.MemcachedServerInfo
       unistream: unistreamProtocol.UnistreamServerInfo
+      smtp: smtpProtocol.SmtpServerInfo
 
   # Stealth service types
   StealthServiceType:
