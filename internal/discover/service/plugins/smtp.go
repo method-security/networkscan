@@ -77,7 +77,7 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	_ = conn.SetReadDeadline(time.Now().Add(dur))
 
 	var extensions []string
-	var authMethods []string
+	var authMethods []protocol.SmtpAuthCommand
 	tlsSupported := false
 
 	// Read EHLO response lines — only accept 250 responses
@@ -104,8 +104,10 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		}
 		if strings.HasPrefix(strings.ToUpper(ext), "AUTH ") {
 			methods := strings.Fields(ext)
-			if len(methods) > 1 {
-				authMethods = append(authMethods, methods[1:]...)
+			for _, m := range methods[1:] {
+				if cmd, err := protocol.NewSmtpAuthCommandFromString(strings.ToUpper(m)); err == nil {
+					authMethods = append(authMethods, cmd)
+				}
 			}
 		}
 		extensions = append(extensions, ext)
@@ -123,7 +125,7 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	return buildSMTPResult(host, ip, port, banner, serverName, softwareName, softwareVersion, esmtp, tlsSupported, authMethods, extensions), nil
 }
 
-func buildSMTPResult(host string, ip net.IP, port int, banner, serverName, softwareName, softwareVersion string, esmtp, tlsSupported bool, authMethods, extensions []string) *discoverfern.ServiceDetails {
+func buildSMTPResult(host string, ip net.IP, port int, banner, serverName, softwareName, softwareVersion string, esmtp, tlsSupported bool, authMethods []protocol.SmtpAuthCommand, extensions []string) *discoverfern.ServiceDetails {
 	metadata := &protocol.SmtpServerInfo{
 		Banner:              &banner,
 		EsmtpSupported:      &esmtp,

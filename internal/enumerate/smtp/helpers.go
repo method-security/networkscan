@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	// Generated
-	smtp "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -29,8 +29,8 @@ func tryTLSConnection(target string, hostname string) (net.Conn, error) {
 	return tls.DialWithDialer(&dialer, "tcp", target, tlsConfig)
 }
 
-func parseAuthMethods(methods []string) []smtp.AuthCommand {
-	var result []smtp.AuthCommand
+func parseAuthMethods(methods []string) []protocol.SmtpAuthCommand {
+	var result []protocol.SmtpAuthCommand
 	for _, method := range methods {
 		if auth, ok := authCommands[strings.ToUpper(method)]; ok {
 			result = append(result, auth)

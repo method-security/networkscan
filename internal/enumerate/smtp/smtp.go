@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	// Generated
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	smtp "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
 
@@ -40,6 +41,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	detail := smtp.EnumerateSmtpDetails{
 		Target: target,
 	}
+	serverInfo := &protocol.SmtpServerInfo{}
 	errors := []string{}
 
 	// Get hostname for HELLO command and TLS
@@ -48,7 +50,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 		errors = append(errors, fmt.Sprintf("invalid target format: %v", err))
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
 	}
-	config := &tls.Config{
+	tlsConfig := &tls.Config{
 		ServerName:         hostname,
 		InsecureSkipVerify: true,
 	}
@@ -72,9 +74,9 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 			return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
 		}
 		log.Debug("TLS connection successful")
-		TLSSupported := true
+		tlsSupported := true
 		forceTLS := true
-		detail.TlsSupported = &TLSSupported
+		serverInfo.TlsSupported = &tlsSupported
 		detail.ForceTls = &forceTLS
 	}
 
@@ -85,41 +87,42 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	// Read the SMTP banner, wrapping the connection so NewClient can replay it
 	conn, banner, bannerErr := smtputil.ReadBannerFromConn(conn)
 	if bannerErr == nil && banner != "" {
-		detail.Banner = &banner
+		serverInfo.Banner = &banner
 		serverName, softwareName, softwareVersion := smtputil.ParseBanner(banner)
 		if serverName != "" {
-			detail.ServerName = &serverName
+			serverInfo.ServerName = &serverName
 		}
 		if softwareName != "" {
-			detail.SoftwareName = &softwareName
+			serverInfo.SoftwareName = &softwareName
 		}
 		if softwareVersion != "" {
-			detail.SoftwareVersion = &softwareVersion
+			serverInfo.SoftwareVersion = &softwareVersion
 		}
 		esmtp := strings.Contains(banner, "ESMTP")
-		detail.EsmtpSupported = &esmtp
+		serverInfo.EsmtpSupported = &esmtp
 	}
 
 	// Create SMTP client from existing connection (banner already consumed)
 	client, err := netsmtp.NewClient(conn, hostname)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("SMTP client creation failed: %v", err))
+		detail.ServerInfo = serverInfo
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
 	}
 
 	// Try STARTTLS if TLS connection established above
-	if detail.TlsSupported == nil {
+	if serverInfo.TlsSupported == nil {
 		log.Debug("Attempting STARTTLS")
-		err = client.StartTLS(config)
+		err = client.StartTLS(tlsConfig)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("TLS upgrade failed: %v", err))
-			TLSSupported := false
-			detail.TlsSupported = &TLSSupported
+			tlsSupported := false
+			serverInfo.TlsSupported = &tlsSupported
 			log.Debug("STARTTLS failed")
 		} else {
 			log.Debug("STARTTLS successful")
-			TLSSupported := true
-			detail.TlsSupported = &TLSSupported
+			tlsSupported := true
+			serverInfo.TlsSupported = &tlsSupported
 		}
 	}
 
@@ -127,7 +130,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	log.Debug("Checking authentication methods")
 	if ok, param := client.Extension("AUTH"); ok {
 		authMethods := parseAuthMethods(strings.Split(param, " "))
-		detail.AuthCommands = authMethods
+		serverInfo.AuthMethods = authMethods
 		log.Debug("Supported auth methods", svc1log.SafeParam("authMethods", authMethods))
 	} else {
 		log.Debug("No authentication methods found")
@@ -136,8 +139,10 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	// Collect supported EHLO extensions
 	extensions := collectExtensions(client)
 	if len(extensions) > 0 {
-		detail.SupportedExtensions = extensions
+		serverInfo.SupportedExtensions = extensions
 	}
+
+	detail.ServerInfo = serverInfo
 
 	// Test if unauthenticated email is allowed
 	log.Debug("Testing unauthenticated email")

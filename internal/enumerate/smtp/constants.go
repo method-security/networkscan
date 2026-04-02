@@ -2,13 +2,13 @@ package smtp
 
 import (
 	// Generated
-	smtp "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 )
 
-var authCommands = map[string]smtp.AuthCommand{
-	"XOAUTH2":  smtp.AuthCommandXoauth2,
-	"PLAIN":    smtp.AuthCommandPlain,
-	"LOGIN":    smtp.AuthCommandLogin,
-	"CRAM_MD5": smtp.AuthCommandCrammd5,
-	"NTLM":     smtp.AuthCommandNtlm,
+var authCommands = map[string]protocol.SmtpAuthCommand{
+	"XOAUTH2":  protocol.SmtpAuthCommandXoauth2,
+	"PLAIN":    protocol.SmtpAuthCommandPlain,
+	"LOGIN":    protocol.SmtpAuthCommandLogin,
+	"CRAM_MD5": protocol.SmtpAuthCommandCrammd5,
+	"NTLM":     protocol.SmtpAuthCommandNtlm,
 }
