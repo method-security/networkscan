@@ -19,7 +19,7 @@ type SMTPFingerprinter struct{}
 
 func (SMTPFingerprinter) Name() string { return "smtp" }
 
-func (SMTPFingerprinter) DefaultPorts() []int { return []int{25, 465, 587, 2525, 8025} }
+func (SMTPFingerprinter) DefaultPorts() []int { return []int{25, 587, 2525, 8025} }
 
 func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
@@ -79,6 +79,7 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	var extensions []string
 	var authMethods []protocol.SmtpAuthCommand
 	tlsSupported := false
+	firstLine := true
 
 	// Read EHLO response lines — only accept 250 responses
 	for {
@@ -95,6 +96,15 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		// Only process 250 response lines; anything else means EHLO failed or unexpected response
 		if !strings.HasPrefix(line, "250") {
 			break
+		}
+
+		// First 250 line is the server greeting (RFC 5321), not an extension
+		if firstLine {
+			firstLine = false
+			if line[3] == ' ' {
+				break
+			}
+			continue
 		}
 
 		ext := line[4:]
