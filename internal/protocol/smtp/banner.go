@@ -91,17 +91,12 @@ func ReadBannerFromConn(conn net.Conn) (net.Conn, string, error) {
 		}
 	}
 
-	// Wrap connection: replay buffered data, then continue reading from conn
-	// The bufio.Reader may have buffered extra bytes beyond what TeeReader wrote,
-	// so we need to include any remaining buffered data too.
-	remaining := make([]byte, reader.Buffered())
-	if len(remaining) > 0 {
-		_, _ = reader.Read(remaining)
-	}
-
+	// Wrap connection: replay buffered data, then continue reading from conn.
+	// The TeeReader has already copied all bytes read (including any bufio read-ahead)
+	// into buf, so we only need buf + the original conn for remaining data.
 	wrapped := &replayConn{
 		Conn:   conn,
-		reader: io.MultiReader(&buf, bytes.NewReader(remaining), conn),
+		reader: io.MultiReader(&buf, conn),
 	}
 	return wrapped, banner, nil
 }
