@@ -4,7 +4,6 @@ package plugins
 import (
 	"bufio"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
 	"strings"
@@ -13,7 +12,6 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-	"github.com/Method-Security/networkscan/utils"
 )
 
 type SMTPFingerprinter struct{}
@@ -35,17 +33,33 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 
 	_ = conn.SetReadDeadline(time.Now().Add(dur))
 
-	// Read the banner — SMTP servers send a 220 greeting on connect
+	// Read the banner — SMTP servers send a 220 greeting on connect.
+	// Banners can be multi-line (220- continuation lines followed by a final 220 line).
 	reader := bufio.NewReader(conn)
-	banner, err := reader.ReadString('\n')
-	if err != nil {
-		return nil, err
-	}
-	banner = strings.TrimSpace(banner)
+	var bannerLines []string
+	for {
+		line, readErr := reader.ReadString('\n')
+		if readErr != nil {
+			return nil, readErr
+		}
+		line = strings.TrimSpace(line)
 
-	if !strings.HasPrefix(banner, "220") {
-		return nil, fmt.Errorf("not an SMTP service: %s", banner)
+		if !strings.HasPrefix(line, "220") {
+			return nil, fmt.Errorf("not an SMTP service: %s", line)
+		}
+		bannerLines = append(bannerLines, line)
+
+		// "220 " (space at index 3) is the final banner line
+		if len(line) >= 4 && line[3] == ' ' {
+			break
+		}
+		// Single "220" with no continuation marker is also final
+		if len(line) < 4 {
+			break
+		}
 	}
+
+	banner := bannerLines[0]
 
 	// Parse banner for server info
 	serverName, softwareName, softwareVersion := parseSMTPBanner(banner)
@@ -56,7 +70,6 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	ehloHost := "scanner.local"
 	_, err = fmt.Fprintf(conn, "EHLO %s\r\n", ehloHost)
 	if err != nil {
-		// Still return what we have from the banner
 		return buildSMTPResult(host, ip, port, banner, serverName, softwareName, softwareVersion, esmtp, false, nil, nil), nil
 	}
 
@@ -66,7 +79,7 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	var authMethods []string
 	tlsSupported := false
 
-	// Read EHLO response lines (250- continuation, 250 final)
+	// Read EHLO response lines — only accept 250 responses
 	for {
 		line, readErr := reader.ReadString('\n')
 		if readErr != nil {
@@ -78,7 +91,11 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 			break
 		}
 
-		// Extract the extension part (after "250-" or "250 ")
+		// Only process 250 response lines; anything else means EHLO failed or unexpected response
+		if !strings.HasPrefix(line, "250") {
+			break
+		}
+
 		ext := line[4:]
 
 		if strings.HasPrefix(strings.ToUpper(ext), "STARTTLS") {
@@ -98,23 +115,6 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		}
 	}
 
-	// If STARTTLS is available, try upgrading to get TLS info
-	if tlsSupported {
-		_ = conn.SetWriteDeadline(time.Now().Add(dur))
-		_, _ = fmt.Fprintf(conn, "STARTTLS\r\n")
-		_ = conn.SetReadDeadline(time.Now().Add(dur))
-		tlsResp, readErr := reader.ReadString('\n')
-		if readErr == nil && strings.HasPrefix(strings.TrimSpace(tlsResp), "220") {
-			tlsConn := tls.Client(conn, &tls.Config{
-				InsecureSkipVerify: true, //nolint:gosec
-				ServerName:         host,
-			})
-			if tlsErr := tlsConn.HandshakeContext(ctx); tlsErr == nil {
-				defer func() { _ = tlsConn.Close() }()
-			}
-		}
-	}
-
 	// Send QUIT
 	_ = conn.SetWriteDeadline(time.Now().Add(dur))
 	_, _ = fmt.Fprintf(conn, "QUIT\r\n")
@@ -123,9 +123,6 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 }
 
 func buildSMTPResult(host string, ip net.IP, port int, banner, serverName, softwareName, softwareVersion string, esmtp, tlsSupported bool, authMethods, extensions []string) *discoverfern.ServiceDetails {
-	target := utils.FormatHostPort(host, port)
-	_ = target
-
 	metadata := &protocol.SmtpServerInfo{
 		Banner:              &banner,
 		EsmtpSupported:      &esmtp,
