@@ -72,6 +72,7 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.FoxFingerprinter{},       // FOX (Tridium Niagara Framework)
 	&localPlugins.MemcachedFingerprinter{}, // MEMCACHED
 	&localPlugins.UnistreamFingerprinter{}, // Unitronics UniStream (EtherNet/IP)
+	&localPlugins.SMTPFingerprinter{},      // SMTP (Simple Mail Transfer Protocol)
 }
 
 // UDP fingerprinters mapped to their specific ports

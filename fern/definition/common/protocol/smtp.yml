@@ -1,0 +1,12 @@
+types:
+  # SMTP Server Information
+  SmtpServerInfo:
+    properties:
+      banner: optional<string>
+      serverName: optional<string>
+      softwareName: optional<string>
+      softwareVersion: optional<string>
+      esmtpSupported: optional<boolean>
+      tlsSupported: optional<boolean>
+      authMethods: optional<list<string>>
+      supportedExtensions: optional<list<string>>
