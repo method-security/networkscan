@@ -45,7 +45,7 @@ func parseAuthMethods(methods []string) []protocol.SmtpAuthCommand {
 func collectExtensions(c *netsmtp.Client) []string {
 	knownExtensions := []string{
 		"8BITMIME", "AUTH", "BINARYMIME", "CHUNKING", "DSN",
-		"ENHANCEDSTATUSCODES", "ETRN", "PIPELINING", "SIZE",
+		"ENHANCEDSTATUSCODES", "ETRN", "EXPN", "PIPELINING", "SIZE",
 		"STARTTLS", "TURN", "VRFY",
 	}
 	var found []string

@@ -68,37 +68,39 @@ func grabBanner(ctx context.Context, conn net.Conn) (string, error) {
 	return bannerStr, nil
 }
 
-// Function to check for anonymous login with retry on failure
-func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.Conn, details *ftp.EnumerateFtpDetails) []string {
+// checkAnonymousLoginWithRetry checks for anonymous login, reconnecting on failure.
+// Returns the active connection (which may be a new one if a retry occurred) and any errors.
+func checkAnonymousLoginWithRetry(ctx context.Context, target string, conn net.Conn, details *ftp.EnumerateFtpDetails) (net.Conn, []string) {
 	log := svc1log.FromContext(ctx)
 
 	errors := []string{}
 	if err := checkAnonymousLogin(ctx, conn, details); err != nil {
 		log.Warn("Error checking anonymous login, retrying...", svc1log.SafeParam("error", err.Error()))
 
-		conn, err = attemptConnection(ctx, target)
+		// Close the broken connection
+		_ = conn.Close()
+
+		newConn, err := attemptConnection(ctx, target)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("failed to reconnect: %v", err))
-			return errors
+			return nil, errors
 		}
 
 		// Consume the banner from the new connection before retrying
-		if _, bannerErr := grabBanner(ctx, conn); bannerErr != nil {
+		if _, bannerErr := grabBanner(ctx, newConn); bannerErr != nil {
 			errors = append(errors, fmt.Sprintf("failed to read banner after reconnect: %v", bannerErr))
-			_ = conn.Close()
-			return errors
+			_ = newConn.Close()
+			return nil, errors
 		}
 
-		err = checkAnonymousLogin(ctx, conn, details)
+		err = checkAnonymousLogin(ctx, newConn, details)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("anonymous login check failed after retry: %v", err))
 		}
-		if closeErr := conn.Close(); closeErr != nil {
-			errors = append(errors, fmt.Sprintf("failed to close connection: %v", closeErr))
-		}
+		return newConn, errors
 	}
 
-	return errors
+	return conn, errors
 }
 
 // Function to check for anonymous login
@@ -190,6 +192,11 @@ func listDirectory(ctx context.Context, conn net.Conn) ([]*ftp.FtpDirectoryEntry
 		return nil, []string{fmt.Sprintf("failed to read PASV response: %v", err)}
 	}
 
+	// Clear the PASV read deadline before proceeding
+	if err := conn.SetReadDeadline(time.Time{}); err != nil {
+		return nil, []string{fmt.Sprintf("failed to clear PASV read deadline: %v", err)}
+	}
+
 	pasvResponse := string(response[:n])
 	log.Debug("PASV response", svc1log.SafeParam("response", pasvResponse))
 
@@ -217,6 +224,9 @@ func listDirectory(ctx context.Context, conn net.Conn) ([]*ftp.FtpDirectoryEntry
 	}
 
 	// Read LIST response code from control connection
+	if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return nil, []string{fmt.Sprintf("failed to set LIST read deadline: %v", err)}
+	}
 	n, err = conn.Read(response)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("failed to read LIST response: %v", err))
