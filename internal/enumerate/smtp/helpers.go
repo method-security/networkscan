@@ -86,12 +86,11 @@ func enumerateUsers(ctx context.Context, c *netsmtp.Client, hostname string, ext
 
 	// Try EXPN if supported (for mailing list expansion)
 	if expnSupported {
-		log.Info("EXPN supported, probing common list names")
-		listNames := []string{"all", "staff", "users", "employees", "team"}
-		for _, listName := range listNames {
-			exists, response := probeEXPN(c, listName)
+		log.Info("EXPN supported, probing via EXPN")
+		for _, username := range usernames {
+			exists, response := probeEXPN(c, username)
 			results = append(results, &smtp.SmtpEnumeratedUser{
-				Username: listName,
+				Username: username,
 				Exists:   exists,
 				Method:   smtp.SmtpUserEnumerationMethodExpn,
 				Response: &response,
@@ -145,7 +144,7 @@ func probeVRFY(c *netsmtp.Client, username string) (bool, string) {
 }
 
 // probeEXPN sends an EXPN command for the given mailing list name.
-// 250 = list exists and members returned, 550 = list does not exist.
+// 250 = list exists and members returned (possibly multi-line), 550 = list does not exist.
 func probeEXPN(c *netsmtp.Client, listName string) (bool, string) {
 	id, err := c.Text.Cmd("EXPN %s", listName)
 	if err != nil {
@@ -153,13 +152,9 @@ func probeEXPN(c *netsmtp.Client, listName string) (bool, string) {
 	}
 	c.Text.StartResponse(id)
 	defer c.Text.EndResponse(id)
-	code, msg, err := c.Text.ReadCodeLine(-1)
+	// Use ReadResponse to properly drain multi-line 250 responses (one member per line)
+	code, msg, err := c.Text.ReadResponse(-1)
 	if err != nil {
-		// Multi-line 250 responses (list members) come back as an error from ReadCodeLine
-		// but that's actually a success — check if it starts with 250
-		if code == 250 {
-			return true, fmt.Sprintf("%d %s", code, msg)
-		}
 		return false, fmt.Sprintf("%d %s", code, msg)
 	}
 	response := fmt.Sprintf("%d %s", code, msg)
