@@ -168,6 +168,7 @@ func probeRCPTTO(c *netsmtp.Client, username string, hostname string) (bool, str
 
 	err := c.Mail(fmt.Sprintf("probe@%s", hostname))
 	if err != nil {
+		_ = c.Reset()
 		return false, fmt.Sprintf("MAIL FROM error: %v", err)
 	}
 
