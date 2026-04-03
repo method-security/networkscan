@@ -39,6 +39,7 @@ types:
       targets: list<string>
       service: SupportedServiceType
       timeout: integer
+      wordlist: optional<list<string>>
   # Final report
   EnumerateServiceReport:
     properties:

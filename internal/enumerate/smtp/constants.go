@@ -12,3 +12,11 @@ var authCommands = map[string]protocol.SmtpAuthCommand{
 	"CRAM_MD5": protocol.SmtpAuthCommandCrammd5,
 	"NTLM":     protocol.SmtpAuthCommandNtlm,
 }
+
+var defaultUsernames = []string{
+	"root", "admin", "administrator", "postmaster", "webmaster",
+	"info", "support", "sales", "contact", "abuse",
+	"noc", "security", "hostmaster", "mailer-daemon",
+	"nobody", "mail", "ftp", "www", "www-data",
+	"test", "guest", "user", "operator",
+}

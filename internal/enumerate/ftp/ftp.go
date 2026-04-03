@@ -99,6 +99,18 @@ func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string
 		errors = append(errors, errs...)
 	}
 
+	// If anonymous login succeeded, retrieve directory listing
+	if details.AllowsAnonymousLogin != nil && *details.AllowsAnonymousLogin {
+		log.Info("Anonymous login succeeded, retrieving directory listing")
+		entries, listErrs := listDirectory(ctx, conn)
+		if len(listErrs) > 0 {
+			errors = append(errors, listErrs...)
+		}
+		if len(entries) > 0 {
+			details.DirectoryListing = entries
+		}
+	}
+
 	err = conn.Close()
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("failed to close connection: %v", err))

@@ -2,6 +2,21 @@ imports:
   smtpProtocol: ../../common/protocol/smtp.yml
 
 types:
+  # ENUMs
+  SmtpUserEnumerationMethod:
+    enum:
+      - VRFY
+      - EXPN
+      - RCPT_TO
+
+  # Common Objects
+  SmtpEnumeratedUser:
+    properties:
+      username: string
+      exists: boolean
+      method: SmtpUserEnumerationMethod
+      response: optional<string>
+
   # Report structs
   EnumerateSmtpDetails:
     properties:
@@ -10,3 +25,4 @@ types:
       serverInfo: optional<smtpProtocol.SmtpServerInfo>
       forceTLS: optional<boolean>
       allowsUnauthenticatedEmail: optional<boolean>
+      enumeratedUsers: optional<list<SmtpEnumeratedUser>>
