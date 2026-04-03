@@ -134,7 +134,7 @@ func probeVRFY(c *netsmtp.Client, username string) (bool, string) {
 	}
 	c.Text.StartResponse(id)
 	defer c.Text.EndResponse(id)
-	code, msg, err := c.Text.ReadCodeLine(-1)
+	code, msg, err := c.Text.ReadResponse(-1)
 	if err != nil {
 		return false, fmt.Sprintf("%d %s", code, msg)
 	}
