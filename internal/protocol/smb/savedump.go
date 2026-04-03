@@ -79,6 +79,13 @@ func SaveAndDownloadHive(ctx context.Context, session *gosmb.Connection, rpccon 
 	}
 
 	if downloadErr != nil {
+		// Best-effort cleanup: try to delete the temp file through each share
+		for _, share := range shares {
+			if delErr := session.DeleteFile(share.name, share.path); delErr == nil {
+				log.Info("Cleaned up temp hive file after download failure", svc1log.SafeParam("share", share.name))
+				break
+			}
+		}
 		return nil, fmt.Errorf("failed to download %s hive from all shares: %v", hiveName, downloadErr)
 	}
 
@@ -592,7 +599,7 @@ func getLSAKeyFromHive(securityHive *RegistryHive, bootKey []byte) ([]byte, bool
 }
 
 func parseSecretFromHive(systemHive *RegistryHive, name string, secretItem []byte) *PrintableLSASecret {
-	if len(secretItem) == 0 {
+	if len(secretItem) < 2 {
 		return nil
 	}
 	if bytes.Equal(secretItem[:2], []byte{0, 0}) {
@@ -736,7 +743,7 @@ func getCachedHashesFromHive(ctx context.Context, securityHive *RegistryHive, bo
 			if len(v.Data) >= 4 {
 				ic := binary.LittleEndian.Uint32(v.Data[:4])
 				if ic > 10240 {
-					iterCount = int(ic)
+					iterCount = int(ic & 0xfffffc00)
 				} else if ic != 0 {
 					iterCount = int(ic) * 1024
 				}
