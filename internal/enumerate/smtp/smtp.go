@@ -21,7 +21,9 @@ import (
 )
 
 // LibraryEnumerateSMTP implements NetworkApplicationLibrary for SMTP enumeration.
-type LibraryEnumerateSMTP struct{}
+type LibraryEnumerateSMTP struct {
+	Wordlist []string
+}
 
 // EnumerateTarget Overview
 //  1. Try to connect to service
@@ -143,6 +145,16 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	}
 
 	detail.ServerInfo = serverInfo
+
+	// Enumerate users via VRFY, EXPN, and RCPT TO
+	wordlist := s.Wordlist
+	if len(wordlist) == 0 {
+		wordlist = defaultUsernames
+	}
+	enumeratedUsers := enumerateUsers(ctx, client, hostname, extensions, wordlist)
+	if len(enumeratedUsers) > 0 {
+		detail.EnumeratedUsers = enumeratedUsers
+	}
 
 	// Test if unauthenticated email is allowed
 	log.Debug("Testing unauthenticated email")

@@ -1,4 +1,21 @@
 types:
+  # ENUMs
+  FtpEntryType:
+    enum:
+      - FILE
+      - DIRECTORY
+      - LINK
+      - UNKNOWN
+
+  # Common Objects
+  FtpDirectoryEntry:
+    properties:
+      name: string
+      type: FtpEntryType
+      size: optional<long>
+      permissions: optional<string>
+      lastModified: optional<string>
+
   # Report structs
   EnumerateFtpDetails:
     properties:
@@ -8,4 +25,5 @@ types:
       tlsImplemented: optional<boolean>
       tlsForced: optional<boolean>
       allowsAnonymousLogin: optional<boolean>
+      directoryListing: optional<list<FtpDirectoryEntry>>
       error: optional<string>
