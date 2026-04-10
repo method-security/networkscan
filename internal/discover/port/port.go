@@ -75,7 +75,9 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 	var portscanResult []*discoverfern.SocketDetails
 	var err error
 
-	if config.Stealth != nil {
+	if isAndroid() {
+		portscanResult, err = RunPortScanAndroid(ctx, config)
+	} else if config.Stealth != nil {
 		portscanResult, err = getStealthPortScan(ctx, config)
 	} else {
 		portscanResult, err = getPortScan(ctx, config)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -41,7 +42,23 @@ type Handlers struct {
 	EthernetInactive  []*pcap.InactiveHandle
 }
 
+// isAndroid returns true when the binary is running on an Android kernel,
+// detected by the presence of "android" in /proc/version.
+func isAndroid() bool {
+	data, err := os.ReadFile("/proc/version")
+	if err != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(data)), "android")
+}
+
 func init() {
+	// Android kernels report as Linux but do not support the pcap/raw-socket
+	// interface enumeration that naabu performs here. Skip pcap setup entirely;
+	// Android-specific host/port discovery is handled at a higher level.
+	if isAndroid() {
+		return
+	}
 	if PkgRouter == nil || !privileges.IsPrivileged {
 		return
 	}

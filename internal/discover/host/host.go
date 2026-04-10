@@ -37,7 +37,9 @@ func RunHostDiscovery(ctx context.Context, config discoverfern.DiscoverHostConfi
 	var hostDiscoverResult []*discoverfern.HostDetails
 	var err error
 
-	if config.Stealth != nil {
+	if isAndroid() {
+		hostDiscoverResult, err = RunHostDiscoveryAndroid(ctx, config.Target)
+	} else if config.Stealth != nil {
 		hostDiscoverResult, err = getStealthHostDiscovery(ctx, config)
 	} else if config.ScanType != nil {
 		hostDiscoverResult, err = getHostDiscover(ctx, config.Target, *config.ScanType)
