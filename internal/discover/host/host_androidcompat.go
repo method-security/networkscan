@@ -1,10 +1,11 @@
+//go:build androidcompat
+
 package discover
 
 import (
 	"context"
 	"fmt"
 	"net"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -13,13 +14,22 @@ import (
 	"github.com/Method-Security/networkscan/utils"
 )
 
-// isAndroid returns true when running on an Android kernel.
-func isAndroid() bool {
-	data, err := os.ReadFile("/proc/version")
+// RunHostDiscovery is the Android build entry point for host discovery.
+// It always uses the ping-based Android path since naabu's raw-socket approach
+// is unavailable on Android kernels.
+func RunHostDiscovery(ctx context.Context, config discoverfern.DiscoverHostConfig) (*discoverfern.DiscoverHostReport, error) {
+	errors := []string{}
+
+	hostDiscoverResult, err := RunHostDiscoveryAndroid(ctx, config.Target)
 	if err != nil {
-		return false
+		errors = append(errors, err.Error())
 	}
-	return strings.Contains(strings.ToLower(string(data)), "android")
+
+	return &discoverfern.DiscoverHostReport{
+		Config: &config,
+		Result: &discoverfern.DiscoverHostResult{Hosts: hostDiscoverResult},
+		Errors: errors,
+	}, nil
 }
 
 // RunHostDiscoveryAndroid discovers live hosts on Android using ICMP ping via the system ping binary.
@@ -52,7 +62,7 @@ func RunHostDiscoveryAndroid(ctx context.Context, target string) ([]*discoverfer
 				return
 			default:
 			}
-			live := androidPing(h)
+			live := androidPing(ctx, h)
 			ip := h
 			hostname := ""
 			if net.ParseIP(h) == nil {
@@ -88,8 +98,9 @@ func RunHostDiscoveryAndroid(ctx context.Context, target string) ([]*discoverfer
 }
 
 // androidPing sends a single ICMP echo request using the system ping binary and returns true if the host responds.
-func androidPing(host string) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+// It respects the parent context — if the context is cancelled, the ping subprocess is killed immediately.
+func androidPing(ctx context.Context, host string) bool {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	// -c 1 = 1 packet, -W 1 = 1 second wait
 	cmd := exec.CommandContext(ctx, "/system/bin/ping", "-c", "1", "-W", "1", host)

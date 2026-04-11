@@ -1,0 +1,5 @@
+FROM --platform=linux/arm64 golang:1.26.0-alpine3.22
+RUN apk add --no-cache git bash
+WORKDIR /app
+COPY . .
+RUN CGO_ENABLED=0 go build -tags androidcompat -o networkscan .

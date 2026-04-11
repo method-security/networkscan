@@ -1,3 +1,5 @@
+//go:build !androidcompat
+
 package discover
 
 import (
@@ -6,8 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strconv"
-	"strings"
 	"sync"
 
 	// Generated
@@ -25,31 +25,6 @@ import (
 	result "github.com/projectdiscovery/naabu/v2/pkg/result"
 	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
-
-// requiredPorts are the ports that are required to be open for the scan to be considered valid if Validate is true
-// These ports are ADDED to the list of ports to scan if Validate is true
-var requiredPorts = []string{
-	"1",
-	"2",
-	"4873",
-	"9127",
-	"10439",
-	"15872",
-	"21345",
-	"27654",
-	"31987",
-	"35841",
-	"40129",
-	"44762",
-	"48991",
-	"51234",
-	"54321",
-	"57689",
-	"60321",
-	"62844",
-	"64998",
-	"65535",
-}
 
 // stderrWriter implements writer.Writer interface to redirect all gologger output to stderr
 type stderrWriter struct{}
@@ -75,9 +50,7 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 	var portscanResult []*discoverfern.SocketDetails
 	var err error
 
-	if isAndroid() {
-		portscanResult, err = RunPortScanAndroid(ctx, config)
-	} else if config.Stealth != nil {
+	if config.Stealth != nil {
 		portscanResult, err = getStealthPortScan(ctx, config)
 	} else {
 		portscanResult, err = getPortScan(ctx, config)
@@ -103,9 +76,9 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 				shouldValidate = true
 			}
 		}
-		// Step 2: Check if required validation ports are ope
-		hasOpenRequiredPorts := hasOpenRequiredPorts(portscanResult, requiredPorts)
-		if hasOpenRequiredPorts {
+		// Step 2: Check if required validation ports are open
+		hasOpen := hasOpenRequiredPorts(portscanResult, requiredPorts)
+		if hasOpen {
 			log.Warn("Required validation ports are open, triggering validation", svc1log.SafeParam("requiredPorts", requiredPorts))
 			errors = append(errors, fmt.Sprintf("validation triggered due to one or more validation ports being open: %v", requiredPorts)) // Note: DD Metrics is generated off of this error line. Please update with caution
 			shouldValidate = true
@@ -238,74 +211,6 @@ func parsePortScanResult(result *result.HostResult, ipToHostname map[string]stri
 		Ports: ports,
 	}
 	return &host
-}
-
-// ensureRequiredPorts modifies the scan configuration to include required ports
-func ensureRequiredPorts(config discoverfern.DiscoverPortConfig, requiredPorts []string) discoverfern.DiscoverPortConfig {
-	// If specific ports are already configured, add required ports to them
-	if config.Ports != nil && *config.Ports != "" {
-		existingPorts := *config.Ports
-		for _, port := range requiredPorts {
-			if !strings.Contains(existingPorts, port) {
-				existingPorts += "," + port
-			}
-		}
-		config.Ports = &existingPorts
-	} else if config.TopPorts != nil {
-		// If using top ports, we need to switch to specific ports that include required ports
-		requiredPortsStr := ""
-		for i, port := range requiredPorts {
-			if i > 0 {
-				requiredPortsStr += ","
-			}
-			requiredPortsStr += port
-		}
-		config.Ports = &requiredPortsStr
-		// Keep TopPorts as well, naabu will scan both
-	} else {
-		// No specific ports configured, add required ports
-		requiredPortsStr := ""
-		for i, port := range requiredPorts {
-			if i > 0 {
-				requiredPortsStr += ","
-			}
-			requiredPortsStr += port
-		}
-		config.Ports = &requiredPortsStr
-	}
-
-	return config
-}
-
-// hasOpenRequiredPorts checks if any of the required ports (as strings) are open in the scan results
-func hasOpenRequiredPorts(scanResults []*discoverfern.SocketDetails, requiredPorts []string) bool {
-	requiredPortsMap := make(map[string]bool)
-	for _, port := range requiredPorts {
-		requiredPortsMap[port] = true
-	}
-
-	for _, socket := range scanResults {
-		if socket != nil && socket.Ports != nil {
-			for _, port := range socket.Ports {
-				if port != nil && requiredPortsMap[strconv.Itoa(port.Port)] {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
-}
-
-// countOpenPorts counts the total number of open ports across all hosts in the scan results
-func countOpenPorts(scanResults []*discoverfern.SocketDetails) int {
-	count := 0
-	for _, socket := range scanResults {
-		if socket != nil && socket.Ports != nil {
-			count += len(socket.Ports)
-		}
-	}
-	return count
 }
 
 // hideOsArgsFromNaabu prevents Naabu from processing command line arguments.
