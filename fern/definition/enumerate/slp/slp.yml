@@ -1,0 +1,12 @@
+imports:
+  slpProtocol: ../../common/protocol/slp.yml
+types:
+  # Report structs
+  EnumerateSlpDetails:
+    properties:
+      target: string
+      directoryAgents: optional<list<slpProtocol.SlpDirectoryEntry>>
+      serviceTypes: optional<list<string>>
+      services: optional<list<slpProtocol.SlpServiceEntry>>
+      scopes: optional<list<string>>
+      error: optional<string>

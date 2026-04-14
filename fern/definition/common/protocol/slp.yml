@@ -6,3 +6,21 @@ types:
       version: optional<string>
       services: optional<list<string>>
       scopes: optional<list<string>>
+
+  # A service registration found via SLP query
+  SlpServiceEntry:
+    properties:
+      serviceUrl: string
+      serviceType: string
+      host: optional<string>
+      port: optional<integer>
+      scopes: optional<list<string>>
+      attributes: optional<map<string, string>>
+      lifetime: optional<integer>
+
+  # A discovered SLP Directory Agent
+  SlpDirectoryEntry:
+    properties:
+      address: string
+      scopes: optional<list<string>>
+      version: optional<string>

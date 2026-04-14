@@ -15,6 +15,7 @@ import (
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
 	ike "github.com/Method-Security/networkscan/internal/enumerate/ike"
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
+	slp "github.com/Method-Security/networkscan/internal/enumerate/slp"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
@@ -52,7 +53,7 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 
 	// Create channels for collecting results and errors
 	detailsChan := make(chan *enumeratefern.EnumerateServiceDetails, len(config.Targets))
-	errorsChan := make(chan string, len(config.Targets))
+	errorsChan := make(chan string, len(config.Targets)*10)
 	var wg sync.WaitGroup
 
 	// Process each target concurrently
@@ -146,6 +147,13 @@ func getEngine(serviceType enumeratefern.SupportedServiceType) (NetworkApplicati
 		return NetworkApplicationEngine{Library: &ldap.LibraryEnumerateLDAP{}}, nil
 	case enumeratefern.SupportedServiceTypeIke:
 		return NetworkApplicationEngine{Library: &ike.LibraryEnumerateIKE{}}, nil
+<<<<<<< Updated upstream
+=======
+	case enumeratefern.SupportedServiceTypeSnmp:
+		return NetworkApplicationEngine{Library: &snmp.LibraryEnumerateSNMP{}}, nil
+	case enumeratefern.SupportedServiceTypeSlp:
+		return NetworkApplicationEngine{Library: &slp.LibraryEnumerateSLP{}}, nil
+>>>>>>> Stashed changes
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", serviceType)
 	}

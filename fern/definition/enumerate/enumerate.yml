@@ -6,6 +6,11 @@ imports:
   smb: ./smb/smb.yml
   ldap: ./ldap/ldap.yml
   ike: ./ike/ike.yml
+<<<<<<< Updated upstream
+=======
+  snmp: ./snmp/snmp.yml
+  slp: ./slp/slp.yml
+>>>>>>> Stashed changes
 types:
   # ENUMs
   SupportedServiceType:
@@ -17,6 +22,11 @@ types:
       - SMB
       - LDAP
       - IKE
+<<<<<<< Updated upstream
+=======
+      - SNMP
+      - SLP
+>>>>>>> Stashed changes
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -27,6 +37,11 @@ types:
       EnumerateSmbDetails: smb.EnumerateSmbDetails
       EnumerateLdapDetails: ldap.EnumerateLdapDetails
       EnumerateIkeDetails: ike.EnumerateIkeDetails
+<<<<<<< Updated upstream
+=======
+      EnumerateSnmpDetails: snmp.EnumerateSnmpDetails
+      EnumerateSlpDetails: slp.EnumerateSlpDetails
+>>>>>>> Stashed changes
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>
