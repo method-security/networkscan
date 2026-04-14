@@ -407,12 +407,15 @@ func parseSrvRply(data []byte) ([]ServiceEntry, error) {
 		if offset < len(data) {
 			authBlockCount := int(data[offset])
 			offset++
-			// Skip auth blocks (each has: block descriptor(2) + block length(2) + timestamp(4) + SPI len(2) + SPI + structured auth block)
-			for j := 0; j < authBlockCount && offset+2 <= len(data); j++ {
-				if offset+2 > len(data) {
+			// Skip auth blocks — each block layout per RFC 2608 §9.2:
+			//   BSD(2) + Block Length(2) + Timestamp(4) + SPI Len(2) + SPI + Auth Data
+			// Block Length covers the entire block including the BSD.
+			for j := 0; j < authBlockCount && offset+4 <= len(data); j++ {
+				// Block length is at offset+2 (after the 2-byte BSD) and includes the BSD itself
+				blockLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
+				if blockLen < 4 || offset+blockLen > len(data) {
 					break
 				}
-				blockLen := int(binary.BigEndian.Uint16(data[offset : offset+2]))
 				offset += blockLen
 			}
 		}
