@@ -115,7 +115,7 @@ func (TFTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeTftp,
 		Version:   nil, // TFTP has no version field
-		Metadata:  discoverfern.NewServiceMetadataFromTftp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Tftp: metadata},
 	}
 
 	return result, nil

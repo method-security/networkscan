@@ -129,6 +129,6 @@ func buildMongoDBResult(host string, ip net.IP, port int, version string, buildI
 		Version:   &version,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeMongodb,
-		Metadata:  discoverfern.NewServiceMetadataFromMongodb(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Mongodb: metadata},
 	}
 }

@@ -167,7 +167,7 @@ func (X11Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeX11,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromX11(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{X11: metadata},
 	}
 
 	return result, nil

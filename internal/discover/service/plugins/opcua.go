@@ -206,7 +206,7 @@ func buildOpcuaResult(host string, ip net.IP, port int, version, serverName, app
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeOpcua,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromOpcua(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Opcua: metadata},
 	}
 
 	return result

@@ -103,7 +103,7 @@ func (SSDPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeSsdp,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromSsdp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Ssdp: metadata},
 	}
 
 	return result, nil

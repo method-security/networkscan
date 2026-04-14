@@ -109,7 +109,7 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeIpmi,
 		Version:   &version,
-		Metadata:  discoverfern.NewServiceMetadataFromIpmi(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Ipmi: metadata},
 	}
 
 	return result, nil

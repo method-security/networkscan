@@ -130,7 +130,7 @@ func (GesrtpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeGesrtp,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromGesrtp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Gesrtp: metadata},
 	}
 
 	return result, nil

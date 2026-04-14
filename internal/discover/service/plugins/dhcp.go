@@ -96,7 +96,7 @@ func (DHCPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeDhcp,
 		Version:   &version,
-		Metadata:  discoverfern.NewServiceMetadataFromGeneric(&discoverfern.GenericServiceMetadata{Metadata: meta}),
+		Metadata:  &discoverfern.ServiceMetadata{Generic: &discoverfern.GenericServiceMetadata{Metadata: meta}},
 	}
 
 	return result, nil

@@ -102,7 +102,7 @@ func (NTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeNtp,
 		Version:   &version,
-		Metadata:  discoverfern.NewServiceMetadataFromNtp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Ntp: metadata},
 	}
 
 	return result, nil

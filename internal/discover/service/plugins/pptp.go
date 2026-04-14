@@ -144,7 +144,7 @@ func (PptpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypePptp,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromPptp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Pptp: metadata},
 	}
 
 	return result, nil

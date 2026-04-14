@@ -161,7 +161,7 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 		Transport: transport,
 		Protocol:  common.ProtocolTypeWinrm,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromWinrm(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Winrm: metadata},
 	}
 
 	return result, nil

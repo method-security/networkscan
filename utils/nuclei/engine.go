@@ -3,7 +3,6 @@ package nuclei
 import (
 	// Standard
 	"context"
-
 	// Generated
 	nuclei "github.com/Method-Security/networkscan/generated/go/common/nuclei"
 	// Utils

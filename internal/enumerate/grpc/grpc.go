@@ -39,7 +39,7 @@ func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target str
 		details.ServerInfo = &commonprotocolfern.GrpcServerInfo{
 			ReflectionSupported: false,
 		}
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateGrpcDetails: &details}, errors
 	}
 	defer closeConnection(conn)
 
@@ -50,7 +50,7 @@ func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target str
 		details.ServerInfo = &commonprotocolfern.GrpcServerInfo{
 			ReflectionSupported: false,
 		}
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateGrpcDetails: &details}, errors
 	}
 
 	services, err := requestAndReceiveServices(stream)
@@ -60,7 +60,7 @@ func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target str
 		details.ServerInfo = &commonprotocolfern.GrpcServerInfo{
 			ReflectionSupported: false,
 		}
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateGrpcDetails: &details}, errors
 	}
 
 	// Build serverInfo with discovered services
@@ -73,17 +73,17 @@ func (lib *LibraryEnumerateGRPC) EnumerateTarget(ctx context.Context, target str
 	if err != nil {
 		errors = append(errors, err.Error())
 		details.ServerInfo = serverInfo
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateGrpcDetails: &details}, errors
 	}
 
 	if err := encodeRawDescriptors(rawDescriptors, serverInfo); err != nil {
 		errors = append(errors, err.Error())
 		details.ServerInfo = serverInfo
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateGrpcDetails: &details}, errors
 	}
 
 	details.ServerInfo = serverInfo
-	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateGrpcDetails(&details), errors
+	return &enumeratefern.EnumerateServiceDetails{EnumerateGrpcDetails: &details}, errors
 }
 
 // connectToGRPCServer dials the target with a timeout.

@@ -154,7 +154,7 @@ func (SlpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: transport,
 		Protocol:  common.ProtocolTypeSlp,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromSlp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Slp: metadata},
 	}
 
 	return result, nil

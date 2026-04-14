@@ -118,7 +118,7 @@ func (FoxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeFox,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromFox(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Fox: metadata},
 	}
 
 	return result, nil

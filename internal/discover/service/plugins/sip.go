@@ -117,7 +117,7 @@ func (SIPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeSip,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromSip(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Sip: metadata},
 	}
 
 	return result, nil

@@ -137,7 +137,7 @@ func (Iec104Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeIec104,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromIec104(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Iec104: metadata},
 	}
 
 	return result, nil

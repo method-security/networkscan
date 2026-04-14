@@ -125,7 +125,7 @@ func (MmsFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeMms,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromMms(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Mms: metadata},
 	}
 
 	return result, nil

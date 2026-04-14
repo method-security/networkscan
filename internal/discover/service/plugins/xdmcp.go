@@ -124,7 +124,7 @@ func (XdmcpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host 
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeXdmcp,
 		Version:   &versionStr,
-		Metadata:  discoverfern.NewServiceMetadataFromXdmcp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Xdmcp: metadata},
 	}
 
 	return result, nil

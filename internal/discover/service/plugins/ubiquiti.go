@@ -116,7 +116,7 @@ func (UbiquitiFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 		Version:   &deviceVersion,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeUbiquiti,
-		Metadata:  discoverfern.NewServiceMetadataFromUbiquiti(ubiquitiInfo),
+		Metadata:  &discoverfern.ServiceMetadata{Ubiquiti: ubiquitiInfo},
 	}, nil
 }
 

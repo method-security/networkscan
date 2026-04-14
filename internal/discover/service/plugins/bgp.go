@@ -222,7 +222,7 @@ func createBGPServiceDetails(ip net.IP, port int, host, version, messageType str
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeBgp,
 		Version:   &version,
-		Metadata:  discoverfern.NewServiceMetadataFromBgp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Bgp: metadata},
 	}
 }
 

@@ -138,7 +138,7 @@ func (ArdFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeArd,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromArd(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Ard: metadata},
 	}
 
 	return result, nil

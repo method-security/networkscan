@@ -167,7 +167,7 @@ func detectSMBService(ctx context.Context, ip net.IP, port int, host string) (*d
 			Transport: common.TransportTypeTcp,
 			Protocol:  common.ProtocolTypeSmb,
 			Version:   osVersion,
-			Metadata:  discoverfern.NewServiceMetadataFromSmb(metadata),
+			Metadata:  &discoverfern.ServiceMetadata{Smb: metadata},
 		}
 
 		// Close connection if it was established
@@ -196,7 +196,7 @@ func detectSMBService(ctx context.Context, ip net.IP, port int, host string) (*d
 		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeSmb,
-		Metadata:  discoverfern.NewServiceMetadataFromSmb(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Smb: metadata},
 	}
 
 	return result, nil

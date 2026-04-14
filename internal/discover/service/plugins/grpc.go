@@ -138,6 +138,6 @@ func buildResult(host string, ip net.IP, port int, tlsUsed bool, statusStr strin
 			return common.TransportTypeTcp
 		}(),
 		Protocol: common.ProtocolTypeGrpc,
-		Metadata: discoverfern.NewServiceMetadataFromGrpc(metadata),
+		Metadata: &discoverfern.ServiceMetadata{Grpc: metadata},
 	}
 }

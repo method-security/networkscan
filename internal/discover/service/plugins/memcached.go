@@ -107,7 +107,7 @@ func (MemcachedFingerprinter) Detect(ctx context.Context, ip net.IP, port int, h
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeMemcached,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromMemcached(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Memcached: metadata},
 	}
 
 	return result, nil

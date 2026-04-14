@@ -47,7 +47,7 @@ func (LDAPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 				Tls:       false,
 				Transport: common.TransportTypeTcp,
 				Protocol:  common.ProtocolTypeLdap,
-				Metadata:  discoverfern.NewServiceMetadataFromLdap(metadata),
+				Metadata:  &discoverfern.ServiceMetadata{Ldap: metadata},
 			}, nil
 		}
 		return nil, err
@@ -65,6 +65,6 @@ func (LDAPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeLdap,
-		Metadata:  discoverfern.NewServiceMetadataFromLdap(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Ldap: metadata},
 	}, nil
 }

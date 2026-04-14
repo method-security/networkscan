@@ -50,7 +50,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	hostname, _, err := net.SplitHostPort(target)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("invalid target format: %v", err))
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateSmtpDetails: &detail}, errors
 	}
 	tlsConfig := &tls.Config{
 		ServerName:         hostname,
@@ -73,7 +73,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 			canConnect := false
 			detail.CanConnect = &canConnect
 			errors = append(errors, fmt.Sprintf("both TCP and TLS connections failed: %v", err))
-			return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
+			return &enumeratefern.EnumerateServiceDetails{EnumerateSmtpDetails: &detail}, errors
 		}
 		log.Debug("TLS connection successful")
 		tlsSupported := true
@@ -109,7 +109,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("SMTP client creation failed: %v", err))
 		detail.ServerInfo = serverInfo
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateSmtpDetails: &detail}, errors
 	}
 
 	// Try STARTTLS if TLS connection established above
@@ -167,5 +167,5 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 		errors = append(errors, fmt.Sprintf("failed to close connection: %v", err))
 	}
 
-	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
+	return &enumeratefern.EnumerateServiceDetails{EnumerateSmtpDetails: &detail}, errors
 }

@@ -44,7 +44,7 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateSshDetails: &details}, errors
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -52,11 +52,11 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	version, versionASCII, err := getSSHVersion(ctx, conn)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateSshDetails: &details}, errors
 	}
 	if version == nil {
 		errors = append(errors, "SSH version is nil")
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateSshDetails: &details}, errors
 	}
 	serverInfo.ServerVersion = version
 
@@ -64,7 +64,7 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	rawASCII, err := getSSHAlgorithms(ctx, conn)
 	if err != nil {
 		errors = append(errors, err.Error())
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateSshDetails: &details}, errors
 	}
 
 	fullASCII := rawASCII
@@ -92,5 +92,5 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	// Set the server info in the details
 	details.ServerInfo = &serverInfo
 
-	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSshDetails(&details), errors
+	return &enumeratefern.EnumerateServiceDetails{EnumerateSshDetails: &details}, errors
 }

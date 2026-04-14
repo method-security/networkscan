@@ -119,7 +119,7 @@ func detectFortiGateService(ctx context.Context, ip net.IP, port int, host strin
 			Transport: common.TransportTypeTcp,
 			Protocol:  common.ProtocolTypeFgfm,
 			Version:   &version,
-			Metadata:  discoverfern.NewServiceMetadataFromFgfm(metadata),
+			Metadata:  &discoverfern.ServiceMetadata{Fgfm: metadata},
 		}
 
 		return result, nil
