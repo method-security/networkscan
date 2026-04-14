@@ -18,6 +18,7 @@ import (
 	slp "github.com/Method-Security/networkscan/internal/enumerate/slp"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
+	snmp "github.com/Method-Security/networkscan/internal/enumerate/snmp"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
 
 	// External
@@ -46,7 +47,7 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 		svc1log.SafeParam("timeout", config.Timeout))
 	resource := enumeratefern.EnumerateServiceReport{Config: &config}
 
-	engine, err := getEngine(config.Service)
+	engine, err := getEngine(config)
 	if err != nil {
 		return enumeratefern.EnumerateServiceReport{}, err
 	}
@@ -131,14 +132,14 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 
 // getEngine creates and returns the appropriate enumeration engine for the specified service type.
 // It acts as a factory function to instantiate service-specific enumeration libraries.
-func getEngine(serviceType enumeratefern.SupportedServiceType) (NetworkApplicationEngine, error) {
-	switch serviceType {
+func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationEngine, error) {
+	switch config.Service {
 	case enumeratefern.SupportedServiceTypeSsh:
 		return NetworkApplicationEngine{Library: &ssh.LibraryEnumerateSSH{}}, nil
 	case enumeratefern.SupportedServiceTypeFtp:
 		return NetworkApplicationEngine{Library: &ftp.LibraryEnumerateFTP{}}, nil
 	case enumeratefern.SupportedServiceTypeSmtp:
-		return NetworkApplicationEngine{Library: &smtp.LibraryEnumerateSMTP{}}, nil
+		return NetworkApplicationEngine{Library: &smtp.LibraryEnumerateSMTP{Wordlist: config.Wordlist}}, nil
 	case enumeratefern.SupportedServiceTypeGrpc:
 		return NetworkApplicationEngine{Library: &grpc.LibraryEnumerateGRPC{}}, nil
 	case enumeratefern.SupportedServiceTypeSmb:
@@ -150,6 +151,6 @@ func getEngine(serviceType enumeratefern.SupportedServiceType) (NetworkApplicati
 	case enumeratefern.SupportedServiceTypeSlp:
 		return NetworkApplicationEngine{Library: &slp.LibraryEnumerateSLP{}}, nil
 	default:
-		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", serviceType)
+		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}
 }

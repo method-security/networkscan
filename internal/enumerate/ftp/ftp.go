@@ -94,9 +94,25 @@ func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string
 	}
 
 	// Check if anonymous login is supported
-	errs := checkAnonymousLoginWithRetry(ctx, target, conn, &details)
+	conn, errs := checkAnonymousLoginWithRetry(ctx, target, conn, &details)
 	if len(errs) > 0 {
 		errors = append(errors, errs...)
+	}
+
+	// If anonymous login succeeded, retrieve directory listing
+	if conn != nil && details.AllowsAnonymousLogin != nil && *details.AllowsAnonymousLogin {
+		log.Info("Anonymous login succeeded, retrieving directory listing")
+		entries, listErrs := listDirectory(ctx, conn)
+		if len(listErrs) > 0 {
+			errors = append(errors, listErrs...)
+		}
+		if len(entries) > 0 {
+			details.DirectoryListing = entries
+		}
+	}
+
+	if conn == nil {
+		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateFtpDetails(&details), errors
 	}
 
 	err = conn.Close()

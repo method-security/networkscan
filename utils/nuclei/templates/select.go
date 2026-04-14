@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -26,9 +25,9 @@ var All embed.FS
 // - Complete paths to template files (e.g., "cve/2024/CVE-2024-13624.yaml")
 // - Folder paths (e.g., "cve/2024" or "cve") - will collect all .yaml/.yml files recursively from that folder
 //
-// targetPorts filters templates to only those whose target-port metadata matches at least one
-// of the given ports. Pass nil or an empty slice to disable port filtering.
-func GetTemplateFileSystem(ctx context.Context, templatePaths []string, targetPorts []int) ([]fs.FS, error) {
+// protocol filters templates to only those whose info.metadata.protocol matches the given
+// application protocol (e.g., "FTP", "SSH", "HTTP"). Pass an empty string to disable filtering.
+func GetTemplateFileSystem(ctx context.Context, templatePaths []string, protocol string) ([]fs.FS, error) {
 	log := svc1log.FromContext(ctx)
 
 	if len(templatePaths) == 0 {
@@ -78,17 +77,17 @@ func GetTemplateFileSystem(ctx context.Context, templatePaths []string, targetPo
 		return nil, fmt.Errorf("no valid template files found")
 	}
 
-	// Apply port filtering if target ports are specified
-	if len(targetPorts) > 0 {
+	// Apply protocol filtering if a protocol is specified
+	if protocol != "" {
 		beforeCount := len(allTemplateFiles)
-		allTemplateFiles = filterTemplatesByPorts(allTemplateFiles, targetPorts)
-		log.Info("Filtered templates by target ports",
-			svc1log.SafeParam("targetPorts", targetPorts),
+		allTemplateFiles = filterTemplatesByProtocol(allTemplateFiles, protocol)
+		log.Info("Filtered templates by protocol",
+			svc1log.SafeParam("protocol", protocol),
 			svc1log.SafeParam("beforeCount", beforeCount),
 			svc1log.SafeParam("afterCount", len(allTemplateFiles)))
 
 		if len(allTemplateFiles) == 0 {
-			return nil, fmt.Errorf("no templates match target ports %v", targetPorts)
+			return nil, fmt.Errorf("no templates match protocol %q", protocol)
 		}
 	}
 
@@ -275,28 +274,21 @@ func (d *dirInfo) ModTime() time.Time { return time.Time{} }
 func (d *dirInfo) IsDir() bool        { return true }
 func (d *dirInfo) Sys() interface{}   { return nil }
 
-// filterTemplatesByPorts returns only templates whose target-port metadata
-// matches at least one of the given ports. Templates without a target-port
-// field are excluded.
-func filterTemplatesByPorts(templateFiles []string, ports []int) []string {
-	wanted := make(map[string]bool, len(ports))
-	for _, p := range ports {
-		wanted[strconv.Itoa(p)] = true
-	}
-
+// filterTemplatesByProtocol returns only templates whose info.metadata.protocol
+// matches the given protocol string (case-insensitive). Templates without a
+// protocol field are excluded.
+func filterTemplatesByProtocol(templateFiles []string, protocol string) []string {
 	var matched []string
 	for _, path := range templateFiles {
-		for _, tp := range extractTargetPorts(path) {
-			if wanted[tp] {
-				matched = append(matched, path)
-				break
-			}
+		tp := extractProtocol(path)
+		if strings.EqualFold(tp, protocol) {
+			matched = append(matched, path)
 		}
 	}
 	return matched
 }
 
-// templateMetadata is the minimal structure needed to extract target-port from
+// templateMetadata is the minimal structure needed to extract metadata from
 // a Nuclei template. Using proper YAML parsing avoids issues with inline
 // comments, quoting styles, and other YAML syntax that break naive string parsing.
 type templateMetadata struct {
@@ -305,32 +297,24 @@ type templateMetadata struct {
 	} `yaml:"info"`
 }
 
-// extractTargetPorts reads a template file from the embedded FS and returns
-// the list of ports from the info.metadata.target-port field. The field may be
-// a single value (string or int) or a comma-separated string ("21,6200").
-func extractTargetPorts(templatePath string) []string {
+// extractProtocol reads a template file from the embedded FS and returns
+// the value of the info.metadata.protocol field. Returns empty string if
+// the field is not present or on any error.
+func extractProtocol(templatePath string) string {
 	data, err := fs.ReadFile(All, templatePath)
 	if err != nil {
-		return nil
+		return ""
 	}
 
 	var tmpl templateMetadata
 	if err := yaml.Unmarshal(data, &tmpl); err != nil {
-		return nil
+		return ""
 	}
 
-	raw, ok := tmpl.Info.Metadata["target-port"]
+	raw, ok := tmpl.Info.Metadata["protocol"]
 	if !ok || raw == nil {
-		return nil
+		return ""
 	}
 
-	portStr := fmt.Sprintf("%v", raw)
-	var ports []string
-	for _, p := range strings.Split(portStr, ",") {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			ports = append(ports, p)
-		}
-	}
-	return ports
+	return strings.TrimSpace(fmt.Sprintf("%v", raw))
 }

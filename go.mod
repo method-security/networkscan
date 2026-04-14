@@ -10,6 +10,7 @@ require (
 	github.com/gosnmp/gosnmp v1.42.1
 	github.com/jfjallid/go-smb v0.6.6
 	github.com/jfjallid/gokrb5/v8 v8.5.1
+	github.com/jlaffaye/ftp v0.2.0
 	github.com/masterzen/winrm v0.0.0-20250927112105-5f8e6c707321
 	github.com/miekg/dns v1.1.68
 	github.com/oiweiwei/go-msrpc v1.2.8
@@ -357,7 +358,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
-	github.com/shoenig/go-m1cpu v0.1.6 // indirect
+	github.com/shoenig/go-m1cpu v0.2.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	github.com/tidwall/btree v1.8.1 // indirect

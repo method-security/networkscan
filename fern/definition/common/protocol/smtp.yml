@@ -1,0 +1,22 @@
+types:
+  # ENUMs
+  SmtpAuthCommand:
+    enum:
+      - XOAUTH2
+      - PLAIN
+      - LOGIN
+      - CRAMMD5
+      - NTLM
+      - GSSAPI
+
+  # SMTP Server Information
+  SmtpServerInfo:
+    properties:
+      banner: optional<string>
+      serverName: optional<string>
+      softwareName: optional<string>
+      softwareVersion: optional<string>
+      esmtpSupported: optional<boolean>
+      tlsSupported: optional<boolean>
+      authMethods: optional<list<SmtpAuthCommand>>
+      supportedExtensions: optional<list<string>>

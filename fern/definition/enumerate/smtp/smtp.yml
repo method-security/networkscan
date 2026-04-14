@@ -1,19 +1,28 @@
+imports:
+  smtpProtocol: ../../common/protocol/smtp.yml
+
 types:
   # ENUMs
-  AuthCommand:
+  SmtpUserEnumerationMethod:
     enum:
-      - XOAUTH2
-      - PLAIN
-      - LOGIN
-      - CRAMMD5
-      - NTLM
-      - GSSAPI
+      - VRFY
+      - EXPN
+      - RCPT_TO
+
+  # Common Objects
+  SmtpEnumeratedUser:
+    properties:
+      username: string
+      exists: boolean
+      method: SmtpUserEnumerationMethod
+      response: optional<string>
+
   # Report structs
   EnumerateSmtpDetails:
     properties:
       target: string
       canConnect: optional<boolean>
-      tlsSupported: optional<boolean>
+      serverInfo: optional<smtpProtocol.SmtpServerInfo>
       forceTLS: optional<boolean>
-      authCommands: optional<list<AuthCommand>>
       allowsUnauthenticatedEmail: optional<boolean>
+      enumeratedUsers: optional<list<SmtpEnumeratedUser>>

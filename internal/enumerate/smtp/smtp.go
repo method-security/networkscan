@@ -10,15 +10,20 @@ import (
 	"strings"
 
 	// Generated
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	smtp "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
 
+	// Internal
+	smtputil "github.com/Method-Security/networkscan/internal/protocol/smtp"
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // LibraryEnumerateSMTP implements NetworkApplicationLibrary for SMTP enumeration.
-type LibraryEnumerateSMTP struct{}
+type LibraryEnumerateSMTP struct {
+	Wordlist []string
+}
 
 // EnumerateTarget Overview
 //  1. Try to connect to service
@@ -38,6 +43,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	detail := smtp.EnumerateSmtpDetails{
 		Target: target,
 	}
+	serverInfo := &protocol.SmtpServerInfo{}
 	errors := []string{}
 
 	// Get hostname for HELLO command and TLS
@@ -46,7 +52,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 		errors = append(errors, fmt.Sprintf("invalid target format: %v", err))
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
 	}
-	config := &tls.Config{
+	tlsConfig := &tls.Config{
 		ServerName:         hostname,
 		InsecureSkipVerify: true,
 	}
@@ -70,9 +76,9 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 			return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
 		}
 		log.Debug("TLS connection successful")
-		TLSSupported := true
+		tlsSupported := true
 		forceTLS := true
-		detail.TlsSupported = &TLSSupported
+		serverInfo.TlsSupported = &tlsSupported
 		detail.ForceTls = &forceTLS
 	}
 
@@ -80,37 +86,74 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	detail.CanConnect = &canConnect
 	log.Info("Connected to target", svc1log.SafeParam("target", target))
 
-	// Create SMTP client
+	// Read the SMTP banner, wrapping the connection so NewClient can replay it
+	conn, banner, bannerErr := smtputil.ReadBannerFromConn(conn)
+	if bannerErr == nil && banner != "" {
+		serverInfo.Banner = &banner
+		serverName, softwareName, softwareVersion := smtputil.ParseBanner(banner)
+		if serverName != "" {
+			serverInfo.ServerName = &serverName
+		}
+		if softwareName != "" {
+			serverInfo.SoftwareName = &softwareName
+		}
+		if softwareVersion != "" {
+			serverInfo.SoftwareVersion = &softwareVersion
+		}
+		esmtp := strings.Contains(banner, "ESMTP")
+		serverInfo.EsmtpSupported = &esmtp
+	}
+
+	// Create SMTP client from existing connection (banner already consumed)
 	client, err := netsmtp.NewClient(conn, hostname)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("SMTP client creation failed: %v", err))
+		detail.ServerInfo = serverInfo
 		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmtpDetails(&detail), errors
 	}
 
 	// Try STARTTLS if TLS connection established above
-	if detail.TlsSupported == nil {
+	if serverInfo.TlsSupported == nil {
 		log.Debug("Attempting STARTTLS")
-		err = client.StartTLS(config)
+		err = client.StartTLS(tlsConfig)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("TLS upgrade failed: %v", err))
-			TLSSupported := false
-			detail.TlsSupported = &TLSSupported
+			tlsSupported := false
+			serverInfo.TlsSupported = &tlsSupported
 			log.Debug("STARTTLS failed")
 		} else {
 			log.Debug("STARTTLS successful")
-			TLSSupported := true
-			detail.TlsSupported = &TLSSupported
+			tlsSupported := true
+			serverInfo.TlsSupported = &tlsSupported
 		}
 	}
 
-	// Check authentication methods
+	// Check authentication methods and collect supported extensions
 	log.Debug("Checking authentication methods")
 	if ok, param := client.Extension("AUTH"); ok {
 		authMethods := parseAuthMethods(strings.Split(param, " "))
-		detail.AuthCommands = authMethods
+		serverInfo.AuthMethods = authMethods
 		log.Debug("Supported auth methods", svc1log.SafeParam("authMethods", authMethods))
 	} else {
 		log.Debug("No authentication methods found")
+	}
+
+	// Collect supported EHLO extensions
+	extensions := collectExtensions(client)
+	if len(extensions) > 0 {
+		serverInfo.SupportedExtensions = extensions
+	}
+
+	detail.ServerInfo = serverInfo
+
+	// Enumerate users via VRFY, EXPN, and RCPT TO
+	wordlist := s.Wordlist
+	if len(wordlist) == 0 {
+		wordlist = defaultUsernames
+	}
+	enumeratedUsers := enumerateUsers(ctx, client, hostname, extensions, wordlist)
+	if len(enumeratedUsers) > 0 {
+		detail.EnumeratedUsers = enumeratedUsers
 	}
 
 	// Test if unauthenticated email is allowed

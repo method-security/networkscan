@@ -1,0 +1,37 @@
+types:
+  # FTP Protocol Objects
+  FtpDirectoryEntry:
+    properties:
+      name: string
+      path: string
+      isDirectory: boolean
+      size: optional<long>
+      permissions: optional<string>               # e.g. "drwxr-xr-x"
+      modifiedTime: optional<string>
+      owner: optional<string>
+      group: optional<string>
+
+  FtpWriteTestEntry:
+    properties:
+      path: string                                # Directory tested
+      canMkdir: optional<boolean>                 # MKD/RMD test result
+      canUpload: optional<boolean>                # STOR/DELE test result
+      canRename: optional<boolean>                # RNFR/RNTO test result
+      errors: optional<list<string>>
+
+  FtpDownloadEntry:
+    properties:
+      remotePath: string
+      content: optional<string>                   # Base64-encoded file content
+      size: optional<long>
+      success: boolean
+      message: optional<string>
+      timestamp: datetime
+
+  FtpUploadEntry:
+    properties:
+      remotePath: string
+      size: optional<long>
+      success: boolean
+      message: optional<string>
+      timestamp: datetime

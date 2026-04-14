@@ -51,7 +51,13 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				return
 			}
 
-			config := newEnumerateServiceConfig(targets, serviceEnum, timeout)
+			wordlist, err := cmd.Flags().GetStringSlice("wordlist")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			config := newEnumerateServiceConfig(targets, serviceEnum, timeout, wordlist)
 
 			// Generate the report
 			report, err := enumerate.RunServiceEnumerate(cmd.Context(), config)
@@ -63,8 +69,9 @@ func (a *NetworkScan) InitEnumerateCommand() {
 		},
 	}
 	enumerateServiceCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to enumerate")
-	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, ldap, smb, smtp, ssh)")
+	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, ldap, smb, smtp, snmp, ssh)")
 	enumerateServiceCmd.Flags().Int("timeout", 30, "Timeout in seconds for enumerating each target")
+	enumerateServiceCmd.Flags().StringSlice("wordlist", []string{}, "Custom username wordlist for user enumeration (SMTP VRFY/EXPN/RCPT TO)")
 
 	// Mark Required Flags
 	_ = enumerateServiceCmd.MarkFlagRequired("targets")
@@ -78,10 +85,14 @@ func (a *NetworkScan) InitEnumerateCommand() {
 }
 
 // newEnumerateServiceConfig creates a new EnumerateServiceConfig with the provided parameters.
-func newEnumerateServiceConfig(targets []string, serviceEnum enumeratefern.SupportedServiceType, timeout int) enumeratefern.EnumerateServiceConfig {
-	return enumeratefern.EnumerateServiceConfig{
+func newEnumerateServiceConfig(targets []string, serviceEnum enumeratefern.SupportedServiceType, timeout int, wordlist []string) enumeratefern.EnumerateServiceConfig {
+	config := enumeratefern.EnumerateServiceConfig{
 		Targets: targets,
 		Service: serviceEnum,
 		Timeout: timeout,
 	}
+	if len(wordlist) > 0 {
+		config.Wordlist = wordlist
+	}
+	return config
 }
