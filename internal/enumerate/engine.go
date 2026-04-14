@@ -147,13 +147,8 @@ func getEngine(serviceType enumeratefern.SupportedServiceType) (NetworkApplicati
 		return NetworkApplicationEngine{Library: &ldap.LibraryEnumerateLDAP{}}, nil
 	case enumeratefern.SupportedServiceTypeIke:
 		return NetworkApplicationEngine{Library: &ike.LibraryEnumerateIKE{}}, nil
-<<<<<<< Updated upstream
-=======
-	case enumeratefern.SupportedServiceTypeSnmp:
-		return NetworkApplicationEngine{Library: &snmp.LibraryEnumerateSNMP{}}, nil
 	case enumeratefern.SupportedServiceTypeSlp:
 		return NetworkApplicationEngine{Library: &slp.LibraryEnumerateSLP{}}, nil
->>>>>>> Stashed changes
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", serviceType)
 	}
