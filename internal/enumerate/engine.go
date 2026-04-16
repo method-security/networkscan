@@ -53,7 +53,7 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 
 	// Create channels for collecting results and errors
 	detailsChan := make(chan *enumeratefern.EnumerateServiceDetails, len(config.Targets))
-	errorsChan := make(chan string, len(config.Targets))
+	errorsChan := make(chan string, len(config.Targets)*20)
 	var wg sync.WaitGroup
 
 	// Process each target concurrently
