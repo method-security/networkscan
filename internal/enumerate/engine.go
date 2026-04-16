@@ -110,16 +110,27 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 		close(errorsChan)
 	}()
 
-	// Collect results
+	// Drain both channels concurrently to prevent deadlock.
+	// Sequential draining can deadlock when workers produce more errors
+	// than the error channel buffer, since workers block on sends,
+	// preventing wg.Wait() from completing and channels from closing.
 	var details []*enumeratefern.EnumerateServiceDetails
 	var errors []string
-
-	for detail := range detailsChan {
-		details = append(details, detail)
-	}
-	for err := range errorsChan {
-		errors = append(errors, err)
-	}
+	var collectWg sync.WaitGroup
+	collectWg.Add(2)
+	go func() {
+		defer collectWg.Done()
+		for detail := range detailsChan {
+			details = append(details, detail)
+		}
+	}()
+	go func() {
+		defer collectWg.Done()
+		for err := range errorsChan {
+			errors = append(errors, err)
+		}
+	}()
+	collectWg.Wait()
 
 	log.Info("Enumeration complete",
 		svc1log.SafeParam("targets", len(config.Targets)),
