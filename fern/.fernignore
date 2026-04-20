@@ -1,0 +1,9 @@
+# SDK unit tests - not needed since we only use generated types
+client/client_test.go
+internal/caller_test.go
+internal/error_decoder_test.go
+internal/extra_properties_test.go
+internal/query_test.go
+internal/retrier_test.go
+pointer_test.go
+internal/explicit_fields_test.go
