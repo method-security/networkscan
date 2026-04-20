@@ -113,6 +113,6 @@ func createSNMPResult(ip net.IP, port int, host string, versions []string, commu
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeSnmp,
 		Version:   &versionStr,
-		Metadata:  discoverfern.NewServiceMetadataFromSnmp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Snmp: metadata},
 	}
 }

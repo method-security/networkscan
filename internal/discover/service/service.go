@@ -350,7 +350,7 @@ func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 			return common.ProtocolTypeUnknown
 		}(),
 		Version:  &result.Version,
-		Metadata: discoverfern.NewServiceMetadataFromGeneric(&discoverfern.GenericServiceMetadata{Metadata: metadataMap}),
+		Metadata: &discoverfern.ServiceMetadata{Generic: &discoverfern.GenericServiceMetadata{Metadata: metadataMap}},
 	}
 
 	return serviceDetails

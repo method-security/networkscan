@@ -169,7 +169,7 @@ func (MsmqFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeMsmq,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromMsmq(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Msmq: metadata},
 	}
 
 	return result, nil

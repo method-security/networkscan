@@ -131,7 +131,7 @@ func (HartFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Transport: transport,
 		Protocol:  common.ProtocolTypeHart,
 		Version:   versionStr,
-		Metadata:  discoverfern.NewServiceMetadataFromHart(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Hart: metadata},
 	}
 
 	return result, nil

@@ -169,6 +169,6 @@ func buildSMTPResult(host string, ip net.IP, port int, banner, serverName, softw
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeSmtp,
 		Version:   &version,
-		Metadata:  discoverfern.NewServiceMetadataFromSmtp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Smtp: metadata},
 	}
 }

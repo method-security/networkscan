@@ -85,7 +85,7 @@ func (NetBIOSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeNetbios,
 		Version:   nil, // NetBIOS has no version field
-		Metadata:  discoverfern.NewServiceMetadataFromNetbios(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Netbios: metadata},
 	}
 
 	return result, nil

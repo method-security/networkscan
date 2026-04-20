@@ -255,7 +255,7 @@ func parsePcomResponse(response string, ip net.IP, port int, host string) (*disc
 		}
 
 		if extracted {
-			metadata.Metadata = discoverfern.NewServiceMetadataFromPcom(pcomInfo)
+			metadata.Metadata = &discoverfern.ServiceMetadata{Pcom: pcomInfo}
 		}
 	}
 

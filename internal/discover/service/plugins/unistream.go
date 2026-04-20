@@ -164,7 +164,7 @@ func (UnistreamFingerprinter) Detect(ctx context.Context, ip net.IP, port int, h
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeEthernetip,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromUnistream(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Unistream: metadata},
 	}
 
 	return result, nil

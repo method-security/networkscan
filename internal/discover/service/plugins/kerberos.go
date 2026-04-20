@@ -89,7 +89,7 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 		Transport: transport,
 		Protocol:  common.ProtocolTypeKerberos,
 		Version:   &version,
-		Metadata:  discoverfern.NewServiceMetadataFromKerberos(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Kerberos: metadata},
 	}, nil
 }
 

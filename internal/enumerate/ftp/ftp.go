@@ -59,7 +59,7 @@ func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string
 	if err != nil {
 		log.Error("Failed to connect to FTP target", svc1log.SafeParam("target", target), svc1log.SafeParam("error", err))
 		errors = append(errors, fmt.Sprintf("Failed to connect to %s: %v", target, err))
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateFtpDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateFtpDetails: &details}, errors
 	}
 
 	log.Debug("FTP connection established", svc1log.SafeParam("target", target))
@@ -68,7 +68,7 @@ func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string
 	bannerStr, err := grabBanner(ctx, conn)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("error reading banner from %s: %v", target, err))
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateFtpDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateFtpDetails: &details}, errors
 	}
 	details.Banner = &bannerStr
 	successFulConnection := true
@@ -112,7 +112,7 @@ func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string
 	}
 
 	if conn == nil {
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateFtpDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateFtpDetails: &details}, errors
 	}
 
 	err = conn.Close()
@@ -121,5 +121,5 @@ func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string
 	}
 
 	log.Info("FTP enumeration completed", svc1log.SafeParam("target", target))
-	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateFtpDetails(&details), errors
+	return &enumeratefern.EnumerateServiceDetails{EnumerateFtpDetails: &details}, errors
 }

@@ -161,7 +161,7 @@ func detectIPPWithScheme(ctx context.Context, ip net.IP, port int, host string, 
 		Transport: transport,
 		Protocol:  common.ProtocolTypeIpp,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromIpp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Ipp: metadata},
 	}
 
 	return result, nil

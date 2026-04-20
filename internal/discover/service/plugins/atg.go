@@ -134,7 +134,7 @@ func (AtgFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeAtg,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromAtg(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Atg: metadata},
 	}
 
 	return result, nil

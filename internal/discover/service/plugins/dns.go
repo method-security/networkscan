@@ -96,7 +96,7 @@ func (DNSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeDns,
 		Version:   dnsVersion,
-		Metadata:  discoverfern.NewServiceMetadataFromDns(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Dns: metadata},
 	}
 
 	return result, nil

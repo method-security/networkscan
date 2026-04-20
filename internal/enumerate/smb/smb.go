@@ -297,7 +297,7 @@ func (s *LibraryEnumerateSMB) EnumerateTarget(ctx context.Context, target string
 
 	log.Info("SMB enumeration completed", svc1log.SafeParam("target", target))
 
-	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSmbDetails(&details), errors
+	return &enumeratefern.EnumerateServiceDetails{EnumerateSmbDetails: &details}, errors
 }
 
 // convertToSmbServerInfo converts protocol library ServerInfo to common SMB ServerInfo

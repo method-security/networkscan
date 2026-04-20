@@ -81,7 +81,7 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeSsh,
 		Version:   &banner,
-		Metadata:  discoverfern.NewServiceMetadataFromSsh(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Ssh: metadata},
 	}
 
 	return result, nil

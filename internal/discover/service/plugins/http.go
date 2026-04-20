@@ -87,9 +87,9 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 				}
 				return common.ProtocolTypeUnknown
 			}(),
-			Metadata: discoverfern.NewServiceMetadataFromGeneric(&discoverfern.GenericServiceMetadata{
+			Metadata: &discoverfern.ServiceMetadata{Generic: &discoverfern.GenericServiceMetadata{
 				Metadata: metadata,
-			}),
+			}},
 		}, nil
 	}
 

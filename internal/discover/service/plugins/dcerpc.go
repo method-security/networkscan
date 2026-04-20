@@ -90,7 +90,7 @@ func (DCERPCFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeDcerpc,
 		Version:   &version,
-		Metadata:  discoverfern.NewServiceMetadataFromDcerpc(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Dcerpc: metadata},
 	}
 
 	return result, nil

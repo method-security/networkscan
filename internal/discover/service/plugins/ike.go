@@ -99,7 +99,7 @@ func (IKEFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeIke,
 		Version:   &version,
-		Metadata:  discoverfern.NewServiceMetadataFromIke(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Ike: metadata},
 	}
 
 	return result, nil

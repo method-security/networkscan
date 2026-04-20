@@ -119,7 +119,7 @@ func (PcworxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypePcworx,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromPcworx(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Pcworx: metadata},
 	}
 
 	return result, nil
