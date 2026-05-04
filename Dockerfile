@@ -1,7 +1,7 @@
 FROM alpine:3.20
 
 ARG CLI_NAME="networkscan"
-ARG TARGETARCH
+ARG TARGETPLATFORM
 ARG NMAP_VERSION="7.95-r0"
 
 # nmap is a dependency for multiple commands
@@ -16,7 +16,7 @@ RUN \
   mkdir -p /opt/method/${CLI_NAME}/service/bin && \
   mkdir -p /mnt/output
 
-COPY ${CLI_NAME} /opt/method/${CLI_NAME}/service/bin/${CLI_NAME}
+COPY $TARGETPLATFORM/${CLI_NAME} /opt/method/${CLI_NAME}/service/bin/${CLI_NAME}
 
 # Make nmap be able to run as a sudoer without password prompt
 RUN \
