@@ -1,4 +1,27 @@
 types:
+  # ARP
+  ArpEntry:
+    properties:
+      ip: string
+      mac: string
+      hwType: optional<string>
+      flags: optional<string>
+      mask: optional<string>
+      interface: optional<string>
+  # Config
+  DiscoverHostArpConfig:
+    properties:
+      hostIpAddress: optional<string>
+  # Result
+  DiscoverHostArpResult:
+    properties:
+      entries: optional<list<ArpEntry>>
+  # Final report
+  DiscoverHostArpReport:
+    properties:
+      config: DiscoverHostArpConfig
+      result: DiscoverHostArpResult
+      errors: optional<list<string>>
   HostScanType:
     enum:
       - ICMP_ECHO

@@ -2303,6 +2303,7 @@ golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
+golang.org/x/net/route
 golang.org/x/net/trace
 # golang.org/x/oauth2 v0.30.0
 ## explicit; go 1.23.0
