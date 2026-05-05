@@ -8,6 +8,16 @@ The `networkscan discover` command performs network discovery tasks to identify 
 networkscan discover [command]
 ```
 
+## Available Commands
+
+- **host scan**: Identify live hosts within a given IP, hostname, or CIDR range
+- **host arp**: Read the host's ARP table to inspect IP-to-MAC address mappings
+- **port**: Scan target hosts for open TCP ports
+- **service**: Identify and fingerprint network services on a target host
+- **tls**: Retrieve and analyze TLS configuration and certificate details
+- **route**: Perform traceroute to trace the network path to a target
+- **domain**: Discover domain information from a target host
+
 ## Commands
 
 ### Host
