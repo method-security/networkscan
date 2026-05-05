@@ -41,6 +41,7 @@ Flags:
       --service string     Service to enumerate (ftp, grpc, ldap, smb, smtp, ssh)
       --targets strings    List of target addresses (IP:port or hostname:port) to enumerate
       --timeout int        Timeout in seconds for enumerating each target (default 30)
+      --wordlist strings   Custom username wordlist for user enumeration (SMTP VRFY/EXPN/RCPT TO)
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
