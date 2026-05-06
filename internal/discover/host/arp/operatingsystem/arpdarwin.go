@@ -25,7 +25,7 @@ import (
 //	sysctl(CTL_NET, PF_ROUTE, 0, AF_INET, NET_RT_FLAGS, RTF_LLINFO)
 //
 // RTF_LLINFO marks link-layer address mappings (i.e. ARP entries) for IPv4.
-func GetArpEntries() ([]*discoverfern.ArpEntry, error) {
+func GetArpEntries() ([]*discoverfern.ArpInterface, error) {
 	rib, err := route.FetchRIB(syscall.AF_INET, syscall.NET_RT_FLAGS, syscall.RTF_LLINFO)
 	if err != nil {
 		return nil, fmt.Errorf("fetching ARP RIB: %w", err)
@@ -36,7 +36,7 @@ func GetArpEntries() ([]*discoverfern.ArpEntry, error) {
 		return nil, fmt.Errorf("parsing ARP RIB: %w", err)
 	}
 
-	var entries []*discoverfern.ArpEntry
+	ifaceMap := map[string][]*discoverfern.ArpEntry{}
 	for _, msg := range msgs {
 		m, ok := msg.(*route.RouteMessage)
 		if !ok {
@@ -67,19 +67,23 @@ func GetArpEntries() ([]*discoverfern.ArpEntry, error) {
 			}
 		}
 
-		if ip == "" || mac == "" {
+		if ip == "" || mac == "" || ifaceName == "" {
 			continue
 		}
 
-		entry := &discoverfern.ArpEntry{
+		ifaceMap[ifaceName] = append(ifaceMap[ifaceName], &discoverfern.ArpEntry{
 			Ip:  ip,
 			Mac: mac,
-		}
-		if ifaceName != "" {
-			entry.Interface = &ifaceName
-		}
-		entries = append(entries, entry)
+		})
 	}
 
-	return entries, nil
+	var interfaces []*discoverfern.ArpInterface
+	for name, entries := range ifaceMap {
+		interfaces = append(interfaces, &discoverfern.ArpInterface{
+			Interface: name,
+			Entries:   entries,
+		})
+	}
+
+	return interfaces, nil
 }

@@ -7,7 +7,10 @@ types:
       hwType: optional<string>
       flags: optional<string>
       mask: optional<string>
-      interface: optional<string>
+  ArpInterface:
+    properties:
+      interface: string
+      entries: list<ArpEntry>
   # Config
   DiscoverHostArpConfig:
     properties:
@@ -15,7 +18,7 @@ types:
   # Result
   DiscoverHostArpResult:
     properties:
-      entries: optional<list<ArpEntry>>
+      interfaces: optional<list<ArpInterface>>
   # Final report
   DiscoverHostArpReport:
     properties:

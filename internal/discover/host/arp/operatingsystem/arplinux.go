@@ -21,14 +21,14 @@ import (
 //
 //	IP address   HW type  Flags   HW address         Mask  Device
 //	192.168.1.1  0x1      0x2     aa:bb:cc:dd:ee:ff  *     eth0
-func GetArpEntries() ([]*discoverfern.ArpEntry, error) {
+func GetArpEntries() ([]*discoverfern.ArpInterface, error) {
 	f, err := os.Open("/proc/net/arp")
 	if err != nil {
 		return nil, fmt.Errorf("opening /proc/net/arp: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
-	var entries []*discoverfern.ArpEntry
+	ifaceMap := map[string][]*discoverfern.ArpEntry{}
 	scanner := bufio.NewScanner(f)
 	scanner.Scan() // skip the header line
 
@@ -50,15 +50,22 @@ func GetArpEntries() ([]*discoverfern.ArpEntry, error) {
 			continue
 		}
 
-		entries = append(entries, &discoverfern.ArpEntry{
-			Ip:        ip,
-			Mac:       mac,
-			HwType:    &hwType,
-			Flags:     &flags,
-			Mask:      &mask,
-			Interface: &iface,
+		ifaceMap[iface] = append(ifaceMap[iface], &discoverfern.ArpEntry{
+			Ip:     ip,
+			Mac:    mac,
+			HwType: &hwType,
+			Flags:  &flags,
+			Mask:   &mask,
 		})
 	}
 
-	return entries, scanner.Err()
+	var interfaces []*discoverfern.ArpInterface
+	for name, entries := range ifaceMap {
+		interfaces = append(interfaces, &discoverfern.ArpInterface{
+			Interface: name,
+			Entries:   entries,
+		})
+	}
+
+	return interfaces, scanner.Err()
 }

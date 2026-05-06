@@ -57,7 +57,7 @@ const (
 // GetArpEntries reads the IPv4 ARP table on Windows using GetIpNetTable from
 // iphlpapi.dll. No external processes are spawned; the call goes directly
 // to the Windows IP Helper API.
-func GetArpEntries() ([]*discoverfern.ArpEntry, error) {
+func GetArpEntries() ([]*discoverfern.ArpInterface, error) {
 	// First call with a nil buffer to obtain the required buffer size.
 	var size uint32
 	ret, _, _ := procGetIpNetTable.Call(0, uintptr(unsafe.Pointer(&size)), 0)
@@ -85,7 +85,7 @@ func GetArpEntries() ([]*discoverfern.ArpEntry, error) {
 	rowSize := unsafe.Sizeof(mibIPNetRow{})
 	basePtr := uintptr(unsafe.Pointer(&table.Table[0]))
 
-	var entries []*discoverfern.ArpEntry
+	ifaceMap := map[string][]*discoverfern.ArpEntry{}
 	for i := uint32(0); i < table.NumEntries; i++ {
 		row := (*mibIPNetRow)(unsafe.Pointer(basePtr + uintptr(i)*rowSize))
 
@@ -109,18 +109,26 @@ func GetArpEntries() ([]*discoverfern.ArpEntry, error) {
 
 		mac := net.HardwareAddr(row.PhysAddr[:row.PhysAddrLen]).String()
 
-		entry := &discoverfern.ArpEntry{
+		// Resolve adapter index to a friendly interface name; fall back to the
+		// numeric index string if the lookup fails.
+		ifaceName := fmt.Sprintf("%d", row.Index)
+		if iface, err := net.InterfaceByIndex(int(row.Index)); err == nil {
+			ifaceName = iface.Name
+		}
+
+		ifaceMap[ifaceName] = append(ifaceMap[ifaceName], &discoverfern.ArpEntry{
 			Ip:  ip,
 			Mac: mac,
-		}
-
-		// Best-effort: resolve adapter index to a friendly interface name.
-		if iface, err := net.InterfaceByIndex(int(row.Index)); err == nil {
-			entry.Interface = &iface.Name
-		}
-
-		entries = append(entries, entry)
+		})
 	}
 
-	return entries, nil
+	var interfaces []*discoverfern.ArpInterface
+	for name, entries := range ifaceMap {
+		interfaces = append(interfaces, &discoverfern.ArpInterface{
+			Interface: name,
+			Entries:   entries,
+		})
+	}
+
+	return interfaces, nil
 }

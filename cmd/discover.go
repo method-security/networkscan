@@ -29,16 +29,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 		Long:  `Discover live hosts, open ports, running services, and TLS configurations on a network.`,
 	}
 
-	// Host Command Group
+	// Host Command
 	discoverHostCmd := &cobra.Command{
 		Use:   "host",
-		Short: "Host-level discovery and inspection commands.",
-		Long:  `Host-level discovery and inspection commands.`,
-	}
-
-	// Host Scan Subcommand
-	discoverHostScanCmd := &cobra.Command{
-		Use:   "scan",
 		Short: "Identify live hosts within a given IP, hostname, or CIDR range using various discovery techniques.",
 		Long:  `Identify live hosts within a given IP, hostname, or CIDR range using various discovery techniques.`,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -104,13 +97,12 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.OutputSignal.Content = report
 		},
 	}
-	discoverHostScanCmd.Flags().String("target", "", "Target IP address, hostname, or CIDR range to scan for live hosts")
-	discoverHostScanCmd.Flags().String("scan-type", "ICMP_ECHO", "Discovery scan type: ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (not needed for stealth mode)")
-	discoverHostScanCmd.Flags().Int("sleep", 0, "Sleep delay in seconds between hosts for stealth scan (stealth mode enabled when sleep > 0)")
-	discoverHostScanCmd.Flags().Int("jitter", 0, "Jitter percentage (0-100) to randomize sleep delay for stealth scan")
-	discoverHostScanCmd.Flags().Bool("reverse-lookup", false, "Perform reverse DNS lookup sweep first to identify potential targets")
-	_ = discoverHostScanCmd.MarkFlagRequired("target")
-	discoverHostCmd.AddCommand(discoverHostScanCmd)
+	discoverHostCmd.Flags().String("target", "", "Target IP address, hostname, or CIDR range to scan for live hosts")
+	discoverHostCmd.Flags().String("scan-type", "ICMP_ECHO", "Discovery scan type: ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (not needed for stealth mode)")
+	discoverHostCmd.Flags().Int("sleep", 0, "Sleep delay in seconds between hosts for stealth scan (stealth mode enabled when sleep > 0)")
+	discoverHostCmd.Flags().Int("jitter", 0, "Jitter percentage (0-100) to randomize sleep delay for stealth scan")
+	discoverHostCmd.Flags().Bool("reverse-lookup", false, "Perform reverse DNS lookup sweep first to identify potential targets")
+	_ = discoverHostCmd.MarkFlagRequired("target")
 
 	// Host ARP Subcommand
 	discoverHostArpCmd := &cobra.Command{

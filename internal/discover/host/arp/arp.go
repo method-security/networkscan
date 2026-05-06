@@ -19,14 +19,14 @@ import (
 func RunHostArpTable(_ context.Context, config discoverfern.DiscoverHostArpConfig) (*discoverfern.DiscoverHostArpReport, error) {
 	errors := []string{}
 
-	entries, err := operatingsystem.GetArpEntries()
+	interfaces, err := operatingsystem.GetArpEntries()
 	if err != nil {
 		errors = append(errors, err.Error())
 	}
 
 	return &discoverfern.DiscoverHostArpReport{
 		Config: &config,
-		Result: &discoverfern.DiscoverHostArpResult{Entries: entries},
+		Result: &discoverfern.DiscoverHostArpResult{Interfaces: interfaces},
 		Errors: errors,
 	}, nil
 }

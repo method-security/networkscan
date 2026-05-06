@@ -10,6 +10,6 @@ import (
 
 // GetArpEntries returns an explicit error on platforms that are not yet
 // supported.
-func GetArpEntries() ([]*discoverfern.ArpEntry, error) {
+func GetArpEntries() ([]*discoverfern.ArpInterface, error) {
 	return nil, fmt.Errorf("ARP table reading is not supported on this platform")
 }
