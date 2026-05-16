@@ -103,7 +103,7 @@ networkscan discover port --target 192.168.1.0/24 --top-ports 100
 #### Port Validation
 Validate discovered ports with service detection:
 ```bash
-networkscan discover port --target example.com --top-ports 100 --validate --validate-hostname example.com
+networkscan discover port --target example.com --top-ports 100 --validate
 ```
 
 #### Stealth Mode
@@ -132,7 +132,6 @@ Flags:
       --top-ports string                Scan the top N most common TCP ports (options: full, 100, 1000)
       --validate                                    Validate open ports by using service detection techniques
       --validate-attempt-timeout int               Timeout in seconds for each service detection attempt (default 10)
-      --validate-hostname string                   Hostname to validate against (e.g., example.com)
       --validate-threads int                       Number of concurrent threads to use during service detection
       --max-open-ports-validation-threshold int    Trigger validation warning when more than this many ports are open (default 50)
 
