@@ -34,7 +34,6 @@ types:
       packetsPerSecond: integer
       scanType: PortScanType
       validate: boolean
-      validateHostname: optional<string>
       validateAttemptTimeout: optional<integer>
       validateThreads: optional<integer>
       maxOpenPortsValidationThreshold: optional<integer>
