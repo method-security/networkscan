@@ -10,7 +10,6 @@ require (
 	github.com/gosnmp/gosnmp v1.42.1
 	github.com/jfjallid/go-smb v0.6.6
 	github.com/jfjallid/gokrb5/v8 v8.5.1
-	github.com/jlaffaye/ftp v0.2.0
 	github.com/masterzen/winrm v0.0.0-20250927112105-5f8e6c707321
 	github.com/miekg/dns v1.1.68
 	github.com/oiweiwei/go-msrpc v1.2.8
