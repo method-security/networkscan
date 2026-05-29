@@ -51,7 +51,7 @@ Flags:
   -h, --help                  help for scan
       --jitter int            Jitter percentage (0-100) to randomize sleep delay for stealth scan
       --reverse-lookup        Perform reverse DNS lookup sweep first to identify potential targets
-      --scan-type string      Discovery scan type: ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (not needed for stealth mode) (default "ICMP_ECHO")
+      --scan-type string      Discovery scan type: TCP_SYN, ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (not needed for stealth mode) (default "ICMP_ECHO")
       --sleep int             Sleep delay in seconds between hosts for stealth scan (stealth mode enabled when sleep > 0)
       --target string         Target IP address, hostname, or CIDR range to scan for live hosts
 
