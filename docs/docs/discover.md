@@ -101,9 +101,9 @@ networkscan discover port --target 192.168.1.0/24 --top-ports 100
 ```
 
 #### Port Validation
-Service validation is enabled by default. Disable it explicitly when needed:
+Validate discovered ports with service detection:
 ```bash
-networkscan discover port --target example.com --top-ports 100 --validate=false
+networkscan discover port --target example.com --top-ports 100 --validate
 ```
 
 #### Stealth Mode
@@ -123,16 +123,16 @@ Usage:
 Flags:
   -h, --help                            help for port
       --jitter int                      Jitter percentage (0-100) to randomize sleep delay for stealth scan
-      --packets-per-second int          Packets per second to send (default 250)
+      --packets-per-second int          Packets per second to send (default 1000)
       --ports string                    Comma-separated list or range of TCP ports to scan (e.g., 22,80,443 or 1-1024)
-      --scan-type string                Port scan type: SYN or CONNECT (default "SYN")
+      --scan-type string                Port scan type: SYN (default, requires root) or CONNECT (default "SYN")
       --sleep int                       Sleep delay in seconds between port scans for stealth scan (stealth mode enabled when sleep > 0)
       --target string                   Target IP address, FQDN, CIDR range, or IP range to scan for open ports
-      --threads int                     Number of concurrent threads to use during port scanning (default 200)
+      --threads int                     Number of concurrent threads to use during port scanning (default 25)
       --top-ports string                Scan the top N most common TCP ports (options: full, 100, 1000)
-      --validate                        Validate open ports by using service detection techniques (default true)
+      --validate                                    Validate open ports by using service detection techniques
       --validate-attempt-timeout int               Timeout in seconds for each service detection attempt (default 10)
-      --validate-threads int                       Number of concurrent threads to use during service detection (default 200)
+      --validate-threads int                       Number of concurrent threads to use during service detection
       --max-open-ports-validation-threshold int    Trigger validation warning when more than this many ports are open (default 50)
 
 Global Flags:
@@ -174,10 +174,10 @@ Usage:
 
 Flags:
   -h, --help                 help for service
-      --fingerprintx-timeout int   Timeout in seconds for fingerprintx attempt (default 20)
+      --fingerprintx-timeout int   Timeout in seconds for fingerprintx attempt (default is no timeout)
       --service-type string        Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
       --target string              Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)
-      --timeout int                Timeout in seconds for each service fingerprinting attempt (default 20)
+      --timeout int                Timeout in seconds for each service fingerprinting attempt (default 5)
       --udp                        Enable UDP service discovery mode (scans common UDP ports like DNS, NTP, SNMP, etc.)
 
 Global Flags:
