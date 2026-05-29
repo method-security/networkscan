@@ -219,7 +219,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	discoverPortCmd.Flags().String("target", "", "Target IP address, FQDN, CIDR range, or IP range to scan for open ports")
 	discoverPortCmd.Flags().String("ports", "", "Comma-separated list or range of TCP ports to scan (e.g., 22,80,443 or 1-1024)")
-	discoverPortCmd.Flags().String("top-ports", "full", "Scan the top N most common TCP ports (options: full, 100, 1000)")
+	discoverPortCmd.Flags().String("top-ports", "", "Scan the top N most common TCP ports (options: full, 100, 1000)")
 	discoverPortCmd.Flags().Int("threads", 200, "Number of concurrent threads to use during port scanning")
 	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN or CONNECT")
 	discoverPortCmd.Flags().Int("packets-per-second", 250, "Packets per second to send")

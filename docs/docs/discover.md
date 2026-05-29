@@ -129,7 +129,7 @@ Flags:
       --sleep int                       Sleep delay in seconds between port scans for stealth scan (stealth mode enabled when sleep > 0)
       --target string                   Target IP address, FQDN, CIDR range, or IP range to scan for open ports
       --threads int                     Number of concurrent threads to use during port scanning (default 200)
-      --top-ports string                Scan the top N most common TCP ports (options: full, 100, 1000) (default "full")
+      --top-ports string                Scan the top N most common TCP ports (options: full, 100, 1000)
       --validate                        Validate open ports by using service detection techniques (default true)
       --validate-attempt-timeout int               Timeout in seconds for each service detection attempt (default 10)
       --validate-threads int                       Number of concurrent threads to use during service detection (default 200)
