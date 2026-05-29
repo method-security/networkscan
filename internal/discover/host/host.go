@@ -104,6 +104,8 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverfern.H
 	}
 
 	switch scantype {
+	case discoverfern.HostScanTypeTcpSyn:
+		hostDiscoverOpts.TcpSynPingProbes = goflags.StringSlice{"80", "443"}
 	case discoverfern.HostScanTypeIcmpEcho:
 		hostDiscoverOpts.IcmpEchoRequestProbe = true
 	case discoverfern.HostScanTypeIcmpTimestamp:
