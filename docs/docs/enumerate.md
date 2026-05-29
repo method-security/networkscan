@@ -40,7 +40,7 @@ Flags:
   -h, --help               help for service
       --service string     Service to enumerate (ftp, grpc, ldap, smb, smtp, ssh)
       --targets strings    List of target addresses (IP:port or hostname:port) to enumerate
-      --timeout int        Timeout in seconds for enumerating each target (default 30)
+      --timeout int        Timeout in seconds for enumerating each target (default 360)
       --wordlist strings   Custom username wordlist for user enumeration (SMTP VRFY/EXPN/RCPT TO)
 
 Global Flags:
