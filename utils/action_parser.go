@@ -121,7 +121,7 @@ func (p *TelnetActionParser) ParseActions(actionStrings []string) ([]telnetfern.
 }
 
 func (p *TelnetActionParser) GetValidActions() []string {
-	return []string{"AUTH"}
+	return []string{"AUTH", "EXEC"}
 }
 
 func (p *TelnetActionParser) ContainsAction(actions []telnetfern.PentestTelnetAction, target telnetfern.PentestTelnetAction) bool {
