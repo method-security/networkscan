@@ -40,8 +40,14 @@ func (m *LibraryEnumerateMongoDB) EnumerateTarget(ctx context.Context, target st
 	addr := utils.FormatHostPort(host, port)
 	details.Target = addr
 
-	// Connect anonymously (no credentials)
-	client, err := connectAnonymous(ctx, host, port, defaultTimeoutMs)
+	// Connect anonymously (no credentials). Derive timeout from context deadline if set.
+	timeoutMs := defaultTimeoutMs
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining > 0 {
+			timeoutMs = int(remaining.Milliseconds())
+		}
+	}
+	client, err := connectAnonymous(ctx, host, port, timeoutMs)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("failed to connect: %v", err))
 		return &enumeratefern.EnumerateServiceDetails{EnumerateMongodbDetails: &details}, errors
