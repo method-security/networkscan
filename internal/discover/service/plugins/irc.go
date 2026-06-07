@@ -18,18 +18,11 @@ func (IRCFingerprinter) Name() string { return "irc" }
 func (IRCFingerprinter) DefaultPorts() []int { return []int{6660, 6667, 6697} }
 
 func (IRCFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	conn, err := helpers.TCPConn(ctx, ip, port, timeout)
+	resp, err := helpers.TCPExchange(ctx, ip, port, timeout, []byte("NICK networkscanfp\r\nUSER networkscanfp 0 * :networkscan\r\n"), 4096)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
-	_, _ = conn.Write([]byte("NICK networkscanfp\r\nUSER networkscanfp 0 * :networkscan\r\n"))
-	resp := make([]byte, 4096)
-	n, err := conn.Read(resp)
-	if err != nil {
-		return nil, err
-	}
-	text := string(resp[:n])
+	text := string(resp)
 	if !helpers.LooksLikeIRC(text) {
 		return nil, fmt.Errorf("not IRC")
 	}

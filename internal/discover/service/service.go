@@ -371,10 +371,7 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 			}
 		case <-ctx.Done():
 			cancel()
-			if best != nil && noEarlierFingerprintersPending(completed, bestIndex) {
-				return best
-			}
-			return nil
+			return best
 		}
 	}
 }

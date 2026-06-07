@@ -37,7 +37,12 @@ func TCPExchange(ctx context.Context, ip net.IP, port int, timeout int, probe []
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
+	stopCancelWatch := closeConnOnCancel(ctx, conn)
+	defer stopCancelWatch()
 	if _, err := conn.Write(probe); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, err
 	}
 	buf := make([]byte, maxRead)
@@ -46,6 +51,9 @@ func TCPExchange(ctx context.Context, ip net.IP, port int, timeout int, probe []
 		return buf[:n], nil
 	}
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, err
 	}
 	return buf[:n], nil
@@ -57,12 +65,17 @@ func TCPReadBanner(ctx context.Context, ip net.IP, port int, timeout int, maxRea
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
+	stopCancelWatch := closeConnOnCancel(ctx, conn)
+	defer stopCancelWatch()
 	buf := make([]byte, maxRead)
 	n, err := conn.Read(buf)
 	if n > 0 {
 		return buf[:n], nil
 	}
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, err
 	}
 	return buf[:n], nil
@@ -82,15 +95,8 @@ func UDPExchange(ctx context.Context, ip net.IP, port int, timeout int, probe []
 	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
 		return nil, err
 	}
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = conn.Close()
-		case <-done:
-		}
-	}()
-	defer close(done)
+	stopCancelWatch := closeConnOnCancel(ctx, conn)
+	defer stopCancelWatch()
 	if _, err := conn.Write(probe); err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -106,6 +112,18 @@ func UDPExchange(ctx context.Context, ip net.IP, port int, timeout int, probe []
 		return nil, err
 	}
 	return buf[:n], nil
+}
+
+func closeConnOnCancel(ctx context.Context, conn net.Conn) func() {
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-done:
+		}
+	}()
+	return func() { close(done) }
 }
 
 func GenericResult(host string, ip net.IP, port int, transport common.TransportType, appProtocol string, version string, metadata map[string]string) *discoverfern.ServiceDetails {
