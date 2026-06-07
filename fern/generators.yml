@@ -29,7 +29,6 @@ groups:
           package-name: methodnetworkscan
           token: ${TEST_PYPI_TOKEN}
           url: https://test.pypi.org/legacy/
-          allow-existing: true
         smart-casing: false
   pypi:
     generators:
