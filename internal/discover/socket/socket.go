@@ -20,23 +20,29 @@ import (
 
 // parseHexEscaped converts a string that may contain \x-escaped hex sequences into raw bytes.
 // For example, "\x00\x01hello" becomes []byte{0x00, 0x01, 0x68, 0x65, 0x6c, 0x6c, 0x6f}.
-func parseHexEscaped(s string) []byte {
+// Returns an error if an incomplete or invalid \x escape sequence is encountered.
+func parseHexEscaped(s string) ([]byte, error) {
 	var result []byte
 	i := 0
 	for i < len(s) {
-		if i+3 < len(s) && s[i] == '\\' && s[i+1] == 'x' {
+		if s[i] == '\\' && i+1 < len(s) && s[i+1] == 'x' {
+			// Require exactly 2 hex digits after \x
+			if i+3 >= len(s) {
+				return nil, fmt.Errorf("incomplete \\x escape at position %d", i)
+			}
 			hexStr := s[i+2 : i+4]
 			b, err := hex.DecodeString(hexStr)
-			if err == nil {
-				result = append(result, b...)
-				i += 4
-				continue
+			if err != nil {
+				return nil, fmt.Errorf("invalid hex escape \\x%s at position %d: %v", hexStr, i, err)
 			}
+			result = append(result, b...)
+			i += 4
+			continue
 		}
 		result = append(result, s[i])
 		i++
 	}
-	return result
+	return result, nil
 }
 
 // extractBanner filters out non-printable characters from bytes and returns a readable ASCII string.
@@ -54,6 +60,14 @@ func extractBanner(data []byte) string {
 // RunSocketSend opens a raw TCP or UDP socket to the target, optionally sends data,
 // reads the response, and returns a structured report.
 func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig) (*discoverfern.DiscoverSocketReport, error) {
+	// Apply defaults directly to config so the report reflects effective values used (Fix 3 + 5).
+	if config.ReadTimeout <= 0 {
+		config.ReadTimeout = 5
+	}
+	if config.MaxResponseBytes <= 0 {
+		config.MaxResponseBytes = 10240
+	}
+
 	report := &discoverfern.DiscoverSocketReport{
 		Config: &config,
 		Result: &discoverfern.DiscoverSocketResult{},
@@ -87,27 +101,15 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		return report, nil
 	}
 
-	// Determine timeout
-	readTimeout := config.ReadTimeout
-	if readTimeout <= 0 {
-		readTimeout = 5
-	}
-
-	// Determine max response bytes
-	maxResponseBytes := config.MaxResponseBytes
-	if maxResponseBytes <= 0 {
-		maxResponseBytes = 10240
-	}
-
 	// Determine network type
 	network := "tcp"
 	if config.Protocol == discoverfern.SocketTransportProtocolUdp {
 		network = "udp"
 	}
 
-	// FIX 1+3: Single deadline context shared by dial AND read.
+	// Single deadline context shared by dial AND read.
 	// DialContext honours ctx cancellation (Ctrl-C / parent timeout).
-	dialCtx, cancel := context.WithTimeout(ctx, time.Duration(readTimeout)*time.Second)
+	dialCtx, cancel := context.WithTimeout(ctx, time.Duration(config.ReadTimeout)*time.Second)
 	defer cancel()
 
 	var d net.Dialer
@@ -125,14 +127,55 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 	}
 	defer func() { _ = conn.Close() }()
 
+	// Fix 1: Resolve the real IP from the established connection's remote address.
+	// host may be a hostname; conn.RemoteAddr() gives us the actual resolved IP.
+	resolvedIP := host
+	if remoteAddr := conn.RemoteAddr(); remoteAddr != nil {
+		if h, _, splitErr := net.SplitHostPort(remoteAddr.String()); splitErr == nil {
+			resolvedIP = h
+		}
+	}
+
+	// Extract deadline before write section so SetWriteDeadline can use it (Fix 4).
+	deadline, ok := dialCtx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(time.Duration(config.ReadTimeout) * time.Second)
+	}
+
 	// Send data if specified
 	if config.SendData != nil && *config.SendData != "" {
-		sendBytes := parseHexEscaped(*config.SendData)
+		// Fix 2: parseHexEscaped now returns an error for invalid/incomplete escapes.
+		sendBytes, parseErr := parseHexEscaped(*config.SendData)
+		if parseErr != nil {
+			report.Errors = append(report.Errors, fmt.Sprintf("invalid send data: %v", parseErr))
+			connTrue := true
+			report.Result.Response = &discoverfern.SocketResponseDetails{
+				Ip:                   resolvedIP,
+				Port:                 portInt,
+				Protocol:             config.Protocol,
+				ConnectionSuccessful: connTrue,
+			}
+			return report, nil
+		}
+
+		// Fix 4: Set write deadline before calling conn.Write.
+		if writeDeadlineErr := conn.SetWriteDeadline(deadline); writeDeadlineErr != nil {
+			report.Errors = append(report.Errors, fmt.Sprintf("failed to set write deadline: %v", writeDeadlineErr))
+			connTrue := true
+			report.Result.Response = &discoverfern.SocketResponseDetails{
+				Ip:                   resolvedIP,
+				Port:                 portInt,
+				Protocol:             config.Protocol,
+				ConnectionSuccessful: connTrue,
+			}
+			return report, nil
+		}
+
 		if _, writeErr := conn.Write(sendBytes); writeErr != nil {
 			report.Errors = append(report.Errors, fmt.Sprintf("send failed: %v", writeErr))
 			connTrue := true
 			report.Result.Response = &discoverfern.SocketResponseDetails{
-				Ip:                   host,
+				Ip:                   resolvedIP,
 				Port:                 portInt,
 				Protocol:             config.Protocol,
 				ConnectionSuccessful: connTrue,
@@ -141,17 +184,13 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		}
 	}
 
-	// FIX 3: Read deadline comes from the same context deadline — no doubling.
-	deadline, ok := dialCtx.Deadline()
-	if !ok {
-		deadline = time.Now().Add(time.Duration(readTimeout) * time.Second)
-	}
-	// FIX 4: Return early if SetReadDeadline fails — don't Read without a deadline.
+	// Read deadline comes from the same context deadline — no doubling.
+	// Return early if SetReadDeadline fails — don't Read without a deadline.
 	if err := conn.SetReadDeadline(deadline); err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("failed to set read deadline: %v", err))
 		connTrue := true
 		report.Result.Response = &discoverfern.SocketResponseDetails{
-			Ip:                   host,
+			Ip:                   resolvedIP,
 			Port:                 portInt,
 			Protocol:             config.Protocol,
 			ConnectionSuccessful: connTrue,
@@ -159,11 +198,11 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		return report, nil
 	}
 
-	// FIX 2: Read loop — accumulate until timeout, EOF, or max bytes.
+	// Read loop — accumulate until timeout, EOF, or max bytes.
 	var responseBytes []byte
 	readBuf := make([]byte, 4096)
-	for len(responseBytes) < maxResponseBytes {
-		remaining := maxResponseBytes - len(responseBytes)
+	for len(responseBytes) < config.MaxResponseBytes {
+		remaining := config.MaxResponseBytes - len(responseBytes)
 		chunk := readBuf
 		if remaining < len(chunk) {
 			chunk = chunk[:remaining]
@@ -190,7 +229,7 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 
 	connTrue := true
 	details := &discoverfern.SocketResponseDetails{
-		Ip:                   host,
+		Ip:                   resolvedIP,
 		Port:                 portInt,
 		Protocol:             config.Protocol,
 		ConnectionSuccessful: connTrue,
