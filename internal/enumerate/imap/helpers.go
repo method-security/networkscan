@@ -38,8 +38,7 @@ func tryTCPConnection(host string, port int, timeout int) (net.Conn, string, err
 // and returns the open TLS connection plus the greeting string.
 func tryTLSConnection(host string, port int, timeout int) (*tls.Conn, string, error) {
 	tlsConfig := &tls.Config{
-		ServerName:         host,
-		InsecureSkipVerify: true,
+		ServerName: host,
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	dialer := &net.Dialer{Timeout: time.Duration(timeout) * time.Second}
@@ -75,8 +74,7 @@ func doSTARTTLS(conn net.Conn, host string, timeout int) (*tls.Conn, error) {
 	}
 	// Upgrade to TLS
 	tlsConfig := &tls.Config{
-		ServerName:         host,
-		InsecureSkipVerify: true,
+		ServerName: host,
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
 	if err := tlsConn.Handshake(); err != nil {
