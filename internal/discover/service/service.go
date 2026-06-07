@@ -144,7 +144,6 @@ var udpFingerprinters = map[uint16]Fingerprinter{
 	5683:  &localPlugins.CoAPFingerprinter{},          // CoAP
 	1812:  &localPlugins.RADIUSFingerprinter{},        // RADIUS
 	3702:  &localPlugins.WSDiscoveryFingerprinter{},   // WS-Discovery
-	1502:  &localPlugins.TriStationFingerprinter{},    // TriStation
 	20000: &localPlugins.DNP3UDPFingerprinter{},       // DNP3
 	44818: &localPlugins.EthernetIPUDPFingerprinter{}, // EtherNet/IP
 }
