@@ -1,0 +1,37 @@
+types:
+  # ENUMs
+  SocksAuthMethod:
+    enum:
+      - NO_AUTH
+      - GSSAPI
+      - USERNAME_PASSWORD
+      - UNKNOWN
+
+  SocksImplementationHint:
+    enum:
+      - MICROSOCKS
+      - DANTE
+      - SHADOWSOCKS
+      - TOR
+      - OPENSSH_DYNAMIC
+      - UNKNOWN
+
+  # Report structs
+  EnumerateSocksDetails:
+    properties:
+      target: string
+      port: integer
+      socks4Supported: optional<boolean>
+      socks4aSupported: optional<boolean>
+      socks5Supported: optional<boolean>
+      authMethodsOffered: optional<list<SocksAuthMethod>>
+      noAuthAllowed: optional<boolean>
+      userpassAuthAllowed: optional<boolean>
+      gssapiAvailable: optional<boolean>
+      bindSupported: optional<boolean>
+      udpAssociateSupported: optional<boolean>
+      udpRelayVerified: optional<boolean>
+      bndAddr: optional<string>
+      bndPort: optional<integer>
+      implementationHint: optional<SocksImplementationHint>
+      error: optional<string>
