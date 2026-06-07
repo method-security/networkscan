@@ -43,25 +43,43 @@ func GetTemplateFileSystem(ctx context.Context, templatePaths []string, protocol
 	var osFilesystems []fs.FS
 	var embeddedPaths []string
 	for _, templatePath := range templatePaths {
-		if info, err := os.Stat(templatePath); err == nil {
-			abs, absErr := filepath.Abs(templatePath)
-			if absErr != nil {
-				abs = templatePath
-			}
-			if info.IsDir() {
-				osFilesystems = append(osFilesystems, os.DirFS(abs))
-				log.Info("Using user-supplied template directory", svc1log.SafeParam("templatePath", abs))
-			} else if isTemplateFile(abs) {
-				dir := filepath.Dir(abs)
-				base := filepath.Base(abs)
-				osFilesystems = append(osFilesystems, &singleFileFS{baseFS: os.DirFS(dir), name: base})
-				log.Info("Using user-supplied template file", svc1log.SafeParam("templatePath", abs))
-			} else {
-				log.Warn("User-supplied path is not a yaml/yml template, skipping", svc1log.SafeParam("templatePath", abs))
-			}
+		// Treat the path as OS-supplied only when the caller wrote something that
+		// clearly references the host filesystem. Bare relative paths like
+		// "cve/2024" always resolve against the embedded archive — otherwise a
+		// same-named directory in the working tree would silently shadow it.
+		if !looksLikeOSPath(templatePath) {
+			embeddedPaths = append(embeddedPaths, templatePath)
 			continue
 		}
-		embeddedPaths = append(embeddedPaths, templatePath)
+		info, err := os.Stat(templatePath)
+		if err != nil {
+			log.Warn("User-supplied template path not found, skipping", svc1log.SafeParam("templatePath", templatePath), svc1log.SafeParam("error", err.Error()))
+			continue
+		}
+		abs, absErr := filepath.Abs(templatePath)
+		if absErr != nil {
+			abs = templatePath
+		}
+		if info.IsDir() {
+			count, walkErr := countTemplateFilesOnDisk(abs)
+			if walkErr != nil {
+				log.Warn("Failed to read user-supplied template directory, skipping", svc1log.SafeParam("templatePath", abs), svc1log.SafeParam("error", walkErr.Error()))
+				continue
+			}
+			if count == 0 {
+				log.Warn("User-supplied template directory contains no .yaml/.yml files, skipping", svc1log.SafeParam("templatePath", abs))
+				continue
+			}
+			osFilesystems = append(osFilesystems, os.DirFS(abs))
+			log.Info("Using user-supplied template directory", svc1log.SafeParam("templatePath", abs), svc1log.SafeParam("templateCount", count))
+		} else if isTemplateFile(abs) {
+			dir := filepath.Dir(abs)
+			base := filepath.Base(abs)
+			osFilesystems = append(osFilesystems, &singleFileFS{baseFS: os.DirFS(dir), name: base})
+			log.Info("Using user-supplied template file", svc1log.SafeParam("templatePath", abs))
+		} else {
+			log.Warn("User-supplied path is not a yaml/yml template, skipping", svc1log.SafeParam("templatePath", abs))
+		}
 	}
 
 	// Collect all template files from the embedded CVE FS
@@ -204,6 +222,39 @@ func (s *singleFileDir) ReadDir(n int) ([]fs.DirEntry, error) {
 		return entries[:n], nil
 	}
 	return entries, nil
+}
+
+// looksLikeOSPath reports whether the caller clearly intended a host-filesystem
+// path: absolute, or explicitly relative to the current directory (./x or ../x).
+// Bare relative paths like "cve/2024" are treated as embedded logical paths
+// even if a same-named entry happens to exist in the working tree.
+func looksLikeOSPath(p string) bool {
+	if filepath.IsAbs(p) {
+		return true
+	}
+	if strings.HasPrefix(p, "./") || strings.HasPrefix(p, "../") ||
+		strings.HasPrefix(p, ".\\") || strings.HasPrefix(p, "..\\") {
+		return true
+	}
+	return false
+}
+
+// countTemplateFilesOnDisk counts .yaml/.yml files under dir (recursive).
+func countTemplateFilesOnDisk(dir string) (int, error) {
+	count := 0
+	err := filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if isTemplateFile(d.Name()) {
+			count++
+		}
+		return nil
+	})
+	return count, err
 }
 
 // isTemplateFile checks if the given path appears to be a template file based on extension
