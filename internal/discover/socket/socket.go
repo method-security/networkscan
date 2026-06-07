@@ -101,6 +101,38 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		return report, nil
 	}
 
+	// Parse and validate send data BEFORE dialing so malformed escapes or
+	// oversized payloads never open a network connection (Fixes: invalid payload
+	// dials first + no outbound payload size cap).
+	const maxSendBytes = 10240
+	var sendBytes []byte
+	if config.SendData != nil && *config.SendData != "" {
+		parsed, parseErr := parseHexEscaped(*config.SendData)
+		if parseErr != nil {
+			report.Errors = append(report.Errors, fmt.Sprintf("invalid send data: %v", parseErr))
+			connFalse := false
+			report.Result.Response = &discoverfern.SocketResponseDetails{
+				Ip:                   host,
+				Port:                 portInt,
+				Protocol:             config.Protocol,
+				ConnectionSuccessful: connFalse,
+			}
+			return report, nil
+		}
+		if len(parsed) > maxSendBytes {
+			report.Errors = append(report.Errors, fmt.Sprintf("send data too large: %d bytes (max %d)", len(parsed), maxSendBytes))
+			connFalse := false
+			report.Result.Response = &discoverfern.SocketResponseDetails{
+				Ip:                   host,
+				Port:                 portInt,
+				Protocol:             config.Protocol,
+				ConnectionSuccessful: connFalse,
+			}
+			return report, nil
+		}
+		sendBytes = parsed
+	}
+
 	// Determine network type
 	network := "tcp"
 	if config.Protocol == discoverfern.SocketTransportProtocolUdp {
@@ -136,29 +168,15 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		}
 	}
 
-	// Extract deadline before write section so SetWriteDeadline can use it (Fix 4).
+	// Extract deadline before write section so SetWriteDeadline can use it.
 	deadline, ok := dialCtx.Deadline()
 	if !ok {
 		deadline = time.Now().Add(time.Duration(config.ReadTimeout) * time.Second)
 	}
 
-	// Send data if specified
-	if config.SendData != nil && *config.SendData != "" {
-		// Fix 2: parseHexEscaped now returns an error for invalid/incomplete escapes.
-		sendBytes, parseErr := parseHexEscaped(*config.SendData)
-		if parseErr != nil {
-			report.Errors = append(report.Errors, fmt.Sprintf("invalid send data: %v", parseErr))
-			connTrue := true
-			report.Result.Response = &discoverfern.SocketResponseDetails{
-				Ip:                   resolvedIP,
-				Port:                 portInt,
-				Protocol:             config.Protocol,
-				ConnectionSuccessful: connTrue,
-			}
-			return report, nil
-		}
-
-		// Fix 4: Set write deadline before calling conn.Write.
+	// Send pre-validated payload if provided.
+	if len(sendBytes) > 0 {
+		// Set write deadline before calling conn.Write.
 		if writeDeadlineErr := conn.SetWriteDeadline(deadline); writeDeadlineErr != nil {
 			report.Errors = append(report.Errors, fmt.Sprintf("failed to set write deadline: %v", writeDeadlineErr))
 			connTrue := true
