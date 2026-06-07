@@ -94,8 +94,7 @@ func upgradeToTLS(conn net.Conn, hostname string) (*tls.Conn, error) {
 		return nil, fmt.Errorf("STLS rejected: %s", resp)
 	}
 	tlsCfg := &tls.Config{
-		ServerName:         hostname,
-		InsecureSkipVerify: true, //nolint:gosec
+		ServerName: hostname,
 	}
 	tlsConn := tls.Client(conn, tlsCfg)
 	if err := tlsConn.Handshake(); err != nil {
