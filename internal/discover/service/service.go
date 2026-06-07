@@ -50,7 +50,7 @@ type Fingerprinter interface {
 // protocols and document intentional default-port overlaps inline.
 //
 // Current TCP overlap groups:
-//   - 102: S7Comm and MMS
+//   - 102: S7Comm before MMS
 //   - 1099: JMX before Java RMI
 //   - 5555: ADB and HP Data Protector
 //   - 20000: DNP3 and MELSEC MC
@@ -77,7 +77,8 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.ArdFingerprinter{},             // ARD (Apple Remote Desktop)
 	&localPlugins.PptpFingerprinter{},            // PPTP (Point-to-Point Tunneling Protocol)
 	&localPlugins.MsmqFingerprinter{},            // MSMQ (Microsoft Message Queuing)
-	&localPlugins.MmsFingerprinter{},             // MMS (overlaps S7Comm on TCP/102; independent ISO-on-TPKT probe)
+	&localPlugins.S7CommFingerprinter{},          // Siemens S7comm (more specific TCP/102 PLC probe)
+	&localPlugins.MmsFingerprinter{},             // MMS fallback for TCP/102 ISO-on-TPKT
 	&localPlugins.HartFingerprinter{},            // HART-IP (Highway Addressable Remote Transducer)
 	&localPlugins.FoxFingerprinter{},             // FOX (Tridium Niagara Framework)
 	&localPlugins.MemcachedFingerprinter{},       // MEMCACHED
@@ -93,7 +94,6 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.BeanstalkdFingerprinter{},      // beanstalkd
 	&localPlugins.ErlangEPMDFingerprinter{},      // Erlang Port Mapper Daemon
 	&localPlugins.ADBFingerprinter{},             // Android Debug Bridge (overlaps HP Data Protector on TCP/5555)
-	&localPlugins.S7CommFingerprinter{},          // Siemens S7comm (overlaps MMS on TCP/102; protocol-specific probe)
 	&localPlugins.RTMPFingerprinter{},            // RTMP
 	&localPlugins.NNTPFingerprinter{},            // NNTP
 	&localPlugins.IRCFingerprinter{},             // IRC
@@ -316,7 +316,7 @@ type fingerprinterResult struct {
 // runFingerprintersParallel runs multiple fingerprinters concurrently and returns
 // the highest-priority successful detection based on registry order.
 func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprinter, ip net.IP, port int, host string, timeout int) *discoverfern.ServiceDetails {
-	ctx, cancel := context.WithCancel(ctx)
+	probeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	resultChan := make(chan fingerprinterResult, len(fingerprinters))
@@ -326,7 +326,7 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 		wg.Add(1)
 		go func(index int, fingerprinter Fingerprinter) {
 			defer wg.Done()
-			detection, err := fingerprinter.Detect(ctx, ip, port, host, timeout)
+			detection, err := fingerprinter.Detect(probeCtx, ip, port, host, timeout)
 			result := fingerprinterResult{index: index}
 			if err == nil && detection != nil {
 				result.details = detection
@@ -345,6 +345,7 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 	var best *discoverfern.ServiceDetails
 	timer := time.NewTimer(time.Duration(timeout) * time.Second)
 	defer timer.Stop()
+	timeoutC := timer.C
 
 	for {
 		select {
@@ -362,11 +363,18 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 			if best != nil && noEarlierFingerprintersPending(completed, bestIndex) {
 				return best
 			}
-		case <-timer.C:
+		case <-timeoutC:
 			cancel()
-			return best
+			timeoutC = nil
+			if best != nil && noEarlierFingerprintersPending(completed, bestIndex) {
+				return best
+			}
 		case <-ctx.Done():
-			return best
+			cancel()
+			if best != nil && noEarlierFingerprintersPending(completed, bestIndex) {
+				return best
+			}
+			return nil
 		}
 	}
 }
