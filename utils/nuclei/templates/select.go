@@ -47,7 +47,7 @@ func GetTemplateFileSystem(ctx context.Context, templatePaths []string, protocol
 		// clearly references the host filesystem. Bare relative paths like
 		// "cve/2024" always resolve against the embedded archive — otherwise a
 		// same-named directory in the working tree would silently shadow it.
-		if !looksLikeOSPath(templatePath) {
+		if !classifyTemplatePath(templatePath) {
 			embeddedPaths = append(embeddedPaths, templatePath)
 			continue
 		}
@@ -224,16 +224,34 @@ func (s *singleFileDir) ReadDir(n int) ([]fs.DirEntry, error) {
 	return entries, nil
 }
 
-// looksLikeOSPath reports whether the caller clearly intended a host-filesystem
-// path: absolute, or explicitly relative to the current directory (./x or ../x).
-// Bare relative paths like "cve/2024" are treated as embedded logical paths
-// even if a same-named entry happens to exist in the working tree.
-func looksLikeOSPath(p string) bool {
+// embeddedPathPrefixes are the top-level directories inside the bundled
+// CVE template archive. A path beginning with one of these is always
+// resolved against the embedded archive — never the host filesystem — so a
+// same-named directory in the working tree cannot shadow bundled templates.
+var embeddedPathPrefixes = []string{"cve/"}
+
+// classifyTemplatePath returns true when the path should be resolved against
+// the host filesystem rather than the embedded archive. The rules:
+//
+//   - Absolute paths and ./- / ../-prefixed paths are always OS paths.
+//   - Paths starting with a known embedded prefix ("cve/") are always
+//     embedded so internal callers' paths can never be shadowed by CWD.
+//   - Any other relative path is treated as an OS path when it exists on
+//     disk; otherwise the embedded resolver gets a chance to match it.
+func classifyTemplatePath(p string) bool {
 	if filepath.IsAbs(p) {
 		return true
 	}
 	if strings.HasPrefix(p, "./") || strings.HasPrefix(p, "../") ||
 		strings.HasPrefix(p, ".\\") || strings.HasPrefix(p, "..\\") {
+		return true
+	}
+	for _, prefix := range embeddedPathPrefixes {
+		if strings.HasPrefix(p, prefix) {
+			return false
+		}
+	}
+	if _, err := os.Stat(p); err == nil {
 		return true
 	}
 	return false
