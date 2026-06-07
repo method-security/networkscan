@@ -394,7 +394,7 @@ func (p *RedisActionParser) ParseActions(actionStrings []string) ([]redisfern.Pe
 }
 
 func (p *RedisActionParser) GetValidActions() []string {
-	return []string{"AUTH", "INFO", "ENUM"}
+	return []string{"AUTH"}
 }
 
 func (p *RedisActionParser) ContainsAction(actions []redisfern.PentestRedisAction, target redisfern.PentestRedisAction) bool {
