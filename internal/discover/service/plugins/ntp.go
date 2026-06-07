@@ -3,7 +3,6 @@ package plugins
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"net"
 	"time"
@@ -159,6 +158,3 @@ func getNTPModeString(mode byte) string {
 		return "unknown"
 	}
 }
-
-// Prevent unused import warning
-var _ = binary.BigEndian
