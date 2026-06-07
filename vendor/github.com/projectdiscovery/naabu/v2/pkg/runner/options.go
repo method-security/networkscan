@@ -282,7 +282,7 @@ func (options *Options) shouldDiscoverHosts() bool {
 func (options *Options) hasProbes() bool {
 	return options.ArpPing || options.IPv6NeighborDiscoveryPing || options.IcmpAddressMaskRequestProbe ||
 		options.IcmpEchoRequestProbe || options.IcmpTimestampRequestProbe || len(options.TcpAckPingProbes) > 0 ||
-		len(options.TcpSynPingProbes) > 0
+		len(options.TcpAckPingProbes) > 0
 }
 
 func (options *Options) shouldUseRawPackets() bool {
