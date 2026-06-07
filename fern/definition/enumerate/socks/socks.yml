@@ -1,5 +1,7 @@
 types:
   # ENUMs
+
+  # SocksAuthMethod enumerates the authentication methods defined by RFC 1928.
   SocksAuthMethod:
     enum:
       - NO_AUTH
@@ -7,6 +9,8 @@ types:
       - USERNAME_PASSWORD
       - UNKNOWN
 
+  # SocksImplementationHint provides a best-effort guess at the SOCKS server
+  # implementation based on response-byte and timing heuristics.
   SocksImplementationHint:
     enum:
       - MICROSOCKS
@@ -17,6 +21,8 @@ types:
       - UNKNOWN
 
   # Report structs
+
+  # EnumerateSocksDetails captures the result of probing a SOCKS4/4a/5 proxy.
   EnumerateSocksDetails:
     properties:
       target: string
