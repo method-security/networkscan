@@ -8,6 +8,7 @@ import (
 	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
 	mongodbfern "github.com/Method-Security/networkscan/generated/go/pentest/mongodb"
 	msrpcfern "github.com/Method-Security/networkscan/generated/go/pentest/msrpc"
+	redisfern "github.com/Method-Security/networkscan/generated/go/pentest/redis"
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	sshfern "github.com/Method-Security/networkscan/generated/go/pentest/ssh"
 	telnetfern "github.com/Method-Security/networkscan/generated/go/pentest/telnet"
@@ -122,7 +123,7 @@ func (p *TelnetActionParser) ParseActions(actionStrings []string) ([]telnetfern.
 }
 
 func (p *TelnetActionParser) GetValidActions() []string {
-	return []string{"AUTH"}
+	return []string{"AUTH", "EXEC"}
 }
 
 func (p *TelnetActionParser) ContainsAction(actions []telnetfern.PentestTelnetAction, target telnetfern.PentestTelnetAction) bool {
@@ -302,6 +303,7 @@ var (
 	ftpParserInstance     *FTPActionParser
 	winrmParserInstance   *WinRMActionParser
 	mongodbParserInstance *MongoDBActionParser
+	redisParserInstance   *RedisActionParser
 )
 
 // GetSMBParser returns the singleton SMB action parser
@@ -398,6 +400,52 @@ func (p *FTPActionParser) GetValidActions() []string {
 }
 
 func (p *FTPActionParser) ContainsAction(actions []ftpfern.PentestFtpAction, target ftpfern.PentestFtpAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
+// RedisActionParser handles Redis-specific action parsing
+type RedisActionParser struct{}
+
+// GetRedisParser returns the singleton Redis action parser
+func GetRedisParser() *RedisActionParser {
+	if redisParserInstance == nil {
+		redisParserInstance = &RedisActionParser{}
+	}
+	return redisParserInstance
+}
+
+func (p *RedisActionParser) ParseActions(actionStrings []string) ([]redisfern.PentestRedisAction, error) {
+	var actions []redisfern.PentestRedisAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			redisAction, err := redisfern.NewPentestRedisActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid Redis action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, redisAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *RedisActionParser) GetValidActions() []string {
+	return []string{"AUTH"}
+}
+
+func (p *RedisActionParser) ContainsAction(actions []redisfern.PentestRedisAction, target redisfern.PentestRedisAction) bool {
 	for _, action := range actions {
 		if action == target {
 			return true
