@@ -123,7 +123,7 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		}
 		return report, nil
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send data if specified
 	if config.SendData != nil && *config.SendData != "" {
