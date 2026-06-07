@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
@@ -70,7 +69,7 @@ func detectIPPWithScheme(ctx context.Context, ip net.IP, port int, host string, 
 
 	// Create HTTP client
 	client := &http.Client{
-		Timeout: time.Duration(timeout) * time.Second,
+		Timeout: serviceTimeout(timeout),
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},

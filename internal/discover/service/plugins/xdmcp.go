@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
@@ -23,15 +22,14 @@ func (XdmcpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host 
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	// XDMCP uses UDP
-	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)
+	conn, err := dialService(ctx, "udp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set read deadline
-	deadline := time.Now().Add(time.Duration(timeout) * time.Second)
-	if err := conn.SetDeadline(deadline); err != nil {
+	if err := setServiceDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 

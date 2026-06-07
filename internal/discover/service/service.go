@@ -24,6 +24,7 @@ import (
 	localPlugins "github.com/Method-Security/networkscan/internal/discover/service/plugins"
 	// Internal
 	"github.com/Method-Security/networkscan/internal/common/ntlm"
+	servicehelpers "github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	// Utilities
 	"github.com/Method-Security/networkscan/utils"
 )
@@ -181,7 +182,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 	// Standard fingerprinting path
 	fingerprintConfig := scan.Config{
 		FastMode:       true,
-		DefaultTimeout: time.Duration(config.Timeout) * time.Second,
+		DefaultTimeout: servicehelpers.Timeout(config.Timeout),
 		UDP:            false,
 		Verbose:        true,
 	}
@@ -228,7 +229,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 			var cancel context.CancelFunc
 
 			if config.FingerprintxTimeout > 0 {
-				fxCtx, cancel = context.WithTimeout(ctx, time.Duration(config.FingerprintxTimeout)*time.Second)
+				fxCtx, cancel = context.WithTimeout(ctx, servicehelpers.Timeout(config.FingerprintxTimeout))
 			} else {
 				fxCtx, cancel = context.WithCancel(ctx)
 			}
@@ -343,9 +344,13 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 	completed := make([]bool, len(fingerprinters))
 	bestIndex := len(fingerprinters)
 	var best *discoverfern.ServiceDetails
-	timer := time.NewTimer(time.Duration(timeout) * time.Second)
-	defer timer.Stop()
-	timeoutC := timer.C
+	var timeoutC <-chan time.Time
+	var timer *time.Timer
+	if servicehelpers.HasTimeout(timeout) {
+		timer = time.NewTimer(servicehelpers.Timeout(timeout))
+		defer timer.Stop()
+		timeoutC = timer.C
+	}
 
 	for {
 		select {
@@ -508,7 +513,10 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 
 		// Collect results - wait for all fingerprinters to complete or timeout
 		// Each fingerprinter has its own timeout, so we give extra time for all to finish
-		overallTimeout := time.After(time.Duration(config.Timeout+2) * time.Second)
+		var overallTimeout <-chan time.Time
+		if servicehelpers.HasTimeout(config.Timeout) {
+			overallTimeout = time.After(servicehelpers.Timeout(config.Timeout) + 2*time.Second)
+		}
 		completedTasks := 0
 	collectLoop:
 		for completedTasks < len(tasks) {

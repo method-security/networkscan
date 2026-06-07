@@ -35,7 +35,7 @@ func (PcomFingerprinter) Detect(
 	host string,
 	timeout int,
 ) (*discoverfern.ServiceDetails, error) {
-	timeoutDur := time.Duration(timeout) * time.Second
+	timeoutDur := serviceTimeout(timeout)
 
 	// Try multiple PCOM detection strategies in order of likelihood
 	strategies := []func(context.Context, net.IP, int, string, time.Duration) (*discoverfern.ServiceDetails, error){
@@ -116,14 +116,13 @@ func tryPcomTCPHeader(ctx context.Context, ip net.IP, port int, host string, tim
 func tryPcomConnectionTest(ctx context.Context, ip net.IP, port int, host string, timeout time.Duration) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
-	dialer := net.Dialer{Timeout: timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	conn, err := dialServiceDuration(ctx, "tcp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = conn.SetReadDeadline(time.Now().Add(timeout))
+	_ = setServiceReadDeadlineDuration(conn, timeout)
 	buffer := make([]byte, 1024)
 
 	// Try reading with a short timeout
@@ -152,14 +151,13 @@ func tryPcomConnectionTest(ctx context.Context, ip net.IP, port int, host string
 func testPcomCommand(ctx context.Context, ip net.IP, port int, host string, timeout time.Duration, command []byte) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
-	dialer := net.Dialer{Timeout: timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	conn, err := dialServiceDuration(ctx, "tcp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	_ = setServiceDeadlineDuration(conn, timeout)
 
 	// Send command
 	if _, err := conn.Write(command); err != nil {

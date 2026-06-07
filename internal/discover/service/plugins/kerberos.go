@@ -29,11 +29,11 @@ func (KerberosFingerprinter) DefaultPorts() []int { return []int{88} }
 
 func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	// Create a context with timeout
-	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	timeoutCtx, cancel := serviceContext(ctx, timeout)
 	defer cancel()
 
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	timeoutDuration := time.Duration(timeout) * time.Second
+	timeoutDuration := serviceTimeout(timeout)
 
 	// Try plaintext connection first
 	var d net.Dialer
@@ -113,7 +113,7 @@ func detectKerberos(conn net.Conn, realm string, timeout time.Duration, tlsMode 
 	}
 
 	// Send the packet
-	if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
+	if err := setServiceWriteDeadlineDuration(conn, timeout); err != nil {
 		return false, tlsMode, err
 	}
 	_, err = conn.Write(packet)
@@ -122,7 +122,7 @@ func detectKerberos(conn net.Conn, realm string, timeout time.Duration, tlsMode 
 	}
 
 	// Read response
-	if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+	if err := setServiceReadDeadlineDuration(conn, timeout); err != nil {
 		return false, tlsMode, err
 	}
 

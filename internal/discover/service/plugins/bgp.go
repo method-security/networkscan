@@ -21,7 +21,7 @@ func (BGPFingerprinter) Name() string { return "bgp" }
 func (BGPFingerprinter) DefaultPorts() []int { return []int{179} }
 
 func (BGPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	conn, err := net.DialTimeout("tcp", utils.FormatHostPort(ip.String(), port), time.Duration(timeout)*time.Second)
+	conn, err := dialService(ctx, "tcp", utils.FormatHostPort(ip.String(), port), timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func (BGPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	openMsg := buildBGPOpenMessage()
 
 	// Set deadline
-	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+	if err := setServiceDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 

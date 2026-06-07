@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
@@ -23,16 +22,15 @@ func (SMTPFingerprinter) DefaultPorts() []int { return []int{25, 587, 2525, 8025
 
 func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	dur := time.Duration(timeout) * time.Second
+	dur := serviceTimeout(timeout)
 
-	dialer := net.Dialer{Timeout: dur}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	conn, err := dialServiceDuration(ctx, "tcp", addr, dur)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = conn.SetReadDeadline(time.Now().Add(dur))
+	_ = setServiceReadDeadlineDuration(conn, dur)
 
 	// Read the banner — SMTP servers send a 220 greeting on connect.
 	// Banners can be multi-line (220- continuation lines followed by a final 220 line).
@@ -67,14 +65,14 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	esmtp := strings.Contains(banner, "ESMTP")
 
 	// Send EHLO to discover capabilities
-	_ = conn.SetWriteDeadline(time.Now().Add(dur))
+	_ = setServiceWriteDeadlineDuration(conn, dur)
 	ehloHost := "scanner.local"
 	_, err = fmt.Fprintf(conn, "EHLO %s\r\n", ehloHost)
 	if err != nil {
 		return buildSMTPResult(host, ip, port, banner, serverName, softwareName, softwareVersion, esmtp, false, nil, nil), nil
 	}
 
-	_ = conn.SetReadDeadline(time.Now().Add(dur))
+	_ = setServiceReadDeadlineDuration(conn, dur)
 
 	var extensions []string
 	var authMethods []protocol.SmtpAuthCommand
@@ -129,7 +127,7 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 
 	// Send QUIT
-	_ = conn.SetWriteDeadline(time.Now().Add(dur))
+	_ = setServiceWriteDeadlineDuration(conn, dur)
 	_, _ = fmt.Fprintf(conn, "QUIT\r\n")
 
 	return buildSMTPResult(host, ip, port, banner, serverName, softwareName, softwareVersion, esmtp, tlsSupported, authMethods, extensions), nil

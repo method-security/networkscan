@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
@@ -47,14 +46,14 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		0xB5, // Checksum
 	}
 
-	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)
+	conn, err := dialService(ctx, "udp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set read/write deadline
-	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+	if err := setServiceDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 

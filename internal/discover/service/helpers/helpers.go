@@ -14,21 +14,75 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
-func TCPConn(ctx context.Context, ip net.IP, port int, timeout int) (net.Conn, error) {
-	if timeout <= 0 {
-		timeout = 5
+func Timeout(timeout int) time.Duration {
+	if timeout < 0 {
+		return 0
 	}
+	return time.Duration(timeout) * time.Second
+}
+
+func HasTimeout(timeout int) bool {
+	return timeout >= 0
+}
+
+func Context(ctx context.Context, timeout int) (context.Context, context.CancelFunc) {
+	if !HasTimeout(timeout) {
+		return context.WithCancel(ctx)
+	}
+	return context.WithTimeout(ctx, Timeout(timeout))
+}
+
+func TCPConn(ctx context.Context, ip net.IP, port int, timeout int) (net.Conn, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	dialer := net.Dialer{Timeout: time.Duration(timeout) * time.Second}
+	dialer := net.Dialer{Timeout: Timeout(timeout)}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+	if err := SetDeadline(conn, timeout); err != nil {
 		_ = conn.Close()
 		return nil, err
 	}
 	return conn, nil
+}
+
+func UDPConn(ctx context.Context, ip net.IP, port int, timeout int) (net.Conn, error) {
+	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
+	dialer := net.Dialer{Timeout: Timeout(timeout)}
+	conn, err := dialer.DialContext(ctx, "udp", addr)
+	if err != nil {
+		return nil, err
+	}
+	if err := SetDeadline(conn, timeout); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
+func SetDeadline(conn net.Conn, timeout int) error {
+	if !HasTimeout(timeout) {
+		return nil
+	}
+	return conn.SetDeadline(time.Now().Add(Timeout(timeout)))
+}
+
+func SetReadDeadline(conn net.Conn, timeout int) error {
+	if !HasTimeout(timeout) {
+		return nil
+	}
+	return conn.SetReadDeadline(time.Now().Add(Timeout(timeout)))
+}
+
+func SetWriteDeadline(conn net.Conn, timeout int) error {
+	if !HasTimeout(timeout) {
+		return nil
+	}
+	return conn.SetWriteDeadline(time.Now().Add(Timeout(timeout)))
+}
+
+func CloseConnOnCancel(ctx context.Context, conn net.Conn) func() {
+	return closeConnOnCancel(ctx, conn)
 }
 
 func TCPExchange(ctx context.Context, ip net.IP, port int, timeout int, probe []byte, maxRead int) ([]byte, error) {
@@ -82,19 +136,11 @@ func TCPReadBanner(ctx context.Context, ip net.IP, port int, timeout int, maxRea
 }
 
 func UDPExchange(ctx context.Context, ip net.IP, port int, timeout int, probe []byte, maxRead int) ([]byte, error) {
-	if timeout <= 0 {
-		timeout = 5
-	}
-	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	dialer := net.Dialer{Timeout: time.Duration(timeout) * time.Second}
-	conn, err := dialer.DialContext(ctx, "udp", addr)
+	conn, err := UDPConn(ctx, ip, port, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
-	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
-		return nil, err
-	}
 	stopCancelWatch := closeConnOnCancel(ctx, conn)
 	defer stopCancelWatch()
 	if _, err := conn.Write(probe); err != nil {

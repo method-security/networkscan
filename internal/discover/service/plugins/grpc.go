@@ -34,8 +34,8 @@ func (GrpcFingerprinter) DefaultPorts() []int { return []int{} }
 
 func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	// Create a context with timeout
-	timeoutDuration := time.Duration(timeout) * time.Second
-	timeoutCtx, cancel := context.WithTimeout(ctx, timeoutDuration)
+	timeoutDuration := serviceTimeout(timeout)
+	timeoutCtx, cancel := serviceContext(ctx, timeout)
 	defer cancel()
 
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
@@ -56,7 +56,7 @@ func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}()
 
 	/* ---- Server-reflection ListServices ---------------------------------- */
-	rctx, cancel := context.WithTimeout(timeoutCtx, timeoutDuration/2)
+	rctx, cancel := serviceContextDuration(timeoutCtx, timeoutDuration/2)
 	defer cancel()
 
 	refClient, err := reflectionpb.NewServerReflectionClient(conn).ServerReflectionInfo(rctx)
@@ -94,7 +94,7 @@ func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 /* -------------------------------------------------------------------------- */
 
 func dial(ctx context.Context, addr string, to time.Duration, useTLS bool) (*grpc.ClientConn, bool, error) {
-	dctx, cancel := context.WithTimeout(ctx, to)
+	dctx, cancel := serviceContextDuration(ctx, to)
 	defer cancel()
 
 	opts := []grpc.DialOption{grpc.WithBlock()}
