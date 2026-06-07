@@ -5,7 +5,9 @@ import (
 	// Standard
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -103,9 +105,13 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		network = "udp"
 	}
 
-	// Connect
-	dialTimeout := time.Duration(readTimeout) * time.Second
-	conn, err := net.DialTimeout(network, config.Target, dialTimeout)
+	// FIX 1+3: Single deadline context shared by dial AND read.
+	// DialContext honours ctx cancellation (Ctrl-C / parent timeout).
+	dialCtx, cancel := context.WithTimeout(ctx, time.Duration(readTimeout)*time.Second)
+	defer cancel()
+
+	var d net.Dialer
+	conn, err := d.DialContext(dialCtx, network, config.Target)
 	if err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("connection failed: %v", err))
 		connFailed := false
@@ -135,21 +141,52 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		}
 	}
 
-	// Set read deadline
-	deadline := time.Now().Add(time.Duration(readTimeout) * time.Second)
+	// FIX 3: Read deadline comes from the same context deadline — no doubling.
+	deadline, ok := dialCtx.Deadline()
+	if !ok {
+		deadline = time.Now().Add(time.Duration(readTimeout) * time.Second)
+	}
+	// FIX 4: Return early if SetReadDeadline fails — don't Read without a deadline.
 	if err := conn.SetReadDeadline(deadline); err != nil {
 		report.Errors = append(report.Errors, fmt.Sprintf("failed to set read deadline: %v", err))
+		connTrue := true
+		report.Result.Response = &discoverfern.SocketResponseDetails{
+			Ip:                   host,
+			Port:                 portInt,
+			Protocol:             config.Protocol,
+			ConnectionSuccessful: connTrue,
+		}
+		return report, nil
 	}
 
-	// Read response
-	buf := make([]byte, maxResponseBytes)
-	n, readErr := conn.Read(buf)
+	// FIX 2: Read loop — accumulate until timeout, EOF, or max bytes.
+	var responseBytes []byte
+	readBuf := make([]byte, 4096)
+	for len(responseBytes) < maxResponseBytes {
+		remaining := maxResponseBytes - len(responseBytes)
+		chunk := readBuf
+		if remaining < len(chunk) {
+			chunk = chunk[:remaining]
+		}
+		n, readErr := conn.Read(chunk)
+		if n > 0 {
+			responseBytes = append(responseBytes, chunk[:n]...)
+		}
+		if readErr != nil {
+			// Timeout and EOF are normal terminators — not errors.
+			var netErr net.Error
+			isTimeout := errors.As(readErr, &netErr) && netErr.Timeout()
+			if !isTimeout && !errors.Is(readErr, io.EOF) {
+				report.Errors = append(report.Errors, fmt.Sprintf("read error: %v", readErr))
+			}
+			break
+		}
+	}
 
 	// Build response details — connection was successful even if read had partial/timeout error
-	responseBytes := buf[:n]
 	hexEncoded := hex.EncodeToString(responseBytes)
 	banner := extractBanner(responseBytes)
-	byteCount := n
+	byteCount := len(responseBytes)
 
 	connTrue := true
 	details := &discoverfern.SocketResponseDetails{
@@ -159,18 +196,11 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		ConnectionSuccessful: connTrue,
 	}
 
-	if n > 0 {
+	if byteCount > 0 {
 		details.ResponseData = &hexEncoded
 		details.ResponseBytes = &byteCount
 		if banner != "" {
 			details.Banner = &banner
-		}
-	}
-
-	if readErr != nil {
-		// Timeout or EOF is common and expected; only add non-EOF errors
-		if !strings.Contains(readErr.Error(), "EOF") && !strings.Contains(readErr.Error(), "timeout") {
-			report.Errors = append(report.Errors, fmt.Sprintf("read error: %v", readErr))
 		}
 	}
 
