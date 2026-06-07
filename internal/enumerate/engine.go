@@ -14,6 +14,7 @@ import (
 	ftp "github.com/Method-Security/networkscan/internal/enumerate/ftp"
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
 	ike "github.com/Method-Security/networkscan/internal/enumerate/ike"
+	imap "github.com/Method-Security/networkscan/internal/enumerate/imap"
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
@@ -160,6 +161,49 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &ike.LibraryEnumerateIKE{}}, nil
 	case enumeratefern.SupportedServiceTypeSnmp:
 		return NetworkApplicationEngine{Library: &snmp.LibraryEnumerateSNMP{}}, nil
+	case enumeratefern.SupportedServiceTypeImap:
+		username := ""
+		if config.ImapUsername != nil {
+			username = *config.ImapUsername
+		}
+		password := ""
+		if config.ImapPassword != nil {
+			password = *config.ImapPassword
+		}
+		mechanism := ""
+		if config.ImapMechanism != nil {
+			mechanism = *config.ImapMechanism
+		}
+		maxMessages := 0
+		if config.ImapMaxMessages != nil {
+			maxMessages = *config.ImapMaxMessages
+		}
+		search := ""
+		if config.ImapSearch != nil {
+			search = *config.ImapSearch
+		}
+		targetFolder := "INBOX"
+		if config.ImapTargetFolder != nil {
+			targetFolder = *config.ImapTargetFolder
+		}
+		allowDestructive := false
+		if config.ImapAllowDestructive != nil {
+			allowDestructive = *config.ImapAllowDestructive
+		}
+		allowPlaintext := false
+		if config.ImapAllowPlaintextCredentials != nil {
+			allowPlaintext = *config.ImapAllowPlaintextCredentials
+		}
+		return NetworkApplicationEngine{Library: &imap.LibraryEnumerateIMAP{
+			Username:                  username,
+			Password:                  password,
+			Mechanism:                 mechanism,
+			MaxMessages:               maxMessages,
+			Search:                    search,
+			TargetFolder:              targetFolder,
+			AllowDestructive:          allowDestructive,
+			AllowPlaintextCredentials: allowPlaintext,
+		}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}
