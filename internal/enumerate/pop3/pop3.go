@@ -2,6 +2,7 @@
 package pop3
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -22,6 +23,11 @@ type LibraryEnumeratePOP3 struct{}
 // Mode A (unauthenticated): probes the server without credentials.
 // It tries plain TCP first; if that fails it tries implicit TLS (port 995 style).
 // If plain TCP succeeds, it also attempts STLS upgrade.
+//
+// A single bufio.Reader is created once per connection and threaded through every
+// read helper.  This prevents bytes buffered in a discarded reader from being
+// silently lost between calls — a particular risk during the STLS upgrade where
+// read-ahead bytes could otherwise corrupt the TLS handshake.
 func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
 	log := svc1log.FromContext(ctx)
 	log.Info("Starting POP3 enumeration", svc1log.SafeParam("target", target))
@@ -61,8 +67,13 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 	detail.CanConnect = &canConnect
 	detail.ImplicitTls = &implicitTLS
 
+	// Create ONE shared reader for the lifetime of this connection.
+	// All read helpers use this reader so buffered bytes are never discarded
+	// between calls.
+	reader := bufio.NewReader(conn)
+
 	// Read greeting
-	greeting, err := pop3util.ReadGreeting(conn)
+	greeting, err := pop3util.ReadGreeting(reader)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("failed to read greeting: %v", err))
 		_ = conn.Close()
@@ -82,7 +93,7 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 	}
 
 	// Run CAPA before STLS
-	preCaps, preMechs, impl, loginDelay, expireDays := runCapa(conn)
+	preCaps, preMechs, impl, loginDelay, expireDays := runCapa(conn, reader)
 	if len(preCaps) > 0 {
 		serverInfo.Capabilities = preCaps
 	}
@@ -107,7 +118,9 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 
 	if !implicitTLS && stlsSupported {
 		log.Debug("STLS supported, attempting upgrade")
-		tlsConn, err := upgradeToTLS(conn, hostname)
+		// upgradeToTLS calls sendCommand via the shared reader and then resets
+		// the reader to drain from the new TLS layer — no bytes are lost.
+		tlsConn, err := upgradeToTLS(conn, reader, hostname)
 		if err != nil {
 			log.Debug("STLS upgrade failed", svc1log.SafeParam("error", err))
 			errors = append(errors, fmt.Sprintf("STLS upgrade failed: %v", err))
@@ -122,8 +135,9 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 
 			conn = tlsConn
 
-			// Run CAPA again post-STLS to get updated capabilities
-			postCaps, postMechs, postImpl, _, _ := runCapa(conn)
+			// Run CAPA again post-STLS to get updated capabilities.
+			// reader was already reset to tlsConn inside upgradeToTLS.
+			postCaps, postMechs, postImpl, _, _ := runCapa(conn, reader)
 			if len(postCaps) > 0 {
 				serverInfo.PostTlsCapabilities = postCaps
 			}

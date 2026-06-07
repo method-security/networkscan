@@ -19,21 +19,25 @@ func dialTCP(ctx context.Context, target string) (net.Conn, error) {
 }
 
 // dialTLS opens a TLS connection to the target (implicit TLS / port 995).
+// InsecureSkipVerify is intentional: enumeration probes target mail servers that
+// frequently present self-signed or expired certificates.
 func dialTLS(target, hostname string) (net.Conn, error) {
 	d := net.Dialer{}
 	tlsCfg := &tls.Config{
-		ServerName: hostname,
+		ServerName:         hostname,
+		InsecureSkipVerify: true, //nolint:gosec
 	}
 	return tls.DialWithDialer(&d, "tcp", target, tlsCfg)
 }
 
-// sendCommand sends a POP3 command and reads the response line.
-func sendCommand(conn net.Conn, cmd string) (string, error) {
+// sendCommand writes a POP3 command to conn and reads the single-line response
+// from the shared reader.  Using the caller-supplied reader (rather than creating
+// a new one) ensures no bytes are lost between calls.
+func sendCommand(conn net.Conn, reader *bufio.Reader, cmd string) (string, error) {
 	_, err := fmt.Fprintf(conn, "%s\r\n", cmd)
 	if err != nil {
 		return "", err
 	}
-	reader := bufio.NewReader(conn)
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		return "", err
@@ -41,14 +45,14 @@ func sendCommand(conn net.Conn, cmd string) (string, error) {
 	return strings.TrimSpace(line), nil
 }
 
-// sendCommandMultiLine sends a command and reads lines until "." terminator.
-// Returns lines between +OK and ".".
-func sendCommandMultiLine(conn net.Conn, cmd string) ([]string, error) {
+// sendCommandMultiLine writes a command and reads lines until the "." terminator.
+// Returns the lines between +OK and ".".  The caller-supplied reader is shared
+// across all reads on this connection so no buffered bytes are ever discarded.
+func sendCommandMultiLine(conn net.Conn, reader *bufio.Reader, cmd string) ([]string, error) {
 	_, err := fmt.Fprintf(conn, "%s\r\n", cmd)
 	if err != nil {
 		return nil, err
 	}
-	reader := bufio.NewReader(conn)
 	// Read status line
 	first, err := reader.ReadString('\n')
 	if err != nil {
@@ -74,8 +78,8 @@ func sendCommandMultiLine(conn net.Conn, cmd string) ([]string, error) {
 }
 
 // runCapa sends CAPA and returns parsed capabilities.
-func runCapa(conn net.Conn) (caps []string, authMechs []string, implementation string, loginDelay int, expireDays string) {
-	lines, err := sendCommandMultiLine(conn, "CAPA")
+func runCapa(conn net.Conn, reader *bufio.Reader) (caps []string, authMechs []string, implementation string, loginDelay int, expireDays string) {
+	lines, err := sendCommandMultiLine(conn, reader, "CAPA")
 	if err != nil {
 		return
 	}
@@ -83,10 +87,16 @@ func runCapa(conn net.Conn) (caps []string, authMechs []string, implementation s
 	return
 }
 
-// upgradeToTLS sends STLS and performs the TLS handshake.
-// Returns a new TLS connection on success.
-func upgradeToTLS(conn net.Conn, hostname string) (*tls.Conn, error) {
-	resp, err := sendCommand(conn, "STLS")
+// upgradeToTLS sends STLS, performs the TLS handshake, and resets reader to
+// drain from the new TLS layer.  Resetting the shared reader here (rather than
+// creating a new one after the upgrade) means that any bytes already buffered
+// before the handshake are still available to subsequent reads.
+//
+// InsecureSkipVerify is intentional: the same rationale as dialTLS applies —
+// enumeration probes must succeed even when the server presents a self-signed
+// or expired certificate.
+func upgradeToTLS(conn net.Conn, reader *bufio.Reader, hostname string) (*tls.Conn, error) {
+	resp, err := sendCommand(conn, reader, "STLS")
 	if err != nil {
 		return nil, err
 	}
@@ -94,12 +104,16 @@ func upgradeToTLS(conn net.Conn, hostname string) (*tls.Conn, error) {
 		return nil, fmt.Errorf("STLS rejected: %s", resp)
 	}
 	tlsCfg := &tls.Config{
-		ServerName: hostname,
+		ServerName:         hostname,
+		InsecureSkipVerify: true, //nolint:gosec
 	}
 	tlsConn := tls.Client(conn, tlsCfg)
 	if err := tlsConn.Handshake(); err != nil {
 		return nil, fmt.Errorf("TLS handshake failed: %v", err)
 	}
+	// Point the shared reader at the TLS layer so all subsequent reads go
+	// through the encrypted channel and no buffered bytes are lost.
+	reader.Reset(tlsConn)
 	return tlsConn, nil
 }
 

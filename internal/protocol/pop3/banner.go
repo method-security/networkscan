@@ -4,17 +4,15 @@ package pop3
 import (
 	"bufio"
 	"fmt"
-	"net"
 	"regexp"
 	"strings"
 )
 
 var apopTimestampRE = regexp.MustCompile(`<[^>]+@[^>]+>`)
 
-// ReadGreeting reads the initial POP3 +OK greeting from the connection.
-// Returns the full greeting line, or an error.
-func ReadGreeting(conn net.Conn) (string, error) {
-	reader := bufio.NewReader(conn)
+// ReadGreeting reads the initial POP3 +OK greeting from a buffered reader.
+// The caller must supply the persistent reader so no bytes are lost to discard.
+func ReadGreeting(reader *bufio.Reader) (string, error) {
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		return "", err
