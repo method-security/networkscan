@@ -426,15 +426,22 @@ func (l *LibraryEnumerateIMAP) authPlain(conn net.Conn, nextTag func() string, t
 	if err := tconn.PrintfLine("%s", encoded); err != nil {
 		return fmt.Errorf("PLAIN credentials send failed: %w", err)
 	}
-	// Read final response
-	resp, err := tconn.ReadLine()
-	if err != nil {
-		return fmt.Errorf("PLAIN auth response read failed: %w", err)
+	// Read until tagged completion. Servers may emit untagged data lines
+	// (e.g. "* CAPABILITY ...") between the continuation and the final tag,
+	// per RFC 3501 § 7.
+	for {
+		resp, err := tconn.ReadLine()
+		if err != nil {
+			return fmt.Errorf("PLAIN auth response read failed: %w", err)
+		}
+		if strings.HasPrefix(resp, tag+" OK") {
+			return nil
+		}
+		if strings.HasPrefix(resp, tag+" NO") || strings.HasPrefix(resp, tag+" BAD") {
+			return fmt.Errorf("PLAIN auth failed: %s", resp)
+		}
+		// Untagged line (e.g. "* CAPABILITY ..."); keep reading.
 	}
-	if !strings.Contains(resp, tag+" OK") {
-		return fmt.Errorf("PLAIN auth failed: %s", resp)
-	}
-	return nil
 }
 
 // authLogin performs LOGIN username password (plain-text login command).

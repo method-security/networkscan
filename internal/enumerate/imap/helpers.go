@@ -37,8 +37,12 @@ func tryTCPConnection(host string, port int, timeout int) (net.Conn, string, err
 // tryTLSConnection connects to host:port directly via TLS, reads the IMAP greeting line,
 // and returns the open TLS connection plus the greeting string.
 func tryTLSConnection(host string, port int, timeout int) (*tls.Conn, string, error) {
+	// networkscan is a probe — we want to observe and report on the cert
+	// presented (subject, cipher), not validate it. Self-signed, expired,
+	// or wrong-CN certs are normal targets. Match the POP3 enumerator.
 	tlsConfig := &tls.Config{
-		ServerName: host,
+		ServerName:         host,
+		InsecureSkipVerify: true, //nolint:gosec
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	dialer := &net.Dialer{Timeout: time.Duration(timeout) * time.Second}
@@ -72,9 +76,10 @@ func doSTARTTLS(conn net.Conn, host string, timeout int) (*tls.Conn, error) {
 	if !strings.Contains(resp, "OK") {
 		return nil, fmt.Errorf("STARTTLS rejected: %s", resp)
 	}
-	// Upgrade to TLS
+	// Upgrade to TLS. See tryTLSConnection — probes don't validate.
 	tlsConfig := &tls.Config{
-		ServerName: host,
+		ServerName:         host,
+		InsecureSkipVerify: true, //nolint:gosec
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
 	if err := tlsConn.Handshake(); err != nil {
