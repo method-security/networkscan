@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -36,10 +37,37 @@ func GetTemplateFileSystem(ctx context.Context, templatePaths []string, protocol
 
 	log.Info("Using template paths", svc1log.SafeParam("templatePaths", templatePaths))
 
-	// Collect all template files from the provided paths
+	// Separate user-supplied OS paths from embedded-FS paths. A path is treated
+	// as an OS path if it exists on disk; otherwise it is resolved against the
+	// embedded CVE templates.
+	var osFilesystems []fs.FS
+	var embeddedPaths []string
+	for _, templatePath := range templatePaths {
+		if info, err := os.Stat(templatePath); err == nil {
+			abs, absErr := filepath.Abs(templatePath)
+			if absErr != nil {
+				abs = templatePath
+			}
+			if info.IsDir() {
+				osFilesystems = append(osFilesystems, os.DirFS(abs))
+				log.Info("Using user-supplied template directory", svc1log.SafeParam("templatePath", abs))
+			} else if isTemplateFile(abs) {
+				dir := filepath.Dir(abs)
+				base := filepath.Base(abs)
+				osFilesystems = append(osFilesystems, &singleFileFS{baseFS: os.DirFS(dir), name: base})
+				log.Info("Using user-supplied template file", svc1log.SafeParam("templatePath", abs))
+			} else {
+				log.Warn("User-supplied path is not a yaml/yml template, skipping", svc1log.SafeParam("templatePath", abs))
+			}
+			continue
+		}
+		embeddedPaths = append(embeddedPaths, templatePath)
+	}
+
+	// Collect all template files from the embedded CVE FS
 	var allTemplateFiles []string
 
-	for _, templatePath := range templatePaths {
+	for _, templatePath := range embeddedPaths {
 		// Clean the template path - normalize to cve/ prefix
 		cleanPath := templatePath
 		// Remove any leading slashes or dots
@@ -73,7 +101,7 @@ func GetTemplateFileSystem(ctx context.Context, templatePaths []string, protocol
 		}
 	}
 
-	if len(allTemplateFiles) == 0 {
+	if len(allTemplateFiles) == 0 && len(osFilesystems) == 0 {
 		return nil, fmt.Errorf("no valid template files found")
 	}
 
@@ -120,11 +148,62 @@ func GetTemplateFileSystem(ctx context.Context, templatePaths []string, protocol
 		filesystems = append(filesystems, filteredFS)
 	}
 
+	filesystems = append(filesystems, osFilesystems...)
+
 	if len(filesystems) == 0 {
 		return nil, fmt.Errorf("no valid template directories found")
 	}
 
 	return filesystems, nil
+}
+
+// singleFileFS exposes a single file from a base filesystem as if it were the
+// only entry in the root directory. Used to wrap user-supplied template files
+// so the nuclei runner can discover them via fs.WalkDir.
+type singleFileFS struct {
+	baseFS fs.FS
+	name   string
+}
+
+func (s *singleFileFS) Open(name string) (fs.File, error) {
+	if name == "." {
+		return &singleFileDir{fs: s}, nil
+	}
+	if name == s.name {
+		return s.baseFS.Open(name)
+	}
+	return nil, fs.ErrNotExist
+}
+
+type singleFileDir struct {
+	fs *singleFileFS
+}
+
+func (s *singleFileDir) Stat() (fs.FileInfo, error) { return &dirInfo{name: "."}, nil }
+func (s *singleFileDir) Read([]byte) (int, error)   { return 0, fmt.Errorf("cannot read directory") }
+func (s *singleFileDir) Close() error               { return nil }
+
+func (s *singleFileDir) ReadDir(n int) ([]fs.DirEntry, error) {
+	file, err := s.fs.baseFS.Open(s.fs.name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	entry := &fileDirEntry{
+		name:    s.fs.name,
+		size:    stat.Size(),
+		mode:    stat.Mode(),
+		modTime: stat.ModTime(),
+	}
+	entries := []fs.DirEntry{entry}
+	if n > 0 && n < len(entries) {
+		return entries[:n], nil
+	}
+	return entries, nil
 }
 
 // isTemplateFile checks if the given path appears to be a template file based on extension
