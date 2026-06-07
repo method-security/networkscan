@@ -20,18 +20,7 @@ import (
 )
 
 // LibraryEnumerateSocks implements NetworkApplicationLibrary for SOCKS proxy enumeration.
-type LibraryEnumerateSocks struct {
-	// ProbeCredentials optionally tests username/password auth when non-nil.
-	ProbeCredentials *Credentials
-	// ProbeUDPEcho enables sending a DNS probe through UDP ASSOCIATE relay.
-	ProbeUDPEcho bool
-}
-
-// Credentials holds a username/password pair for SOCKS5 auth testing.
-type Credentials struct {
-	Username string
-	Password string
-}
+type LibraryEnumerateSocks struct{}
 
 // EnumerateTarget probes the SOCKS proxy at the given target (host:port).
 // It tests SOCKS4, SOCKS4a, and SOCKS5 support and records details about
@@ -79,7 +68,7 @@ func (s *LibraryEnumerateSocks) EnumerateTarget(ctx context.Context, target stri
 
 	// ---- SOCKS5 handshake ----
 	log.Debug("Probing SOCKS5", svc1log.SafeParam("target", target))
-	socks5Result := probeSocks5(ctx, target, port, probeIP, s.ProbeCredentials, s.ProbeUDPEcho, log)
+	socks5Result := probeSocks5(ctx, target, port, probeIP, log)
 
 	detail.Socks5Supported = &socks5Result.supported
 	if socks5Result.supported {
@@ -89,9 +78,6 @@ func (s *LibraryEnumerateSocks) EnumerateTarget(ctx context.Context, target stri
 		detail.GssapiAvailable = &socks5Result.gssapiAvailable
 		detail.BindSupported = &socks5Result.bindSupported
 		detail.UdpAssociateSupported = &socks5Result.udpAssociateSupported
-		if socks5Result.udpRelayVerified {
-			detail.UdpRelayVerified = &socks5Result.udpRelayVerified
-		}
 		if socks5Result.bndAddr != "" {
 			detail.BndAddr = &socks5Result.bndAddr
 		}
@@ -99,7 +85,16 @@ func (s *LibraryEnumerateSocks) EnumerateTarget(ctx context.Context, target stri
 			bndPort := int(socks5Result.bndPort)
 			detail.BndPort = &bndPort
 		}
-		hint := detectImplementationHint(port, socks5Result.chosenMethod, socks5Result.connectRep, socks5Result.bindRepCode, socks5Result.responseTimeMs)
+		hint := detectImplementationHint(
+			port,
+			socks5Result.chosenMethod,
+			socks5Result.connectRep,
+			socks5Result.bindRepCode,
+			socks5Result.responseTimeMs,
+			socks4Supported,
+			socks4aSupported,
+			socks5Result.udpAssociateSupported,
+		)
 		detail.ImplementationHint = &hint
 	}
 
@@ -182,7 +177,6 @@ type socks5ProbeResult struct {
 	gssapiAvailable       bool
 	bindSupported         bool
 	udpAssociateSupported bool
-	udpRelayVerified      bool
 	bndAddr               string
 	bndPort               uint16
 	connectRep            byte
@@ -198,8 +192,6 @@ func probeSocks5(
 	target string,
 	port int,
 	probeIP net.IP,
-	creds *Credentials,
-	probeUDP bool,
 	log svc1log.Logger,
 ) socks5ProbeResult {
 	result := socks5ProbeResult{}
@@ -253,11 +245,11 @@ func probeSocks5(
 
 	// --- Step 2: Auth sub-negotiation if needed ---
 	if chosenMethod == socksproto.AuthUsernamePassword {
-		username, password := "guest", "guest"
-		if creds != nil {
-			username, password = creds.Username, creds.Password
-		}
-		authReq := socksproto.BuildSOCKS5UsernamePasswordAuth(username, password)
+		// Probe with a default guest/guest credential. The intent of Mode A
+		// (unauthenticated) enumeration is only to confirm the server speaks
+		// the USERPASS sub-negotiation correctly — actual credential testing
+		// is out of scope for this enumerator.
+		authReq := socksproto.BuildSOCKS5UsernamePasswordAuth("guest", "guest")
 		if _, err := conn.Write(authReq); err != nil {
 			result.errors = append(result.errors, fmt.Sprintf("SOCKS5 auth write failed: %v", err))
 			_ = conn.Close()

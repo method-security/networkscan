@@ -36,7 +36,6 @@ types:
       gssapiAvailable: optional<boolean>
       bindSupported: optional<boolean>
       udpAssociateSupported: optional<boolean>
-      udpRelayVerified: optional<boolean>
       bndAddr: optional<string>
       bndPort: optional<integer>
       implementationHint: optional<SocksImplementationHint>
