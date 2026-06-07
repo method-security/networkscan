@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"strings"
+	"sync"
 	"time"
 
 	// Generated
@@ -43,56 +44,108 @@ type Fingerprinter interface {
 	DefaultPorts() []int
 }
 
-// Custom fingerprinters for protocols that need specialized detection
-// These run BEFORE fingerprintx to provide more specific detection
+// Custom fingerprinters for protocols that need specialized detection.
+// Order is semantic priority: earlier entries win when multiple probes match
+// the same endpoint. Keep more-specific fingerprints before generic/container
+// protocols and document intentional default-port overlaps inline.
+//
+// Current TCP overlap groups:
+//   - 102: S7Comm before MMS
+//   - 1099: JMX before Java RMI
+//   - 5555: ADB and HP Data Protector
+//   - 20000: DNP3 and MELSEC MC
+//   - 44818: Unitronics UniStream before generic EtherNet/IP
 var customFingerprintModules = []Fingerprinter{
-	&localPlugins.SSHFingerprinter{},       // SSH (Secure Shell)
-	&localPlugins.GrpcFingerprinter{},      // gRPC can run on any port
-	&localPlugins.MongoDBFingerprinter{},   // MongoDB driver manages its own connections
-	&localPlugins.BGPFingerprinter{},       // BGP protocol detection
-	&localPlugins.DCERPCFingerprinter{},    // Windows DCE/RPC
-	&localPlugins.IPPFingerprinter{},       // Internet Printing Protocol
-	&localPlugins.WinRMFingerprinter{},     // Windows Remote Management
-	&localPlugins.KerberosFingerprinter{},  // Kerberos (Kerberos 5),
-	&localPlugins.SMBFingerprinter{},       // SMB (Server Message Block),
-	&localPlugins.FortiGateFingerprinter{}, // FortiGate FGFM (FortiGate to FortiManager),
-	&localPlugins.PcworxFingerprinter{},    // PCWORX (Phoenix Contact PLCs)
-	&localPlugins.OpcuaFingerprinter{},     // OPC UA (OPC Unified Architecture)
-	&localPlugins.X11Fingerprinter{},       // X11 (X Window System)
-	&localPlugins.PcomFingerprinter{},      // Unitronics PCOM (PLC Communication)
-	&localPlugins.Iec104Fingerprinter{},    // IEC 60870-5-104 (SCADA protocol)
-	&localPlugins.GesrtpFingerprinter{},    // GE SRTP (Service Request Transport Protocol)
-	&localPlugins.FinsFingerprinter{},      // FINS (Omron PLC)
-	&localPlugins.AtgFingerprinter{},       // ATG (Automatic Tank Gauging)
-	&localPlugins.ArdFingerprinter{},       // ARD (Apple Remote Desktop)
-	&localPlugins.PptpFingerprinter{},      // PPTP (Point-to-Point Tunneling Protocol)
-	&localPlugins.MsmqFingerprinter{},      // MSMQ (Microsoft Message Queuing)
-	&localPlugins.MmsFingerprinter{},       // MMS (Manufacturing Message Specification)
-	&localPlugins.HartFingerprinter{},      // HART-IP (Highway Addressable Remote Transducer)
-	&localPlugins.FoxFingerprinter{},       // FOX (Tridium Niagara Framework)
-	&localPlugins.MemcachedFingerprinter{}, // MEMCACHED
-	&localPlugins.UnistreamFingerprinter{}, // Unitronics UniStream (EtherNet/IP)
-	&localPlugins.SMTPFingerprinter{},      // SMTP (Simple Mail Transfer Protocol)
+	&localPlugins.SSHFingerprinter{},             // SSH (Secure Shell)
+	&localPlugins.GrpcFingerprinter{},            // gRPC can run on any port
+	&localPlugins.MongoDBFingerprinter{},         // MongoDB driver manages its own connections
+	&localPlugins.BGPFingerprinter{},             // BGP protocol detection
+	&localPlugins.DCERPCFingerprinter{},          // Windows DCE/RPC
+	&localPlugins.IPPFingerprinter{},             // Internet Printing Protocol
+	&localPlugins.WinRMFingerprinter{},           // Windows Remote Management
+	&localPlugins.KerberosFingerprinter{},        // Kerberos (Kerberos 5),
+	&localPlugins.SMBFingerprinter{},             // SMB (Server Message Block),
+	&localPlugins.FortiGateFingerprinter{},       // FortiGate FGFM (FortiGate to FortiManager),
+	&localPlugins.PcworxFingerprinter{},          // PCWORX (Phoenix Contact PLCs)
+	&localPlugins.OpcuaFingerprinter{},           // OPC UA (OPC Unified Architecture)
+	&localPlugins.X11Fingerprinter{},             // X11 (X Window System)
+	&localPlugins.PcomFingerprinter{},            // Unitronics PCOM (PLC Communication)
+	&localPlugins.Iec104Fingerprinter{},          // IEC 60870-5-104 (SCADA protocol)
+	&localPlugins.GesrtpFingerprinter{},          // GE SRTP (Service Request Transport Protocol)
+	&localPlugins.FinsFingerprinter{},            // FINS (Omron PLC)
+	&localPlugins.AtgFingerprinter{},             // ATG (Automatic Tank Gauging)
+	&localPlugins.ArdFingerprinter{},             // ARD (Apple Remote Desktop)
+	&localPlugins.PptpFingerprinter{},            // PPTP (Point-to-Point Tunneling Protocol)
+	&localPlugins.MsmqFingerprinter{},            // MSMQ (Microsoft Message Queuing)
+	&localPlugins.S7CommFingerprinter{},          // Siemens S7comm (more specific TCP/102 PLC probe)
+	&localPlugins.MmsFingerprinter{},             // MMS fallback for TCP/102 ISO-on-TPKT
+	&localPlugins.HartFingerprinter{},            // HART-IP (Highway Addressable Remote Transducer)
+	&localPlugins.FoxFingerprinter{},             // FOX (Tridium Niagara Framework)
+	&localPlugins.MemcachedFingerprinter{},       // MEMCACHED
+	&localPlugins.UnistreamFingerprinter{},       // Unitronics UniStream (more specific EtherNet/IP device match)
+	&localPlugins.EthernetIPFingerprinter{},      // Generic EtherNet/IP/CIP fallback for TCP/44818
+	&localPlugins.SMTPFingerprinter{},            // SMTP (Simple Mail Transfer Protocol)
+	&localPlugins.JMXFingerprinter{},             // JMX over RMI; keep before generic Java RMI
+	&localPlugins.JavaRMIFingerprinter{},         // Java RMI Registry
+	&localPlugins.WebLogicT3Fingerprinter{},      // WebLogic T3
+	&localPlugins.ZooKeeperFingerprinter{},       // ZooKeeper
+	&localPlugins.AMQPFingerprinter{},            // AMQP
+	&localPlugins.NATSFingerprinter{},            // NATS
+	&localPlugins.BeanstalkdFingerprinter{},      // beanstalkd
+	&localPlugins.ErlangEPMDFingerprinter{},      // Erlang Port Mapper Daemon
+	&localPlugins.ADBFingerprinter{},             // Android Debug Bridge (overlaps HP Data Protector on TCP/5555)
+	&localPlugins.RTMPFingerprinter{},            // RTMP
+	&localPlugins.NNTPFingerprinter{},            // NNTP
+	&localPlugins.IRCFingerprinter{},             // IRC
+	&localPlugins.XMPPFingerprinter{},            // XMPP
+	&localPlugins.IdentFingerprinter{},           // Ident/Auth
+	&localPlugins.GopherFingerprinter{},          // Gopher
+	&localPlugins.AFPFingerprinter{},             // Apple Filing Protocol
+	&localPlugins.GitDaemonFingerprinter{},       // Git daemon
+	&localPlugins.FingerFingerprinter{},          // Finger
+	&localPlugins.WhoisFingerprinter{},           // WHOIS
+	&localPlugins.VMwareAuthdFingerprinter{},     // VMware Authentication Daemon
+	&localPlugins.PoppassdFingerprinter{},        // poppassd
+	&localPlugins.JetDirectFingerprinter{},       // JetDirect/PJL
+	&localPlugins.LPDFingerprinter{},             // Line Printer Daemon
+	&localPlugins.RloginFingerprinter{},          // rlogin
+	&localPlugins.DubboFingerprinter{},           // Apache Dubbo
+	&localPlugins.TarantoolFingerprinter{},       // Tarantool
+	&localPlugins.DNP3Fingerprinter{},            // DNP3 (overlaps MELSEC MC on TCP/20000; protocol-specific probe)
+	&localPlugins.MELSECFingerprinter{},          // Mitsubishi MELSEC MC
+	&localPlugins.CodesysFingerprinter{},         // CODESYS
+	&localPlugins.BeckhoffADSFingerprinter{},     // Beckhoff ADS/TwinCAT
+	&localPlugins.SAPRouterFingerprinter{},       // SAProuter
+	&localPlugins.NDMPFingerprinter{},            // Network Data Management Protocol
+	&localPlugins.HPDataProtectorFingerprinter{}, // HP Data Protector OmniInet (overlaps ADB on TCP/5555)
+	&localPlugins.NFSFingerprinter{},             // Network File System
 }
 
 // UDP fingerprinters mapped to their specific ports
 // Each UDP service is only probed on its well-known port(s)
 var udpFingerprinters = map[uint16]Fingerprinter{
-	53:    &localPlugins.DNSFingerprinter{},      // DNS
-	67:    &localPlugins.DHCPFingerprinter{},     // DHCP Server
-	69:    &localPlugins.TFTPFingerprinter{},     // TFTP (Trivial File Transfer Protocol)
-	123:   &localPlugins.NTPFingerprinter{},      // NTP
-	137:   &localPlugins.NetBIOSFingerprinter{},  // NetBIOS Name Service
-	161:   &localPlugins.SNMPFingerprinter{},     // SNMP
-	162:   &localPlugins.SNMPFingerprinter{},     // SNMP Trap
-	177:   &localPlugins.XdmcpFingerprinter{},    // XDMCP (X Display Manager Control Protocol)
-	427:   &localPlugins.SlpFingerprinter{},      // SLP (Service Location Protocol)
-	500:   &localPlugins.IKEFingerprinter{},      // IKE (Internet Key Exchange)
-	623:   &localPlugins.IPMIFingerprinter{},     // IPMI (Intelligent Platform Management Interface)
-	1900:  &localPlugins.SSDPFingerprinter{},     // SSDP (Simple Service Discovery Protocol)
-	4500:  &localPlugins.IKEFingerprinter{},      // IKE NAT-T (NAT Traversal)
-	5060:  &localPlugins.SIPFingerprinter{},      // SIP (Session Initiation Protocol)
-	10001: &localPlugins.UbiquitiFingerprinter{}, // Ubiquiti Discovery Protocol
+	53:    &localPlugins.DNSFingerprinter{},           // DNS
+	67:    &localPlugins.DHCPFingerprinter{},          // DHCP Server
+	69:    &localPlugins.TFTPFingerprinter{},          // TFTP (Trivial File Transfer Protocol)
+	123:   &localPlugins.NTPFingerprinter{},           // NTP
+	137:   &localPlugins.NetBIOSFingerprinter{},       // NetBIOS Name Service
+	161:   &localPlugins.SNMPFingerprinter{},          // SNMP
+	162:   &localPlugins.SNMPFingerprinter{},          // SNMP Trap
+	177:   &localPlugins.XdmcpFingerprinter{},         // XDMCP (X Display Manager Control Protocol)
+	427:   &localPlugins.SlpFingerprinter{},           // SLP (Service Location Protocol)
+	500:   &localPlugins.IKEFingerprinter{},           // IKE (Internet Key Exchange)
+	623:   &localPlugins.IPMIFingerprinter{},          // IPMI (Intelligent Platform Management Interface)
+	1900:  &localPlugins.SSDPFingerprinter{},          // SSDP (Simple Service Discovery Protocol)
+	2049:  &localPlugins.NFSUDPFingerprinter{},        // NFS
+	4500:  &localPlugins.IKEFingerprinter{},           // IKE NAT-T (NAT Traversal)
+	5060:  &localPlugins.SIPFingerprinter{},           // SIP (Session Initiation Protocol)
+	10001: &localPlugins.UbiquitiFingerprinter{},      // Ubiquiti Discovery Protocol
+	47808: &localPlugins.BACnetFingerprinter{},        // BACnet/IP
+	5683:  &localPlugins.CoAPFingerprinter{},          // CoAP
+	1812:  &localPlugins.RADIUSFingerprinter{},        // RADIUS
+	3702:  &localPlugins.WSDiscoveryFingerprinter{},   // WS-Discovery
+	20000: &localPlugins.DNP3UDPFingerprinter{},       // DNP3
+	44818: &localPlugins.EthernetIPUDPFingerprinter{}, // EtherNet/IP
 }
 
 // RunServiceFingerprint fingerprints the service at target:port.
@@ -255,48 +308,81 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 	return report, nil
 }
 
-// runFingerprintersParallel runs multiple fingerprinters concurrently and returns the first successful detection
+type fingerprinterResult struct {
+	index   int
+	details *discoverfern.ServiceDetails
+}
+
+// runFingerprintersParallel runs multiple fingerprinters concurrently and returns
+// the highest-priority successful detection based on registry order.
 func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprinter, ip net.IP, port int, host string, timeout int) *discoverfern.ServiceDetails {
-	// Create a cancellable context so we can stop remaining fingerprinters once we find a match
-	ctx, cancel := context.WithCancel(ctx)
+	probeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	resultChan := make(chan *discoverfern.ServiceDetails, len(fingerprinters))
-	doneChan := make(chan struct{})
+	resultChan := make(chan fingerprinterResult, len(fingerprinters))
+	var wg sync.WaitGroup
 
-	// Launch all fingerprinters concurrently
-	for _, fp := range fingerprinters {
-		go func(fingerprinter Fingerprinter) {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				detection, err := fingerprinter.Detect(ctx, ip, port, host, timeout)
-				if err == nil && detection != nil {
-					select {
-					case resultChan <- detection:
-					case <-ctx.Done():
-					}
-				}
+	for i, fp := range fingerprinters {
+		wg.Add(1)
+		go func(index int, fingerprinter Fingerprinter) {
+			defer wg.Done()
+			detection, err := fingerprinter.Detect(probeCtx, ip, port, host, timeout)
+			result := fingerprinterResult{index: index}
+			if err == nil && detection != nil {
+				result.details = detection
 			}
-		}(fp)
+			resultChan <- result
+		}(i, fp)
 	}
 
-	// Wait for either a result or all fingerprinters to complete
 	go func() {
-		// Simple completion tracking - just wait for context to be cancelled
-		<-ctx.Done()
-		close(doneChan)
+		wg.Wait()
+		close(resultChan)
 	}()
 
-	// Return first successful result
-	select {
-	case result := <-resultChan:
-		cancel() // Cancel remaining fingerprinters
-		return result
-	case <-time.After(time.Duration(timeout) * time.Second):
-		return nil
+	completed := make([]bool, len(fingerprinters))
+	bestIndex := len(fingerprinters)
+	var best *discoverfern.ServiceDetails
+	timer := time.NewTimer(time.Duration(timeout) * time.Second)
+	defer timer.Stop()
+	timeoutC := timer.C
+
+	for {
+		select {
+		case result, ok := <-resultChan:
+			if !ok {
+				return best
+			}
+			completed[result.index] = true
+			if result.details != nil && result.index < bestIndex {
+				bestIndex = result.index
+				best = result.details
+			}
+			// A match is final only after all earlier registry entries have
+			// completed; an earlier entry may be a more-specific overlap.
+			if best != nil && noEarlierFingerprintersPending(completed, bestIndex) {
+				return best
+			}
+		case <-timeoutC:
+			cancel()
+			timeoutC = nil
+			if best != nil && noEarlierFingerprintersPending(completed, bestIndex) {
+				return best
+			}
+		case <-ctx.Done():
+			cancel()
+			return best
+		}
 	}
+}
+
+func noEarlierFingerprintersPending(completed []bool, bestIndex int) bool {
+	for i := 0; i < bestIndex; i++ {
+		if !completed[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // fxToServiceDetails converts fingerprintx result to ServiceDetails
