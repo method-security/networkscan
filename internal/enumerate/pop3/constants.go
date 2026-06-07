@@ -4,9 +4,6 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 )
 
-// defaultPorts are the standard POP3 ports: 110 (plaintext/STARTTLS), 995 (implicit TLS).
-var defaultPorts = []int{110, 995}
-
 // saslMechanismMap maps SASL mechanism name strings to the Fern enum values.
 var saslMechanismMap = map[string]protocol.Pop3AuthMechanism{
 	"PLAIN":         protocol.Pop3AuthMechanismPlain,
