@@ -22,8 +22,7 @@ func dialTCP(ctx context.Context, target string) (net.Conn, error) {
 func dialTLS(target, hostname string) (net.Conn, error) {
 	d := net.Dialer{}
 	tlsCfg := &tls.Config{
-		ServerName:         hostname,
-		InsecureSkipVerify: true, //nolint:gosec
+		ServerName: hostname,
 	}
 	return tls.DialWithDialer(&d, "tcp", target, tlsCfg)
 }
