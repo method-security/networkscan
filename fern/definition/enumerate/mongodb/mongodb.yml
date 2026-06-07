@@ -1,3 +1,6 @@
+imports:
+  mongodbProtocol: ../../common/protocol/mongodb.yml
+
 types:
   CollectionInfo:
     properties:
@@ -9,8 +12,10 @@ types:
       name: string
       collections: optional<list<CollectionInfo>>
 
-  EnumerateResult:
+  EnumerateMongodbDetails:
     properties:
       target: string
+      anonymousAccessAllowed: optional<boolean>
+      serverInfo: optional<mongodbProtocol.MongodbServerInfo>
       databases: optional<list<DatabaseInfo>>
       errors: optional<list<string>>

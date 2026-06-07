@@ -280,7 +280,7 @@ func (p *MongoDBActionParser) ParseActions(actionStrings []string) ([]mongodbfer
 }
 
 func (p *MongoDBActionParser) GetValidActions() []string {
-	return []string{"PROBE", "AUTH", "ENUMERATE", "QUERY"}
+	return []string{"PROBE", "AUTH", "QUERY"}
 }
 
 func (p *MongoDBActionParser) ContainsAction(actions []mongodbfern.PentestMongodbAction, target mongodbfern.PentestMongodbAction) bool {
