@@ -15,6 +15,7 @@ import (
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
 	ike "github.com/Method-Security/networkscan/internal/enumerate/ike"
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
+	pop3 "github.com/Method-Security/networkscan/internal/enumerate/pop3"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
 	snmp "github.com/Method-Security/networkscan/internal/enumerate/snmp"
@@ -160,6 +161,8 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &ike.LibraryEnumerateIKE{}}, nil
 	case enumeratefern.SupportedServiceTypeSnmp:
 		return NetworkApplicationEngine{Library: &snmp.LibraryEnumerateSNMP{}}, nil
+	case enumeratefern.SupportedServiceTypePop3:
+		return NetworkApplicationEngine{Library: &pop3.LibraryEnumeratePOP3{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}

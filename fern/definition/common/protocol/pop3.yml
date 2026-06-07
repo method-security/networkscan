@@ -1,0 +1,37 @@
+types:
+  Pop3AuthMechanism:
+    enum:
+      - PLAIN
+      - LOGIN
+      - CRAMMD5
+      - SCRAMSHA1
+      - SCRAMSHA256
+      - NTLM
+      - GSSAPI
+
+  Pop3CapabilityKey:
+    enum:
+      - STLS
+      - UIDL
+      - TOP
+      - IMPLEMENTATION
+      - LOGIN_DELAY
+      - EXPIRE
+      - RESP_CODES
+      - PIPELINING
+
+  Pop3ServerInfo:
+    properties:
+      banner: optional<string>
+      greeting: optional<string>
+      implementation: optional<string>
+      loginDelay: optional<integer>
+      expireDays: optional<string>
+      tlsSupported: optional<boolean>
+      authMechanisms: optional<list<Pop3AuthMechanism>>
+      capabilities: optional<list<string>>
+      postTlsCapabilities: optional<list<string>>
+      apopSupported: optional<boolean>
+      apopTimestamp: optional<string>
+      tlsCipher: optional<string>
+      tlsVersion: optional<string>
