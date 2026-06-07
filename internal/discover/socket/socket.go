@@ -60,12 +60,16 @@ func extractBanner(data []byte) string {
 // RunSocketSend opens a raw TCP or UDP socket to the target, optionally sends data,
 // reads the response, and returns a structured report.
 func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig) (*discoverfern.DiscoverSocketReport, error) {
-	// Apply defaults directly to config so the report reflects effective values used (Fix 3 + 5).
+	// Apply defaults and enforce caps directly to config so the report reflects effective values used.
 	if config.ReadTimeout <= 0 {
 		config.ReadTimeout = 5
 	}
+	const maxResponseBytesLimit = 10240
 	if config.MaxResponseBytes <= 0 {
-		config.MaxResponseBytes = 10240
+		config.MaxResponseBytes = maxResponseBytesLimit
+	} else if config.MaxResponseBytes > maxResponseBytesLimit {
+		// Cap at the documented 10 KB response limit regardless of caller input.
+		config.MaxResponseBytes = maxResponseBytesLimit
 	}
 
 	report := &discoverfern.DiscoverSocketReport{
@@ -95,6 +99,19 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		report.Result.Response = &discoverfern.SocketResponseDetails{
 			Ip:                   host,
 			Port:                 0,
+			Protocol:             config.Protocol,
+			ConnectionSuccessful: connFailed,
+		}
+		return report, nil
+	}
+
+	// Reject ports outside the valid TCP/UDP range before dialing.
+	if portInt < 1 || portInt > 65535 {
+		report.Errors = append(report.Errors, fmt.Sprintf("port %d is outside the valid range [1, 65535]", portInt))
+		connFailed := false
+		report.Result.Response = &discoverfern.SocketResponseDetails{
+			Ip:                   host,
+			Port:                 portInt,
 			Protocol:             config.Protocol,
 			ConnectionSuccessful: connFailed,
 		}
