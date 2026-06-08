@@ -7,6 +7,7 @@ imports:
   ldap: ./ldap/ldap.yml
   ike: ./ike/ike.yml
   snmp: ./snmp/snmp.yml
+  imap: ./imap/imap.yml
   mongodb: ./mongodb/mongodb.yml
   pop3: ./pop3/pop3.yml
 types:
@@ -21,6 +22,7 @@ types:
       - LDAP
       - IKE
       - SNMP
+      - IMAP
       - MONGODB
       - POP3
   # Report structs
@@ -34,6 +36,7 @@ types:
       EnumerateLdapDetails: ldap.EnumerateLdapDetails
       EnumerateIkeDetails: ike.EnumerateIkeDetails
       EnumerateSnmpDetails: snmp.EnumerateSnmpDetails
+      EnumerateImapDetails: imap.EnumerateImapDetails
       EnumerateMongodbDetails: mongodb.EnumerateMongodbDetails
       EnumeratePop3Details: pop3.EnumeratePop3Details
   EnumerateServiceResult:
@@ -46,6 +49,13 @@ types:
       service: SupportedServiceType
       timeout: integer
       wordlist: optional<list<string>>
+      imapUsername: optional<string>
+      imapPassword: optional<string>
+      imapMechanism: optional<string>
+      imapMaxMessages: optional<integer>
+      imapSearch: optional<string>
+      imapTargetFolder: optional<string>
+      imapAllowPlaintextCredentials: optional<boolean>
   # Final report
   EnumerateServiceReport:
     properties:
