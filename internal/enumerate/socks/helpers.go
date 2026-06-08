@@ -10,6 +10,24 @@ import (
 	socksfern "github.com/Method-Security/networkscan/generated/go/enumerate/socks"
 )
 
+// stepBudget caps how long an individual SOCKS protocol step (greeting,
+// auth sub-negotiation, CONNECT, BIND, or UDP ASSOCIATE) is allowed to
+// take. The previous shared-session deadline burned the whole budget on
+// the first slow step; per-step deadlines give each phase its own headroom.
+const stepBudget = 5 * time.Second
+
+// setStepDeadline applies a per-step read/write deadline to conn. The
+// deadline is the earlier of (now + stepBudget) and the caller's context
+// deadline if set — so a tight --timeout still caps total work, but a
+// slow earlier step does not eat into a later step's budget.
+func setStepDeadline(ctx context.Context, conn net.Conn) {
+	deadline := time.Now().Add(stepBudget)
+	if ctxDeadline, ok := ctx.Deadline(); ok && ctxDeadline.Before(deadline) {
+		deadline = ctxDeadline
+	}
+	_ = conn.SetDeadline(deadline)
+}
+
 // dialWithTimeout opens a TCP connection to target, respecting the context deadline
 // but also using an explicit dial timeout as a floor.
 func dialWithTimeout(ctx context.Context, target string, seconds int) (net.Conn, error) {

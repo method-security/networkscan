@@ -121,14 +121,14 @@ func probeSocks4(ctx context.Context, target string, probeIP net.IP, probePort u
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = conn.SetDeadline(time.Now().Add(DefaultProbeTimeoutSeconds * time.Second))
-
 	req := socksproto.BuildSOCKS4ConnectRequest(probeIP, probePort, "probe")
+	setStepDeadline(ctx, conn)
 	if _, err := conn.Write(req); err != nil {
 		log.Debug("SOCKS4 write failed", svc1log.SafeParam("error", err.Error()))
 		return false
 	}
 
+	setStepDeadline(ctx, conn)
 	reader := bufio.NewReader(conn)
 	code, _, _, err := socksproto.ParseSOCKS4Reply(reader)
 	if err != nil {
@@ -153,14 +153,14 @@ func probeSocks4a(ctx context.Context, target string, probeHost string, probePor
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = conn.SetDeadline(time.Now().Add(DefaultProbeTimeoutSeconds * time.Second))
-
 	req := socksproto.BuildSOCKS4aConnectRequest(probeHost, probePort, "probe")
+	setStepDeadline(ctx, conn)
 	if _, err := conn.Write(req); err != nil {
 		log.Debug("SOCKS4a write failed", svc1log.SafeParam("error", err.Error()))
 		return false
 	}
 
+	setStepDeadline(ctx, conn)
 	reader := bufio.NewReader(conn)
 	code, _, _, err := socksproto.ParseSOCKS4Reply(reader)
 	if err != nil {
@@ -168,10 +168,14 @@ func probeSocks4a(ctx context.Context, target string, probeHost string, probePor
 		return false
 	}
 
-	return code == socksproto.SOCKS4RepGranted ||
-		code == socksproto.SOCKS4RepRejected ||
-		code == socksproto.SOCKS4RepIdentFail ||
-		code == socksproto.SOCKS4RepIdentMismatch
+	// Only a granted (0x5A) reply reliably demonstrates SOCKS4a — a SOCKS4-
+	// only proxy receiving a 4a-style request (IP 0.0.0.1 + null + hostname)
+	// routinely returns 0x5B as a generic rejection without ever parsing the
+	// trailing hostname. The ident codes (0x5C / 0x5D) have the same problem.
+	// A grant is the only signal we can attribute confidently to 4a-specific
+	// behavior. We trade a false negative (a 4a server that legitimately
+	// rejects our probe target) for the much more common false positive.
+	return code == socksproto.SOCKS4RepGranted
 }
 
 // socks5ProbeResult holds the result of the full SOCKS5 probe sequence.
@@ -210,12 +214,11 @@ func probeSocks5(
 		return result
 	}
 
-	_ = conn.SetDeadline(time.Now().Add(DefaultProbeTimeoutSeconds * time.Second))
-
 	// Offer NO_AUTH, GSSAPI, USERNAME_PASSWORD
 	offeredMethods := []byte{socksproto.AuthNoAuth, socksproto.AuthGSSAPI, socksproto.AuthUsernamePassword}
 	greeting := socksproto.BuildSOCKS5Greeting(offeredMethods)
 
+	setStepDeadline(ctx, conn)
 	start := time.Now()
 	if _, err := conn.Write(greeting); err != nil {
 		log.Debug("SOCKS5 greeting write failed", svc1log.SafeParam("error", err.Error()))
@@ -223,6 +226,7 @@ func probeSocks5(
 		return result
 	}
 
+	setStepDeadline(ctx, conn)
 	reader := bufio.NewReader(conn)
 	chosenMethod, err := socksproto.ParseSOCKS5ServerChoice(reader)
 	result.responseTimeMs = time.Since(start).Milliseconds()
@@ -253,139 +257,123 @@ func probeSocks5(
 	}
 
 	// --- Step 2: Auth sub-negotiation if needed ---
+	// Gate the CONNECT step on whether auth on THIS connection succeeded.
+	// BIND and UDP probes (Steps 4 & 5) open INDEPENDENT connections and
+	// run regardless of CONNECT outcome — a userpass auth failure here
+	// should not silently hide BIND/UDP capability.
+	proceedOnMain := chosenMethod == socksproto.AuthNoAuth
 	if chosenMethod == socksproto.AuthUsernamePassword {
 		// Probe with a default guest/guest credential. The intent of Mode A
 		// (unauthenticated) enumeration is only to confirm the server speaks
 		// the USERPASS sub-negotiation correctly — actual credential testing
 		// is out of scope for this enumerator.
+		setStepDeadline(ctx, conn)
 		authReq := socksproto.BuildSOCKS5UsernamePasswordAuth("guest", "guest")
 		if _, err := conn.Write(authReq); err != nil {
 			result.errors = append(result.errors, fmt.Sprintf("SOCKS5 auth write failed: %v", err))
-			_ = conn.Close()
-			return result
+		} else {
+			setStepDeadline(ctx, conn)
+			authOK, err := socksproto.ParseSOCKS5AuthReply(reader)
+			if err != nil {
+				result.errors = append(result.errors, fmt.Sprintf("SOCKS5 auth reply failed: %v", err))
+			} else if authOK {
+				proceedOnMain = true
+			}
 		}
-		authOK, err := socksproto.ParseSOCKS5AuthReply(reader)
-		if err != nil {
-			result.errors = append(result.errors, fmt.Sprintf("SOCKS5 auth reply failed: %v", err))
-			_ = conn.Close()
-			return result
-		}
-		if !authOK {
-			// Credentials rejected — can't proceed but SOCKS5 + userpass support confirmed.
-			// userpassAllowed was already set true at method-negotiation time.
-			_ = conn.Close()
-			return result
-		}
-	} else if chosenMethod != socksproto.AuthNoAuth {
-		// Unsupported method — can't proceed
-		_ = conn.Close()
-		return result
 	}
 
 	// --- Step 3: CONNECT probe ---
-	// Refresh the deadline before CONNECT so prior steps (greeting, auth)
-	// don't consume the entire budget and leave CONNECT with insufficient time.
-	_ = conn.SetDeadline(time.Now().Add(DefaultProbeTimeoutSeconds * time.Second))
-	connectReq := socksproto.BuildSOCKS5ConnectRequest(probeIP, DefaultProbePort)
-	if _, err := conn.Write(connectReq); err != nil {
-		result.errors = append(result.errors, fmt.Sprintf("SOCKS5 CONNECT write failed: %v", err))
-		_ = conn.Close()
-		return result
-	}
-
-	repCode, bndAddr, bndPort, err := socksproto.ParseSOCKS5Reply(reader)
-	if err != nil {
-		result.errors = append(result.errors, fmt.Sprintf("SOCKS5 CONNECT reply failed: %v", err))
-		_ = conn.Close()
-		return result
-	}
-	result.connectRep = &repCode
-	if repCode == socksproto.RepSuccess {
-		result.bndAddr = bndAddr
-		result.bndPort = bndPort
+	if proceedOnMain {
+		setStepDeadline(ctx, conn)
+		connectReq := socksproto.BuildSOCKS5ConnectRequest(probeIP, DefaultProbePort)
+		if _, err := conn.Write(connectReq); err != nil {
+			result.errors = append(result.errors, fmt.Sprintf("SOCKS5 CONNECT write failed: %v", err))
+		} else {
+			setStepDeadline(ctx, conn)
+			repCode, bndAddr, bndPort, err := socksproto.ParseSOCKS5Reply(reader)
+			if err != nil {
+				result.errors = append(result.errors, fmt.Sprintf("SOCKS5 CONNECT reply failed: %v", err))
+			} else {
+				result.connectRep = &repCode
+				if repCode == socksproto.RepSuccess {
+					result.bndAddr = bndAddr
+					result.bndPort = bndPort
+				}
+			}
+		}
 	}
 
 	_ = conn.Close()
 
-	// --- Step 4: BIND probe (new connection) ---
-	// Offer the same auth methods as the main probe so that servers requiring
-	// username/password aren't silently misreported as "BIND unsupported".
-	bindConn, err := dialWithTimeout(ctx, target, DefaultDialTimeoutSeconds)
-	if err == nil {
-		_ = bindConn.SetDeadline(time.Now().Add(DefaultProbeTimeoutSeconds * time.Second))
-
-		bindGreeting := socksproto.BuildSOCKS5Greeting([]byte{socksproto.AuthNoAuth, socksproto.AuthUsernamePassword})
-		if _, err := bindConn.Write(bindGreeting); err == nil {
-			bindReader := bufio.NewReader(bindConn)
-			bindMethod, err := socksproto.ParseSOCKS5ServerChoice(bindReader)
-			if err == nil {
-				// Handle userpass auth if the server selects it.
-				if bindMethod == socksproto.AuthUsernamePassword {
-					authReq := socksproto.BuildSOCKS5UsernamePasswordAuth("guest", "guest")
-					if _, err := bindConn.Write(authReq); err != nil {
-						_ = bindConn.Close()
-						goto bindDone
-					}
-					if authOK, err := socksproto.ParseSOCKS5AuthReply(bindReader); err != nil || !authOK {
-						_ = bindConn.Close()
-						goto bindDone
-					}
-				} else if bindMethod != socksproto.AuthNoAuth {
-					_ = bindConn.Close()
-					goto bindDone
-				}
-				bindReq := socksproto.BuildSOCKS5BindRequest(net.IPv4(0, 0, 0, 0), 0)
-				if _, err := bindConn.Write(bindReq); err == nil {
-					bindRep, _, _, err := socksproto.ParseSOCKS5Reply(bindReader)
-					if err == nil {
-						result.bindRepCode = &bindRep
-						result.bindSupported = bindRep == socksproto.RepSuccess
-					}
-				}
-			}
-		}
-		_ = bindConn.Close()
+	// --- Step 4: BIND probe (independent connection) ---
+	if bindRep, ok := probeSocks5Command(ctx, target, socksproto.BuildSOCKS5BindRequest(net.IPv4(0, 0, 0, 0), 0), log); ok {
+		result.bindRepCode = &bindRep
+		result.bindSupported = bindRep == socksproto.RepSuccess
 	}
-bindDone:
 
 	// --- Step 5: UDP ASSOCIATE probe (new connection) ---
 	// Same auth-method mirroring as the BIND probe.
-	udpConn, err := dialWithTimeout(ctx, target, DefaultDialTimeoutSeconds)
-	if err == nil {
-		_ = udpConn.SetDeadline(time.Now().Add(DefaultProbeTimeoutSeconds * time.Second))
-
-		udpGreeting := socksproto.BuildSOCKS5Greeting([]byte{socksproto.AuthNoAuth, socksproto.AuthUsernamePassword})
-		if _, err := udpConn.Write(udpGreeting); err == nil {
-			udpReader := bufio.NewReader(udpConn)
-			udpMethod, err := socksproto.ParseSOCKS5ServerChoice(udpReader)
-			if err == nil {
-				// Handle userpass auth if the server selects it.
-				if udpMethod == socksproto.AuthUsernamePassword {
-					authReq := socksproto.BuildSOCKS5UsernamePasswordAuth("guest", "guest")
-					if _, err := udpConn.Write(authReq); err != nil {
-						_ = udpConn.Close()
-						goto udpDone
-					}
-					if authOK, err := socksproto.ParseSOCKS5AuthReply(udpReader); err != nil || !authOK {
-						_ = udpConn.Close()
-						goto udpDone
-					}
-				} else if udpMethod != socksproto.AuthNoAuth {
-					_ = udpConn.Close()
-					goto udpDone
-				}
-				udpReq := socksproto.BuildSOCKS5UDPAssociateRequest(net.IPv4(0, 0, 0, 0), 0)
-				if _, err := udpConn.Write(udpReq); err == nil {
-					udpRep, _, _, err := socksproto.ParseSOCKS5Reply(udpReader)
-					if err == nil && udpRep == socksproto.RepSuccess {
-						result.udpAssociateSupported = true
-					}
-				}
-			}
-		}
-		_ = udpConn.Close()
+	if udpRep, ok := probeSocks5Command(ctx, target, socksproto.BuildSOCKS5UDPAssociateRequest(net.IPv4(0, 0, 0, 0), 0), log); ok {
+		result.udpAssociateSupported = udpRep == socksproto.RepSuccess
 	}
-udpDone:
 
 	return result
+}
+
+// probeSocks5Command opens a fresh SOCKS5 connection, completes greeting +
+// optional userpass auth (offering both NO_AUTH and USERPASS so proxies
+// that require auth on every connection still answer), then sends the
+// supplied request and returns the reply code. The ok return is false when
+// the probe could not reach the reply stage for any reason (dial failure,
+// write failure, auth rejected). Callers should treat ok=false as "no
+// signal" rather than "command not supported".
+func probeSocks5Command(ctx context.Context, target string, request []byte, log svc1log.Logger) (byte, bool) {
+	conn, err := dialWithTimeout(ctx, target, DefaultDialTimeoutSeconds)
+	if err != nil {
+		log.Debug("SOCKS5 probe dial failed", svc1log.SafeParam("error", err.Error()))
+		return 0, false
+	}
+	defer func() { _ = conn.Close() }()
+
+	setStepDeadline(ctx, conn)
+	if _, err := conn.Write(socksproto.BuildSOCKS5Greeting([]byte{socksproto.AuthNoAuth, socksproto.AuthUsernamePassword})); err != nil {
+		return 0, false
+	}
+	setStepDeadline(ctx, conn)
+	reader := bufio.NewReader(conn)
+	chosen, err := socksproto.ParseSOCKS5ServerChoice(reader)
+	if err != nil {
+		return 0, false
+	}
+
+	// Auth sub-negotiation when the server selects USERPASS. Any write or
+	// auth failure MUST abort — falling through would send the BIND/UDP
+	// command on an unauthenticated session and break subsequent reads.
+	switch chosen {
+	case socksproto.AuthNoAuth:
+		// OK
+	case socksproto.AuthUsernamePassword:
+		setStepDeadline(ctx, conn)
+		if _, err := conn.Write(socksproto.BuildSOCKS5UsernamePasswordAuth("guest", "guest")); err != nil {
+			return 0, false
+		}
+		setStepDeadline(ctx, conn)
+		authOK, err := socksproto.ParseSOCKS5AuthReply(reader)
+		if err != nil || !authOK {
+			return 0, false
+		}
+	default:
+		return 0, false
+	}
+
+	setStepDeadline(ctx, conn)
+	if _, err := conn.Write(request); err != nil {
+		return 0, false
+	}
+	setStepDeadline(ctx, conn)
+	rep, _, _, err := socksproto.ParseSOCKS5Reply(reader)
+	if err != nil {
+		return 0, false
+	}
+	return rep, true
 }
