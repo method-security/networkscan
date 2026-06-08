@@ -136,8 +136,12 @@ func probeSocks4(ctx context.Context, target string, probeIP net.IP, probePort u
 		return false
 	}
 
-	// 0x5A = granted, 0x5B = rejected — both indicate a real SOCKS4 server
-	return code == socksproto.SOCKS4RepGranted || code == socksproto.SOCKS4RepRejected
+	// All four reply codes (0x5A granted, 0x5B rejected, 0x5C identd unreachable,
+	// 0x5D user-id mismatch) confirm the server speaks SOCKS4.
+	return code == socksproto.SOCKS4RepGranted ||
+		code == socksproto.SOCKS4RepRejected ||
+		code == socksproto.SOCKS4RepIdentFail ||
+		code == socksproto.SOCKS4RepIdentMismatch
 }
 
 // probeSocks4a attempts a SOCKS4a CONNECT using a domain name.
@@ -164,7 +168,10 @@ func probeSocks4a(ctx context.Context, target string, probeHost string, probePor
 		return false
 	}
 
-	return code == socksproto.SOCKS4RepGranted || code == socksproto.SOCKS4RepRejected
+	return code == socksproto.SOCKS4RepGranted ||
+		code == socksproto.SOCKS4RepRejected ||
+		code == socksproto.SOCKS4RepIdentFail ||
+		code == socksproto.SOCKS4RepIdentMismatch
 }
 
 // socks5ProbeResult holds the result of the full SOCKS5 probe sequence.

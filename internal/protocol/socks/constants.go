@@ -42,10 +42,12 @@ const (
 	RepAtypNotSupported   byte = 0x08
 )
 
-// SOCKS4 reply codes
+// SOCKS4 reply codes (Ying-Da Lee spec)
 const (
-	SOCKS4RepGranted  byte = 0x5A
-	SOCKS4RepRejected byte = 0x5B
+	SOCKS4RepGranted       byte = 0x5A // request granted
+	SOCKS4RepRejected      byte = 0x5B // request rejected or failed
+	SOCKS4RepIdentFail     byte = 0x5C // rejected: cannot connect to client's identd
+	SOCKS4RepIdentMismatch byte = 0x5D // rejected: client program and identd report different user-ids
 )
 
 // SOCKS5 username/password sub-negotiation version
