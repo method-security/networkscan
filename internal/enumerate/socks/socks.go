@@ -317,11 +317,13 @@ func probeSocks5(
 				// Handle userpass auth if the server selects it.
 				if bindMethod == socksproto.AuthUsernamePassword {
 					authReq := socksproto.BuildSOCKS5UsernamePasswordAuth("guest", "guest")
-					if _, err := bindConn.Write(authReq); err == nil {
-						if authOK, err := socksproto.ParseSOCKS5AuthReply(bindReader); err != nil || !authOK {
-							_ = bindConn.Close()
-							goto bindDone
-						}
+					if _, err := bindConn.Write(authReq); err != nil {
+						_ = bindConn.Close()
+						goto bindDone
+					}
+					if authOK, err := socksproto.ParseSOCKS5AuthReply(bindReader); err != nil || !authOK {
+						_ = bindConn.Close()
+						goto bindDone
 					}
 				} else if bindMethod != socksproto.AuthNoAuth {
 					_ = bindConn.Close()
@@ -355,11 +357,13 @@ bindDone:
 				// Handle userpass auth if the server selects it.
 				if udpMethod == socksproto.AuthUsernamePassword {
 					authReq := socksproto.BuildSOCKS5UsernamePasswordAuth("guest", "guest")
-					if _, err := udpConn.Write(authReq); err == nil {
-						if authOK, err := socksproto.ParseSOCKS5AuthReply(udpReader); err != nil || !authOK {
-							_ = udpConn.Close()
-							goto udpDone
-						}
+					if _, err := udpConn.Write(authReq); err != nil {
+						_ = udpConn.Close()
+						goto udpDone
+					}
+					if authOK, err := socksproto.ParseSOCKS5AuthReply(udpReader); err != nil || !authOK {
+						_ = udpConn.Close()
+						goto udpDone
 					}
 				} else if udpMethod != socksproto.AuthNoAuth {
 					_ = udpConn.Close()
