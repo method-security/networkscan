@@ -24,66 +24,22 @@ import (
 )
 
 // LibraryEnumerateIMAP implements NetworkApplicationLibrary for IMAP enumeration.
-type LibraryEnumerateIMAP struct {
-	Config *imapfern.ImapEnumerateConfig
-}
+// Mode A only (pre-auth fingerprinting): greeting, CAPABILITY pre/post STARTTLS,
+// advertised SASL mechanisms, TLS cert/cipher. Mode B (auth + folder/message
+// enumeration) lives under `internal/pentest/imap/` and `pentest service imap`.
+type LibraryEnumerateIMAP struct{}
 
-// username returns the configured IMAP username (empty if unset).
-func (l *LibraryEnumerateIMAP) username() string {
-	if l.Config == nil || l.Config.Username == nil {
-		return ""
-	}
-	return *l.Config.Username
-}
-
-// password returns the configured IMAP password (empty if unset).
-func (l *LibraryEnumerateIMAP) password() string {
-	if l.Config == nil || l.Config.Password == nil {
-		return ""
-	}
-	return *l.Config.Password
-}
-
-// mechanism returns the configured SASL mechanism override (empty if unset).
-func (l *LibraryEnumerateIMAP) mechanism() string {
-	if l.Config == nil || l.Config.Mechanism == nil {
-		return ""
-	}
-	return *l.Config.Mechanism
-}
-
-// maxMessages returns the configured max-messages cap (0 = none).
-func (l *LibraryEnumerateIMAP) maxMessages() int {
-	if l.Config == nil || l.Config.MaxMessages == nil {
-		return 0
-	}
-	return *l.Config.MaxMessages
-}
-
-// search returns the configured IMAP SEARCH expression (empty if unset).
-func (l *LibraryEnumerateIMAP) search() string {
-	if l.Config == nil || l.Config.Search == nil {
-		return ""
-	}
-	return *l.Config.Search
-}
-
-// targetFolder returns the configured target folder (empty if unset).
-func (l *LibraryEnumerateIMAP) targetFolder() string {
-	if l.Config == nil || l.Config.TargetFolder == nil {
-		return ""
-	}
-	return *l.Config.TargetFolder
-}
-
-// allowPlaintextCredentials returns whether PLAIN/LOGIN auth is permitted
-// over an unencrypted transport.
-func (l *LibraryEnumerateIMAP) allowPlaintextCredentials() bool {
-	if l.Config == nil || l.Config.AllowPlaintextCredentials == nil {
-		return false
-	}
-	return *l.Config.AllowPlaintextCredentials
-}
+// Stubs — Mode B fields have moved to the pentest IMAP tool. These return zero
+// values so the existing imap.go EnumerateTarget code paths short-circuit
+// cleanly; the Mode B branches inside it are effectively dead code now and
+// will be removed when the pentest imap PR lands and lifts the implementation.
+func (l *LibraryEnumerateIMAP) username() string                { return "" }
+func (l *LibraryEnumerateIMAP) password() string                { return "" }
+func (l *LibraryEnumerateIMAP) mechanism() string               { return "" }
+func (l *LibraryEnumerateIMAP) maxMessages() int                { return 0 }
+func (l *LibraryEnumerateIMAP) search() string                  { return "" }
+func (l *LibraryEnumerateIMAP) targetFolder() string            { return "" }
+func (l *LibraryEnumerateIMAP) allowPlaintextCredentials() bool { return false }
 
 // EnumerateTarget performs IMAP enumeration against a single target.
 //

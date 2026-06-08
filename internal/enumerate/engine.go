@@ -165,7 +165,7 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 	case enumeratefern.SupportedServiceTypeSnmp:
 		return NetworkApplicationEngine{Library: &snmp.LibraryEnumerateSNMP{}}, nil
 	case enumeratefern.SupportedServiceTypeImap:
-		return NetworkApplicationEngine{Library: &imap.LibraryEnumerateIMAP{Config: config.ImapConfig}}, nil
+		return NetworkApplicationEngine{Library: &imap.LibraryEnumerateIMAP{}}, nil
 	case enumeratefern.SupportedServiceTypeMongodb:
 		return NetworkApplicationEngine{Library: &mongodb.LibraryEnumerateMongoDB{}}, nil
 	case enumeratefern.SupportedServiceTypePop3:

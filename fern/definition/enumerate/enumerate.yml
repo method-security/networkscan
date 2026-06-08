@@ -52,7 +52,6 @@ types:
       service: SupportedServiceType
       timeout: integer
       wordlist: optional<list<string>>
-      imapConfig: optional<imap.ImapEnumerateConfig>
   # Final report
   EnumerateServiceReport:
     properties:
