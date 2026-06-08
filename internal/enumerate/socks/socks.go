@@ -179,7 +179,7 @@ type socks5ProbeResult struct {
 	udpAssociateSupported bool
 	bndAddr               string
 	bndPort               uint16
-	connectRep            byte
+	connectRep            *byte // nil if CONNECT was never attempted
 	bindRepCode           *byte
 	responseTimeMs        int64
 	errors                []string
@@ -231,7 +231,7 @@ func probeSocks5(
 	result.chosenMethod = chosenMethod
 
 	// Record auth methods
-	result.authMethods = parseAuthMethodsFromChoice(offeredMethods, chosenMethod)
+	result.authMethods = parseAuthMethodsFromChoice(chosenMethod)
 	result.noAuthAllowed = chosenMethod == socksproto.AuthNoAuth
 	result.userpassAllowed = chosenMethod == socksproto.AuthUsernamePassword
 	result.gssapiAvailable = chosenMethod == socksproto.AuthGSSAPI
@@ -287,7 +287,7 @@ func probeSocks5(
 		_ = conn.Close()
 		return result
 	}
-	result.connectRep = repCode
+	result.connectRep = &repCode
 	if repCode == socksproto.RepSuccess {
 		result.bndAddr = bndAddr
 		result.bndPort = bndPort

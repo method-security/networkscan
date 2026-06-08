@@ -25,7 +25,7 @@ func dialWithTimeout(ctx context.Context, target string, seconds int) (net.Conn,
 func detectImplementationHint(
 	port int,
 	chosenMethod byte,
-	connectRepCode byte,
+	connectRepCode *byte, // nil if CONNECT was never attempted
 	bindRepCode *byte,
 	responseTimeMs int64,
 	socks4Supported bool,
@@ -57,66 +57,26 @@ func detectImplementationHint(
 
 	// Dante speaks SOCKS4 (or at least 4a) AND SOCKS5; CONNECT works, BIND may
 	// be configured-off (0x07) or work (0x00) depending on access policy.
-	if (socks4Supported || socks4aSupported) && connectRepCode == 0x00 {
+	// Only check connectRepCode when CONNECT actually ran (non-nil).
+	if (socks4Supported || socks4aSupported) && connectRepCode != nil && *connectRepCode == 0x00 {
 		return socksfern.SocksImplementationHintDante
 	}
 
 	return socksfern.SocksImplementationHintUnknown
 }
 
-// parseAuthMethodsFromChoice converts offered methods and server choice into a list.
-// Since SOCKS5 only reports one chosen method, we record what we offered as "available"
-// based on the server's acceptance.
-func parseAuthMethodsFromChoice(offeredMethods []byte, chosenMethod byte) []socksfern.SocksAuthMethod {
-	var result []socksfern.SocksAuthMethod
-
-	// If server accepted no-auth, record it
-	if chosenMethod == 0x00 {
-		result = append(result, socksfern.SocksAuthMethodNoAuth)
+// parseAuthMethodsFromChoice converts the server-chosen SOCKS5 method into a list.
+// SOCKS5 (RFC 1928) only reports a single chosen method, not all methods the server
+// supports, so we record only the method the server actually selected.
+func parseAuthMethodsFromChoice(chosenMethod byte) []socksfern.SocksAuthMethod {
+	switch chosenMethod {
+	case 0x00:
+		return []socksfern.SocksAuthMethod{socksfern.SocksAuthMethodNoAuth}
+	case 0x01:
+		return []socksfern.SocksAuthMethod{socksfern.SocksAuthMethodGssapi}
+	case 0x02:
+		return []socksfern.SocksAuthMethod{socksfern.SocksAuthMethodUsernamePassword}
+	default:
+		return []socksfern.SocksAuthMethod{socksfern.SocksAuthMethodUnknown}
 	}
-
-	// If server chose username/password, record both no-auth (offered) and username/password
-	if chosenMethod == 0x02 {
-		result = append(result, socksfern.SocksAuthMethodUsernamePassword)
-	}
-
-	// If server chose GSSAPI
-	if chosenMethod == 0x01 {
-		result = append(result, socksfern.SocksAuthMethodGssapi)
-	}
-
-	// Record all methods we offered that weren't chosen as still potentially available
-	for _, m := range offeredMethods {
-		already := false
-		for _, r := range result {
-			switch m {
-			case 0x00:
-				if r == socksfern.SocksAuthMethodNoAuth {
-					already = true
-				}
-			case 0x01:
-				if r == socksfern.SocksAuthMethodGssapi {
-					already = true
-				}
-			case 0x02:
-				if r == socksfern.SocksAuthMethodUsernamePassword {
-					already = true
-				}
-			}
-		}
-		if !already {
-			switch m {
-			case 0x00:
-				result = append(result, socksfern.SocksAuthMethodNoAuth)
-			case 0x01:
-				result = append(result, socksfern.SocksAuthMethodGssapi)
-			case 0x02:
-				result = append(result, socksfern.SocksAuthMethodUsernamePassword)
-			default:
-				result = append(result, socksfern.SocksAuthMethodUnknown)
-			}
-		}
-	}
-
-	return result
 }
