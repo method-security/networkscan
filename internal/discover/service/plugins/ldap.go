@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	"github.com/go-ldap/ldap/v3"
 )
 
@@ -19,15 +19,15 @@ type LDAPFingerprinter struct{}
 func (LDAPFingerprinter) Name() string { return "ldap" }
 
 func (LDAPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	// Create a context with 10-second timeout
-	_, cancel := context.WithTimeout(ctx, 10*time.Second)
+	// Create a context using the scanner timeout.
+	_, cancel := helpers.Context(ctx, timeout)
 	defer cancel()
 
 	// Use proper LDAP client with timeout
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	conn, err := ldap.DialURL(fmt.Sprintf("ldap://%s", addr), ldap.DialWithDialer(&net.Dialer{
-		Timeout: 10 * time.Second,
+		Timeout: helpers.Timeout(timeout),
 	}))
 	if err != nil {
 		return nil, err

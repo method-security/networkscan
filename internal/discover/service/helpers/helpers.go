@@ -2,129 +2,14 @@ package helpers
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
-
-func TCPConn(ctx context.Context, ip net.IP, port int, timeout int) (net.Conn, error) {
-	if timeout <= 0 {
-		timeout = 5
-	}
-	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	dialer := net.Dialer{Timeout: time.Duration(timeout) * time.Second}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
-		_ = conn.Close()
-		return nil, err
-	}
-	return conn, nil
-}
-
-func TCPExchange(ctx context.Context, ip net.IP, port int, timeout int, probe []byte, maxRead int) ([]byte, error) {
-	conn, err := TCPConn(ctx, ip, port, timeout)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = conn.Close() }()
-	stopCancelWatch := closeConnOnCancel(ctx, conn)
-	defer stopCancelWatch()
-	if _, err := conn.Write(probe); err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, err
-	}
-	buf := make([]byte, maxRead)
-	n, err := conn.Read(buf)
-	if n > 0 {
-		return buf[:n], nil
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, err
-	}
-	return buf[:n], nil
-}
-
-func TCPReadBanner(ctx context.Context, ip net.IP, port int, timeout int, maxRead int) ([]byte, error) {
-	conn, err := TCPConn(ctx, ip, port, timeout)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = conn.Close() }()
-	stopCancelWatch := closeConnOnCancel(ctx, conn)
-	defer stopCancelWatch()
-	buf := make([]byte, maxRead)
-	n, err := conn.Read(buf)
-	if n > 0 {
-		return buf[:n], nil
-	}
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, err
-	}
-	return buf[:n], nil
-}
-
-func UDPExchange(ctx context.Context, ip net.IP, port int, timeout int, probe []byte, maxRead int) ([]byte, error) {
-	if timeout <= 0 {
-		timeout = 5
-	}
-	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	dialer := net.Dialer{Timeout: time.Duration(timeout) * time.Second}
-	conn, err := dialer.DialContext(ctx, "udp", addr)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = conn.Close() }()
-	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
-		return nil, err
-	}
-	stopCancelWatch := closeConnOnCancel(ctx, conn)
-	defer stopCancelWatch()
-	if _, err := conn.Write(probe); err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, err
-	}
-	buf := make([]byte, maxRead)
-	n, err := conn.Read(buf)
-	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, err
-	}
-	return buf[:n], nil
-}
-
-func closeConnOnCancel(ctx context.Context, conn net.Conn) func() {
-	done := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			_ = conn.Close()
-		case <-done:
-		}
-	}()
-	return func() { close(done) }
-}
 
 func GenericResult(host string, ip net.IP, port int, transport common.TransportType, appProtocol string, version string, metadata map[string]string) *discoverfern.ServiceDetails {
 	if metadata == nil {
