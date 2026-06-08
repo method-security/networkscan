@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"math/big"
 	"net"
 	"regexp"
 	"strconv"
@@ -85,6 +84,7 @@ func buildOracleTNSConnect(ipStr string, port int) []byte {
 	binary.BigEndian.PutUint16(hdr[22:], 0x0001)
 	binary.BigEndian.PutUint16(hdr[24:], uint16(len(connectData)))
 	binary.BigEndian.PutUint16(hdr[26:], 0x003a)
+	binary.BigEndian.PutUint32(hdr[28:], 0x00000400)
 	return append(hdr, connectData...)
 }
 
@@ -98,13 +98,9 @@ func buildOracleResult(host string, ip net.IP, port int, body string) *discoverf
 		vsn := m[1]
 		info.Vsnnum = &vsn
 		if vsnNum, err := strconv.Atoi(m[1]); err == nil {
-			vb := big.NewInt(int64(vsnNum)).Bytes()
-			if len(vb) >= 4 {
-				hexPart := strconv.FormatInt(int64(vb[1]), 16)
-				if len(hexPart) >= 2 {
-					version = fmt.Sprintf("%d.%c.%c.%d.%d", vb[0], hexPart[0], hexPart[1], vb[2], vb[3])
-					info.Version = &version
-				}
+			if vsnNum > 0 {
+				version = decodeOracleVSNNUM(vsnNum)
+				info.Version = &version
 			}
 		}
 		protoVer := "TNS"
@@ -132,4 +128,14 @@ func buildOracleResult(host string, ip net.IP, port int, body string) *discoverf
 		Protocol:  common.ProtocolTypeOracle,
 		Metadata:  &discoverfern.ServiceMetadata{Oracle: info},
 	}
+}
+
+func decodeOracleVSNNUM(vsnNum int) string {
+	return fmt.Sprintf("%d.%d.%d.%d.%d",
+		(vsnNum>>24)&0xff,
+		(vsnNum>>20)&0x0f,
+		(vsnNum>>12)&0xff,
+		(vsnNum>>8)&0x0f,
+		vsnNum&0xff,
+	)
 }
