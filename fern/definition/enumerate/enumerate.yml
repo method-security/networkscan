@@ -8,6 +8,7 @@ imports:
   ike: ./ike/ike.yml
   snmp: ./snmp/snmp.yml
   imap: ./imap/imap.yml
+  mongodb: ./mongodb/mongodb.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -21,6 +22,7 @@ types:
       - IKE
       - SNMP
       - IMAP
+      - MONGODB
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -33,6 +35,7 @@ types:
       EnumerateIkeDetails: ike.EnumerateIkeDetails
       EnumerateSnmpDetails: snmp.EnumerateSnmpDetails
       EnumerateImapDetails: imap.EnumerateImapDetails
+      EnumerateMongodbDetails: mongodb.EnumerateMongodbDetails
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>

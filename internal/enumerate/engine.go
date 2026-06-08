@@ -16,6 +16,7 @@ import (
 	ike "github.com/Method-Security/networkscan/internal/enumerate/ike"
 	imap "github.com/Method-Security/networkscan/internal/enumerate/imap"
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
+	mongodb "github.com/Method-Security/networkscan/internal/enumerate/mongodb"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
 	snmp "github.com/Method-Security/networkscan/internal/enumerate/snmp"
@@ -199,6 +200,8 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 			TargetFolder:              targetFolder,
 			AllowPlaintextCredentials: allowPlaintext,
 		}}, nil
+	case enumeratefern.SupportedServiceTypeMongodb:
+		return NetworkApplicationEngine{Library: &mongodb.LibraryEnumerateMongoDB{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}

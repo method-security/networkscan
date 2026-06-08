@@ -5,11 +5,11 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	"github.com/Method-Security/networkscan/utils"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -31,8 +31,8 @@ func (MongoDBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 	uri := fmt.Sprintf("mongodb://%s", addr)
 
 	// Create context with timeout
-	timeoutDuration := time.Duration(timeout) * time.Second
-	timeoutCtx, cancel := context.WithTimeout(ctx, timeoutDuration)
+	timeoutDuration := helpers.Timeout(timeout)
+	timeoutCtx, cancel := helpers.Context(ctx, timeout)
 	defer cancel()
 
 	// Set client options with short timeout

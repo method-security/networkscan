@@ -6,11 +6,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	"github.com/Method-Security/networkscan/utils"
 )
 
@@ -33,14 +33,14 @@ func (TFTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	rrqPacket = append(rrqPacket, []byte("octet")...) // Mode
 	rrqPacket = append(rrqPacket, 0x00)               // Null terminator
 
-	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)
+	conn, err := helpers.Dial(ctx, "udp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set read/write deadline
-	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+	if err := helpers.SetDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 
