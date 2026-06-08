@@ -52,10 +52,12 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 	// Important: a successful TCP dial does not mean the listener is speaking
 	// plain POP3. Implicit-TLS POP3 servers (port 995 by convention, but any
 	// port in practice) accept the TCP connection and then wait for the
-	// client's TLS ClientHello — they never send a "+OK ..." greeting in the
+	// client's TLS ClientHello — they never send a POP3 greeting in the
 	// clear. To distinguish, we peek for the greeting with a short deadline.
-	// If nothing readable arrives, or the first byte is not the expected '+'
-	// of a POP3 status line, we close and redial with implicit TLS.
+	// POP3 status lines start with '+' ("+OK ...") or '-' ("-ERR ...", which
+	// is a legitimate refusal banner per RFC 1939 § 3 — e.g. "-ERR server
+	// busy"). If nothing readable arrives, or the first byte is neither,
+	// we close and redial with implicit TLS.
 	var conn net.Conn
 	var reader *bufio.Reader
 	var implicitTLS bool
@@ -68,11 +70,11 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 		peek, peekErr := plainReader.Peek(1)
 		_ = plainConn.SetReadDeadline(time.Time{})
 
-		if peekErr == nil && len(peek) == 1 && peek[0] == '+' {
-			// Clear POP3 greeting incoming — proceed plaintext.
+		if peekErr == nil && len(peek) == 1 && (peek[0] == '+' || peek[0] == '-') {
+			// Clear POP3 status line incoming (+OK or -ERR) — proceed plaintext.
 			conn = plainConn
 			reader = plainReader
-			log.Debug("Plain POP3 greeting detected")
+			log.Debug("Plain POP3 greeting detected", svc1log.SafeParam("status", string(peek)))
 		} else if netErr, ok := peekErr.(net.Error); peekErr != nil && ok && netErr.Timeout() {
 			// Peek deadline elapsed before the server sent anything.  The server
 			// may simply be slow (e.g. a busy Dovecot instance on a loaded host).
