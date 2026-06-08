@@ -72,7 +72,7 @@ func (s *LibraryEnumerateSocks) EnumerateTarget(ctx context.Context, target stri
 
 	detail.Socks5Supported = &socks5Result.supported
 	if socks5Result.supported {
-		detail.AuthMethodsOffered = socks5Result.authMethods
+		detail.AuthMethodSelected = socks5Result.authMethodSelected
 		detail.NoAuthAllowed = &socks5Result.noAuthAllowed
 		detail.UserpassAuthAllowed = &socks5Result.userpassAllowed
 		detail.GssapiAvailable = &socks5Result.gssapiAvailable
@@ -85,7 +85,7 @@ func (s *LibraryEnumerateSocks) EnumerateTarget(ctx context.Context, target stri
 			bndPort := int(socks5Result.bndPort)
 			detail.BndPort = &bndPort
 		}
-		hint := detectImplementationHint(
+		detail.ImplementationHint = detectImplementationHint(
 			port,
 			socks5Result.chosenMethod,
 			socks5Result.connectRep,
@@ -95,7 +95,6 @@ func (s *LibraryEnumerateSocks) EnumerateTarget(ctx context.Context, target stri
 			socks4aSupported,
 			socks5Result.udpAssociateSupported,
 		)
-		detail.ImplementationHint = &hint
 	}
 
 	for _, e := range socks5Result.errors {
@@ -182,7 +181,7 @@ func probeSocks4a(ctx context.Context, target string, probeHost string, probePor
 type socks5ProbeResult struct {
 	supported             bool
 	chosenMethod          byte
-	authMethods           []socksfern.SocksAuthMethod
+	authMethodSelected    *socksfern.SocksAuthMethod
 	noAuthAllowed         bool
 	userpassAllowed       bool
 	gssapiAvailable       bool
@@ -244,7 +243,7 @@ func probeSocks5(
 	// Record auth methods based on server's chosen method.
 	// userpassAllowed means "server supports username/password as an auth method"
 	// and is set at negotiation time, regardless of whether our probe credentials succeed.
-	result.authMethods = parseAuthMethodsFromChoice(chosenMethod)
+	result.authMethodSelected = authMethodFromChoice(chosenMethod)
 	result.noAuthAllowed = chosenMethod == socksproto.AuthNoAuth
 	result.userpassAllowed = chosenMethod == socksproto.AuthUsernamePassword
 	result.gssapiAvailable = chosenMethod == socksproto.AuthGSSAPI
