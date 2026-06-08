@@ -7,6 +7,7 @@ import (
 	ftpfern "github.com/Method-Security/networkscan/generated/go/pentest/ftp"
 	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
 	msrpcfern "github.com/Method-Security/networkscan/generated/go/pentest/msrpc"
+	mssqlfern "github.com/Method-Security/networkscan/generated/go/pentest/mssql"
 	redisfern "github.com/Method-Security/networkscan/generated/go/pentest/redis"
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	sshfern "github.com/Method-Security/networkscan/generated/go/pentest/ssh"
@@ -264,6 +265,7 @@ var (
 	ftpParserInstance    *FTPActionParser
 	winrmParserInstance  *WinRMActionParser
 	redisParserInstance  *RedisActionParser
+	mssqlParserInstance  *MSSQLActionParser
 )
 
 // GetSMBParser returns the singleton SMB action parser
@@ -398,6 +400,56 @@ func (p *RedisActionParser) GetValidActions() []string {
 }
 
 func (p *RedisActionParser) ContainsAction(actions []redisfern.PentestRedisAction, target redisfern.PentestRedisAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
+// MSSQLActionParser handles MSSQL-specific action parsing
+type MSSQLActionParser struct{}
+
+// GetMSSQLParser returns the singleton MSSQL action parser
+func GetMSSQLParser() *MSSQLActionParser {
+	if mssqlParserInstance == nil {
+		mssqlParserInstance = &MSSQLActionParser{}
+	}
+	return mssqlParserInstance
+}
+
+func (p *MSSQLActionParser) ParseActions(actionStrings []string) ([]mssqlfern.PentestMssqlAction, error) {
+	var actions []mssqlfern.PentestMssqlAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			mssqlAction, err := mssqlfern.NewPentestMssqlActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid MSSQL action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, mssqlAction)
+		}
+	}
+
+	if len(actions) == 0 {
+		actions = []mssqlfern.PentestMssqlAction{mssqlfern.PentestMssqlActionProbe}
+	}
+
+	return actions, nil
+}
+
+func (p *MSSQLActionParser) GetValidActions() []string {
+	return []string{"PROBE", "AUTH", "QUERY"}
+}
+
+func (p *MSSQLActionParser) ContainsAction(actions []mssqlfern.PentestMssqlAction, target mssqlfern.PentestMssqlAction) bool {
 	for _, action := range actions {
 		if action == target {
 			return true
