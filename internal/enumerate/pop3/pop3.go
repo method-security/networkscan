@@ -73,8 +73,22 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 			conn = plainConn
 			reader = plainReader
 			log.Debug("Plain POP3 greeting detected")
+		} else if netErr, ok := peekErr.(net.Error); peekErr != nil && ok && netErr.Timeout() {
+			// Peek deadline elapsed before the server sent anything.  The server
+			// may simply be slow (e.g. a busy Dovecot instance on a loaded host).
+			// A genuine implicit-TLS listener also stays silent while waiting for
+			// the client's ClientHello, so we cannot distinguish the two cases on
+			// timing alone.  Keeping the TCP connection avoids misrouting a slow
+			// cleartext server to TLS; ReadGreeting will apply its own deadline and
+			// fail gracefully if the listener is truly waiting for a TLS ClientHello.
+			conn = plainConn
+			reader = plainReader
+			log.Debug("Peek timed out — keeping plain TCP connection; ReadGreeting will determine if POP3")
 		} else {
-			log.Debug("No POP3 greeting after plain TCP dial — assuming implicit TLS",
+			// Either the first byte arrived and is not '+' (e.g. a TLS ClientHello
+			// response fragment), or there was a hard connection error.  Fall back
+			// to implicit TLS.
+			log.Debug("Non-POP3 first byte or connection error — assuming implicit TLS",
 				svc1log.SafeParam("peekErr", fmt.Sprintf("%v", peekErr)))
 			_ = plainConn.Close()
 		}

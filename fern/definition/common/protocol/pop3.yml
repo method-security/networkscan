@@ -9,17 +9,6 @@ types:
       - NTLM
       - GSSAPI
 
-  Pop3CapabilityKey:
-    enum:
-      - STLS
-      - UIDL
-      - TOP
-      - IMPLEMENTATION
-      - LOGIN_DELAY
-      - EXPIRE
-      - RESP_CODES
-      - PIPELINING
-
   Pop3ServerInfo:
     properties:
       banner: optional<string>
