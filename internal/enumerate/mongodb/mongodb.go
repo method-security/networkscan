@@ -67,6 +67,7 @@ func (m *LibraryEnumerateMongoDB) EnumerateTarget(ctx context.Context, target st
 	// Check for anonymous (unauthenticated) database access
 	dbNames, listErr := client.ListDatabaseNames(ctx, map[string]interface{}{})
 	if listErr != nil {
+		errors = append(errors, fmt.Sprintf("list databases failed: %v", listErr))
 		anonAllowed := false
 		details.AnonymousAccessAllowed = &anonAllowed
 		log.Info("Anonymous MongoDB access denied", svc1log.SafeParam("target", addr))
