@@ -317,12 +317,14 @@ func probeSocks5(
 		result.udpAssociateSupported = udpRep == socksproto.RepSuccess
 	}
 
-	// When the server selected GSSAPI on the main connection, probeSocks5Command
-	// will also fail to complete auth on the BIND/UDP probe connections (GSSAPI
-	// requires a full token exchange we do not implement). Record this explicitly
-	// so callers know the nil bindRepCode and false udpAssociateSupported are a
-	// limitation of the probe, not evidence that BIND/UDP are disabled.
-	if result.gssapiAvailable {
+	// When the server selected GSSAPI on the main connection AND neither BIND
+	// nor UDP ASSOCIATE returned a reply, record the limitation explicitly so
+	// callers know the nil bindRepCode / false udpAssociateSupported are due to
+	// the probe failing GSSAPI auth, not evidence that BIND/UDP are disabled.
+	// We guard on both probe results because a server that also supports NoAuth
+	// or USERPASS may negotiate a different method on the fresh probe connections
+	// and successfully return BIND/UDP replies even when gssapiAvailable is true.
+	if result.gssapiAvailable && result.bindRepCode == nil && !result.udpAssociateSupported {
 		result.errors = append(result.errors, "GSSAPI-only proxy: BIND and UDP ASSOCIATE probes skipped (GSSAPI auth not implemented)")
 	}
 
