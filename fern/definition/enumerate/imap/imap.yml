@@ -58,6 +58,17 @@ types:
       messageId: optional<string>
       size: optional<integer>
 
+  # Config struct
+  ImapEnumerateConfig:
+    properties:
+      username: optional<string>
+      password: optional<string>
+      mechanism: optional<string>
+      maxMessages: optional<integer>
+      search: optional<string>
+      targetFolder: optional<string>
+      allowPlaintextCredentials: optional<boolean>
+
   # Report struct
   EnumerateImapDetails:
     properties:

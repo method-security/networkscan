@@ -6,6 +6,8 @@ import (
 
 	// Generated
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	imapfern "github.com/Method-Security/networkscan/generated/go/enumerate/imap"
+
 	// Internal
 	enumerate "github.com/Method-Security/networkscan/internal/enumerate"
 	// External
@@ -58,46 +60,19 @@ func (a *NetworkScan) InitEnumerateCommand() {
 			}
 
 			// IMAP-specific flags
-			imapUsername, err := cmd.Flags().GetString("imap-username")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapPassword, err := cmd.Flags().GetString("imap-password")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapMechanism, err := cmd.Flags().GetString("imap-mechanism")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapMaxMessages, err := cmd.Flags().GetInt("imap-max-messages")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapSearch, err := cmd.Flags().GetString("imap-search")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapTargetFolder, err := cmd.Flags().GetString("imap-target-folder")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapAllowPlaintext, err := cmd.Flags().GetBool("imap-allow-plaintext-credentials")
+			imapConfig, err := readImapEnumerateConfig(cmd)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
 
-			config := newEnumerateServiceConfig(
-				targets, serviceEnum, timeout, wordlist,
-				imapUsername, imapPassword, imapMechanism, imapMaxMessages, imapSearch,
-				imapTargetFolder, imapAllowPlaintext)
+			config := newEnumerateServiceConfig(EnumerateServiceCobraFlags{
+				Targets:  targets,
+				Service:  serviceEnum,
+				Timeout:  timeout,
+				Wordlist: wordlist,
+				Imap:     imapConfig,
+			})
 
 			// Generate the report
 			report, err := enumerate.RunServiceEnumerate(cmd.Context(), config)
@@ -133,49 +108,101 @@ func (a *NetworkScan) InitEnumerateCommand() {
 	a.RootCmd.AddCommand(enumerateCmd)
 }
 
-// newEnumerateServiceConfig creates a new EnumerateServiceConfig with the provided parameters.
-func newEnumerateServiceConfig(
-	targets []string,
-	serviceEnum enumeratefern.SupportedServiceType,
-	timeout int,
-	wordlist []string,
-	imapUsername string,
-	imapPassword string,
-	imapMechanism string,
-	imapMaxMessages int,
-	imapSearch string,
-	imapTargetFolder string,
-	imapAllowPlaintext bool,
-) enumeratefern.EnumerateServiceConfig {
-	config := enumeratefern.EnumerateServiceConfig{
-		Targets: targets,
-		Service: serviceEnum,
-		Timeout: timeout,
+// EnumerateServiceCobraFlags bundles the flag values consumed by
+// newEnumerateServiceConfig, keeping per-service config nested rather than
+// inflating the top-level argument list.
+type EnumerateServiceCobraFlags struct {
+	Targets  []string
+	Service  enumeratefern.SupportedServiceType
+	Timeout  int
+	Wordlist []string
+	Imap     *imapfern.ImapEnumerateConfig
+}
+
+// readImapEnumerateConfig pulls the IMAP-specific cobra flags off cmd and
+// wraps them into an ImapEnumerateConfig, returning nil when no IMAP flag
+// was set (i.e. the user is not enumerating IMAP).
+func readImapEnumerateConfig(cmd *cobra.Command) (*imapfern.ImapEnumerateConfig, error) {
+	imapUsername, err := cmd.Flags().GetString("imap-username")
+	if err != nil {
+		return nil, err
 	}
-	if len(wordlist) > 0 {
-		config.Wordlist = wordlist
+	imapPassword, err := cmd.Flags().GetString("imap-password")
+	if err != nil {
+		return nil, err
 	}
+	imapMechanism, err := cmd.Flags().GetString("imap-mechanism")
+	if err != nil {
+		return nil, err
+	}
+	imapMaxMessages, err := cmd.Flags().GetInt("imap-max-messages")
+	if err != nil {
+		return nil, err
+	}
+	imapSearch, err := cmd.Flags().GetString("imap-search")
+	if err != nil {
+		return nil, err
+	}
+	imapTargetFolder, err := cmd.Flags().GetString("imap-target-folder")
+	if err != nil {
+		return nil, err
+	}
+	imapAllowPlaintext, err := cmd.Flags().GetBool("imap-allow-plaintext-credentials")
+	if err != nil {
+		return nil, err
+	}
+
+	imapConfig := &imapfern.ImapEnumerateConfig{}
+	set := false
 	if imapUsername != "" {
-		config.ImapUsername = &imapUsername
+		imapConfig.Username = &imapUsername
+		set = true
 	}
 	if imapPassword != "" {
-		config.ImapPassword = &imapPassword
+		imapConfig.Password = &imapPassword
+		set = true
 	}
 	if imapMechanism != "" {
-		config.ImapMechanism = &imapMechanism
+		imapConfig.Mechanism = &imapMechanism
+		set = true
 	}
 	if imapMaxMessages > 0 {
-		config.ImapMaxMessages = &imapMaxMessages
+		imapConfig.MaxMessages = &imapMaxMessages
+		set = true
 	}
 	if imapSearch != "" {
-		config.ImapSearch = &imapSearch
+		imapConfig.Search = &imapSearch
+		set = true
 	}
 	// Always pass target folder (default is "INBOX" from flag default)
 	if imapTargetFolder != "" {
-		config.ImapTargetFolder = &imapTargetFolder
+		imapConfig.TargetFolder = &imapTargetFolder
+		set = true
 	}
 	if imapAllowPlaintext {
-		config.ImapAllowPlaintextCredentials = &imapAllowPlaintext
+		imapConfig.AllowPlaintextCredentials = &imapAllowPlaintext
+		set = true
+	}
+	if !set {
+		return nil, nil
+	}
+	return imapConfig, nil
+}
+
+// newEnumerateServiceConfig creates a new EnumerateServiceConfig from the
+// flag struct, nesting per-service config (e.g. ImapConfig) instead of
+// inflating EnumerateServiceConfig with service-specific fields.
+func newEnumerateServiceConfig(flags EnumerateServiceCobraFlags) enumeratefern.EnumerateServiceConfig {
+	config := enumeratefern.EnumerateServiceConfig{
+		Targets: flags.Targets,
+		Service: flags.Service,
+		Timeout: flags.Timeout,
+	}
+	if len(flags.Wordlist) > 0 {
+		config.Wordlist = flags.Wordlist
+	}
+	if flags.Imap != nil {
+		config.ImapConfig = flags.Imap
 	}
 	return config
 }
