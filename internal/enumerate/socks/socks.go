@@ -76,8 +76,17 @@ func (s *LibraryEnumerateSocks) EnumerateTarget(ctx context.Context, target stri
 		detail.NoAuthAllowed = &socks5Result.noAuthAllowed
 		detail.UserpassAuthAllowed = &socks5Result.userpassAllowed
 		detail.GssapiAvailable = &socks5Result.gssapiAvailable
-		detail.BindSupported = &socks5Result.bindSupported
-		detail.UdpAssociateSupported = &socks5Result.udpAssociateSupported
+		// Only set BindSupported / UdpAssociateSupported when the probe
+		// actually completed and received a server reply. Leaving them unset
+		// (nil) when the probe did not run avoids false "not supported"
+		// signals caused by GSSAPI-only auth, 0xFF rejections, or transient
+		// network failures that prevented the probe from reaching a reply.
+		if socks5Result.bindRepCode != nil {
+			detail.BindSupported = &socks5Result.bindSupported
+		}
+		if socks5Result.udpAssociateRepCode != nil {
+			detail.UdpAssociateSupported = &socks5Result.udpAssociateSupported
+		}
 		if socks5Result.bndAddr != "" {
 			detail.BndAddr = &socks5Result.bndAddr
 		}
@@ -185,12 +194,13 @@ type socks5ProbeResult struct {
 	noAuthAllowed         bool
 	userpassAllowed       bool
 	gssapiAvailable       bool
-	bindSupported         bool
-	udpAssociateSupported bool
-	bndAddr               string
-	bndPort               uint16
-	connectRep            *byte // nil if CONNECT was never attempted
-	bindRepCode           *byte
+	bindSupported          bool
+	udpAssociateSupported  bool
+	bndAddr                string
+	bndPort                uint16
+	connectRep             *byte // nil if CONNECT was never attempted
+	bindRepCode            *byte // nil when BIND probe did not complete (no signal)
+	udpAssociateRepCode    *byte // nil when UDP ASSOCIATE probe did not complete (no signal)
 	responseTimeMs        int64
 	errors                []string
 }
@@ -313,15 +323,16 @@ func probeSocks5(
 	// --- Step 5: UDP ASSOCIATE probe (new connection) ---
 	// Same auth-method mirroring as the BIND probe.
 	if udpRep, ok := probeSocks5Command(ctx, target, socksproto.BuildSOCKS5UDPAssociateRequest(net.IPv4(0, 0, 0, 0), 0), log); ok {
+		result.udpAssociateRepCode = &udpRep
 		result.udpAssociateSupported = udpRep == socksproto.RepSuccess
 	}
 
-	// Note on GSSAPI: probeSocks5Command returns ok=false for any failure
-	// (dial timeout, write error, auth rejected, GSSAPI selected and skipped).
-	// We deliberately do NOT emit a "GSSAPI-only" error message when BIND and
-	// UDP probes both return ok=false — that would be a guess. The combination
-	// of gssapiAvailable=true with bindRepCode=nil and udpAssociateSupported=
-	// false is the signal a consumer can read directly.
+	// Note on GSSAPI and probe failures: probeSocks5Command returns ok=false for
+	// any failure (dial timeout, write error, auth rejected, GSSAPI selected and
+	// skipped). We deliberately do NOT emit a "GSSAPI-only" error message when
+	// both probes return ok=false — that would be a guess.  A consumer can
+	// observe gssapiAvailable=true with bindRepCode=nil (probe produced no
+	// signal) to draw its own conclusions.
 
 	return result
 }
