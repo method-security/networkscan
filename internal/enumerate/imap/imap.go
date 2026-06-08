@@ -11,7 +11,6 @@ import (
 	"net/textproto"
 	"strconv"
 	"strings"
-	"time"
 
 	// Generated
 	protocol "github.com/Method-Security/networkscan/generated/go/common/protocol"
@@ -65,14 +64,6 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 		return &enumeratefern.EnumerateServiceDetails{EnumerateImapDetails: &detail}, errors
 	}
 
-	timeout := 30
-	if deadline, ok := ctx.Deadline(); ok {
-		remaining := int(time.Until(deadline).Seconds())
-		if remaining > 0 {
-			timeout = remaining
-		}
-	}
-
 	// tagCounter tracks the next command tag number
 	tagCounter := 2 // A001 used for STARTTLS
 
@@ -88,11 +79,11 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 
 	// Step 1: Try plain TCP connection
 	log.Debug("Attempting plain TCP connection", svc1log.SafeParam("target", target))
-	plainConn, greeting, plainErr := tryTCPConnection(host, port, timeout)
+	plainConn, greeting, plainErr := tryTCPConnection(host, port, ctx)
 	if plainErr != nil {
 		// Step 1b: Try implicit TLS (IMAPS)
 		log.Debug("Plain TCP failed, trying implicit TLS", svc1log.SafeParam("error", plainErr))
-		tlsC, tlsGreeting, tlsErr := tryTLSConnection(host, port, timeout)
+		tlsC, tlsGreeting, tlsErr := tryTLSConnection(host, port, ctx)
 		if tlsErr != nil {
 			canConnect := false
 			detail.CanConnect = &canConnect
@@ -140,7 +131,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 
 	// Step 2: Run CAPABILITY command
 	tag := nextTag()
-	capLines, capErr := sendCommand(conn, tag, "CAPABILITY", timeout)
+	capLines, capErr := sendCommand(conn, tag, "CAPABILITY", ctx)
 	if capErr != nil {
 		log.Debug("CAPABILITY command failed", svc1log.SafeParam("error", capErr))
 	}
@@ -168,7 +159,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 
 		if starttlsSupported {
 			log.Debug("STARTTLS supported, upgrading connection")
-			upgraded, stlsErr := doSTARTTLS(conn, host, timeout)
+			upgraded, stlsErr := doSTARTTLS(conn, host, ctx)
 			if stlsErr != nil {
 				log.Debug("STARTTLS upgrade failed", svc1log.SafeParam("error", stlsErr))
 				errors = append(errors, fmt.Sprintf("STARTTLS upgrade failed: %v", stlsErr))
@@ -182,7 +173,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 
 				// Re-CAPABILITY after TLS upgrade
 				tag = nextTag()
-				capLines2, capErr2 := sendCommand(conn, tag, "CAPABILITY", timeout)
+				capLines2, capErr2 := sendCommand(conn, tag, "CAPABILITY", ctx)
 				if capErr2 == nil {
 					for _, line := range capLines2 {
 						if strings.HasPrefix(line, "* CAPABILITY") || strings.Contains(line, "[CAPABILITY") {
@@ -254,7 +245,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 	// Step 5: Authenticated enumeration
 	if l.Username != "" {
 		authenticated := false
-		authErr := l.authenticate(conn, nextTag, saslMechs, tlsActive, timeout)
+		authErr := l.authenticate(conn, nextTag, saslMechs, tlsActive, ctx)
 		if authErr != nil {
 			errors = append(errors, fmt.Sprintf("authentication failed: %v", authErr))
 			detail.Authenticated = &authenticated
@@ -266,12 +257,12 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 			// ENABLE IMAP4rev2 if supported
 			if imapVersion == "IMAP4rev2" {
 				tag = nextTag()
-				_, _ = sendCommand(conn, tag, "ENABLE IMAP4rev2 UTF8=ACCEPT", timeout)
+				_, _ = sendCommand(conn, tag, "ENABLE IMAP4rev2 UTF8=ACCEPT", ctx)
 			}
 
 			// LIST folders
 			tag = nextTag()
-			listLines, listErr := sendCommand(conn, tag, `LIST "" "*"`, timeout)
+			listLines, listErr := sendCommand(conn, tag, `LIST "" "*"`, ctx)
 			if listErr == nil {
 				folders := parseFolders(listLines)
 				if len(folders) > 0 {
@@ -284,7 +275,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 					tag = nextTag()
 					statusLines, statusErr := sendCommand(conn, tag,
 						fmt.Sprintf("STATUS %s (MESSAGES RECENT UNSEEN UIDNEXT UIDVALIDITY)", imapQuoteString(folder.Name)),
-						timeout)
+						ctx)
 					if statusErr != nil {
 						continue
 					}
@@ -303,7 +294,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 			// defaults to "INBOX" in cmd/enumerate.go — no internal default here).
 			if l.TargetFolder != "" {
 				tag = nextTag()
-				examineLines, examineErr := sendCommand(conn, tag, fmt.Sprintf("EXAMINE %s", imapQuoteString(l.TargetFolder)), timeout)
+				examineLines, examineErr := sendCommand(conn, tag, fmt.Sprintf("EXAMINE %s", imapQuoteString(l.TargetFolder)), ctx)
 				if examineErr == nil {
 					examineResult := parseExamineResponse(l.TargetFolder, examineLines)
 					detail.SelectedFolder = examineResult
@@ -315,7 +306,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 				tag = nextTag()
 				fetchLines, fetchErr := sendCommand(conn, tag,
 					fmt.Sprintf("FETCH 1:%d (UID BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)])", l.MaxMessages),
-					timeout)
+					ctx)
 				if fetchErr == nil {
 					msgs := parseMessageHeaders(fetchLines, l.MaxMessages)
 					if len(msgs) > 0 {
@@ -327,7 +318,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 			// UID SEARCH
 			if l.Search != "" {
 				tag = nextTag()
-				searchLines, searchErr := sendCommand(conn, tag, fmt.Sprintf("UID SEARCH %s", stripCRLF(l.Search)), timeout)
+				searchLines, searchErr := sendCommand(conn, tag, fmt.Sprintf("UID SEARCH %s", stripCRLF(l.Search)), ctx)
 				if searchErr == nil {
 					var uids []int
 					for _, line := range searchLines {
@@ -355,7 +346,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 
 	// Logout
 	tag = nextTag()
-	_, _ = sendCommand(conn, tag, "LOGOUT", timeout)
+	_, _ = sendCommand(conn, tag, "LOGOUT", ctx)
 	_ = conn.Close()
 
 	log.Info("IMAP enumeration complete", svc1log.SafeParam("target", target))
@@ -369,7 +360,7 @@ func (l *LibraryEnumerateIMAP) authenticate(
 	nextTag func() string,
 	available []sasl.Mechanism,
 	tlsActive bool,
-	timeout int,
+	ctx context.Context,
 ) error {
 	// Determine mechanism
 	var mech sasl.Mechanism
@@ -402,9 +393,9 @@ func (l *LibraryEnumerateIMAP) authenticate(
 
 	switch mech {
 	case sasl.MechanismPlain:
-		return l.authPlain(conn, nextTag, timeout)
+		return l.authPlain(conn, nextTag, ctx)
 	case sasl.MechanismLogin:
-		return l.authLogin(conn, nextTag, timeout)
+		return l.authLogin(conn, nextTag, ctx)
 	default:
 		return fmt.Errorf("SASL mechanism %q is not implemented; supported: PLAIN, LOGIN", mech)
 	}
@@ -412,8 +403,8 @@ func (l *LibraryEnumerateIMAP) authenticate(
 
 // authPlain performs AUTHENTICATE PLAIN.
 // The encoded value is base64(\0username\0password).
-func (l *LibraryEnumerateIMAP) authPlain(conn net.Conn, nextTag func() string, timeout int) error {
-	_ = conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+func (l *LibraryEnumerateIMAP) authPlain(conn net.Conn, nextTag func() string, ctx context.Context) error {
+	_ = conn.SetDeadline(deadlineFromContext(ctx))
 	tconn := textproto.NewConn(conn)
 
 	tag := nextTag()
@@ -453,11 +444,11 @@ func (l *LibraryEnumerateIMAP) authPlain(conn net.Conn, nextTag func() string, t
 }
 
 // authLogin performs LOGIN username password (plain-text login command).
-func (l *LibraryEnumerateIMAP) authLogin(conn net.Conn, nextTag func() string, timeout int) error {
+func (l *LibraryEnumerateIMAP) authLogin(conn net.Conn, nextTag func() string, ctx context.Context) error {
 	tag := nextTag()
 	lines, err := sendCommand(conn, tag,
 		fmt.Sprintf("LOGIN %s %s", imapQuoteString(l.Username), imapQuoteString(l.Password)),
-		timeout)
+		ctx)
 	if err != nil {
 		return fmt.Errorf("LOGIN command failed: %w", err)
 	}

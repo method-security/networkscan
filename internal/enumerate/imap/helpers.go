@@ -3,6 +3,7 @@ package imap
 import (
 	// Standard
 	"bufio"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -17,6 +18,18 @@ import (
 	// Generated
 	imapfern "github.com/Method-Security/networkscan/generated/go/enumerate/imap"
 )
+
+// deadlineFromContext returns the absolute deadline from ctx. If the context
+// has no deadline, it falls back to 30 seconds from now. Using the absolute
+// deadline (rather than re-computing now+duration on each call) ensures that
+// later commands in a long enumeration cannot extend past the engine's
+// per-target timeout budget.
+func deadlineFromContext(ctx context.Context) time.Time {
+	if deadline, ok := ctx.Deadline(); ok {
+		return deadline
+	}
+	return time.Now().Add(30 * time.Second)
+}
 
 // implicitTLSPeekTimeout caps how long we wait for an IMAP server to deliver
 // its untagged "* OK" greeting before concluding the listener actually wants
@@ -64,9 +77,14 @@ func (c *bufferedConn) Read(b []byte) (int, error) {
 // avoid hanging in that case we peek with a short deadline; if the first
 // byte is not '*', we return errImplicitTLSSuspected so the caller falls
 // back to TLS.
-func tryTCPConnection(host string, port int, timeout int) (net.Conn, string, error) {
+func tryTCPConnection(host string, port int, ctx context.Context) (net.Conn, string, error) {
+	deadline := deadlineFromContext(ctx)
+	dialTimeout := time.Until(deadline)
+	if dialTimeout <= 0 {
+		dialTimeout = time.Second
+	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	conn, err := net.DialTimeout("tcp", addr, time.Duration(timeout)*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, dialTimeout)
 	if err != nil {
 		return nil, "", err
 	}
@@ -98,8 +116,8 @@ func tryTCPConnection(host string, port int, timeout int) (net.Conn, string, err
 		return nil, "", errImplicitTLSSuspected
 	}
 
-	// Greeting is on its way; restore the full timeout and consume the line.
-	_ = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	// Greeting is on its way; restore to the absolute context deadline.
+	_ = conn.SetReadDeadline(deadline)
 	greeting, err := reader.ReadString('\n')
 	if err != nil {
 		_ = conn.Close()
@@ -110,7 +128,12 @@ func tryTCPConnection(host string, port int, timeout int) (net.Conn, string, err
 
 // tryTLSConnection connects to host:port directly via TLS, reads the IMAP greeting line,
 // and returns the open TLS connection plus the greeting string.
-func tryTLSConnection(host string, port int, timeout int) (*tls.Conn, string, error) {
+func tryTLSConnection(host string, port int, ctx context.Context) (*tls.Conn, string, error) {
+	deadline := deadlineFromContext(ctx)
+	dialTimeout := time.Until(deadline)
+	if dialTimeout <= 0 {
+		dialTimeout = time.Second
+	}
 	// networkscan is a probe — we want to observe and report on the cert
 	// presented (subject, cipher), not validate it. Self-signed, expired,
 	// or wrong-CN certs are normal targets. Match the POP3 enumerator.
@@ -119,12 +142,12 @@ func tryTLSConnection(host string, port int, timeout int) (*tls.Conn, string, er
 		InsecureSkipVerify: true, //nolint:gosec
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	dialer := &net.Dialer{Timeout: time.Duration(timeout) * time.Second}
+	dialer := &net.Dialer{Timeout: dialTimeout}
 	tlsConn, err := tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
 	if err != nil {
 		return nil, "", err
 	}
-	_ = tlsConn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	_ = tlsConn.SetReadDeadline(deadline)
 	tconn := textproto.NewConn(tlsConn)
 	greeting, err := tconn.ReadLine()
 	if err != nil {
@@ -137,13 +160,13 @@ func tryTLSConnection(host string, port int, timeout int) (*tls.Conn, string, er
 // doSTARTTLS upgrades an existing plain TCP connection to TLS using the IMAP STARTTLS command.
 // It sends the STARTTLS command, reads the server response until the tagged
 // completion, then wraps the connection in TLS.
-func doSTARTTLS(conn net.Conn, host string, timeout int) (*tls.Conn, error) {
+func doSTARTTLS(conn net.Conn, host string, ctx context.Context) (*tls.Conn, error) {
 	const tag = "A001"
 	tconn := textproto.NewConn(conn)
 	if err := tconn.PrintfLine("%s STARTTLS", tag); err != nil {
 		return nil, fmt.Errorf("STARTTLS send failed: %w", err)
 	}
-	_ = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	_ = conn.SetReadDeadline(deadlineFromContext(ctx))
 	// Read until tagged completion. Servers may emit untagged data lines
 	// before the tagged response — only the tagged OK confirms the upgrade.
 	// Matching "OK" anywhere in the line would falsely accept untagged lines
@@ -195,8 +218,10 @@ func parseLiteralCount(line string) int {
 
 // sendCommand sends a tagged IMAP command and collects all response lines until the
 // tagged completion line (tag + OK/NO/BAD). Returns all lines including the final tagged line.
-func sendCommand(conn net.Conn, tag, cmd string, timeout int) ([]string, error) {
-	_ = conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+// The connection deadline is set to the absolute deadline from ctx (not now+duration) so
+// that later commands in a sequence cannot extend past the engine's per-target timeout.
+func sendCommand(conn net.Conn, tag, cmd string, ctx context.Context) ([]string, error) {
+	_ = conn.SetDeadline(deadlineFromContext(ctx))
 	tconn := textproto.NewConn(conn)
 	line := fmt.Sprintf("%s %s", tag, cmd)
 	if err := tconn.PrintfLine("%s", line); err != nil {
