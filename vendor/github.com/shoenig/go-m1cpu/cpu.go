@@ -30,13 +30,16 @@ package m1cpu
 // char global_brand[32];
 //
 // UInt64 getFrequency(CFTypeRef typeRef) {
-//  if (typeRef == NULL) {
-//    return 0;
-//  }
-//  CFDataRef cfData = typeRef;
+//   if (typeRef == NULL || CFGetTypeID(typeRef) != CFDataGetTypeID()) {
+//     return 0;
+//   }
+//   CFDataRef cfData = typeRef;
 //
-//  CFIndex size = CFDataGetLength(cfData);
-//  UInt8 buf[size];
+//   CFIndex size = CFDataGetLength(cfData);
+//   if (size < 8) {
+//     return 0;
+//   }
+//   UInt8 buf[size];
 //  CFDataGetBytes(cfData, CFRangeMake(0, size), buf);
 //
 //  UInt8 b1 = buf[size-5];
@@ -50,17 +53,33 @@ package m1cpu
 //
 // int sysctl_int(const char * name) {
 //  int value = -1;
-//  size_t size = 8;
+//  size_t size = sizeof(value);
 //  sysctlbyname(name, &value, &size, NULL, 0);
 //  return value;
 // }
 //
 // void sysctl_string(const char * name, char * dest) {
 //   size_t size = 32;
-//   sysctlbyname(name, dest, &size, NULL, 0);
+//   if (sysctlbyname(name, dest, &size, NULL, 0) != 0) {
+//     dest[0] = '\0';
+//     return;
+//   }
+//   dest[31] = '\0';
 // }
 //
 // void initialize() {
+//   global_pCoreClock = 0;
+//   global_eCoreClock = 0;
+//   global_pCoreCount = 0;
+//   global_eCoreCount = 0;
+//   global_pCoreL1InstCacheSize = 0;
+//   global_eCoreL1InstCacheSize = 0;
+//   global_pCoreL1DataCacheSize = 0;
+//   global_eCoreL1DataCacheSize = 0;
+//   global_pCoreL2CacheSize = 0;
+//   global_eCoreL2CacheSize = 0;
+//   global_brand[0] = '\0';
+//
 //   global_pCoreCount = sysctl_int("hw.perflevel0.physicalcpu");
 //   global_eCoreCount = sysctl_int("hw.perflevel1.physicalcpu");
 //   global_pCoreL1InstCacheSize = sysctl_int("hw.perflevel0.l1icachesize");
@@ -72,8 +91,14 @@ package m1cpu
 //   sysctl_string("machdep.cpu.brand_string", global_brand);
 //
 //   CFMutableDictionaryRef matching = IOServiceMatching("AppleARMIODevice");
-//   io_iterator_t  iter;
-//   IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iter);
+//   if (matching == NULL) {
+//     return;
+//   }
+//   io_iterator_t iter = MACH_PORT_NULL;
+//   kern_return_t kr = IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iter);
+//   if (kr != KERN_SUCCESS || iter == MACH_PORT_NULL) {
+//     return;
+//   }
 //
 //   io_object_t obj;
 //   while ((obj = IOIteratorNext(iter))) {
@@ -94,8 +119,10 @@ package m1cpu
 //       global_eCoreClock = eCoreClock;
 //  	 if (pCoreRef) CFRelease(pCoreRef);
 //  	 if (eCoreRef) CFRelease(eCoreRef);
+//       IOObjectRelease(obj);
 //		 break;
 //     }
+//     IOObjectRelease(obj);
 //   }
 //   IOObjectRelease(iter);
 // }
@@ -144,10 +171,17 @@ package m1cpu
 //   return global_brand;
 // }
 import "C"
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
-func init() {
-	C.initialize()
+var initializeOnce sync.Once
+
+func initialize() {
+	initializeOnce.Do(func() {
+		C.initialize()
+	})
 }
 
 // IsAppleSilicon returns true on this platform.
@@ -157,31 +191,37 @@ func IsAppleSilicon() bool {
 
 // PCoreHZ returns the max frequency in Hertz of the P-Core of an Apple Silicon CPU.
 func PCoreHz() uint64 {
+	initialize()
 	return toHz(uint64(C.pCoreClock()))
 }
 
 // ECoreHZ returns the max frequency in Hertz of the E-Core of an Apple Silicon CPU.
 func ECoreHz() uint64 {
+	initialize()
 	return toHz(uint64(C.eCoreClock()))
 }
 
 // PCoreGHz returns the max frequency in Gigahertz of the P-Core of an Apple Silicon CPU.
 func PCoreGHz() float64 {
+	initialize()
 	return toGhz(uint64(C.pCoreClock()))
 }
 
 // ECoreGHz returns the max frequency in Gigahertz of the E-Core of an Apple Silicon CPU.
 func ECoreGHz() float64 {
+	initialize()
 	return toGhz(uint64(C.eCoreClock()))
 }
 
 // PCoreCount returns the number of physical P (performance) cores.
 func PCoreCount() int {
+	initialize()
 	return int(C.pCoreCount())
 }
 
 // ECoreCount returns the number of physical E (efficiency) cores.
 func ECoreCount() int {
+	initialize()
 	return int(C.eCoreCount())
 }
 
@@ -192,6 +232,7 @@ func ECoreCount() int {
 // - L1 data cache
 // - L2 cache
 func PCoreCache() (int, int, int) {
+	initialize()
 	return int(C.pCoreL1InstCacheSize()),
 		int(C.pCoreL1DataCacheSize()),
 		int(C.pCoreL2CacheSize())
@@ -204,6 +245,7 @@ func PCoreCache() (int, int, int) {
 // - L1 data cache
 // - L2 cache
 func ECoreCache() (int, int, int) {
+	initialize()
 	return int(C.eCoreL1InstCacheSize()),
 		int(C.eCoreL1DataCacheSize()),
 		int(C.eCoreL2CacheSize())
@@ -211,6 +253,7 @@ func ECoreCache() (int, int, int) {
 
 // ModelName returns the model name of the CPU.
 func ModelName() string {
+	initialize()
 	return C.GoString(C.modelName())
 }
 
