@@ -341,7 +341,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 						}
 					}
 					detail.SearchResult = &imapfern.ImapSearchResult{
-						FolderName:       targetFolder,
+						FolderName:       l.TargetFolder,
 						SearchExpression: l.Search,
 						MatchingUids:     uids,
 					}
