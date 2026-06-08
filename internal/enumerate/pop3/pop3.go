@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	protocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
@@ -15,6 +16,10 @@ import (
 	pop3util "github.com/Method-Security/networkscan/internal/protocol/pop3"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
+
+// implicitTLSPeekTimeout caps how long we wait for a POP3 server to deliver
+// its "+OK" greeting before concluding the listener actually wants TLS.
+const implicitTLSPeekTimeout = 2 * time.Second
 
 // LibraryEnumeratePOP3 implements NetworkApplicationLibrary for POP3 enumeration.
 type LibraryEnumeratePOP3 struct{}
@@ -42,21 +47,54 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 		return &enumeratefern.EnumerateServiceDetails{EnumeratePop3Details: &detail}, errors
 	}
 
-	// Try plain TCP first
+	// Try plain TCP first.
+	//
+	// Important: a successful TCP dial does not mean the listener is speaking
+	// plain POP3. Implicit-TLS POP3 servers (port 995 by convention, but any
+	// port in practice) accept the TCP connection and then wait for the
+	// client's TLS ClientHello — they never send a "+OK ..." greeting in the
+	// clear. To distinguish, we peek for the greeting with a short deadline.
+	// If nothing readable arrives, or the first byte is not the expected '+'
+	// of a POP3 status line, we close and redial with implicit TLS.
 	var conn net.Conn
+	var reader *bufio.Reader
 	var implicitTLS bool
 
 	log.Debug("Attempting plain TCP to POP3 target", svc1log.SafeParam("target", target))
-	conn, err = dialTCP(ctx, target)
-	if err != nil {
-		log.Debug("Plain TCP failed, trying implicit TLS", svc1log.SafeParam("error", err))
-		conn, err = dialTLS(target, hostname)
-		if err != nil {
+	plainConn, plainErr := dialTCP(ctx, target)
+	if plainErr == nil {
+		_ = plainConn.SetReadDeadline(time.Now().Add(implicitTLSPeekTimeout))
+		plainReader := bufio.NewReader(plainConn)
+		peek, peekErr := plainReader.Peek(1)
+		_ = plainConn.SetReadDeadline(time.Time{})
+
+		if peekErr == nil && len(peek) == 1 && peek[0] == '+' {
+			// Clear POP3 greeting incoming — proceed plaintext.
+			conn = plainConn
+			reader = plainReader
+			log.Debug("Plain POP3 greeting detected")
+		} else {
+			log.Debug("No POP3 greeting after plain TCP dial — assuming implicit TLS",
+				svc1log.SafeParam("peekErr", fmt.Sprintf("%v", peekErr)))
+			_ = plainConn.Close()
+		}
+	}
+
+	if conn == nil {
+		log.Debug("Dialing implicit TLS", svc1log.SafeParam("target", target))
+		tlsConn, tlsErr := dialTLS(target, hostname)
+		if tlsErr != nil {
 			canConnect := false
 			detail.CanConnect = &canConnect
-			errors = append(errors, fmt.Sprintf("connection failed (TCP and TLS): %v", err))
+			if plainErr != nil {
+				errors = append(errors, fmt.Sprintf("connection failed (TCP=%v TLS=%v)", plainErr, tlsErr))
+			} else {
+				errors = append(errors, fmt.Sprintf("implicit TLS dial failed: %v", tlsErr))
+			}
 			return &enumeratefern.EnumerateServiceDetails{EnumeratePop3Details: &detail}, errors
 		}
+		conn = tlsConn
+		reader = bufio.NewReader(conn)
 		implicitTLS = true
 		tlsSupported := true
 		serverInfo.TlsSupported = &tlsSupported
@@ -66,11 +104,6 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 	canConnect := true
 	detail.CanConnect = &canConnect
 	detail.ImplicitTls = &implicitTLS
-
-	// Create ONE shared reader for the lifetime of this connection.
-	// All read helpers use this reader so buffered bytes are never discarded
-	// between calls.
-	reader := bufio.NewReader(conn)
 
 	// Read greeting
 	greeting, err := pop3util.ReadGreeting(reader)
