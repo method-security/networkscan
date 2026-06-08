@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io"
 	"net"
 	"net/textproto"
 	"regexp"
@@ -26,6 +27,20 @@ const implicitTLSPeekTimeout = 2 * time.Second
 // listener did not send an IMAP greeting within implicitTLSPeekTimeout. The
 // caller should close the connection and retry with implicit TLS.
 var errImplicitTLSSuspected = fmt.Errorf("no IMAP greeting on plain socket; implicit TLS suspected")
+
+// bufferedConn wraps a net.Conn with a bufio.Reader so that bytes the reader
+// pre-fetches during greeting detection are not discarded when the caller later
+// creates a new textproto.Conn on the same underlying connection.
+type bufferedConn struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+// Read satisfies net.Conn — all reads go through the bufio.Reader so
+// pre-fetched bytes are consumed before the underlying socket is read again.
+func (c *bufferedConn) Read(b []byte) (int, error) {
+	return c.r.Read(b)
+}
 
 // tryTCPConnection connects to host:port via plain TCP, then peeks for the
 // untagged IMAP greeting. IMAP greetings start with "* " (e.g. "* OK ...",
@@ -58,7 +73,7 @@ func tryTCPConnection(host string, port int, timeout int) (net.Conn, string, err
 		_ = conn.Close()
 		return nil, "", fmt.Errorf("failed to read greeting: %w", err)
 	}
-	return conn, strings.TrimRight(greeting, "\r\n"), nil
+	return &bufferedConn{Conn: conn, r: reader}, strings.TrimRight(greeting, "\r\n"), nil
 }
 
 // tryTLSConnection connects to host:port directly via TLS, reads the IMAP greeting line,
@@ -115,6 +130,26 @@ func doSTARTTLS(conn net.Conn, host string, timeout int) (*tls.Conn, error) {
 	return tlsConn, nil
 }
 
+// parseLiteralCount returns the RFC 3501 literal octet count if line ends
+// with "{N}" or "{N+}" (non-synchronising literal), otherwise returns 0.
+func parseLiteralCount(line string) int {
+	trimmed := strings.TrimRight(line, " \t")
+	if !strings.HasSuffix(trimmed, "}") {
+		return 0
+	}
+	start := strings.LastIndex(trimmed, "{")
+	if start < 0 {
+		return 0
+	}
+	inner := trimmed[start+1 : len(trimmed)-1]
+	inner = strings.TrimSuffix(inner, "+") // non-synchronising literal
+	n, err := strconv.Atoi(inner)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
 // sendCommand sends a tagged IMAP command and collects all response lines until the
 // tagged completion line (tag + OK/NO/BAD). Returns all lines including the final tagged line.
 func sendCommand(conn net.Conn, tag, cmd string, timeout int) ([]string, error) {
@@ -131,11 +166,29 @@ func sendCommand(conn net.Conn, tag, cmd string, timeout int) ([]string, error) 
 			return lines, fmt.Errorf("response read error: %w", err)
 		}
 		lines = append(lines, resp)
-		// Check for tagged completion
+		// Check for tagged completion.
 		if strings.HasPrefix(resp, tag+" OK") ||
 			strings.HasPrefix(resp, tag+" NO") ||
 			strings.HasPrefix(resp, tag+" BAD") {
 			break
+		}
+		// Handle RFC 3501 literal: when a line ends with "{N}" or "{N+}", the
+		// next N bytes are literal data (not CRLF-delimited lines). Read them
+		// through the same textproto bufio.Reader (tconn.R) so the stream stays
+		// in sync, then split into lines for uniform downstream processing.
+		if n := parseLiteralCount(resp); n > 0 {
+			literal := make([]byte, n)
+			if _, err := io.ReadFull(tconn.R, literal); err != nil {
+				return lines, fmt.Errorf("literal read (%d bytes) failed: %w", n, err)
+			}
+			// Normalise CRLF → LF and split into individual lines.
+			litStr := strings.ReplaceAll(string(literal), "\r\n", "\n")
+			litLines := strings.Split(litStr, "\n")
+			// Trim trailing empty element when literal ends with \n.
+			if len(litLines) > 0 && litLines[len(litLines)-1] == "" {
+				litLines = litLines[:len(litLines)-1]
+			}
+			lines = append(lines, litLines...)
 		}
 	}
 	return lines, nil
