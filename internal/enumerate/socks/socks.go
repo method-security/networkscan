@@ -237,10 +237,10 @@ func probeSocks5(
 	result.supported = true
 	result.chosenMethod = chosenMethod
 
-	// Record auth methods
+	// Record auth methods based on server's chosen method.
+	// userpassAllowed is only set to true after the sub-negotiation succeeds (below).
 	result.authMethods = parseAuthMethodsFromChoice(chosenMethod)
 	result.noAuthAllowed = chosenMethod == socksproto.AuthNoAuth
-	result.userpassAllowed = chosenMethod == socksproto.AuthUsernamePassword
 	result.gssapiAvailable = chosenMethod == socksproto.AuthGSSAPI
 
 	// If server chose no-auth (0xFF = no acceptable method is a non-auth response)
@@ -303,16 +303,30 @@ func probeSocks5(
 	_ = conn.Close()
 
 	// --- Step 4: BIND probe (new connection) ---
+	// Offer the same auth methods as the main probe so that servers requiring
+	// username/password aren't silently misreported as "BIND unsupported".
 	bindConn, err := dialWithTimeout(ctx, target, DefaultDialTimeoutSeconds)
 	if err == nil {
 		_ = bindConn.SetDeadline(time.Now().Add(DefaultProbeTimeoutSeconds * time.Second))
 
-		// Fresh handshake
-		bindGreeting := socksproto.BuildSOCKS5Greeting([]byte{socksproto.AuthNoAuth})
+		bindGreeting := socksproto.BuildSOCKS5Greeting([]byte{socksproto.AuthNoAuth, socksproto.AuthUsernamePassword})
 		if _, err := bindConn.Write(bindGreeting); err == nil {
 			bindReader := bufio.NewReader(bindConn)
 			bindMethod, err := socksproto.ParseSOCKS5ServerChoice(bindReader)
-			if err == nil && bindMethod == socksproto.AuthNoAuth {
+			if err == nil {
+				// Handle userpass auth if the server selects it.
+				if bindMethod == socksproto.AuthUsernamePassword {
+					authReq := socksproto.BuildSOCKS5UsernamePasswordAuth("guest", "guest")
+					if _, err := bindConn.Write(authReq); err == nil {
+						if authOK, err := socksproto.ParseSOCKS5AuthReply(bindReader); err != nil || !authOK {
+							_ = bindConn.Close()
+							goto bindDone
+						}
+					}
+				} else if bindMethod != socksproto.AuthNoAuth {
+					_ = bindConn.Close()
+					goto bindDone
+				}
 				bindReq := socksproto.BuildSOCKS5BindRequest(net.IPv4(0, 0, 0, 0), 0)
 				if _, err := bindConn.Write(bindReq); err == nil {
 					bindRep, _, _, err := socksproto.ParseSOCKS5Reply(bindReader)
@@ -325,17 +339,32 @@ func probeSocks5(
 		}
 		_ = bindConn.Close()
 	}
+bindDone:
 
 	// --- Step 5: UDP ASSOCIATE probe (new connection) ---
+	// Same auth-method mirroring as the BIND probe.
 	udpConn, err := dialWithTimeout(ctx, target, DefaultDialTimeoutSeconds)
 	if err == nil {
 		_ = udpConn.SetDeadline(time.Now().Add(DefaultProbeTimeoutSeconds * time.Second))
 
-		udpGreeting := socksproto.BuildSOCKS5Greeting([]byte{socksproto.AuthNoAuth})
+		udpGreeting := socksproto.BuildSOCKS5Greeting([]byte{socksproto.AuthNoAuth, socksproto.AuthUsernamePassword})
 		if _, err := udpConn.Write(udpGreeting); err == nil {
 			udpReader := bufio.NewReader(udpConn)
 			udpMethod, err := socksproto.ParseSOCKS5ServerChoice(udpReader)
-			if err == nil && udpMethod == socksproto.AuthNoAuth {
+			if err == nil {
+				// Handle userpass auth if the server selects it.
+				if udpMethod == socksproto.AuthUsernamePassword {
+					authReq := socksproto.BuildSOCKS5UsernamePasswordAuth("guest", "guest")
+					if _, err := udpConn.Write(authReq); err == nil {
+						if authOK, err := socksproto.ParseSOCKS5AuthReply(udpReader); err != nil || !authOK {
+							_ = udpConn.Close()
+							goto udpDone
+						}
+					}
+				} else if udpMethod != socksproto.AuthNoAuth {
+					_ = udpConn.Close()
+					goto udpDone
+				}
 				udpReq := socksproto.BuildSOCKS5UDPAssociateRequest(net.IPv4(0, 0, 0, 0), 0)
 				if _, err := udpConn.Write(udpReq); err == nil {
 					udpRep, _, _, err := socksproto.ParseSOCKS5Reply(udpReader)
@@ -347,6 +376,7 @@ func probeSocks5(
 		}
 		_ = udpConn.Close()
 	}
+udpDone:
 
 	return result
 }
