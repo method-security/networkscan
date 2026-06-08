@@ -317,16 +317,26 @@ func probeSocks5(
 		result.udpAssociateSupported = udpRep == socksproto.RepSuccess
 	}
 
+	// When the server selected GSSAPI on the main connection, probeSocks5Command
+	// will also fail to complete auth on the BIND/UDP probe connections (GSSAPI
+	// requires a full token exchange we do not implement). Record this explicitly
+	// so callers know the nil bindRepCode and false udpAssociateSupported are a
+	// limitation of the probe, not evidence that BIND/UDP are disabled.
+	if result.gssapiAvailable {
+		result.errors = append(result.errors, "GSSAPI-only proxy: BIND and UDP ASSOCIATE probes skipped (GSSAPI auth not implemented)")
+	}
+
 	return result
 }
 
 // probeSocks5Command opens a fresh SOCKS5 connection, completes greeting +
-// optional userpass auth (offering both NO_AUTH and USERPASS so proxies
-// that require auth on every connection still answer), then sends the
-// supplied request and returns the reply code. The ok return is false when
-// the probe could not reach the reply stage for any reason (dial failure,
-// write failure, auth rejected). Callers should treat ok=false as "no
-// signal" rather than "command not supported".
+// optional auth (offering NO_AUTH, GSSAPI, and USERPASS so proxies that
+// require auth on every connection still answer), then sends the supplied
+// request and returns the reply code. The ok return is false when the probe
+// could not reach the reply stage for any reason (dial failure, write
+// failure, auth rejected, or GSSAPI-only auth which we cannot complete).
+// Callers should treat ok=false as "no signal" rather than "command not
+// supported".
 func probeSocks5Command(ctx context.Context, target string, request []byte, log svc1log.Logger) (byte, bool) {
 	conn, err := dialWithTimeout(ctx, target, DefaultDialTimeoutSeconds)
 	if err != nil {
@@ -336,7 +346,10 @@ func probeSocks5Command(ctx context.Context, target string, request []byte, log 
 	defer func() { _ = conn.Close() }()
 
 	setStepDeadline(ctx, conn)
-	if _, err := conn.Write(socksproto.BuildSOCKS5Greeting([]byte{socksproto.AuthNoAuth, socksproto.AuthUsernamePassword})); err != nil {
+	// Mirror the main probe greeting (NO_AUTH + GSSAPI + USERPASS) so that
+	// GSSAPI-only servers respond with 0x01 (GSSAPI) instead of 0xFF (no
+	// acceptable method), giving consistent server feedback across probes.
+	if _, err := conn.Write(socksproto.BuildSOCKS5Greeting([]byte{socksproto.AuthNoAuth, socksproto.AuthGSSAPI, socksproto.AuthUsernamePassword})); err != nil {
 		return 0, false
 	}
 	setStepDeadline(ctx, conn)
@@ -362,6 +375,11 @@ func probeSocks5Command(ctx context.Context, target string, request []byte, log 
 		if err != nil || !authOK {
 			return 0, false
 		}
+	case socksproto.AuthGSSAPI:
+		// GSSAPI (RFC 1961) requires a full Kerberos / GSS token exchange that
+		// we do not implement. We cannot complete the handshake and therefore
+		// cannot probe BIND or UDP ASSOCIATE on a GSSAPI-only proxy.
+		return 0, false
 	default:
 		return 0, false
 	}
