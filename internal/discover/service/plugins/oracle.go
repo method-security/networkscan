@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"regexp"
 	"strconv"
@@ -45,12 +46,10 @@ func (OracleFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		return nil, nil
 	}
 
-	buf := make([]byte, 4096)
-	n, err := conn.Read(buf)
-	if err != nil || n < 12 {
+	response, err := readOracleTNSPacket(conn)
+	if err != nil || len(response) < 12 {
 		return nil, nil
 	}
-	response := buf[:n]
 
 	// Check packet type (4=REFUSE, 2=ACCEPT, 11=RESEND)
 	pktType := response[4]
@@ -69,22 +68,43 @@ func (OracleFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 
 func buildOracleTNSConnect(ipStr string, port int) []byte {
 	connectData := []byte(fmt.Sprintf(
-		"(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=non-abc-existent-service-xyz-probe)(CID=(PROGRAM=networkscan)(HOST=localhost)(USER=)))(ADDRESS=(PROTOCOL=tcp)(HOST=%s)(PORT=%d)))",
+		"(DESCRIPTION=(CONNECT_DATA=(SERVICE_NAME=NONEXISTENT_SVC_PROBE_XYZ)(CID=(PROGRAM=networkscan)(HOST=localhost)(USER=)))(ADDRESS=(PROTOCOL=tcp)(HOST=%s)(PORT=%d)))",
 		ipStr, port,
 	))
 	pktLen := uint16(len(connectData) + 58)
 	hdr := make([]byte, 58)
 	binary.BigEndian.PutUint16(hdr[0:], pktLen)
+	binary.BigEndian.PutUint16(hdr[2:], 0)
 	hdr[4] = 0x01 // CONNECT
+	hdr[5] = 0x00
+	binary.BigEndian.PutUint16(hdr[6:], 0)
 	binary.BigEndian.PutUint16(hdr[8:], 0x013c)
 	binary.BigEndian.PutUint16(hdr[10:], 0x012c)
+	binary.BigEndian.PutUint16(hdr[12:], 0x0000)
 	binary.BigEndian.PutUint16(hdr[14:], 0x8000)
 	binary.BigEndian.PutUint16(hdr[16:], 0x7fff)
 	binary.BigEndian.PutUint16(hdr[18:], 0x7f08)
+	binary.BigEndian.PutUint16(hdr[20:], 0x0000)
 	binary.BigEndian.PutUint16(hdr[22:], 0x0001)
 	binary.BigEndian.PutUint16(hdr[24:], uint16(len(connectData)))
 	binary.BigEndian.PutUint16(hdr[26:], 0x003a)
 	return append(hdr, connectData...)
+}
+
+func readOracleTNSPacket(conn net.Conn) ([]byte, error) {
+	header := make([]byte, 8)
+	if _, err := io.ReadFull(conn, header); err != nil {
+		return nil, err
+	}
+	packetLen := int(binary.BigEndian.Uint16(header[0:2]))
+	if packetLen < len(header) {
+		return nil, fmt.Errorf("invalid TNS packet length %d", packetLen)
+	}
+	body := make([]byte, packetLen-len(header))
+	if _, err := io.ReadFull(conn, body); err != nil {
+		return nil, err
+	}
+	return append(header, body...), nil
 }
 
 func buildOracleResult(host string, ip net.IP, port int, body string) *discoverfern.ServiceDetails {
