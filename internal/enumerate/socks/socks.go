@@ -238,9 +238,11 @@ func probeSocks5(
 	result.chosenMethod = chosenMethod
 
 	// Record auth methods based on server's chosen method.
-	// userpassAllowed is only set to true after the sub-negotiation succeeds (below).
+	// userpassAllowed means "server supports username/password as an auth method"
+	// and is set at negotiation time, regardless of whether our probe credentials succeed.
 	result.authMethods = parseAuthMethodsFromChoice(chosenMethod)
 	result.noAuthAllowed = chosenMethod == socksproto.AuthNoAuth
+	result.userpassAllowed = chosenMethod == socksproto.AuthUsernamePassword
 	result.gssapiAvailable = chosenMethod == socksproto.AuthGSSAPI
 
 	// If server chose no-auth (0xFF = no acceptable method is a non-auth response)
@@ -269,11 +271,11 @@ func probeSocks5(
 			return result
 		}
 		if !authOK {
-			// Auth failed — can't proceed but SOCKS5 is confirmed
+			// Credentials rejected — can't proceed but SOCKS5 + userpass support confirmed.
+			// userpassAllowed was already set true at method-negotiation time.
 			_ = conn.Close()
 			return result
 		}
-		result.userpassAllowed = true
 	} else if chosenMethod != socksproto.AuthNoAuth {
 		// Unsupported method — can't proceed
 		_ = conn.Close()
