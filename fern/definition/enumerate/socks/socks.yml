@@ -1,7 +1,7 @@
 types:
   # ENUMs
 
-  # SocksAuthMethod enumerates the authentication methods defined by RFC 1928.
+  # SocksAuthMethod enumerates the SOCKS5 authentication methods (RFC 1928 §4).
   SocksAuthMethod:
     enum:
       - NO_AUTH
