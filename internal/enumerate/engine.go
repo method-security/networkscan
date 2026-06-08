@@ -182,7 +182,7 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		if config.ImapSearch != nil {
 			search = *config.ImapSearch
 		}
-		targetFolder := "INBOX"
+		targetFolder := ""
 		if config.ImapTargetFolder != nil {
 			targetFolder = *config.ImapTargetFolder
 		}

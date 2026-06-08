@@ -299,16 +299,15 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 				}
 			}
 
-			// EXAMINE target folder
-			targetFolder := l.TargetFolder
-			if targetFolder == "" {
-				targetFolder = "INBOX"
-			}
-			tag = nextTag()
-			examineLines, examineErr := sendCommand(conn, tag, fmt.Sprintf("EXAMINE %s", imapQuoteString(targetFolder)), timeout)
-			if examineErr == nil {
-				examineResult := parseExamineResponse(targetFolder, examineLines)
-				detail.SelectedFolder = examineResult
+			// EXAMINE target folder (only if one was specified; the CLI flag
+			// defaults to "INBOX" in cmd/enumerate.go — no internal default here).
+			if l.TargetFolder != "" {
+				tag = nextTag()
+				examineLines, examineErr := sendCommand(conn, tag, fmt.Sprintf("EXAMINE %s", imapQuoteString(l.TargetFolder)), timeout)
+				if examineErr == nil {
+					examineResult := parseExamineResponse(l.TargetFolder, examineLines)
+					detail.SelectedFolder = examineResult
+				}
 			}
 
 			// UID FETCH message headers

@@ -53,12 +53,14 @@ func SelectStrongest(available []Mechanism, allowPlain bool) (Mechanism, bool) {
 }
 
 // ParseMechanisms parses the SASL mechanisms from an IMAP CAPABILITY response.
-// It looks for capability tokens of the form "AUTH=<MECHANISM>".
+// It looks for capability tokens of the form "AUTH=<MECHANISM>" (case-insensitive,
+// per RFC 3501 §2.6 which states capability names are not case-sensitive).
 func ParseMechanisms(capabilities []string) []Mechanism {
 	var mechs []Mechanism
 	for _, cap := range capabilities {
-		if strings.HasPrefix(cap, "AUTH=") {
-			mech := Mechanism(strings.TrimPrefix(cap, "AUTH="))
+		upper := strings.ToUpper(cap)
+		if strings.HasPrefix(upper, "AUTH=") {
+			mech := Mechanism(strings.TrimPrefix(upper, "AUTH="))
 			mechs = append(mechs, mech)
 		}
 	}
