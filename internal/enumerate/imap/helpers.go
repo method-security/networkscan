@@ -2,6 +2,7 @@ package imap
 
 import (
 	// Standard
+	"bufio"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -16,22 +17,48 @@ import (
 	imapfern "github.com/Method-Security/networkscan/generated/go/enumerate/imap"
 )
 
-// tryTCPConnection connects to host:port via plain TCP, reads the IMAP greeting line,
-// and returns the open connection plus the greeting string.
+// implicitTLSPeekTimeout caps how long we wait for an IMAP server to deliver
+// its untagged "* OK" greeting before concluding the listener actually wants
+// TLS (e.g. on port 993 / IMAPS).
+const implicitTLSPeekTimeout = 2 * time.Second
+
+// errImplicitTLSSuspected signals that a plain TCP dial succeeded but the
+// listener did not send an IMAP greeting within implicitTLSPeekTimeout. The
+// caller should close the connection and retry with implicit TLS.
+var errImplicitTLSSuspected = fmt.Errorf("no IMAP greeting on plain socket; implicit TLS suspected")
+
+// tryTCPConnection connects to host:port via plain TCP, then peeks for the
+// untagged IMAP greeting. IMAP greetings start with "* " (e.g. "* OK ...",
+// "* PREAUTH ...", "* BYE ..."). An implicit-TLS listener (IMAPS on 993, or
+// any port hosting implicit TLS) accepts the TCP connection and waits for
+// the client's TLS ClientHello — it never sends a plaintext greeting. To
+// avoid hanging in that case we peek with a short deadline; if the first
+// byte is not '*', we return errImplicitTLSSuspected so the caller falls
+// back to TLS.
 func tryTCPConnection(host string, port int, timeout int) (net.Conn, string, error) {
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	conn, err := net.DialTimeout("tcp", addr, time.Duration(timeout)*time.Second)
 	if err != nil {
 		return nil, "", err
 	}
+
+	// Quick peek for the leading '*' of an IMAP untagged response.
+	_ = conn.SetReadDeadline(time.Now().Add(implicitTLSPeekTimeout))
+	reader := bufio.NewReader(conn)
+	peek, peekErr := reader.Peek(1)
+	if peekErr != nil || len(peek) == 0 || peek[0] != '*' {
+		_ = conn.Close()
+		return nil, "", errImplicitTLSSuspected
+	}
+
+	// Greeting is on its way; restore the full timeout and consume the line.
 	_ = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
-	tconn := textproto.NewConn(conn)
-	greeting, err := tconn.ReadLine()
+	greeting, err := reader.ReadString('\n')
 	if err != nil {
 		_ = conn.Close()
 		return nil, "", fmt.Errorf("failed to read greeting: %w", err)
 	}
-	return conn, greeting, nil
+	return conn, strings.TrimRight(greeting, "\r\n"), nil
 }
 
 // tryTLSConnection connects to host:port directly via TLS, reads the IMAP greeting line,
