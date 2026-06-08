@@ -15,6 +15,7 @@ import (
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
 	ike "github.com/Method-Security/networkscan/internal/enumerate/ike"
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
+	mongodb "github.com/Method-Security/networkscan/internal/enumerate/mongodb"
 	pop3 "github.com/Method-Security/networkscan/internal/enumerate/pop3"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
@@ -161,6 +162,8 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &ike.LibraryEnumerateIKE{}}, nil
 	case enumeratefern.SupportedServiceTypeSnmp:
 		return NetworkApplicationEngine{Library: &snmp.LibraryEnumerateSNMP{}}, nil
+	case enumeratefern.SupportedServiceTypeMongodb:
+		return NetworkApplicationEngine{Library: &mongodb.LibraryEnumerateMongoDB{}}, nil
 	case enumeratefern.SupportedServiceTypePop3:
 		return NetworkApplicationEngine{Library: &pop3.LibraryEnumeratePOP3{}}, nil
 	default:

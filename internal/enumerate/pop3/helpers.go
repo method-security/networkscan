@@ -21,13 +21,27 @@ func dialTCP(ctx context.Context, target string) (net.Conn, error) {
 // dialTLS opens a TLS connection to the target (implicit TLS / port 995).
 // InsecureSkipVerify is intentional: enumeration probes target mail servers that
 // frequently present self-signed or expired certificates.
-func dialTLS(target, hostname string) (net.Conn, error) {
+func dialTLS(ctx context.Context, target, hostname string) (net.Conn, error) {
 	d := net.Dialer{}
 	tlsCfg := &tls.Config{
 		ServerName:         hostname,
 		InsecureSkipVerify: true, //nolint:gosec
 	}
-	return tls.DialWithDialer(&d, "tcp", target, tlsCfg)
+	// Use a TCP-level dialer that respects ctx, then wrap it in TLS so the
+	// connection inherits both the caller's cancellation and the dial timeout.
+	rawConn, err := d.DialContext(ctx, "tcp", target)
+	if err != nil {
+		return nil, err
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = rawConn.SetDeadline(deadline)
+	}
+	tlsConn := tls.Client(rawConn, tlsCfg)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_ = rawConn.Close()
+		return nil, err
+	}
+	return tlsConn, nil
 }
 
 // sendCommand writes a POP3 command to conn and reads the single-line response

@@ -7,6 +7,7 @@ imports:
   ldap: ./ldap/ldap.yml
   ike: ./ike/ike.yml
   snmp: ./snmp/snmp.yml
+  mongodb: ./mongodb/mongodb.yml
   pop3: ./pop3/pop3.yml
 types:
   # ENUMs
@@ -20,6 +21,7 @@ types:
       - LDAP
       - IKE
       - SNMP
+      - MONGODB
       - POP3
   # Report structs
   EnumerateServiceDetails:
@@ -32,6 +34,7 @@ types:
       EnumerateLdapDetails: ldap.EnumerateLdapDetails
       EnumerateIkeDetails: ike.EnumerateIkeDetails
       EnumerateSnmpDetails: snmp.EnumerateSnmpDetails
+      EnumerateMongodbDetails: mongodb.EnumerateMongodbDetails
       EnumeratePop3Details: pop3.EnumeratePop3Details
   EnumerateServiceResult:
     properties:

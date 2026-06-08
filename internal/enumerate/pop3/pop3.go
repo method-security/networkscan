@@ -108,7 +108,7 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 
 	if conn == nil {
 		log.Debug("Dialing implicit TLS", svc1log.SafeParam("target", target))
-		tlsConn, tlsErr := dialTLS(target, hostname)
+		tlsConn, tlsErr := dialTLS(ctx, target, hostname)
 		if tlsErr != nil {
 			canConnect := false
 			detail.CanConnect = &canConnect
@@ -130,6 +130,15 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 	canConnect := true
 	detail.CanConnect = &canConnect
 	detail.ImplicitTls = &implicitTLS
+
+	// Apply the caller's deadline to every subsequent read/write on this
+	// connection. Without this, ReadGreeting/CAPA/STLS only respect the OS
+	// TCP timeout and can keep running after the engine has already reported
+	// the target as deadline-exceeded. Use the context's deadline if set;
+	// otherwise leave the deadline open and let socket-level timeouts apply.
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
 
 	// Read greeting
 	greeting, err := pop3util.ReadGreeting(reader)
