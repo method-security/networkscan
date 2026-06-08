@@ -5,11 +5,11 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type NTPFingerprinter struct{}
@@ -22,14 +22,14 @@ func (NTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	// Create UDP connection
-	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)
+	conn, err := helpers.Dial(ctx, "udp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set read deadline
-	if err := conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+	if err := helpers.SetReadDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 

@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	"github.com/Method-Security/networkscan/utils"
 )
 
@@ -22,19 +22,14 @@ func (SSHFingerprinter) DefaultPorts() []int { return []int{22, 2222} }
 
 func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-
-	// Use raw TCP connection to read SSH banner - the gold standard approach
-	dialer := net.Dialer{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	conn, err := helpers.Dial(ctx, "tcp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set write deadline before sending client version
-	err = conn.SetWriteDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	err = helpers.SetWriteDeadline(conn, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +42,7 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	}
 
 	// Set read deadline for banner response
-	err = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
+	err = helpers.SetReadDeadline(conn, timeout)
 	if err != nil {
 		return nil, err
 	}

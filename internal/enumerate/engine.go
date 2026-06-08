@@ -14,7 +14,9 @@ import (
 	ftp "github.com/Method-Security/networkscan/internal/enumerate/ftp"
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
 	ike "github.com/Method-Security/networkscan/internal/enumerate/ike"
+	imap "github.com/Method-Security/networkscan/internal/enumerate/imap"
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
+	mongodb "github.com/Method-Security/networkscan/internal/enumerate/mongodb"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
 	snmp "github.com/Method-Security/networkscan/internal/enumerate/snmp"
@@ -160,6 +162,46 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &ike.LibraryEnumerateIKE{}}, nil
 	case enumeratefern.SupportedServiceTypeSnmp:
 		return NetworkApplicationEngine{Library: &snmp.LibraryEnumerateSNMP{}}, nil
+	case enumeratefern.SupportedServiceTypeImap:
+		username := ""
+		if config.ImapUsername != nil {
+			username = *config.ImapUsername
+		}
+		password := ""
+		if config.ImapPassword != nil {
+			password = *config.ImapPassword
+		}
+		mechanism := ""
+		if config.ImapMechanism != nil {
+			mechanism = *config.ImapMechanism
+		}
+		maxMessages := 0
+		if config.ImapMaxMessages != nil {
+			maxMessages = *config.ImapMaxMessages
+		}
+		search := ""
+		if config.ImapSearch != nil {
+			search = *config.ImapSearch
+		}
+		targetFolder := ""
+		if config.ImapTargetFolder != nil {
+			targetFolder = *config.ImapTargetFolder
+		}
+		allowPlaintext := false
+		if config.ImapAllowPlaintextCredentials != nil {
+			allowPlaintext = *config.ImapAllowPlaintextCredentials
+		}
+		return NetworkApplicationEngine{Library: &imap.LibraryEnumerateIMAP{
+			Username:                  username,
+			Password:                  password,
+			Mechanism:                 mechanism,
+			MaxMessages:               maxMessages,
+			Search:                    search,
+			TargetFolder:              targetFolder,
+			AllowPlaintextCredentials: allowPlaintext,
+		}}, nil
+	case enumeratefern.SupportedServiceTypeMongodb:
+		return NetworkApplicationEngine{Library: &mongodb.LibraryEnumerateMongoDB{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}
