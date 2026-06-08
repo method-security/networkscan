@@ -26,7 +26,7 @@ func (OracleFingerprinter) DefaultPorts() []int { return []int{1521, 1522, 1525}
 func (OracleFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
-	timeoutDur := time.Duration(timeout) * time.Millisecond
+	timeoutDur := time.Duration(timeout) * time.Second
 	if timeout <= 0 {
 		timeoutDur = 5 * time.Second
 	}
@@ -84,7 +84,6 @@ func buildOracleTNSConnect(ipStr string, port int) []byte {
 	binary.BigEndian.PutUint16(hdr[22:], 0x0001)
 	binary.BigEndian.PutUint16(hdr[24:], uint16(len(connectData)))
 	binary.BigEndian.PutUint16(hdr[26:], 0x003a)
-	binary.BigEndian.PutUint32(hdr[28:], 0x00000400)
 	return append(hdr, connectData...)
 }
 
