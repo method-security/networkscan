@@ -9,6 +9,7 @@ imports:
   snmp: ./snmp/snmp.yml
   imap: ./imap/imap.yml
   mongodb: ./mongodb/mongodb.yml
+  pop3: ./pop3/pop3.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -23,6 +24,7 @@ types:
       - SNMP
       - IMAP
       - MONGODB
+      - POP3
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -36,6 +38,7 @@ types:
       EnumerateSnmpDetails: snmp.EnumerateSnmpDetails
       EnumerateImapDetails: imap.EnumerateImapDetails
       EnumerateMongodbDetails: mongodb.EnumerateMongodbDetails
+      EnumeratePop3Details: pop3.EnumeratePop3Details
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>
