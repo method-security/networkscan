@@ -91,6 +91,8 @@ func GetDefaultPortForService(service pentestfern.SprayTargetService) int {
 		return 3306
 	case pentestfern.SprayTargetServicePostgres:
 		return 5432
+	case pentestfern.SprayTargetServiceEtcd:
+		return 2379
 	default:
 		return 80
 	}

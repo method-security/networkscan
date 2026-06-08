@@ -81,7 +81,7 @@ func (EtcdFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		kubernetesDetected := detectKubernetesEtcd(ctx, client, scheme, addr)
 		serverInfo.KubernetesDetected = &kubernetesDetected
 
-		return buildEtcdServiceResult(host, ip, port, serverInfo), nil
+		return buildEtcdServiceResult(host, ip, port, scheme == "https", serverInfo), nil
 	}
 	return nil, nil
 }
@@ -106,7 +106,7 @@ func detectKubernetesEtcd(ctx context.Context, client *http.Client, scheme, addr
 	return strings.Contains(metrics, "etcd_mvcc_db_total_size") && strings.Contains(metrics, "etcd_server_version")
 }
 
-func buildEtcdServiceResult(host string, ip net.IP, port int, serverInfo *protocol.EtcdServerInfo) *discoverfern.ServiceDetails {
+func buildEtcdServiceResult(host string, ip net.IP, port int, tlsEnabled bool, serverInfo *protocol.EtcdServerInfo) *discoverfern.ServiceDetails {
 	hostname := host
 	if hostname == "" {
 		hostname = ip.String()
@@ -116,7 +116,7 @@ func buildEtcdServiceResult(host string, ip net.IP, port int, serverInfo *protoc
 		Host:      hostname,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
+		Tls:       tlsEnabled,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeUnknown,
 		Metadata:  &discoverfern.ServiceMetadata{Etcd: serverInfo},
