@@ -108,7 +108,7 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 
 	if conn == nil {
 		log.Debug("Dialing implicit TLS", svc1log.SafeParam("target", target))
-		tlsConn, tlsErr := dialTLS(target, hostname)
+		tlsConn, tlsErr := dialTLS(ctx, target, hostname)
 		if tlsErr != nil {
 			canConnect := false
 			detail.CanConnect = &canConnect
@@ -199,11 +199,12 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 		if err != nil {
 			log.Debug("STLS upgrade failed", svc1log.SafeParam("error", err))
 			errors = append(errors, fmt.Sprintf("STLS upgrade failed: %v", err))
-			// upgradeToTLS already closed the connection when the TLS
-			// handshake failed (server is in TLS-expectation mode).
-			// For a -ERR STLS rejection the conn is technically still
-			// valid, but we have nothing further to send in either case.
-			// Mark conn nil so the deferred QUIT+close is skipped.
+			// Close the TCP connection in all failure sub-cases:
+			//   - -ERR rejection: conn is still open (upgradeToTLS didn't close it)
+			//   - I/O error on STLS command: conn may be in an unknown state
+			//   - TLS handshake failure: upgradeToTLS already closed it; Close() is a no-op
+			// In all cases skip the cleartext QUIT — the server may be in TLS mode.
+			_ = conn.Close()
 			conn = nil
 		} else {
 			log.Debug("STLS upgrade successful")
