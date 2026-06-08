@@ -21,6 +21,11 @@ import (
 // its "+OK" greeting before concluding the listener actually wants TLS.
 const implicitTLSPeekTimeout = 2 * time.Second
 
+// pop3sPort is the IANA-assigned port for POP3 over implicit TLS (RFC 8314).
+// On this port we treat a peek-timeout as a strong signal of implicit TLS
+// rather than as a slow plain-text server.
+const pop3sPort = "995"
+
 // LibraryEnumeratePOP3 implements NetworkApplicationLibrary for POP3 enumeration.
 type LibraryEnumeratePOP3 struct{}
 
@@ -41,7 +46,7 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 	serverInfo := &protocolfern.Pop3ServerInfo{}
 	errors := []string{}
 
-	hostname, _, err := net.SplitHostPort(target)
+	hostname, portStr, err := net.SplitHostPort(target)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("invalid target format: %v", err))
 		return &enumeratefern.EnumerateServiceDetails{EnumeratePop3Details: &detail}, errors
@@ -76,16 +81,21 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 			reader = plainReader
 			log.Debug("Plain POP3 greeting detected", svc1log.SafeParam("status", string(peek)))
 		} else if netErr, ok := peekErr.(net.Error); peekErr != nil && ok && netErr.Timeout() {
-			// Peek deadline elapsed before the server sent anything.  The server
-			// may simply be slow (e.g. a busy Dovecot instance on a loaded host).
-			// A genuine implicit-TLS listener also stays silent while waiting for
-			// the client's ClientHello, so we cannot distinguish the two cases on
-			// timing alone.  Keeping the TCP connection avoids misrouting a slow
-			// cleartext server to TLS; ReadGreeting will apply its own deadline and
-			// fail gracefully if the listener is truly waiting for a TLS ClientHello.
-			conn = plainConn
-			reader = plainReader
-			log.Debug("Peek timed out — keeping plain TCP connection; ReadGreeting will determine if POP3")
+			// Peek deadline elapsed before the server sent anything.  Two cases
+			// look identical on timing alone: a slow plain-text server, or a
+			// silent implicit-TLS listener waiting for the client's ClientHello.
+			// Use the port number to disambiguate — :995 is the IANA-assigned
+			// POP3S port, so a silent listener there is almost certainly TLS.
+			// On other ports, assume a slow plain server and keep the
+			// connection (ReadGreeting will apply its own deadline downstream).
+			if portStr == pop3sPort {
+				log.Debug("Peek timed out on :995 — assuming implicit TLS")
+				_ = plainConn.Close()
+			} else {
+				conn = plainConn
+				reader = plainReader
+				log.Debug("Peek timed out — keeping plain TCP connection; ReadGreeting will determine if POP3")
+			}
 		} else {
 			// Either the first byte arrived and is not '+' (e.g. a TLS ClientHello
 			// response fragment), or there was a hard connection error.  Fall back
