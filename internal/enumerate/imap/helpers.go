@@ -372,3 +372,20 @@ func certSubject(cert *x509.Certificate) string {
 	}
 	return cert.Subject.String()
 }
+
+// stripCRLF removes carriage-return and line-feed characters from s, preventing
+// CRLF injection in IMAP command lines sent via textproto.PrintfLine.
+func stripCRLF(s string) string {
+	return strings.NewReplacer("\r", "", "\n", "").Replace(s)
+}
+
+// imapQuoteString wraps s in an IMAP double-quoted string literal, escaping
+// backslash and double-quote per RFC 3501 §4.3. This allows usernames and
+// passwords that contain spaces, parentheses, or other special characters.
+// CR and LF are stripped first to prevent CRLF injection.
+func imapQuoteString(s string) string {
+	s = stripCRLF(s)
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "\"", "\\\"")
+	return `"` + s + `"`
+}

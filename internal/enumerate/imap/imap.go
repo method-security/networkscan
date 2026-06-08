@@ -69,7 +69,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 	timeout := 30
 	if deadline, ok := ctx.Deadline(); ok {
 		remaining := int(time.Until(deadline).Seconds())
-		if remaining > 0 && remaining < timeout {
+		if remaining > 0 {
 			timeout = remaining
 		}
 	}
@@ -316,7 +316,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 			if l.MaxMessages > 0 {
 				tag = nextTag()
 				fetchLines, fetchErr := sendCommand(conn, tag,
-					`UID FETCH 1:* (BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)])`,
+					fmt.Sprintf("FETCH 1:%d (UID BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)])", l.MaxMessages),
 					timeout)
 				if fetchErr == nil {
 					msgs := parseMessageHeaders(fetchLines, l.MaxMessages)
@@ -329,7 +329,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 			// UID SEARCH
 			if l.Search != "" {
 				tag = nextTag()
-				searchLines, searchErr := sendCommand(conn, tag, fmt.Sprintf("UID SEARCH %s", l.Search), timeout)
+				searchLines, searchErr := sendCommand(conn, tag, fmt.Sprintf("UID SEARCH %s", stripCRLF(l.Search)), timeout)
 				if searchErr == nil {
 					var uids []int
 					for _, line := range searchLines {
@@ -377,8 +377,19 @@ func (l *LibraryEnumerateIMAP) authenticate(
 	var mech sasl.Mechanism
 	if l.Mechanism != "" {
 		mech = sasl.Mechanism(strings.ToUpper(l.Mechanism))
+		// Enforce plaintext credential policy even when mechanism is explicitly set.
+		if (mech == sasl.MechanismPlain || mech == sasl.MechanismLogin) && !tlsActive && !l.AllowPlaintextCredentials {
+			return fmt.Errorf("refusing %s over unencrypted transport (use --imap-allow-plaintext-credentials or ensure TLS is active)", mech)
+		}
 	} else {
-		selected, ok := sasl.SelectStrongest(available, l.AllowPlaintextCredentials || tlsActive)
+		// Filter to mechanisms this client implements (PLAIN and LOGIN only).
+		var implementedAvailable []sasl.Mechanism
+		for _, m := range available {
+			if m == sasl.MechanismPlain || m == sasl.MechanismLogin {
+				implementedAvailable = append(implementedAvailable, m)
+			}
+		}
+		selected, ok := sasl.SelectStrongest(implementedAvailable, l.AllowPlaintextCredentials || tlsActive)
 		if !ok {
 			// No strong mechanism; fall back to LOGIN if TLS is active or plaintext allowed
 			if tlsActive || l.AllowPlaintextCredentials {
@@ -397,8 +408,7 @@ func (l *LibraryEnumerateIMAP) authenticate(
 	case sasl.MechanismLogin:
 		return l.authLogin(conn, nextTag, timeout)
 	default:
-		// For unsupported complex mechanisms, try LOGIN as fallback
-		return l.authLogin(conn, nextTag, timeout)
+		return fmt.Errorf("SASL mechanism %q is not implemented; supported: PLAIN, LOGIN", mech)
 	}
 }
 
@@ -448,7 +458,7 @@ func (l *LibraryEnumerateIMAP) authPlain(conn net.Conn, nextTag func() string, t
 func (l *LibraryEnumerateIMAP) authLogin(conn net.Conn, nextTag func() string, timeout int) error {
 	tag := nextTag()
 	lines, err := sendCommand(conn, tag,
-		fmt.Sprintf("LOGIN %s %s", l.Username, l.Password),
+		fmt.Sprintf("LOGIN %s %s", imapQuoteString(l.Username), imapQuoteString(l.Password)),
 		timeout)
 	if err != nil {
 		return fmt.Errorf("LOGIN command failed: %w", err)
