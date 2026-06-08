@@ -8,6 +8,7 @@ import (
 	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
 	mongodbfern "github.com/Method-Security/networkscan/generated/go/pentest/mongodb"
 	msrpcfern "github.com/Method-Security/networkscan/generated/go/pentest/msrpc"
+	mysqlfern "github.com/Method-Security/networkscan/generated/go/pentest/mysql"
 	redisfern "github.com/Method-Security/networkscan/generated/go/pentest/redis"
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	sshfern "github.com/Method-Security/networkscan/generated/go/pentest/ssh"
@@ -303,6 +304,7 @@ var (
 	ftpParserInstance     *FTPActionParser
 	winrmParserInstance   *WinRMActionParser
 	mongodbParserInstance *MongoDBActionParser
+	mysqlParserInstance   *MySQLActionParser
 	redisParserInstance   *RedisActionParser
 )
 
@@ -446,6 +448,52 @@ func (p *RedisActionParser) GetValidActions() []string {
 }
 
 func (p *RedisActionParser) ContainsAction(actions []redisfern.PentestRedisAction, target redisfern.PentestRedisAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
+// MySQLActionParser handles MySQL-specific action parsing
+type MySQLActionParser struct{}
+
+// GetMySQLParser returns the singleton MySQL action parser
+func GetMySQLParser() *MySQLActionParser {
+	if mysqlParserInstance == nil {
+		mysqlParserInstance = &MySQLActionParser{}
+	}
+	return mysqlParserInstance
+}
+
+func (p *MySQLActionParser) ParseActions(actionStrings []string) ([]mysqlfern.PentestMysqlAction, error) {
+	var actions []mysqlfern.PentestMysqlAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			mysqlAction, err := mysqlfern.NewPentestMysqlActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid MySQL action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, mysqlAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *MySQLActionParser) GetValidActions() []string {
+	return []string{"PROBE", "AUTH"}
+}
+
+func (p *MySQLActionParser) ContainsAction(actions []mysqlfern.PentestMysqlAction, target mysqlfern.PentestMysqlAction) bool {
 	for _, action := range actions {
 		if action == target {
 			return true
