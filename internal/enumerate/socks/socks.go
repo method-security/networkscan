@@ -283,6 +283,9 @@ func probeSocks5(
 	}
 
 	// --- Step 3: CONNECT probe ---
+	// Refresh the deadline before CONNECT so prior steps (greeting, auth)
+	// don't consume the entire budget and leave CONNECT with insufficient time.
+	_ = conn.SetDeadline(time.Now().Add(DefaultProbeTimeoutSeconds * time.Second))
 	connectReq := socksproto.BuildSOCKS5ConnectRequest(probeIP, DefaultProbePort)
 	if _, err := conn.Write(connectReq); err != nil {
 		result.errors = append(result.errors, fmt.Sprintf("SOCKS5 CONNECT write failed: %v", err))
