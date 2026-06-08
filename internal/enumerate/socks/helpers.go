@@ -38,12 +38,13 @@ func detectImplementationHint(
 	}
 
 	// microsocks: SOCKS5-only (no v4/4a), NO_AUTH selected, no BIND support
-	// (microsocks may either reply 0x07 or simply close the connection — both
-	// surface as bindSupported=false), and no UDP ASSOCIATE. Fast response.
+	// (microsocks replies 0x07 = command not supported for BIND).
+	// We require an explicit 0x07 reply; nil means BIND was not probed or the
+	// connection failed — ambiguous and not sufficient evidence for this hint.
 	socks5OnlyMinimal := !socks4Supported && !socks4aSupported &&
 		chosenMethod == 0x00 &&
 		!udpAssociateSupported &&
-		(bindRepCode == nil || *bindRepCode == 0x07)
+		bindRepCode != nil && *bindRepCode == 0x07
 	if socks5OnlyMinimal && responseTimeMs < 50 {
 		return socksfern.SocksImplementationHintMicrosocks
 	}
