@@ -24,6 +24,7 @@ require (
 	github.com/projectdiscovery/nuclei/v3 v3.4.7
 	github.com/projectdiscovery/useragent v0.0.101
 	github.com/redis/go-redis/v9 v9.11.0
+	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	go.mongodb.org/mongo-driver v1.17.4

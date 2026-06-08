@@ -87,6 +87,8 @@ func GetDefaultPortForService(service pentestfern.SprayTargetService) int {
 		return 88
 	case pentestfern.SprayTargetServiceMysql:
 		return 3306
+	case pentestfern.SprayTargetServiceOracle:
+		return 1521
 	default:
 		return 80
 	}

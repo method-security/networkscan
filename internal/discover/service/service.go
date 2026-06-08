@@ -86,6 +86,7 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.MemcachedFingerprinter{},       // MEMCACHED
 	&localPlugins.UnistreamFingerprinter{},       // Unitronics UniStream (more specific EtherNet/IP device match)
 	&localPlugins.EthernetIPFingerprinter{},      // Generic EtherNet/IP/CIP fallback for TCP/44818
+	&localPlugins.OracleFingerprinter{},          // Oracle TNS Listener
 	&localPlugins.SMTPFingerprinter{},            // SMTP (Simple Mail Transfer Protocol)
 	&localPlugins.JMXFingerprinter{},             // JMX over RMI; keep before generic Java RMI
 	&localPlugins.JavaRMIFingerprinter{},         // Java RMI Registry
