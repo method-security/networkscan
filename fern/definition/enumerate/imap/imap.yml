@@ -1,0 +1,74 @@
+imports:
+  imapProtocol: ../../common/protocol/imap.yml
+
+types:
+  # ENUMs
+  ImapVersion:
+    enum:
+      - IMAP4REV1
+      - IMAP4REV2
+
+  ImapAuthMechanism:
+    enum:
+      - PLAIN
+      - LOGIN
+      - CRAM_MD5
+      - GSSAPI
+      - XOAUTH2
+
+  # Common Objects
+  ImapFolder:
+    properties:
+      name: string
+      delimiter: optional<string>
+      attributes: optional<list<string>>
+
+  ImapFolderStatus:
+    properties:
+      folderName: string
+      messages: optional<integer>
+      recent: optional<integer>
+      unseen: optional<integer>
+      uidNext: optional<integer>
+      uidValidity: optional<integer>
+
+  ImapSelectedFolderResult:
+    properties:
+      folderName: string
+      exists: optional<integer>
+      recent: optional<integer>
+      firstUnseen: optional<integer>
+      uidNext: optional<integer>
+      uidValidity: optional<integer>
+      permanentFlags: optional<list<string>>
+
+  ImapSearchResult:
+    properties:
+      folderName: string
+      searchExpression: string
+      matchingUids: optional<list<integer>>
+
+  ImapMessage:
+    properties:
+      uid: integer
+      from: optional<string>
+      to: optional<string>
+      subject: optional<string>
+      date: optional<string>
+      messageId: optional<string>
+      size: optional<integer>
+
+  # Report struct
+  EnumerateImapDetails:
+    properties:
+      target: string
+      canConnect: optional<boolean>
+      serverInfo: optional<imapProtocol.ImapServerInfo>
+      starttlsSupported: optional<boolean>
+      tlsEnforced: optional<boolean>
+      authenticated: optional<boolean>
+      folders: optional<list<ImapFolder>>
+      folderStatuses: optional<list<ImapFolderStatus>>
+      selectedFolder: optional<ImapSelectedFolderResult>
+      searchResult: optional<ImapSearchResult>
+      messages: optional<list<ImapMessage>>
