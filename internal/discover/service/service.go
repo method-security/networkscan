@@ -62,6 +62,7 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.GrpcFingerprinter{},            // gRPC can run on any port
 	&localPlugins.MongoDBFingerprinter{},         // MongoDB driver manages its own connections
 	&localPlugins.CassandraFingerprinter{},       // Cassandra native protocol
+	&localPlugins.EtcdFingerprinter{},            // etcd distributed key-value store
 	&localPlugins.BGPFingerprinter{},             // BGP protocol detection
 	&localPlugins.DCERPCFingerprinter{},          // Windows DCE/RPC
 	&localPlugins.IPPFingerprinter{},             // Internet Printing Protocol
