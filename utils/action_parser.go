@@ -6,6 +6,7 @@ import (
 
 	ftpfern "github.com/Method-Security/networkscan/generated/go/pentest/ftp"
 	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
+	mongodbfern "github.com/Method-Security/networkscan/generated/go/pentest/mongodb"
 	msrpcfern "github.com/Method-Security/networkscan/generated/go/pentest/msrpc"
 	redisfern "github.com/Method-Security/networkscan/generated/go/pentest/redis"
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
@@ -254,16 +255,55 @@ func (p *WinRMActionParser) ContainsAction(actions []winrmfern.PentestWinrmActio
 	return false
 }
 
+// MongoDBActionParser handles MongoDB-specific action parsing
+type MongoDBActionParser struct{}
+
+func (p *MongoDBActionParser) ParseActions(actionStrings []string) ([]mongodbfern.PentestMongodbAction, error) {
+	var actions []mongodbfern.PentestMongodbAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			mongodbAction, err := mongodbfern.NewPentestMongodbActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid MongoDB action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, mongodbAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *MongoDBActionParser) GetValidActions() []string {
+	return []string{"PROBE", "AUTH", "QUERY"}
+}
+
+func (p *MongoDBActionParser) ContainsAction(actions []mongodbfern.PentestMongodbAction, target mongodbfern.PentestMongodbAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
 // Global parser instances (singletons)
 var (
-	smbParserInstance    *SMBActionParser
-	sshParserInstance    *SSHActionParser
-	telnetParserInstance *TelnetActionParser
-	ldapParserInstance   *LDAPActionParser
-	msrpcParserInstance  *MSRPCActionParser
-	ftpParserInstance    *FTPActionParser
-	winrmParserInstance  *WinRMActionParser
-	redisParserInstance  *RedisActionParser
+	smbParserInstance     *SMBActionParser
+	sshParserInstance     *SSHActionParser
+	telnetParserInstance  *TelnetActionParser
+	ldapParserInstance    *LDAPActionParser
+	msrpcParserInstance   *MSRPCActionParser
+	ftpParserInstance     *FTPActionParser
+	winrmParserInstance   *WinRMActionParser
+	mongodbParserInstance *MongoDBActionParser
+	redisParserInstance   *RedisActionParser
 )
 
 // GetSMBParser returns the singleton SMB action parser
@@ -320,6 +360,14 @@ func GetWinRMParser() *WinRMActionParser {
 		winrmParserInstance = &WinRMActionParser{}
 	}
 	return winrmParserInstance
+}
+
+// GetMongoDBParser returns the singleton MongoDB action parser
+func GetMongoDBParser() *MongoDBActionParser {
+	if mongodbParserInstance == nil {
+		mongodbParserInstance = &MongoDBActionParser{}
+	}
+	return mongodbParserInstance
 }
 
 // FTPActionParser handles FTP-specific action parsing

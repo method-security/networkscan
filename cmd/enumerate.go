@@ -69,7 +69,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 		},
 	}
 	enumerateServiceCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to enumerate")
-	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, ldap, smb, smtp, snmp, ssh)")
+	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, ldap, mongodb, smb, smtp, snmp, ssh)")
 	enumerateServiceCmd.Flags().Int("timeout", 30, "Timeout in seconds for enumerating each target")
 	enumerateServiceCmd.Flags().StringSlice("wordlist", []string{}, "Custom username wordlist for user enumeration (SMTP VRFY/EXPN/RCPT TO)")
 
