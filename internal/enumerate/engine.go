@@ -45,14 +45,7 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 	log.Info("Starting enumeration for targets",
 		svc1log.SafeParam("targets", len(config.Targets)),
 		svc1log.SafeParam("timeout", config.Timeout))
-	// Build a sanitised copy of the config for the report — never echo
-	// credentials into output signals or logs.
-	reportedConfig := config
-	if reportedConfig.ImapPassword != nil && *reportedConfig.ImapPassword != "" {
-		redacted := "<redacted>"
-		reportedConfig.ImapPassword = &redacted
-	}
-	resource := enumeratefern.EnumerateServiceReport{Config: &reportedConfig}
+	resource := enumeratefern.EnumerateServiceReport{Config: &config}
 
 	engine, err := getEngine(config)
 	if err != nil {
