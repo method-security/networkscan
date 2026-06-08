@@ -10,6 +10,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	"github.com/Method-Security/networkscan/utils"
 )
 
@@ -21,14 +22,14 @@ func (SSHFingerprinter) DefaultPorts() []int { return []int{22, 2222} }
 
 func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	conn, err := dialService(ctx, "tcp", addr, timeout)
+	conn, err := helpers.Dial(ctx, "tcp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set write deadline before sending client version
-	err = setServiceWriteDeadline(conn, timeout)
+	err = helpers.SetWriteDeadline(conn, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +42,7 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	}
 
 	// Set read deadline for banner response
-	err = setServiceReadDeadline(conn, timeout)
+	err = helpers.SetReadDeadline(conn, timeout)
 	if err != nil {
 		return nil, err
 	}

@@ -13,6 +13,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	"github.com/jfjallid/gokrb5/v8/config"
 	"github.com/jfjallid/gokrb5/v8/iana/nametype"
 	"github.com/jfjallid/gokrb5/v8/messages"
@@ -29,11 +30,11 @@ func (KerberosFingerprinter) DefaultPorts() []int { return []int{88} }
 
 func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	// Create a context with timeout
-	timeoutCtx, cancel := serviceContext(ctx, timeout)
+	timeoutCtx, cancel := helpers.Context(ctx, timeout)
 	defer cancel()
 
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	timeoutDuration := serviceTimeout(timeout)
+	timeoutDuration := helpers.Timeout(timeout)
 
 	// Try plaintext connection first
 	var d net.Dialer
@@ -113,7 +114,7 @@ func detectKerberos(conn net.Conn, realm string, timeout time.Duration, tlsMode 
 	}
 
 	// Send the packet
-	if err := setServiceWriteDeadlineDuration(conn, timeout); err != nil {
+	if err := helpers.SetWriteDeadlineDuration(conn, timeout); err != nil {
 		return false, tlsMode, err
 	}
 	_, err = conn.Write(packet)
@@ -122,7 +123,7 @@ func detectKerberos(conn net.Conn, realm string, timeout time.Duration, tlsMode 
 	}
 
 	// Read response
-	if err := setServiceReadDeadlineDuration(conn, timeout); err != nil {
+	if err := helpers.SetReadDeadlineDuration(conn, timeout); err != nil {
 		return false, tlsMode, err
 	}
 

@@ -11,6 +11,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	"github.com/Method-Security/networkscan/utils"
 )
 
@@ -21,7 +22,7 @@ func (BGPFingerprinter) Name() string { return "bgp" }
 func (BGPFingerprinter) DefaultPorts() []int { return []int{179} }
 
 func (BGPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	conn, err := dialService(ctx, "tcp", utils.FormatHostPort(ip.String(), port), timeout)
+	conn, err := helpers.Dial(ctx, "tcp", utils.FormatHostPort(ip.String(), port), timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +32,7 @@ func (BGPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	openMsg := buildBGPOpenMessage()
 
 	// Set deadline
-	if err := setServiceDeadline(conn, timeout); err != nil {
+	if err := helpers.SetDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 

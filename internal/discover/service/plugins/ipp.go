@@ -14,6 +14,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type IPPFingerprinter struct{}
@@ -69,7 +70,7 @@ func detectIPPWithScheme(ctx context.Context, ip net.IP, port int, host string, 
 
 	// Create HTTP client
 	client := &http.Client{
-		Timeout: serviceTimeout(timeout),
+		Timeout: helpers.Timeout(timeout),
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},

@@ -10,6 +10,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type XdmcpFingerprinter struct{}
@@ -22,14 +23,14 @@ func (XdmcpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host 
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	// XDMCP uses UDP
-	conn, err := dialService(ctx, "udp", addr, timeout)
+	conn, err := helpers.Dial(ctx, "udp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set read deadline
-	if err := setServiceDeadline(conn, timeout); err != nil {
+	if err := helpers.SetDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 

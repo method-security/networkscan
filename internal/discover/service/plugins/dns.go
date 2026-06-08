@@ -9,6 +9,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	"github.com/miekg/dns"
 )
 
@@ -24,7 +25,7 @@ func (DNSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	// Create DNS client with timeout
 	client := &dns.Client{
 		Net:     "udp",
-		Timeout: serviceTimeout(timeout),
+		Timeout: helpers.Timeout(timeout),
 	}
 
 	// Create a DNS query for version.bind (CHAOS TXT record)

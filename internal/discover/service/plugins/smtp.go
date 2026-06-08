@@ -11,6 +11,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	smtputil "github.com/Method-Security/networkscan/internal/protocol/smtp"
 )
 
@@ -22,15 +23,15 @@ func (SMTPFingerprinter) DefaultPorts() []int { return []int{25, 587, 2525, 8025
 
 func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	dur := serviceTimeout(timeout)
+	dur := helpers.Timeout(timeout)
 
-	conn, err := dialServiceDuration(ctx, "tcp", addr, dur)
+	conn, err := helpers.DialDuration(ctx, "tcp", addr, dur)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = setServiceReadDeadlineDuration(conn, dur)
+	_ = helpers.SetReadDeadlineDuration(conn, dur)
 
 	// Read the banner — SMTP servers send a 220 greeting on connect.
 	// Banners can be multi-line (220- continuation lines followed by a final 220 line).
@@ -65,14 +66,14 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	esmtp := strings.Contains(banner, "ESMTP")
 
 	// Send EHLO to discover capabilities
-	_ = setServiceWriteDeadlineDuration(conn, dur)
+	_ = helpers.SetWriteDeadlineDuration(conn, dur)
 	ehloHost := "scanner.local"
 	_, err = fmt.Fprintf(conn, "EHLO %s\r\n", ehloHost)
 	if err != nil {
 		return buildSMTPResult(host, ip, port, banner, serverName, softwareName, softwareVersion, esmtp, false, nil, nil), nil
 	}
 
-	_ = setServiceReadDeadlineDuration(conn, dur)
+	_ = helpers.SetReadDeadlineDuration(conn, dur)
 
 	var extensions []string
 	var authMethods []protocol.SmtpAuthCommand
@@ -127,7 +128,7 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 
 	// Send QUIT
-	_ = setServiceWriteDeadlineDuration(conn, dur)
+	_ = helpers.SetWriteDeadlineDuration(conn, dur)
 	_, _ = fmt.Fprintf(conn, "QUIT\r\n")
 
 	return buildSMTPResult(host, ip, port, banner, serverName, softwareName, softwareVersion, esmtp, tlsSupported, authMethods, extensions), nil

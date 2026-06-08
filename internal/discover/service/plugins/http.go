@@ -11,6 +11,7 @@ import (
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type HTTPFingerprinter struct{}
@@ -19,12 +20,12 @@ func (HTTPFingerprinter) Name() string { return "http" }
 
 func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	// Create a context using the scanner timeout.
-	timeoutCtx, cancel := serviceContext(ctx, timeout)
+	timeoutCtx, cancel := helpers.Context(ctx, timeout)
 	defer cancel()
 
 	// Use proper HTTP client with the scanner timeout.
 	client := &http.Client{
-		Timeout: serviceTimeout(timeout),
+		Timeout: helpers.Timeout(timeout),
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // For HTTPS detection
 		},

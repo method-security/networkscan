@@ -10,6 +10,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type FortiGateFingerprinter struct{}
@@ -46,7 +47,7 @@ func (FortiGateFingerprinter) Detect(ctx context.Context, ip net.IP, port int, h
 		return result, nil
 	case err := <-errorChan:
 		return nil, err
-	case <-serviceAfter(timeout):
+	case <-helpers.After(timeout):
 		return nil, context.DeadlineExceeded
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -57,14 +58,14 @@ func (FortiGateFingerprinter) Detect(ctx context.Context, ip net.IP, port int, h
 // FGFM runs over SSL/TLS and responds immediately upon connection with handshake data
 // containing Fortinet identifiers in the certificate information
 func detectFortiGateService(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	conn, err := dialService(ctx, "tcp", net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)), timeout)
+	conn, err := helpers.Dial(ctx, "tcp", net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)), timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set read deadline
-	_ = setServiceReadDeadline(conn, timeout)
+	_ = helpers.SetReadDeadline(conn, timeout)
 
 	// FGFM service responds immediately with SSL/TLS handshake upon connection
 	// No need to send any data - just read the response

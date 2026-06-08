@@ -10,6 +10,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type HartFingerprinter struct{}
@@ -23,10 +24,10 @@ func (HartFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 
 	// HART-IP uses UDP primarily, but also supports TCP
 	// Try UDP first
-	conn, err := dialService(ctx, "udp", addr, timeout)
+	conn, err := helpers.Dial(ctx, "udp", addr, timeout)
 	if err != nil {
 		// Try TCP if UDP fails
-		conn, err = dialService(ctx, "tcp", addr, timeout)
+		conn, err = helpers.Dial(ctx, "tcp", addr, timeout)
 		if err != nil {
 			return nil, err
 		}
@@ -34,7 +35,7 @@ func (HartFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	defer func() { _ = conn.Close() }()
 
 	// Set read deadline
-	if err := setServiceReadDeadline(conn, timeout); err != nil {
+	if err := helpers.SetReadDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 

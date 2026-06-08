@@ -12,6 +12,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type PcomFingerprinter struct{}
@@ -35,7 +36,7 @@ func (PcomFingerprinter) Detect(
 	host string,
 	timeout int,
 ) (*discoverfern.ServiceDetails, error) {
-	timeoutDur := serviceTimeout(timeout)
+	timeoutDur := helpers.Timeout(timeout)
 
 	// Try multiple PCOM detection strategies in order of likelihood
 	strategies := []func(context.Context, net.IP, int, string, time.Duration) (*discoverfern.ServiceDetails, error){
@@ -116,13 +117,13 @@ func tryPcomTCPHeader(ctx context.Context, ip net.IP, port int, host string, tim
 func tryPcomConnectionTest(ctx context.Context, ip net.IP, port int, host string, timeout time.Duration) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
-	conn, err := dialServiceDuration(ctx, "tcp", addr, timeout)
+	conn, err := helpers.DialDuration(ctx, "tcp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = setServiceReadDeadlineDuration(conn, timeout)
+	_ = helpers.SetReadDeadlineDuration(conn, timeout)
 	buffer := make([]byte, 1024)
 
 	// Try reading with a short timeout
@@ -151,13 +152,13 @@ func tryPcomConnectionTest(ctx context.Context, ip net.IP, port int, host string
 func testPcomCommand(ctx context.Context, ip net.IP, port int, host string, timeout time.Duration, command []byte) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
-	conn, err := dialServiceDuration(ctx, "tcp", addr, timeout)
+	conn, err := helpers.DialDuration(ctx, "tcp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = setServiceDeadlineDuration(conn, timeout)
+	_ = helpers.SetDeadlineDuration(conn, timeout)
 
 	// Send command
 	if _, err := conn.Write(command); err != nil {

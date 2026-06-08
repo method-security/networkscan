@@ -10,6 +10,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type UbiquitiFingerprinter struct{}
@@ -25,14 +26,14 @@ func (UbiquitiFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 
 	// Create UDP connection
 	hostPort := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	conn, err := dialService(ctx, "udp", hostPort, timeout)
+	conn, err := helpers.Dial(ctx, "udp", hostPort, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set read deadline
-	if err := setServiceDeadline(conn, timeout); err != nil {
+	if err := helpers.SetDeadline(conn, timeout); err != nil {
 		return nil, fmt.Errorf("failed to set deadline: %w", err)
 	}
 
