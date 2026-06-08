@@ -161,7 +161,14 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 	}
 
 	// Run CAPA before STLS
-	preCaps, preMechs, impl, loginDelay, expireDays := runCapa(conn, reader)
+	preCaps, preMechs, impl, loginDelay, expireDays, capaErr := runCapa(conn, reader)
+	if capaErr != nil {
+		// CAPA not supported (RFC 2449) or server returned -ERR.
+		// Log and surface in errors so the caller can distinguish "zero
+		// capabilities" from "server doesn't speak CAPA at all".
+		log.Debug("CAPA not supported or failed", svc1log.SafeParam("error", capaErr))
+		errors = append(errors, fmt.Sprintf("CAPA not supported: %v", capaErr))
+	}
 	if len(preCaps) > 0 {
 		serverInfo.Capabilities = preCaps
 	}
@@ -192,6 +199,12 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 		if err != nil {
 			log.Debug("STLS upgrade failed", svc1log.SafeParam("error", err))
 			errors = append(errors, fmt.Sprintf("STLS upgrade failed: %v", err))
+			// upgradeToTLS already closed the connection when the TLS
+			// handshake failed (server is in TLS-expectation mode).
+			// For a -ERR STLS rejection the conn is technically still
+			// valid, but we have nothing further to send in either case.
+			// Mark conn nil so the deferred QUIT+close is skipped.
+			conn = nil
 		} else {
 			log.Debug("STLS upgrade successful")
 			tlsSupported := true
@@ -205,11 +218,15 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 
 			// Run CAPA again post-STLS to get updated capabilities.
 			// reader was already reset to tlsConn inside upgradeToTLS.
-			postCaps, postMechs, postImpl, _, _ := runCapa(conn, reader)
+			postCaps, postMechs, postImpl, _, _, _ := runCapa(conn, reader)
 			if len(postCaps) > 0 {
 				serverInfo.PostTlsCapabilities = postCaps
 			}
-			if postImpl != "" && impl == "" {
+			if postImpl != "" {
+				// Post-TLS IMPLEMENTATION takes precedence: RFC 2449 §6.5
+				// notes that servers may change capabilities after STLS,
+				// and it is common for servers to reveal their true identity
+				// only after the encrypted channel is established.
 				serverInfo.Implementation = &postImpl
 			}
 			// Prefer post-TLS mechanisms for SASL
@@ -233,8 +250,11 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 
 	detail.ServerInfo = serverInfo
 
-	quit(conn)
-	_ = conn.Close()
+	// conn is nil when STLS upgrade failed (upgradeToTLS already closed it).
+	if conn != nil {
+		quit(conn)
+		_ = conn.Close()
+	}
 
 	log.Info("POP3 enumeration complete", svc1log.SafeParam("target", target))
 	return &enumeratefern.EnumerateServiceDetails{EnumeratePop3Details: &detail}, errors

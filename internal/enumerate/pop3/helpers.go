@@ -92,9 +92,13 @@ func sendCommandMultiLine(conn net.Conn, reader *bufio.Reader, cmd string) ([]st
 }
 
 // runCapa sends CAPA and returns parsed capabilities.
-func runCapa(conn net.Conn, reader *bufio.Reader) (caps []string, authMechs []string, implementation string, loginDelay int, expireDays string) {
+// capaErr is non-nil when the server returned -ERR (RFC 2449 not supported)
+// or when the read failed; the caller should surface or log it so the absence
+// of capabilities is distinguishable from "server has zero capabilities".
+func runCapa(conn net.Conn, reader *bufio.Reader) (caps []string, authMechs []string, implementation string, loginDelay int, expireDays string, capaErr error) {
 	lines, err := sendCommandMultiLine(conn, reader, "CAPA")
 	if err != nil {
+		capaErr = err
 		return
 	}
 	caps, authMechs, implementation, loginDelay, expireDays = pop3util.ParseCapabilities(lines)
@@ -123,6 +127,10 @@ func upgradeToTLS(conn net.Conn, reader *bufio.Reader, hostname string) (*tls.Co
 	}
 	tlsConn := tls.Client(conn, tlsCfg)
 	if err := tlsConn.Handshake(); err != nil {
+		// The server is now in TLS-expectation mode; cleartext QUIT would be
+		// protocol noise.  Close the connection here so the caller does not
+		// need to distinguish handshake failure from a -ERR STLS rejection.
+		_ = tlsConn.Close()
 		return nil, fmt.Errorf("TLS handshake failed: %v", err)
 	}
 	// Point the shared reader at the TLS layer so all subsequent reads go
