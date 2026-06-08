@@ -1,0 +1,33 @@
+types:
+  SocketTransportProtocol:
+    enum:
+      - TCP
+      - UDP
+
+  DiscoverSocketConfig:
+    properties:
+      target: string
+      protocol: SocketTransportProtocol
+      sendData: optional<string>
+      readTimeout: integer
+      maxResponseBytes: integer
+
+  SocketResponseDetails:
+    properties:
+      ip: string
+      port: integer
+      protocol: SocketTransportProtocol
+      connectionSuccessful: boolean
+      responseData: optional<string>
+      responseBytes: optional<integer>
+      banner: optional<string>
+
+  DiscoverSocketResult:
+    properties:
+      response: optional<SocketResponseDetails>
+
+  DiscoverSocketReport:
+    properties:
+      config: DiscoverSocketConfig
+      result: DiscoverSocketResult
+      errors: optional<list<string>>
