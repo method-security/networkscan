@@ -108,7 +108,7 @@ func (p *LibraryEnumeratePOP3) EnumerateTarget(ctx context.Context, target strin
 
 	if conn == nil {
 		log.Debug("Dialing implicit TLS", svc1log.SafeParam("target", target))
-		tlsConn, tlsErr := dialTLS(ctx, target, hostname)
+		tlsConn, tlsErr := dialTLS(target, hostname)
 		if tlsErr != nil {
 			canConnect := false
 			detail.CanConnect = &canConnect
