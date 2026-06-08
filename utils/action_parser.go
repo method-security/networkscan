@@ -486,10 +486,6 @@ func (p *MSSQLActionParser) ParseActions(actionStrings []string) ([]mssqlfern.Pe
 		}
 	}
 
-	if len(actions) == 0 {
-		actions = []mssqlfern.PentestMssqlAction{mssqlfern.PentestMssqlActionProbe}
-	}
-
 	return actions, nil
 }
 
