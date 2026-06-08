@@ -32,7 +32,6 @@ type LibraryEnumerateIMAP struct {
 	MaxMessages               int
 	Search                    string
 	TargetFolder              string
-	AllowDestructive          bool
 	AllowPlaintextCredentials bool
 }
 
@@ -284,7 +283,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 				for _, folder := range folders {
 					tag = nextTag()
 					statusLines, statusErr := sendCommand(conn, tag,
-						fmt.Sprintf(`STATUS "%s" (MESSAGES RECENT UNSEEN UIDNEXT UIDVALIDITY)`, folder.Name),
+						fmt.Sprintf("STATUS %s (MESSAGES RECENT UNSEEN UIDNEXT UIDVALIDITY)", imapQuoteString(folder.Name)),
 						timeout)
 					if statusErr != nil {
 						continue
@@ -306,7 +305,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 				targetFolder = "INBOX"
 			}
 			tag = nextTag()
-			examineLines, examineErr := sendCommand(conn, tag, fmt.Sprintf(`EXAMINE "%s"`, targetFolder), timeout)
+			examineLines, examineErr := sendCommand(conn, tag, fmt.Sprintf("EXAMINE %s", imapQuoteString(targetFolder)), timeout)
 			if examineErr == nil {
 				examineResult := parseExamineResponse(targetFolder, examineLines)
 				detail.SelectedFolder = examineResult

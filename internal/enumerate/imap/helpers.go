@@ -28,6 +28,20 @@ const implicitTLSPeekTimeout = 2 * time.Second
 // caller should close the connection and retry with implicit TLS.
 var errImplicitTLSSuspected = fmt.Errorf("no IMAP greeting on plain socket; implicit TLS suspected")
 
+// imapsPort is the IANA-assigned port for IMAP over implicit TLS (RFC 8314).
+// On this port we treat a peek-timeout as a strong signal of implicit TLS;
+// on other ports we assume a slow plain-text server and keep the connection.
+const imapsPort = 993
+
+// isTimeout reports whether err is a net.Error with Timeout() == true.
+func isTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	netErr, ok := err.(net.Error)
+	return ok && netErr.Timeout()
+}
+
 // bufferedConn wraps a net.Conn with a bufio.Reader so that bytes the reader
 // pre-fetches during greeting detection are not discarded when the caller later
 // creates a new textproto.Conn on the same underlying connection.
@@ -61,7 +75,25 @@ func tryTCPConnection(host string, port int, timeout int) (net.Conn, string, err
 	_ = conn.SetReadDeadline(time.Now().Add(implicitTLSPeekTimeout))
 	reader := bufio.NewReader(conn)
 	peek, peekErr := reader.Peek(1)
-	if peekErr != nil || len(peek) == 0 || peek[0] != '*' {
+
+	switch {
+	case peekErr == nil && len(peek) == 1 && peek[0] == '*':
+		// Greeting on the wire — proceed plaintext (handled below).
+	case isTimeout(peekErr):
+		// Two cases produce the same timing signature: a slow plain-text
+		// server that hasn't sent its greeting yet, or a silent implicit-TLS
+		// listener waiting for the client's ClientHello. Port number is the
+		// best disambiguator we have: :993 is the IANA-assigned IMAPS port
+		// (RFC 8314), so a silent listener there is almost certainly TLS.
+		// On any other port, keep the connection and let ReadString apply
+		// the full timeout — a slow plain server will still succeed.
+		if port == imapsPort {
+			_ = conn.Close()
+			return nil, "", errImplicitTLSSuspected
+		}
+		// Slow plain server — fall through and let ReadString handle it.
+	default:
+		// Hard read error or non-'*' first byte — assume TLS.
 		_ = conn.Close()
 		return nil, "", errImplicitTLSSuspected
 	}
@@ -103,20 +135,31 @@ func tryTLSConnection(host string, port int, timeout int) (*tls.Conn, string, er
 }
 
 // doSTARTTLS upgrades an existing plain TCP connection to TLS using the IMAP STARTTLS command.
-// It sends the STARTTLS command, reads the server response, then wraps the connection in TLS.
+// It sends the STARTTLS command, reads the server response until the tagged
+// completion, then wraps the connection in TLS.
 func doSTARTTLS(conn net.Conn, host string, timeout int) (*tls.Conn, error) {
+	const tag = "A001"
 	tconn := textproto.NewConn(conn)
-	// Send STARTTLS command
-	if err := tconn.PrintfLine("A001 STARTTLS"); err != nil {
+	if err := tconn.PrintfLine("%s STARTTLS", tag); err != nil {
 		return nil, fmt.Errorf("STARTTLS send failed: %w", err)
 	}
 	_ = conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second))
-	resp, err := tconn.ReadLine()
-	if err != nil {
-		return nil, fmt.Errorf("STARTTLS response read failed: %w", err)
-	}
-	if !strings.Contains(resp, "OK") {
-		return nil, fmt.Errorf("STARTTLS rejected: %s", resp)
+	// Read until tagged completion. Servers may emit untagged data lines
+	// before the tagged response — only the tagged OK confirms the upgrade.
+	// Matching "OK" anywhere in the line would falsely accept untagged lines
+	// such as "* OK still here" or "* BYE OK by".
+	for {
+		resp, err := tconn.ReadLine()
+		if err != nil {
+			return nil, fmt.Errorf("STARTTLS response read failed: %w", err)
+		}
+		if strings.HasPrefix(resp, tag+" OK") {
+			break
+		}
+		if strings.HasPrefix(resp, tag+" NO") || strings.HasPrefix(resp, tag+" BAD") {
+			return nil, fmt.Errorf("STARTTLS rejected: %s", resp)
+		}
+		// Untagged line — keep reading.
 	}
 	// Upgrade to TLS. See tryTLSConnection — probes don't validate.
 	tlsConfig := &tls.Config{
@@ -166,11 +209,15 @@ func sendCommand(conn net.Conn, tag, cmd string, timeout int) ([]string, error) 
 			return lines, fmt.Errorf("response read error: %w", err)
 		}
 		lines = append(lines, resp)
-		// Check for tagged completion.
-		if strings.HasPrefix(resp, tag+" OK") ||
-			strings.HasPrefix(resp, tag+" NO") ||
-			strings.HasPrefix(resp, tag+" BAD") {
+		// Tagged completion. OK is success; NO and BAD are failures and must
+		// be surfaced to the caller so partial / empty results are not
+		// mistaken for success (e.g. LIST against a folder the user can't
+		// see, STATUS on a non-existent mailbox, FETCH on an unselected box).
+		if strings.HasPrefix(resp, tag+" OK") {
 			break
+		}
+		if strings.HasPrefix(resp, tag+" NO") || strings.HasPrefix(resp, tag+" BAD") {
+			return lines, fmt.Errorf("IMAP %s response: %s", strings.TrimSpace(strings.TrimPrefix(resp, tag)), resp)
 		}
 		// Handle RFC 3501 literal: when a line ends with "{N}" or "{N+}", the
 		// next N bytes are literal data (not CRLF-delimited lines). Read them
@@ -385,14 +432,16 @@ func parseExamineResponse(folderName string, lines []string) *imapfern.ImapSelec
 func parseMessageHeaders(lines []string, maxMessages int) []*imapfern.ImapMessage {
 	var messages []*imapfern.ImapMessage
 	var currentMsg *imapfern.ImapMessage
-	var uid int
 	inHeader := false
+	uidRe := regexp.MustCompile(`UID (\d+)`)
 
 	for _, line := range lines {
 		if strings.HasPrefix(line, "* ") && strings.Contains(line, " FETCH ") {
-			// Extract UID from the FETCH line if present
-			uidMatch := regexp.MustCompile(`UID (\d+)`).FindStringSubmatch(line)
-			if uidMatch != nil {
+			// Reset per-message UID so that a missing UID on this FETCH does
+			// not silently inherit the previous message's UID. If parsing
+			// fails we emit a zero UID rather than mis-attribute headers.
+			uid := 0
+			if uidMatch := uidRe.FindStringSubmatch(line); uidMatch != nil {
 				if u, err := strconv.Atoi(uidMatch[1]); err == nil {
 					uid = u
 				}

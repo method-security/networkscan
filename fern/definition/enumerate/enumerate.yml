@@ -49,7 +49,6 @@ types:
       imapMaxMessages: optional<integer>
       imapSearch: optional<string>
       imapTargetFolder: optional<string>
-      imapAllowDestructive: optional<boolean>
       imapAllowPlaintextCredentials: optional<boolean>
   # Final report
   EnumerateServiceReport:

@@ -45,7 +45,14 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 	log.Info("Starting enumeration for targets",
 		svc1log.SafeParam("targets", len(config.Targets)),
 		svc1log.SafeParam("timeout", config.Timeout))
-	resource := enumeratefern.EnumerateServiceReport{Config: &config}
+	// Build a sanitised copy of the config for the report — never echo
+	// credentials into output signals or logs.
+	reportedConfig := config
+	if reportedConfig.ImapPassword != nil && *reportedConfig.ImapPassword != "" {
+		redacted := "<redacted>"
+		reportedConfig.ImapPassword = &redacted
+	}
+	resource := enumeratefern.EnumerateServiceReport{Config: &reportedConfig}
 
 	engine, err := getEngine(config)
 	if err != nil {
@@ -186,10 +193,6 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		if config.ImapTargetFolder != nil {
 			targetFolder = *config.ImapTargetFolder
 		}
-		allowDestructive := false
-		if config.ImapAllowDestructive != nil {
-			allowDestructive = *config.ImapAllowDestructive
-		}
 		allowPlaintext := false
 		if config.ImapAllowPlaintextCredentials != nil {
 			allowPlaintext = *config.ImapAllowPlaintextCredentials
@@ -201,7 +204,6 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 			MaxMessages:               maxMessages,
 			Search:                    search,
 			TargetFolder:              targetFolder,
-			AllowDestructive:          allowDestructive,
 			AllowPlaintextCredentials: allowPlaintext,
 		}}, nil
 	default:

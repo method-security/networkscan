@@ -88,11 +88,6 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			imapAllowDestructive, err := cmd.Flags().GetBool("imap-allow-destructive")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
 			imapAllowPlaintext, err := cmd.Flags().GetBool("imap-allow-plaintext-credentials")
 			if err != nil {
 				a.OutputSignal.AddError(err)
@@ -102,7 +97,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 			config := newEnumerateServiceConfig(
 				targets, serviceEnum, timeout, wordlist,
 				imapUsername, imapPassword, imapMechanism, imapMaxMessages, imapSearch,
-				imapTargetFolder, imapAllowDestructive, imapAllowPlaintext)
+				imapTargetFolder, imapAllowPlaintext)
 
 			// Generate the report
 			report, err := enumerate.RunServiceEnumerate(cmd.Context(), config)
@@ -125,7 +120,6 @@ func (a *NetworkScan) InitEnumerateCommand() {
 	enumerateServiceCmd.Flags().Int("imap-max-messages", 0, "Maximum number of message headers to fetch via UID FETCH (0 = none)")
 	enumerateServiceCmd.Flags().String("imap-search", "", "IMAP SEARCH expression applied after authentication (e.g. 'UNSEEN', 'FROM admin')")
 	enumerateServiceCmd.Flags().String("imap-target-folder", "INBOX", "Folder to EXAMINE for detailed status (default: INBOX)")
-	enumerateServiceCmd.Flags().Bool("imap-allow-destructive", false, "Allow destructive operations (STORE +FLAGS \\Deleted, EXPUNGE, MOVE, COPY)")
 	enumerateServiceCmd.Flags().Bool("imap-allow-plaintext-credentials", false, "Allow PLAIN/LOGIN auth over unencrypted transport (not recommended)")
 
 	// Mark Required Flags
@@ -151,7 +145,6 @@ func newEnumerateServiceConfig(
 	imapMaxMessages int,
 	imapSearch string,
 	imapTargetFolder string,
-	imapAllowDestructive bool,
 	imapAllowPlaintext bool,
 ) enumeratefern.EnumerateServiceConfig {
 	config := enumeratefern.EnumerateServiceConfig{
@@ -180,9 +173,6 @@ func newEnumerateServiceConfig(
 	// Always pass target folder (default is "INBOX" from flag default)
 	if imapTargetFolder != "" {
 		config.ImapTargetFolder = &imapTargetFolder
-	}
-	if imapAllowDestructive {
-		config.ImapAllowDestructive = &imapAllowDestructive
 	}
 	if imapAllowPlaintext {
 		config.ImapAllowPlaintextCredentials = &imapAllowPlaintext
