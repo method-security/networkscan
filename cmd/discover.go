@@ -13,6 +13,7 @@ import (
 	discoverport "github.com/Method-Security/networkscan/internal/discover/port"
 	discoverroute "github.com/Method-Security/networkscan/internal/discover/route"
 	discoverservice "github.com/Method-Security/networkscan/internal/discover/service"
+	discoversocket "github.com/Method-Security/networkscan/internal/discover/socket"
 	"github.com/Method-Security/networkscan/utils"
 
 	// External
@@ -453,6 +454,85 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverTLSCmd)
+
+	// Socket Command
+	discoverSocketCmd := &cobra.Command{
+		Use:   "socket",
+		Short: "Send raw bytes to a TCP/UDP port and capture the response banner.",
+		Long:  `Open a raw TCP or UDP connection to a target host:port, optionally send a payload, and return the raw response bytes. Useful for banner grabbing, vulnerability probing, and interacting with custom binary protocols.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			target, err := cmd.Flags().GetString("target")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			protocol, err := cmd.Flags().GetString("protocol")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			sendData, err := cmd.Flags().GetString("send-data")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			readTimeout, err := cmd.Flags().GetInt("read-timeout")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			maxResponseBytes, err := cmd.Flags().GetInt("max-response-bytes")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			// Validate and convert protocol
+			protocolUpper := strings.ToUpper(protocol)
+			if protocolUpper != "TCP" && protocolUpper != "UDP" {
+				a.OutputSignal.AddError(fmt.Errorf("invalid protocol %q: must be tcp or udp", protocol))
+				return
+			}
+
+			protocolEnum, err := discoverfern.NewSocketTransportProtocolFromString(protocolUpper)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			config := discoverfern.DiscoverSocketConfig{
+				Target:           target,
+				Protocol:         protocolEnum,
+				ReadTimeout:      readTimeout,
+				MaxResponseBytes: maxResponseBytes,
+			}
+			if sendData != "" {
+				config.SendData = &sendData
+			}
+
+			report, err := discoversocket.RunSocketSend(cmd.Context(), config)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			a.OutputSignal.Content = report
+		},
+	}
+	discoverSocketCmd.Flags().String("target", "", "Target address (IP:port)")
+	discoverSocketCmd.Flags().String("protocol", "tcp", "Transport protocol (tcp or udp)")
+	discoverSocketCmd.Flags().String("send-data", "", "Data to send (plaintext or \\x-escaped hex bytes)")
+	discoverSocketCmd.Flags().Int("read-timeout", 5, "Timeout in seconds for connection and read")
+	discoverSocketCmd.Flags().Int("max-response-bytes", 10240, "Maximum response bytes to read")
+
+	// Mark Required Flags
+	_ = discoverSocketCmd.MarkFlagRequired("target")
+
+	// Add Command to 'Discover' Command
+	discoverCmd.AddCommand(discoverSocketCmd)
 
 	// Domain Command
 	discoverDomainCmd := &cobra.Command{
