@@ -6,11 +6,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	"github.com/Method-Security/networkscan/utils"
 )
 
@@ -21,7 +21,7 @@ func (DCERPCFingerprinter) Name() string { return "dcerpc" }
 func (DCERPCFingerprinter) DefaultPorts() []int { return []int{135} }
 
 func (DCERPCFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	conn, err := net.DialTimeout("tcp", utils.FormatHostPort(ip.String(), port), time.Duration(timeout)*time.Second)
+	conn, err := helpers.Dial(ctx, "tcp", utils.FormatHostPort(ip.String(), port), timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func (DCERPCFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 	bindRequest := buildDCERPCBindRequest()
 
 	// Set deadline
-	if err := conn.SetDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+	if err := helpers.SetDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 

@@ -6,11 +6,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	ikeprotocol "github.com/Method-Security/networkscan/internal/protocol/ike"
 )
 
@@ -23,13 +23,13 @@ func (IKEFingerprinter) DefaultPorts() []int { return []int{500, 4500} }
 func (IKEFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
-	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)
+	conn, err := helpers.Dial(ctx, "udp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
-	if err := conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+	if err := helpers.SetReadDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 

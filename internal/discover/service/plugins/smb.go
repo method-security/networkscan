@@ -4,11 +4,11 @@ package plugins
 import (
 	"context"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	smbclient "github.com/Method-Security/networkscan/internal/protocol/smb"
 )
 
@@ -45,7 +45,7 @@ func (SMBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		return result, nil
 	case err := <-errorChan:
 		return nil, err
-	case <-time.After(10 * time.Second):
+	case <-helpers.After(timeout):
 		return nil, context.DeadlineExceeded
 	case <-ctx.Done():
 		return nil, ctx.Err()
