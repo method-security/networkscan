@@ -24,15 +24,22 @@ import (
 )
 
 // LibraryEnumerateIMAP implements NetworkApplicationLibrary for IMAP enumeration.
-type LibraryEnumerateIMAP struct {
-	Username                  string
-	Password                  string
-	Mechanism                 string
-	MaxMessages               int
-	Search                    string
-	TargetFolder              string
-	AllowPlaintextCredentials bool
-}
+// Mode A only (pre-auth fingerprinting): greeting, CAPABILITY pre/post STARTTLS,
+// advertised SASL mechanisms, TLS cert/cipher. Mode B (auth + folder/message
+// enumeration) lives under `internal/pentest/imap/` and `pentest service imap`.
+type LibraryEnumerateIMAP struct{}
+
+// Stubs — Mode B fields have moved to the pentest IMAP tool. These return zero
+// values so the existing imap.go EnumerateTarget code paths short-circuit
+// cleanly; the Mode B branches inside it are effectively dead code now and
+// will be removed when the pentest imap PR lands and lifts the implementation.
+func (l *LibraryEnumerateIMAP) username() string                { return "" }
+func (l *LibraryEnumerateIMAP) password() string                { return "" }
+func (l *LibraryEnumerateIMAP) mechanism() string               { return "" }
+func (l *LibraryEnumerateIMAP) maxMessages() int                { return 0 }
+func (l *LibraryEnumerateIMAP) search() string                  { return "" }
+func (l *LibraryEnumerateIMAP) targetFolder() string            { return "" }
+func (l *LibraryEnumerateIMAP) allowPlaintextCredentials() bool { return false }
 
 // EnumerateTarget performs IMAP enumeration against a single target.
 //
@@ -243,7 +250,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 	detail.ServerInfo = serverInfo
 
 	// Step 5: Authenticated enumeration
-	if l.Username != "" {
+	if l.username() != "" {
 		authenticated := false
 		authErr := l.authenticate(conn, nextTag, saslMechs, tlsActive, ctx)
 		if authErr != nil {
@@ -252,7 +259,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 		} else {
 			authenticated = true
 			detail.Authenticated = &authenticated
-			log.Info("IMAP authentication successful", svc1log.SafeParam("username", l.Username))
+			log.Info("IMAP authentication successful", svc1log.SafeParam("username", l.username()))
 
 			// ENABLE IMAP4rev2 if supported
 			if imapVersion == "IMAP4rev2" {
@@ -292,27 +299,23 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 
 			// EXAMINE target folder (only if one was specified; the CLI flag
 			// defaults to "INBOX" in cmd/enumerate.go — no internal default here).
-			if l.TargetFolder != "" {
+			if l.targetFolder() != "" {
 				tag = nextTag()
-				examineLines, examineErr := sendCommand(conn, tag, fmt.Sprintf("EXAMINE %s", imapQuoteString(l.TargetFolder)), ctx)
+				examineLines, examineErr := sendCommand(conn, tag, fmt.Sprintf("EXAMINE %s", imapQuoteString(l.targetFolder())), ctx)
 				if examineErr == nil {
-					examineResult := parseExamineResponse(l.TargetFolder, examineLines)
+					examineResult := parseExamineResponse(l.targetFolder(), examineLines)
 					detail.SelectedFolder = examineResult
 				}
 			}
 
 			// UID FETCH message headers
-			if l.MaxMessages > 0 {
+			if l.maxMessages() > 0 {
 				tag = nextTag()
-				fetchEnd := l.MaxMessages
-				if detail.SelectedFolder != nil && detail.SelectedFolder.Exists != nil && *detail.SelectedFolder.Exists > 0 && fetchEnd > *detail.SelectedFolder.Exists {
-					fetchEnd = *detail.SelectedFolder.Exists
-				}
 				fetchLines, fetchErr := sendCommand(conn, tag,
-					fmt.Sprintf("FETCH 1:%d (UID BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)])", fetchEnd),
+					fmt.Sprintf("FETCH 1:%d (UID BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)])", l.maxMessages()),
 					ctx)
 				if fetchErr == nil {
-					msgs := parseMessageHeaders(fetchLines, l.MaxMessages)
+					msgs := parseMessageHeaders(fetchLines, l.maxMessages())
 					if len(msgs) > 0 {
 						detail.Messages = msgs
 					}
@@ -320,9 +323,9 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 			}
 
 			// UID SEARCH
-			if l.Search != "" {
+			if l.search() != "" {
 				tag = nextTag()
-				searchLines, searchErr := sendCommand(conn, tag, fmt.Sprintf("UID SEARCH %s", stripCRLF(l.Search)), ctx)
+				searchLines, searchErr := sendCommand(conn, tag, fmt.Sprintf("UID SEARCH %s", stripCRLF(l.search())), ctx)
 				if searchErr == nil {
 					var uids []int
 					for _, line := range searchLines {
@@ -336,8 +339,8 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 						}
 					}
 					detail.SearchResult = &imapfern.ImapSearchResult{
-						FolderName:       l.TargetFolder,
-						SearchExpression: l.Search,
+						FolderName:       l.targetFolder(),
+						SearchExpression: l.search(),
 						MatchingUids:     uids,
 					}
 				}
@@ -358,7 +361,7 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 }
 
 // authenticate performs SASL authentication against the IMAP server.
-// It selects the strongest available mechanism unless overridden by l.Mechanism.
+// It selects the strongest available mechanism unless overridden by l.mechanism().
 func (l *LibraryEnumerateIMAP) authenticate(
 	conn net.Conn,
 	nextTag func() string,
@@ -368,10 +371,10 @@ func (l *LibraryEnumerateIMAP) authenticate(
 ) error {
 	// Determine mechanism
 	var mech sasl.Mechanism
-	if l.Mechanism != "" {
-		mech = sasl.Mechanism(strings.ToUpper(l.Mechanism))
+	if l.mechanism() != "" {
+		mech = sasl.Mechanism(strings.ToUpper(l.mechanism()))
 		// Enforce plaintext credential policy even when mechanism is explicitly set.
-		if (mech == sasl.MechanismPlain || mech == sasl.MechanismLogin) && !tlsActive && !l.AllowPlaintextCredentials {
+		if (mech == sasl.MechanismPlain || mech == sasl.MechanismLogin) && !tlsActive && !l.allowPlaintextCredentials() {
 			return fmt.Errorf("refusing %s over unencrypted transport (use --imap-allow-plaintext-credentials or ensure TLS is active)", mech)
 		}
 	} else {
@@ -382,10 +385,10 @@ func (l *LibraryEnumerateIMAP) authenticate(
 				implementedAvailable = append(implementedAvailable, m)
 			}
 		}
-		selected, ok := sasl.SelectStrongest(implementedAvailable, l.AllowPlaintextCredentials || tlsActive)
+		selected, ok := sasl.SelectStrongest(implementedAvailable, l.allowPlaintextCredentials() || tlsActive)
 		if !ok {
 			// No strong mechanism; fall back to LOGIN if TLS is active or plaintext allowed
-			if tlsActive || l.AllowPlaintextCredentials {
+			if tlsActive || l.allowPlaintextCredentials() {
 				mech = sasl.MechanismLogin
 			} else {
 				return fmt.Errorf("no supported SASL mechanism available (use --imap-allow-plaintext-credentials or ensure TLS is active)")
@@ -424,7 +427,7 @@ func (l *LibraryEnumerateIMAP) authPlain(conn net.Conn, nextTag func() string, c
 		return fmt.Errorf("unexpected AUTHENTICATE response: %s", challenge)
 	}
 	// Send credentials
-	creds := "\x00" + l.Username + "\x00" + l.Password
+	creds := "\x00" + l.username() + "\x00" + l.password()
 	encoded := base64.StdEncoding.EncodeToString([]byte(creds))
 	if err := tconn.PrintfLine("%s", encoded); err != nil {
 		return fmt.Errorf("PLAIN credentials send failed: %w", err)
@@ -451,7 +454,7 @@ func (l *LibraryEnumerateIMAP) authPlain(conn net.Conn, nextTag func() string, c
 func (l *LibraryEnumerateIMAP) authLogin(conn net.Conn, nextTag func() string, ctx context.Context) error {
 	tag := nextTag()
 	lines, err := sendCommand(conn, tag,
-		fmt.Sprintf("LOGIN %s %s", imapQuoteString(l.Username), imapQuoteString(l.Password)),
+		fmt.Sprintf("LOGIN %s %s", imapQuoteString(l.username()), imapQuoteString(l.password())),
 		ctx)
 	if err != nil {
 		return fmt.Errorf("LOGIN command failed: %w", err)

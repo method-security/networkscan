@@ -1,0 +1,28 @@
+types:
+  EnumerateMysqlDetails:
+    docs: MySQL service enumeration details collected via raw TCP handshake and optional anonymous login probe.
+    properties:
+      target:
+        type: string
+        docs: Target address in host:port format.
+      canConnect:
+        type: optional<boolean>
+        docs: Whether a TCP connection to the target succeeded.
+      version:
+        type: optional<string>
+        docs: Server version string parsed from the MySQL protocol v10 greeting packet.
+      banner:
+        type: optional<string>
+        docs: Human-readable banner string (e.g. "MySQL 8.0.32").
+      tlsSupported:
+        type: optional<boolean>
+        docs: Whether the server advertised CLIENT_SSL capability in its greeting packet. Unset when capability flags could not be read.
+      allowsAnonymousLogin:
+        type: optional<boolean>
+        docs: Whether an anonymous login (empty username and password) succeeded. Unset when the probe result was inconclusive (e.g. timeout or TLS negotiation failure).
+      defaultDatabases:
+        type: optional<list<string>>
+        docs: Databases visible to the anonymous user. Set to an empty list when anonymous login succeeded but no databases were visible.
+      error:
+        type: optional<string>
+        docs: Error message when enumeration encountered an unrecoverable problem.
