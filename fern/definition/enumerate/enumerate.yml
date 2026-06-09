@@ -10,6 +10,7 @@ imports:
   imap: ./imap/imap.yml
   mongodb: ./mongodb/mongodb.yml
   pop3: ./pop3/pop3.yml
+  redis: ./redis/redis.yml
   socks: ./socks/socks.yml
 types:
   # ENUMs
@@ -26,6 +27,7 @@ types:
       - IMAP
       - MONGODB
       - POP3
+      - REDIS
       - SOCKS
   # Report structs
   EnumerateServiceDetails:
@@ -41,6 +43,7 @@ types:
       EnumerateImapDetails: imap.EnumerateImapDetails
       EnumerateMongodbDetails: mongodb.EnumerateMongodbDetails
       EnumeratePop3Details: pop3.EnumeratePop3Details
+      EnumerateRedisDetails: redis.EnumerateRedisDetails
       EnumerateSocksDetails: socks.EnumerateSocksDetails
   EnumerateServiceResult:
     properties:
