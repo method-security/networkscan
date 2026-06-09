@@ -47,12 +47,14 @@ func (r *LibraryEnumerateRedis) EnumerateTarget(ctx context.Context, target stri
 	// Send PING to test connectivity
 	pingErr := client.Ping(ctx).Err()
 	if pingErr != nil {
-		// Check if we get NOAUTH - this means the server is up but requires auth
+		// Check if we get NOAUTH - the server is up but requires authentication.
+		// We deliberately leave RequirepassSet nil here: NOAUTH can come from either
+		// the requirepass directive or from ACL-only auth (Redis 6.0+). We cannot
+		// determine which without authenticating, so reporting requirepassSet=true
+		// would be inaccurate when ACL-only auth is in use.
 		if isNoAuthError(pingErr) {
 			canConnect := true
 			details.CanConnect = &canConnect
-			requirepassSet := true
-			details.RequirepassSet = &requirepassSet
 			log.Info("Redis requires authentication", svc1log.SafeParam("target", addr))
 			return &enumeratefern.EnumerateServiceDetails{EnumerateRedisDetails: &details}, errors
 		}
@@ -76,14 +78,13 @@ func (r *LibraryEnumerateRedis) EnumerateTarget(ctx context.Context, target stri
 		parseInfoFields(infoResult, &details)
 	}
 
-	// Check if requirepass is set via CONFIG GET requirepass
+	// Check if requirepass is set via CONFIG GET requirepass.
+	// A NOAUTH error here means the ACL restricts CONFIG for this user; we leave
+	// RequirepassSet nil because NOAUTH does not distinguish requirepass from ACL-only auth.
 	configResult, configErr := client.ConfigGet(ctx, "requirepass").Result()
 	if configErr != nil {
-		if isNoAuthError(configErr) {
-			requirepassSet := true
-			details.RequirepassSet = &requirepassSet
-		}
-		// If we get any other error (including NOPERM), we can't determine this
+		// If we get NOAUTH or any other error (including NOPERM), we cannot determine
+		// whether requirepass is configured — leave RequirepassSet unset (nil).
 	} else {
 		// configResult is a map[string]string in go-redis v9
 		if val, ok := configResult["requirepass"]; ok {
