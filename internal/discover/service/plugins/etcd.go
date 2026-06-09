@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,7 +28,8 @@ func (EtcdFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	if timeoutDuration <= 0 {
 		timeoutDuration = 5 * time.Second
 	}
-	addr := fmt.Sprintf("%s:%d", ip.String(), port)
+	// Use net.JoinHostPort so IPv6 addresses are properly bracketed (e.g. [::1]:2379).
+	addr := net.JoinHostPort(ip.String(), strconv.Itoa(port))
 
 	// Try plain HTTP first, then HTTPS with InsecureSkipVerify
 	for _, scheme := range []string{"http", "https"} {
