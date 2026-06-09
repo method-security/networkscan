@@ -138,6 +138,11 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 			log.Info("PostgreSQL database enumeration failed",
 				svc1log.SafeParam("target", addr),
 				svc1log.SafeParam("error", dbErr))
+			// Propagate to callers so the report errors list reflects the failure,
+			// consistent with how the MySQL enumerator handles probeDatabases errors.
+			errMsg := fmt.Sprintf("database enumeration failed: %v", dbErr)
+			details.Error = &errMsg
+			errs = append(errs, errMsg)
 		} else {
 			details.Databases = databases
 		}
@@ -246,6 +251,12 @@ func probeStartup(addr string, timeout time.Duration) (serverVersion, serverEnco
 					authMethod = "trust"
 				} else {
 					authMethod = parseAuthMethod(authType, body[4:])
+					// The server has issued an auth challenge (SCRAM, MD5, etc.).
+					// It will not send ParameterStatus / BackendKeyData /
+					// ReadyForQuery until we complete authentication, which we
+					// don't do in an enumeration probe.  Return now rather than
+					// blocking until the connection deadline.
+					return
 				}
 			}
 		case 'S': // ParameterStatus — key\0value\0
