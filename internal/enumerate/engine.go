@@ -17,9 +17,11 @@ import (
 	imap "github.com/Method-Security/networkscan/internal/enumerate/imap"
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
 	mongodb "github.com/Method-Security/networkscan/internal/enumerate/mongodb"
+	pop3 "github.com/Method-Security/networkscan/internal/enumerate/pop3"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
 	snmp "github.com/Method-Security/networkscan/internal/enumerate/snmp"
+	socks "github.com/Method-Security/networkscan/internal/enumerate/socks"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
 
 	// External
@@ -202,6 +204,10 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		}}, nil
 	case enumeratefern.SupportedServiceTypeMongodb:
 		return NetworkApplicationEngine{Library: &mongodb.LibraryEnumerateMongoDB{}}, nil
+	case enumeratefern.SupportedServiceTypePop3:
+		return NetworkApplicationEngine{Library: &pop3.LibraryEnumeratePOP3{}}, nil
+	case enumeratefern.SupportedServiceTypeSocks:
+		return NetworkApplicationEngine{Library: &socks.LibraryEnumerateSocks{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}

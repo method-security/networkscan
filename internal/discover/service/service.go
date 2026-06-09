@@ -25,6 +25,7 @@ import (
 	// Internal
 	"github.com/Method-Security/networkscan/internal/common/ntlm"
 	servicehelpers "github.com/Method-Security/networkscan/internal/discover/service/helpers"
+
 	// Utilities
 	"github.com/Method-Security/networkscan/utils"
 )

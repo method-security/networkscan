@@ -12,7 +12,7 @@ import (
 	cobra "github.com/spf13/cobra"
 )
 
-// InitEnumerateCommand initializes the enumerate command and its subcommands (ftp, grpc, smtp, ssh, imap).
+// InitEnumerateCommand initializes the enumerate command and its subcommands (ftp, grpc, smtp, ssh, imap, pop3).
 // Each subcommand implements service-specific enumeration functionality for different network protocols.
 func (a *NetworkScan) InitEnumerateCommand() {
 	enumerateCmd := &cobra.Command{
@@ -109,7 +109,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 		},
 	}
 	enumerateServiceCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to enumerate")
-	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, imap, ldap, mongodb, smb, smtp, snmp, ssh)")
+	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, imap, ldap, mongodb, pop3, smb, smtp, snmp, socks, ssh)")
 	enumerateServiceCmd.Flags().Int("timeout", 30, "Timeout in seconds for enumerating each target")
 	enumerateServiceCmd.Flags().StringSlice("wordlist", []string{}, "Custom username wordlist for user enumeration (SMTP VRFY/EXPN/RCPT TO)")
 
