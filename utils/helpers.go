@@ -85,8 +85,12 @@ func GetDefaultPortForService(service pentestfern.SprayTargetService) int {
 		return 389
 	case pentestfern.SprayTargetServiceKerberos:
 		return 88
+	case pentestfern.SprayTargetServiceMssql:
+		return 1433
 	case pentestfern.SprayTargetServiceMysql:
 		return 3306
+	case pentestfern.SprayTargetServicePostgres:
+		return 5432
 	default:
 		return 80
 	}
