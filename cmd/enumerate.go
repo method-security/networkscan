@@ -57,47 +57,12 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				return
 			}
 
-			// IMAP-specific flags
-			imapUsername, err := cmd.Flags().GetString("imap-username")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapPassword, err := cmd.Flags().GetString("imap-password")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapMechanism, err := cmd.Flags().GetString("imap-mechanism")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapMaxMessages, err := cmd.Flags().GetInt("imap-max-messages")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapSearch, err := cmd.Flags().GetString("imap-search")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapTargetFolder, err := cmd.Flags().GetString("imap-target-folder")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			imapAllowPlaintext, err := cmd.Flags().GetBool("imap-allow-plaintext-credentials")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-
-			config := newEnumerateServiceConfig(
-				targets, serviceEnum, timeout, wordlist,
-				imapUsername, imapPassword, imapMechanism, imapMaxMessages, imapSearch,
-				imapTargetFolder, imapAllowPlaintext)
+			config := newEnumerateServiceConfig(EnumerateServiceCobraFlags{
+				Targets:  targets,
+				Service:  serviceEnum,
+				Timeout:  timeout,
+				Wordlist: wordlist,
+			})
 
 			// Generate the report
 			report, err := enumerate.RunServiceEnumerate(cmd.Context(), config)
@@ -109,18 +74,9 @@ func (a *NetworkScan) InitEnumerateCommand() {
 		},
 	}
 	enumerateServiceCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to enumerate")
-	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, imap, ldap, mongodb, pop3, smb, smtp, snmp, socks, ssh)")
+	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, imap, ldap, mongodb, mysql, pop3, redis, smb, smtp, snmp, socks, ssh)")
 	enumerateServiceCmd.Flags().Int("timeout", 30, "Timeout in seconds for enumerating each target")
 	enumerateServiceCmd.Flags().StringSlice("wordlist", []string{}, "Custom username wordlist for user enumeration (SMTP VRFY/EXPN/RCPT TO)")
-
-	// IMAP-specific flags
-	enumerateServiceCmd.Flags().String("imap-username", "", "IMAP username for authenticated enumeration (Mode B)")
-	enumerateServiceCmd.Flags().String("imap-password", "", "IMAP password for authenticated enumeration (Mode B)")
-	enumerateServiceCmd.Flags().String("imap-mechanism", "", "SASL mechanism override (PLAIN, LOGIN, CRAM-MD5, GSSAPI, XOAUTH2)")
-	enumerateServiceCmd.Flags().Int("imap-max-messages", 0, "Maximum number of message headers to fetch via UID FETCH (0 = none)")
-	enumerateServiceCmd.Flags().String("imap-search", "", "IMAP SEARCH expression applied after authentication (e.g. 'UNSEEN', 'FROM admin')")
-	enumerateServiceCmd.Flags().String("imap-target-folder", "INBOX", "Folder to EXAMINE for detailed status (default: INBOX)")
-	enumerateServiceCmd.Flags().Bool("imap-allow-plaintext-credentials", false, "Allow PLAIN/LOGIN auth over unencrypted transport (not recommended)")
 
 	// Mark Required Flags
 	_ = enumerateServiceCmd.MarkFlagRequired("targets")
@@ -133,49 +89,26 @@ func (a *NetworkScan) InitEnumerateCommand() {
 	a.RootCmd.AddCommand(enumerateCmd)
 }
 
-// newEnumerateServiceConfig creates a new EnumerateServiceConfig with the provided parameters.
-func newEnumerateServiceConfig(
-	targets []string,
-	serviceEnum enumeratefern.SupportedServiceType,
-	timeout int,
-	wordlist []string,
-	imapUsername string,
-	imapPassword string,
-	imapMechanism string,
-	imapMaxMessages int,
-	imapSearch string,
-	imapTargetFolder string,
-	imapAllowPlaintext bool,
-) enumeratefern.EnumerateServiceConfig {
+// EnumerateServiceCobraFlags bundles the flag values consumed by
+// newEnumerateServiceConfig. Per-service auth/Mode-B knobs (e.g. for IMAP)
+// belong on their own pentest tools (e.g. `pentest service imap`); the
+// enumerate stage is pre-auth fingerprinting only.
+type EnumerateServiceCobraFlags struct {
+	Targets  []string
+	Service  enumeratefern.SupportedServiceType
+	Timeout  int
+	Wordlist []string
+}
+
+// newEnumerateServiceConfig creates a new EnumerateServiceConfig from the flag struct.
+func newEnumerateServiceConfig(flags EnumerateServiceCobraFlags) enumeratefern.EnumerateServiceConfig {
 	config := enumeratefern.EnumerateServiceConfig{
-		Targets: targets,
-		Service: serviceEnum,
-		Timeout: timeout,
+		Targets: flags.Targets,
+		Service: flags.Service,
+		Timeout: flags.Timeout,
 	}
-	if len(wordlist) > 0 {
-		config.Wordlist = wordlist
-	}
-	if imapUsername != "" {
-		config.ImapUsername = &imapUsername
-	}
-	if imapPassword != "" {
-		config.ImapPassword = &imapPassword
-	}
-	if imapMechanism != "" {
-		config.ImapMechanism = &imapMechanism
-	}
-	if imapMaxMessages > 0 {
-		config.ImapMaxMessages = &imapMaxMessages
-	}
-	if imapSearch != "" {
-		config.ImapSearch = &imapSearch
-	}
-	// Always pass target folder (default is "INBOX" from flag default)
-	if imapTargetFolder != "" {
-		config.ImapTargetFolder = &imapTargetFolder
-	}
-	if imapAllowPlaintext {
-		config.ImapAllowPlaintextCredentials = &imapAllowPlaintext
+	if len(flags.Wordlist) > 0 {
+		config.Wordlist = flags.Wordlist
 	}
 	return config
 }
