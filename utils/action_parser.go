@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	ftpfern "github.com/Method-Security/networkscan/generated/go/pentest/ftp"
+	imapfern "github.com/Method-Security/networkscan/generated/go/pentest/imap"
 	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
 	mongodbfern "github.com/Method-Security/networkscan/generated/go/pentest/mongodb"
 	msrpcfern "github.com/Method-Security/networkscan/generated/go/pentest/msrpc"
@@ -306,6 +307,7 @@ var (
 	winrmParserInstance    *WinRMActionParser
 	mongodbParserInstance  *MongoDBActionParser
 	redisParserInstance    *RedisActionParser
+	imapParserInstance     *IMAPActionParser
 	mssqlParserInstance    *MSSQLActionParser
 	postgresParserInstance *PostgresActionParser
 )
@@ -450,6 +452,53 @@ func (p *RedisActionParser) GetValidActions() []string {
 }
 
 func (p *RedisActionParser) ContainsAction(actions []redisfern.PentestRedisAction, target redisfern.PentestRedisAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
+// IMAPActionParser handles IMAP-specific action parsing for the pentest
+// service imap command (Mode B: AUTH + LIST_FOLDERS + FETCH_HEADERS + SEARCH).
+type IMAPActionParser struct{}
+
+// GetIMAPParser returns the singleton IMAP action parser.
+func GetIMAPParser() *IMAPActionParser {
+	if imapParserInstance == nil {
+		imapParserInstance = &IMAPActionParser{}
+	}
+	return imapParserInstance
+}
+
+func (p *IMAPActionParser) ParseActions(actionStrings []string) ([]imapfern.PentestImapAction, error) {
+	var actions []imapfern.PentestImapAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			imapAction, err := imapfern.NewPentestImapActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid IMAP action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, imapAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *IMAPActionParser) GetValidActions() []string {
+	return []string{"AUTH", "LIST_FOLDERS", "FETCH_HEADERS", "SEARCH"}
+}
+
+func (p *IMAPActionParser) ContainsAction(actions []imapfern.PentestImapAction, target imapfern.PentestImapAction) bool {
 	for _, action := range actions {
 		if action == target {
 			return true
