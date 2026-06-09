@@ -115,16 +115,23 @@ func TryTCPConnection(ctx context.Context, host string, port int) (net.Conn, str
 }
 
 // TryTLSConnection connects directly via TLS (IMAPS) and reads the greeting.
+//
+// InsecureSkipVerify is intentional: this is a probe-style dial against
+// pentest targets that routinely present self-signed certs, wrong CN /
+// SAN, expired chains, or are intentionally vulnerable. Failing on cert
+// validation would silently drop those targets from scope, which is the
+// opposite of the tool's purpose. Matches the established repo pattern in
+// internal/enumerate/imap/helpers.go, internal/enumerate/pop3/helpers.go,
+// internal/enumerate/smtp/helpers.go, internal/discover/tls.go, etc.
 func TryTLSConnection(ctx context.Context, host string, port int) (*tls.Conn, string, error) {
 	deadline := DeadlineFromContext(ctx)
 	dialTimeout := time.Until(deadline)
 	if dialTimeout <= 0 {
 		dialTimeout = time.Second
 	}
-	// We probe rather than validate — self-signed / wrong-CN certs are normal.
 	tlsConfig := &tls.Config{
 		ServerName:         host,
-		InsecureSkipVerify: true, //nolint:gosec
+		InsecureSkipVerify: true, //nolint:gosec // see function doc — pentest probe, untrusted certs expected
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	dialer := &net.Dialer{Timeout: dialTimeout}
@@ -173,9 +180,13 @@ func DoSTARTTLS(ctx context.Context, conn net.Conn, host string) (*tls.Conn, err
 			return nil, fmt.Errorf("%w: %s", ErrSTARTTLSRejected, resp)
 		}
 	}
+	// InsecureSkipVerify is intentional: same rationale as TryTLSConnection —
+	// STARTTLS-served servers in pentest scope routinely present untrusted
+	// certs and the tool's purpose is to enumerate them, not validate their
+	// PKI. See repo-wide pattern at internal/enumerate/imap/helpers.go etc.
 	tlsConfig := &tls.Config{
 		ServerName:         host,
-		InsecureSkipVerify: true, //nolint:gosec
+		InsecureSkipVerify: true, //nolint:gosec // pentest probe — untrusted certs expected
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
 	if err := tlsConn.Handshake(); err != nil {
