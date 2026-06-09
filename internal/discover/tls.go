@@ -756,9 +756,15 @@ func computeJARM(target string, timeout time.Duration) string {
 	}
 	probes := jarm.GetProbes(host, port)
 	rawResults := make([]string, 0, len(probes))
+	// Cap per-probe timeout so 10 sequential probes together cannot exceed the
+	// caller's configured timeout. Minimum 1s per probe to avoid aggressive resets.
+	perProbeTimeout := timeout / 10
+	if perProbeTimeout < time.Second {
+		perProbeTimeout = time.Second
+	}
 	for _, probe := range probes {
 		payload := jarm.BuildProbe(probe)
-		resp := sendJARMProbe(target, payload, timeout)
+		resp := sendJARMProbe(target, payload, perProbeTimeout)
 		result, _ := jarm.ParseServerHello(resp, probe)
 		rawResults = append(rawResults, result)
 	}
@@ -983,8 +989,10 @@ func parseJA4SFromServerHello(data []byte) string {
 				protoLen := int(alpnData[2])
 				if protoLen > 0 && len(alpnData) >= 3+protoLen {
 					protoName := string(alpnData[3 : 3+protoLen])
+					// JA4S ALPN segment = first char + last char of the selected protocol
+					// (per FoxIO JA4S spec). Examples: "h2"→"h2", "http/1.1"→"h1", "grpc"→"gc".
 					if len(protoName) >= 2 {
-						alpn = protoName[:2]
+						alpn = string(protoName[0]) + string(protoName[len(protoName)-1])
 					} else {
 						alpn = protoName
 					}

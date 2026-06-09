@@ -88,7 +88,8 @@ func TestParseJA4SFromServerHello_TLS12_WithALPN(t *testing.T) {
 	if !strings.HasPrefix(prefix, "t") {
 		t.Errorf("expected 't' TCP prefix, got %q", result)
 	}
-	// version = "12", count = "01" (ALPN counted), alpn = "h2" → prefix = "t1201h2"
+	// version = "12", count = "01" (ALPN counted), alpn = "h2" → prefix = "t1201h2".
+	// JA4S ALPN = first + last char of selected protocol: "h2"[0]+"h2"[1] = "h2".
 	if prefix != "t1201h2" {
 		t.Errorf("expected prefix t1201h2, got %q", prefix)
 	}
