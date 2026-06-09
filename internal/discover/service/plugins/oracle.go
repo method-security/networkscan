@@ -32,13 +32,13 @@ func (OracleFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		timeoutDur = 5 * time.Second
 	}
 
-	conn, err := net.DialTimeout("tcp", addr, timeoutDur)
+	dialer := &net.Dialer{Timeout: timeoutDur}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, nil
 	}
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetDeadline(time.Now().Add(timeoutDur))
-	_ = ctx
 
 	// Build TNS CONNECT packet with bogus service name
 	pkt := buildOracleTNSConnect(ip.String(), port)
