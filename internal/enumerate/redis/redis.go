@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	redisFern "github.com/Method-Security/networkscan/generated/go/enumerate/redis"
@@ -15,6 +16,7 @@ import (
 )
 
 const defaultRedisPort = 6379
+const defaultRedisTimeoutMs = 10000
 
 // LibraryEnumerateRedis implements NetworkApplicationLibrary for Redis enumeration.
 // It probes Redis targets for connectivity, server info, and security configuration.
@@ -38,9 +40,22 @@ func (r *LibraryEnumerateRedis) EnumerateTarget(ctx context.Context, target stri
 	addr := utils.FormatHostPort(host, port)
 	details.Target = addr
 
-	// Create Redis client (unauthenticated)
+	// Derive timeout from context deadline if set, otherwise use the default.
+	// This mirrors LibraryEnumerateMongoDB so that --timeout is honoured end-to-end.
+	timeoutMs := defaultRedisTimeoutMs
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining > 0 {
+			timeoutMs = int(remaining.Milliseconds())
+		}
+	}
+	timeout := time.Duration(timeoutMs) * time.Millisecond
+
+	// Create Redis client (unauthenticated) with context-derived timeouts.
 	client := redisclient.NewClient(&redisclient.Options{
-		Addr: addr,
+		Addr:         addr,
+		DialTimeout:  timeout,
+		ReadTimeout:  timeout,
+		WriteTimeout: timeout,
 	})
 	defer func() { _ = client.Close() }()
 
