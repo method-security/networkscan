@@ -6,6 +6,7 @@ require (
 	github.com/Method-Security/pkg v0.0.6
 	github.com/RedTeamPentesting/adauth v0.5.0
 	github.com/go-ldap/ldap/v3 v3.4.11
+	github.com/go-sql-driver/mysql v1.10.0
 	github.com/google/uuid v1.6.0
 	github.com/gosnmp/gosnmp v1.42.1
 	github.com/jfjallid/go-smb v0.6.6
@@ -133,7 +134,6 @@ require (
 	github.com/go-playground/validator/v10 v10.26.0 // indirect
 	github.com/go-rod/rod v0.116.2 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible // indirect
-	github.com/go-sql-driver/mysql v1.10.0 // indirect
 	github.com/goburrow/cache v0.1.4 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect

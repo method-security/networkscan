@@ -1,0 +1,10 @@
+imports:
+  pop3Protocol: ../../common/protocol/pop3.yml
+
+types:
+  EnumeratePop3Details:
+    properties:
+      target: string
+      canConnect: optional<boolean>
+      implicitTls: optional<boolean>
+      serverInfo: optional<pop3Protocol.Pop3ServerInfo>
