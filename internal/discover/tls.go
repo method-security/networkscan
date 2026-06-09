@@ -824,10 +824,27 @@ func computeJA4S(target, serverName string, timeout time.Duration) string {
 		0x00, 0x18, // secp384r1
 	}
 
+	// key_share extension (0x0033): required for TLS 1.3 – without it a pure
+	// TLS 1.3 server responds with HelloRetryRequest (handshake type 0x02,
+	// identical to ServerHello) instead of a full ServerHello.
+	keyShareExt := []byte{
+		0x00, 0x33, // type: key_share
+		0x00, 0x26, // ext data length = 38
+		0x00, 0x24, // key_share_list length = 36
+		0x00, 0x1d, // group: x25519
+		0x00, 0x20, // key_exchange length = 32
+		// 32-byte placeholder x25519 public key (zeroes are fine for fingerprinting)
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+
 	var extensions []byte
 	extensions = append(extensions, sniExt...)
 	extensions = append(extensions, suppVersExt...)
 	extensions = append(extensions, suppGroupsExt...)
+	extensions = append(extensions, keyShareExt...)
 
 	hello := buildClientHello(0x03, 0x03, baseCipherSuites, extensions, []byte{0x00})
 	record := buildTLSRecord(0x16, 0x03, 0x01, hello)
@@ -841,6 +858,23 @@ func computeJA4S(target, serverName string, timeout time.Duration) string {
 	// Must be a TLS Handshake (0x16) containing a ServerHello (0x02)
 	if n < 44 || buf[0] != 0x16 || buf[5] != 0x02 {
 		return ""
+	}
+	// Detect HelloRetryRequest: same handshake type (0x02) as ServerHello but
+	// carries a special 32-byte magic Random (SHA-256 of "HelloRetryRequest").
+	// This happens when the server rejects all offered key_share groups.
+	const shBase = 9 // TLS record (5) + handshake header (4)
+	if n >= shBase+34 {
+		hrrMagic := [32]byte{
+			0xCF, 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11,
+			0xBE, 0x1D, 0x8C, 0x02, 0x1E, 0x65, 0xB8, 0x91,
+			0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E,
+			0x07, 0x9E, 0x09, 0xE2, 0xC8, 0xA8, 0x33, 0x9C,
+		}
+		var random [32]byte
+		copy(random[:], buf[shBase+2:shBase+34])
+		if random == hrrMagic {
+			return "" // HelloRetryRequest — cannot fingerprint
+		}
 	}
 
 	return parseJA4SFromServerHello(buf[:n])
@@ -890,7 +924,8 @@ func parseJA4SFromServerHello(data []byte) string {
 		// ALPN extension type 0x0010
 		if extType == 0x0010 && extOffset+4+extLen <= extEnd {
 			alpnData := data[extOffset+4 : extOffset+4+extLen]
-			// alpnData layout: proto_list_len(2) | proto_len(1) | proto_name
+			// alpnData layout (RFC 7301, same in ClientHello and ServerHello):
+			//   proto_list_len(2) | proto_len(1) | proto_name
 			if len(alpnData) >= 4 {
 				protoLen := int(alpnData[2])
 				if protoLen > 0 && len(alpnData) >= 3+protoLen {
@@ -901,6 +936,18 @@ func parseJA4SFromServerHello(data []byte) string {
 						alpn = protoName
 					}
 				}
+			}
+		}
+
+		// supported_versions extension type 0x002b
+		// In a ServerHello this carries a single 2-byte selected version (RFC 8446
+		// §4.2.1).  TLS 1.3 mandates legacy_version == 0x0303, so the real
+		// negotiated version MUST be read from here — reading legacy_version
+		// alone would always yield "12" for TLS 1.3.
+		if extType == 0x002b && extOffset+4+extLen <= extEnd && extLen >= 2 {
+			selectedVer := uint16(data[extOffset+4])<<8 | uint16(data[extOffset+5])
+			if code := tlsVersionCode(selectedVer); code != "00" {
+				verCode = code
 			}
 		}
 

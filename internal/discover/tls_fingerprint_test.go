@@ -108,14 +108,22 @@ func TestParseJA4SFromServerHello_TLS12_WithALPN(t *testing.T) {
 	}
 }
 
-// TestParseJA4SFromServerHello_TLS13_NoALPN checks a TLS 1.3 ServerHello with
-// no extensions: version prefix "13", ALPN placeholder "00".
+// TestParseJA4SFromServerHello_TLS13_NoALPN checks a TLS 1.3 ServerHello.
+// Per RFC 8446 §4.1.3 the legacy_version field MUST be 0x0303 and the actual
+// negotiated version is carried in the supported_versions extension (0x002b).
+// The fingerprint must therefore report version "13", not "12".
 func TestParseJA4SFromServerHello_TLS13_NoALPN(t *testing.T) {
 	t.Parallel()
+	// supported_versions extension: selected version = TLS 1.3 (0x0304)
+	suppVersExt := []byte{
+		0x00, 0x2b, // type: supported_versions
+		0x00, 0x02, // ext data length = 2
+		0x03, 0x04, // TLS 1.3 selected version
+	}
 	record := buildTestServerHello(
-		[]byte{0x03, 0x04}, // TLS 1.3 (legacy ServerHello version field)
+		[]byte{0x03, 0x03}, // legacy_version (always 0x0303 in real TLS 1.3 ServerHello)
 		[]byte{0x13, 0x01}, // TLS_AES_128_GCM_SHA256
-		nil,                // no extensions
+		suppVersExt,
 	)
 
 	result := parseJA4SFromServerHello(record)
@@ -123,22 +131,23 @@ func TestParseJA4SFromServerHello_TLS13_NoALPN(t *testing.T) {
 		t.Fatal("parseJA4SFromServerHello returned empty string")
 	}
 
-	// Expected: t1301(00)_1301_000000000000 (no-extension sentinel)
+	// Expected format: t130100_1301_<extHash>
+	//   version="13" (from supported_versions ext), count="01", alpn="00" (no ALPN)
 	parts := strings.Split(result, "_")
 	if len(parts) != 3 {
 		t.Fatalf("expected 3 parts, got %d: %s", len(parts), result)
 	}
-	if parts[0] != "t1301" {
-		// Note: "00" ALPN is appended only when there ARE extensions (empty list)
-		// With NO extensions the function returns the no-extension sentinel directly.
-		// The prefix without an extension list is: t<ver>01<00>
-		// Allow both representations.
-		if parts[0] != "t1301" && parts[0] != "t130100" {
-			t.Errorf("unexpected prefix %q", parts[0])
-		}
+	if parts[0] != "t130100" {
+		t.Errorf("expected prefix t130100 (version from supported_versions ext), got %q", parts[0])
 	}
 	if parts[1] != "1301" {
 		t.Errorf("expected cipher 1301, got %q", parts[1])
+	}
+	// Extension hash: sorted ext types = [43] (0x002b decimal), joined = "43"
+	h := sha256.Sum256([]byte("43"))
+	wantExtHash := hex.EncodeToString(h[:])[:12]
+	if parts[2] != wantExtHash {
+		t.Errorf("extension hash: want %q (sha256(\"43\")[:12]), got %q", wantExtHash, parts[2])
 	}
 }
 
