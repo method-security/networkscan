@@ -99,8 +99,9 @@ func TestParseJA4SFromServerHello_TLS12_WithALPN(t *testing.T) {
 		t.Errorf("expected 12-char extension hash, got %d chars: %q", len(parts[2]), parts[2])
 	}
 
-	// JA4S_c excludes ALPN (0x0010) from the hash input.
-	// With only the ALPN extension present, hashExtTypes is empty → SHA256("").
+	// JA4S_c excludes ALPN (0x0010) from the hash input (per FoxIO JA4S spec),
+	// and uses wire order (not sorted). With only the ALPN extension present,
+	// hashExtTypes is empty → SHA256("").
 	h := sha256.Sum256([]byte(""))
 	wantExtHash := hex.EncodeToString(h[:])[:12]
 	if parts[2] != wantExtHash {
@@ -143,11 +144,12 @@ func TestParseJA4SFromServerHello_TLS13_NoALPN(t *testing.T) {
 	if parts[1] != "1301" {
 		t.Errorf("expected cipher 1301, got %q", parts[1])
 	}
-	// Extension hash: sorted ext types = [43] (0x002b decimal), joined = "43"
+	// Extension hash: wire-order ext types (GREASE/SNI/ALPN excluded) = [43]
+	// (0x002b = 43, supported_versions). JA4S uses wire order not sorted order.
 	h := sha256.Sum256([]byte("43"))
 	wantExtHash := hex.EncodeToString(h[:])[:12]
 	if parts[2] != wantExtHash {
-		t.Errorf("extension hash: want %q (sha256(\"43\")[:12]), got %q", wantExtHash, parts[2])
+		t.Errorf("extension hash: want %q (sha256(\"43\")[:12], wire order), got %q", wantExtHash, parts[2])
 	}
 }
 

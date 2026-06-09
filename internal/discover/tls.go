@@ -12,7 +12,6 @@ import (
 	"encoding/pem"
 	"fmt"
 	"net"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1011,9 +1010,10 @@ func parseJA4SFromServerHello(data []byte) string {
 	// JA4S_b: actual count of non-GREASE extensions, formatted as 2-digit decimal.
 	extCount := fmt.Sprintf("%02d", len(extTypes))
 
-	// JA4S_c: SHA-256 of comma-separated sorted extension types, with GREASE,
-	// SNI (0x0000), and ALPN (0x0010) excluded.
-	sort.Ints(hashExtTypes)
+	// JA4S_c: SHA-256 of comma-separated extension types in ServerHello wire order,
+	// with GREASE, SNI (0x0000), and ALPN (0x0010) excluded.
+	// Note: unlike JA4 (ClientHello), JA4S does NOT sort the extension list — the
+	// hash preserves the order in which the server sent the extensions.
 	hashStrs := make([]string, len(hashExtTypes))
 	for i, t := range hashExtTypes {
 		hashStrs[i] = strconv.Itoa(t)
