@@ -5,17 +5,22 @@ import (
 	// Standard
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"net"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	// External
+	jarm "github.com/hdm/jarm-go"
 )
 
 // isIPAddress checks if a given host string is an IP address (IPv4 or IPv6)
@@ -139,7 +144,8 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	defaultState := defaultConn.ConnectionState()
 	negotiatedVersion = tlsVersionToString(defaultState.Version)
 	negotiatedCipherSuite = convertCipherSuiteToEnum(defaultState.CipherSuite)
-	certificates = extractCertificates(defaultState.PeerCertificates)
+	computeJA4X := config.Ja4X != nil && *config.Ja4X
+	certificates = extractCertificates(defaultState.PeerCertificates, computeJA4X)
 	_ = defaultConn.Close()
 
 	compressionEnabled := probeCompression(targetAddress, serverName, dialer)
@@ -185,6 +191,22 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	// Note: Go's crypto/tls doesn't expose the server's supported curves directly
 	// We can only see what was negotiated
 
+	tlsTimeout := time.Duration(config.Timeout) * time.Second
+
+	var ja4sFingerprint *string
+	if config.Ja4S != nil && *config.Ja4S {
+		v := computeJA4S(targetAddress, serverName, tlsTimeout)
+		if v != "" {
+			ja4sFingerprint = &v
+		}
+	}
+
+	var jarmFingerprint *string
+	if config.Jarm != nil && *config.Jarm {
+		v := computeJARM(targetAddress, tlsTimeout)
+		jarmFingerprint = &v
+	}
+
 	return &discoverfern.TlsConfiguration{
 		NegotiatedVersion:            negotiatedVersion,
 		NegotiatedCipherSuite:        negotiatedCipherSuite,
@@ -193,6 +215,8 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 		VersionSupport:               versionSupport,
 		SupportedEllipticCurves:      supportedCurves,
 		Certificates:                 certificates,
+		Ja4SFingerprint:              ja4sFingerprint,
+		JarmFingerprint:              jarmFingerprint,
 	}, errors
 }
 
@@ -296,7 +320,8 @@ func convertCipherSuiteToEnum(cipherSuiteID uint16) discoverfern.CipherSuite {
 }
 
 // extractCertificates converts x509 certificates to our Certificate type.
-func extractCertificates(x509Certs []*x509.Certificate) []*discoverfern.Certificate {
+// When withJA4X is true, a JA4X fingerprint is computed for each certificate.
+func extractCertificates(x509Certs []*x509.Certificate, withJA4X bool) []*discoverfern.Certificate {
 	certificates := []*discoverfern.Certificate{}
 
 	for _, cert := range x509Certs {
@@ -330,6 +355,11 @@ func extractCertificates(x509Certs []*x509.Certificate) []*discoverfern.Certific
 		publicKeyAlgorithm, err := discoverfern.NewPublicKeyAlgorithmFromString(cert.PublicKeyAlgorithm.String())
 		if err == nil {
 			certificate.PublicKeyAlgorithm = publicKeyAlgorithm
+		}
+
+		if withJA4X {
+			fp := computeJA4XForCert(cert)
+			certificate.Ja4XFingerprint = &fp
 		}
 
 		certificates = append(certificates, certificate)
@@ -695,4 +725,215 @@ func buildClientHello(versionMajor, versionMinor byte, cipherSuites, extensions,
 func buildTLSRecord(contentType, versionMajor, versionMinor byte, payload []byte) []byte {
 	header := []byte{contentType, versionMajor, versionMinor, byte(len(payload) >> 8), byte(len(payload) & 0xff)}
 	return append(header, payload...)
+}
+
+// sendJARMProbe opens a TCP connection, sends payload, and reads one response buffer.
+// Returns nil on any error. This mirrors the probeSSLv3 transport pattern.
+func sendJARMProbe(target string, payload []byte, timeout time.Duration) []byte {
+	conn, err := net.DialTimeout("tcp", target, timeout)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+	if _, err := conn.Write(payload); err != nil {
+		return nil
+	}
+	resp := make([]byte, 1484)
+	n, _ := conn.Read(resp)
+	return resp[:n]
+}
+
+// computeJARM sends the 10 standard JARM probes and returns the resulting 62-character hash.
+// Returns jarm.ZeroHash if the target is unreachable or does not respond to any probe.
+func computeJARM(target string, timeout time.Duration) string {
+	host, portStr, err := net.SplitHostPort(target)
+	if err != nil {
+		return jarm.ZeroHash
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return jarm.ZeroHash
+	}
+	probes := jarm.GetProbes(host, port)
+	rawResults := make([]string, 0, len(probes))
+	for _, probe := range probes {
+		payload := jarm.BuildProbe(probe)
+		resp := sendJARMProbe(target, payload, timeout)
+		result, _ := jarm.ParseServerHello(resp, probe)
+		rawResults = append(rawResults, result)
+	}
+	return jarm.RawHashToFuzzyHash(strings.Join(rawResults, ","))
+}
+
+// tlsVersionCode maps a TLS version uint16 to its 2-character JA4 version code.
+func tlsVersionCode(version uint16) string {
+	switch version {
+	case tls.VersionTLS13:
+		return "13"
+	case tls.VersionTLS12:
+		return "12"
+	case tls.VersionTLS11:
+		return "11"
+	case tls.VersionTLS10:
+		return "10"
+	case tls.VersionSSL30:
+		return "s3"
+	default:
+		return "00"
+	}
+}
+
+// computeJA4S connects to target, sends a TLS 1.3-capable ClientHello, reads the
+// ServerHello, and returns the JA4S fingerprint string. Returns "" on failure.
+//
+// JA4S format: t{TLSVersion}{CipherCount}{ALPN}_{SelectedCipher}_{ExtensionHash}
+//
+//   - TLSVersion: 2-char code ("13" = TLS 1.3, "12" = TLS 1.2, etc.)
+//   - CipherCount: number of cipher suites in the ServerHello (always "01")
+//   - ALPN: first 2 chars of selected ALPN protocol, or "00" if absent
+//   - SelectedCipher: selected cipher suite as 4-hex lowercase
+//   - ExtensionHash: lowercase SHA-256 of comma-joined sorted extension type
+//     decimal strings, truncated to 12 chars
+func computeJA4S(target, serverName string, timeout time.Duration) string {
+	conn, err := net.DialTimeout("tcp", target, timeout)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+
+	// Build a TLS 1.3 ClientHello that also supports TLS 1.2.
+	sniExt := buildSNIExtension(serverName)
+
+	// supported_versions extension (0x002b): offer TLS 1.3 + TLS 1.2
+	suppVersExt := []byte{
+		0x00, 0x2b, // type: supported_versions
+		0x00, 0x05, // ext length
+		0x04,       // versions list length
+		0x03, 0x04, // TLS 1.3
+		0x03, 0x03, // TLS 1.2
+	}
+	// supported_groups extension (0x000a): x25519, secp256r1, secp384r1
+	suppGroupsExt := []byte{
+		0x00, 0x0a, // type: supported_groups
+		0x00, 0x08, // ext length
+		0x00, 0x06, // groups list length
+		0x00, 0x1d, // x25519
+		0x00, 0x17, // secp256r1
+		0x00, 0x18, // secp384r1
+	}
+
+	var extensions []byte
+	extensions = append(extensions, sniExt...)
+	extensions = append(extensions, suppVersExt...)
+	extensions = append(extensions, suppGroupsExt...)
+
+	hello := buildClientHello(0x03, 0x03, baseCipherSuites, extensions, []byte{0x00})
+	record := buildTLSRecord(0x16, 0x03, 0x01, hello)
+
+	if _, err := conn.Write(record); err != nil {
+		return ""
+	}
+
+	buf := make([]byte, 4096)
+	n, _ := conn.Read(buf)
+	// Must be a TLS Handshake (0x16) containing a ServerHello (0x02)
+	if n < 44 || buf[0] != 0x16 || buf[5] != 0x02 {
+		return ""
+	}
+
+	return parseJA4SFromServerHello(buf[:n])
+}
+
+// parseJA4SFromServerHello extracts the JA4S fingerprint from raw ServerHello bytes.
+func parseJA4SFromServerHello(data []byte) string {
+	// TLS record header: 5 bytes. Handshake header: 4 bytes. ServerHello starts at offset 9.
+	shOffset := 9
+	if len(data) < shOffset+35 {
+		return ""
+	}
+
+	rawVersion := uint16(data[shOffset])<<8 | uint16(data[shOffset+1])
+	verCode := tlsVersionCode(rawVersion)
+
+	// Random is 32 bytes at shOffset+2. session_id_len at shOffset+34.
+	sessionIDLen := int(data[shOffset+34])
+
+	cipherOffset := shOffset + 34 + 1 + sessionIDLen
+	if len(data) < cipherOffset+3 {
+		return ""
+	}
+	selectedCipher := fmt.Sprintf("%04x", uint16(data[cipherOffset])<<8|uint16(data[cipherOffset+1]))
+	// compression method at cipherOffset+2 (skip)
+
+	extListOffset := cipherOffset + 3
+	if len(data) < extListOffset+2 {
+		// No extensions present
+		return fmt.Sprintf("t%s0100_%s_000000000000", verCode, selectedCipher)
+	}
+
+	extListLen := int(data[extListOffset])<<8 | int(data[extListOffset+1])
+	extOffset := extListOffset + 2
+	extEnd := extOffset + extListLen
+	if extEnd > len(data) {
+		extEnd = len(data)
+	}
+
+	var extTypes []int
+	alpn := "00"
+	for extOffset+4 <= extEnd {
+		extType := int(uint16(data[extOffset])<<8 | uint16(data[extOffset+1]))
+		extLen := int(data[extOffset+2])<<8 | int(data[extOffset+3])
+		extTypes = append(extTypes, extType)
+
+		// ALPN extension type 0x0010
+		if extType == 0x0010 && extOffset+4+extLen <= extEnd {
+			alpnData := data[extOffset+4 : extOffset+4+extLen]
+			// alpnData layout: proto_list_len(2) | proto_len(1) | proto_name
+			if len(alpnData) >= 4 {
+				protoLen := int(alpnData[2])
+				if protoLen > 0 && len(alpnData) >= 3+protoLen {
+					protoName := string(alpnData[3 : 3+protoLen])
+					if len(protoName) >= 2 {
+						alpn = protoName[:2]
+					} else {
+						alpn = protoName
+					}
+				}
+			}
+		}
+
+		extOffset += 4 + extLen
+	}
+
+	sort.Ints(extTypes)
+	extStrs := make([]string, len(extTypes))
+	for i, t := range extTypes {
+		extStrs[i] = strconv.Itoa(t)
+	}
+	h := sha256.Sum256([]byte(strings.Join(extStrs, ",")))
+	extHash := hex.EncodeToString(h[:])[:12]
+
+	// CipherCount in a ServerHello is always 1, formatted as 2-digit decimal.
+	return fmt.Sprintf("t%s01%s_%s_%s", verCode, alpn, selectedCipher, extHash)
+}
+
+// computeJA4XForCert computes the JA4X fingerprint for a single X.509 certificate.
+//
+// JA4X format: {IssuerHash}_{SubjectHash}_{PublicKeyHash}
+//
+//   - IssuerHash:    SHA-256 of DER-encoded issuer distinguished name, truncated to 12 hex chars
+//   - SubjectHash:   SHA-256 of DER-encoded subject distinguished name, truncated to 12 hex chars
+//   - PublicKeyHash: SHA-256 of DER-encoded SubjectPublicKeyInfo, truncated to 12 hex chars
+func computeJA4XForCert(cert *x509.Certificate) string {
+	issuerHash := sha256.Sum256(cert.RawIssuer)
+	subjectHash := sha256.Sum256(cert.RawSubject)
+	pubKeyHash := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+
+	return fmt.Sprintf("%s_%s_%s",
+		hex.EncodeToString(issuerHash[:])[:12],
+		hex.EncodeToString(subjectHash[:])[:12],
+		hex.EncodeToString(pubKeyHash[:])[:12],
+	)
 }

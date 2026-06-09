@@ -160,7 +160,7 @@ require (
 	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hbakhtiyor/strsim v0.0.0-20190107154042-4d2bbb273edf // indirect
-	github.com/hdm/jarm-go v0.0.7 // indirect
+	github.com/hdm/jarm-go v0.0.7
 	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/indece-official/go-ebcdic v1.2.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect

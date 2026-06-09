@@ -86,6 +86,7 @@ types:
       issuerCommonName: optional<string> # Can be empty
       subjectCommonName: optional<string> # Can be empty
       subjectAlternativeNames: optional<list<string>> # Can be empty
+      ja4xFingerprint: optional<string> # JA4X X.509 certificate fingerprint
   TlsVersionSupport:
     properties:
       version: TlsVersion
@@ -100,6 +101,8 @@ types:
       versionSupport: list<TlsVersionSupport>
       supportedEllipticCurves: optional<list<string>>
       certificates: list<Certificate>
+      ja4sFingerprint: optional<string> # JA4S server-side TLS fingerprint
+      jarmFingerprint: optional<string> # JARM 10-probe TLS fingerprint
   TlsSummary:
     properties:
       socket: string
@@ -114,6 +117,9 @@ types:
     properties:
       targets: list<string>
       timeout: integer
+      ja4s: optional<boolean> # Compute JA4S server-side TLS fingerprint
+      jarm: optional<boolean> # Compute JARM 10-probe TLS fingerprint
+      ja4x: optional<boolean> # Compute JA4X X.509 certificate fingerprint
   # Report Types
   DiscoverTlsReport:
     properties:
