@@ -67,6 +67,19 @@ func (m *LibraryEnumerateMSSSQL) EnumerateTarget(ctx context.Context, target str
 	canConnect, hostname, version, buildNumber, edition, loginErr := probeTDSLogin(ctx, host, port)
 	details.CanConnect = &canConnect
 
+	// Step C: SQL Browser UDP 1434 — discover named instances.
+	// Run this BEFORE the canConnect early-return: UDP/1434 is independent of TCP
+	// connectivity, so a host where the TCP port is blocked or misconfigured may
+	// still respond to SSRP and expose named instances.
+	namedInstances, browserErr := probeSQLBrowser(ctx, host)
+	if browserErr != nil {
+		log.Info("SQL Browser probe failed",
+			svc1log.SafeParam("target", host),
+			svc1log.SafeParam("error", browserErr))
+	} else if len(namedInstances) > 0 {
+		details.NamedInstances = namedInstances
+	}
+
 	if loginErr != nil && !canConnect {
 		errMsg := fmt.Sprintf("connection failed: %v", loginErr)
 		details.Error = &errMsg
@@ -85,16 +98,6 @@ func (m *LibraryEnumerateMSSSQL) EnumerateTarget(ctx context.Context, target str
 	}
 	if edition != "" {
 		details.Edition = &edition
-	}
-
-	// Step C: SQL Browser UDP 1434 — discover named instances.
-	namedInstances, browserErr := probeSQLBrowser(ctx, host)
-	if browserErr != nil {
-		log.Info("SQL Browser probe failed",
-			svc1log.SafeParam("target", host),
-			svc1log.SafeParam("error", browserErr))
-	} else if len(namedInstances) > 0 {
-		details.NamedInstances = namedInstances
 	}
 
 	log.Info("MSSQL enumeration complete", svc1log.SafeParam("target", addr))
@@ -138,19 +141,22 @@ func probePrelogin(ctx context.Context, host string, port int) (*mssqlfern.Mssql
 	}
 
 	// Build TDS PRELOGIN packet.
-	// Option list: VERSION(0x00) at offset 5 len 6, ENCRYPTION(0x01) at offset 11 len 1, TERMINATOR(0xFF)
-	// Option list length: 3 entries * 5 bytes each + 1 (terminator) = 16 bytes
-	// Data: 6 bytes (version) + 1 byte (encrypt) = 7 bytes
-	// Total payload: 16 + 7 = 23 bytes
+	// Option list: 2 entries (VERSION + ENCRYPTION), each 5 bytes (1 type + 2 offset + 2 length),
+	// plus a 1-byte TERMINATOR sentinel (0xFF — no offset/length fields).
+	// Option list size: 2*5 + 1 = 11 bytes
+	// Data: 6 bytes (version placeholder) + 1 byte (encrypt request) = 7 bytes
+	// Total payload: 11 + 7 = 18 bytes
 	// Packet header: 8 bytes
-	// Total: 31 bytes
+	// Total: 26 bytes
 
 	const (
 		tokenVersion    = 0x00
 		tokenEncryption = 0x01
 		tokenTerminator = 0xFF
 
-		optionListSize = 3*5 + 1 // 3 options * (1 type + 2 offset + 2 length) + 1 terminator = 16
+		// The TERMINATOR is a single sentinel byte with no offset/length fields.
+		// Only VERSION and ENCRYPTION are full option entries (5 bytes each).
+		optionListSize = 2*5 + 1 // 2 options × 5 bytes + 1-byte TERMINATOR = 11
 		versionDataLen = 6
 		encryptDataLen = 1
 		payloadLen     = optionListSize + versionDataLen + encryptDataLen
