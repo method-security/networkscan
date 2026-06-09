@@ -840,8 +840,23 @@ func computeJA4S(target, serverName string, timeout time.Duration) string {
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	}
 
+	// ALPN extension (0x0010): offer h2 and http/1.1 so servers that support
+	// ALPN will select and return their preferred protocol in the ServerHello.
+	// Without this, the probe never elicits an ALPN extension in the response
+	// and the JA4S ALPN field is always "00" even for HTTP/2-capable servers.
+	alpnExt := []byte{
+		0x00, 0x10, // type: ALPN
+		0x00, 0x0e, // ext data length = 14
+		0x00, 0x0c, // protocol_name_list length = 12
+		0x02,                                           // "h2" length
+		0x68, 0x32,                                     // "h2"
+		0x08,                                           // "http/1.1" length
+		0x68, 0x74, 0x74, 0x70, 0x2f, 0x31, 0x2e, 0x31, // "http/1.1"
+	}
+
 	var extensions []byte
 	extensions = append(extensions, sniExt...)
+	extensions = append(extensions, alpnExt...)
 	extensions = append(extensions, suppVersExt...)
 	extensions = append(extensions, suppGroupsExt...)
 	extensions = append(extensions, keyShareExt...)
