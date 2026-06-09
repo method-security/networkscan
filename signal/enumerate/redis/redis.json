@@ -1,0 +1,30 @@
+{
+  "config": {
+    "service": "REDIS",
+    "targets": ["45.33.32.156:6379"],
+    "timeout": 30
+  },
+  "result": {
+    "details": [
+      {
+        "type": "EnumerateRedisDetails",
+        "target": "45.33.32.156:6379",
+        "canConnect": true,
+        "serverVersion": "7.0.15",
+        "mode": "standalone",
+        "role": "master",
+        "connectedClients": 3,
+        "requirepassSet": false,
+        "aclUsersConfigured": [
+          "default"
+        ],
+        "dangerousCommandsExposed": [
+          "CONFIG",
+          "DEBUG",
+          "MODULE"
+        ]
+      }
+    ]
+  },
+  "errors": []
+}
