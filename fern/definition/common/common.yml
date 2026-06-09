@@ -10,6 +10,7 @@ types:
       - BEANSTALKD
       - BECKHOFFADS
       - BGP
+      - CASSANDRA
       - COAP
       - CODESYS
       - DCERPC
