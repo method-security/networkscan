@@ -153,30 +153,66 @@ func parseInfoFields(info string, details *redisFern.EnumerateRedisDetails) {
 // probeDangerousCommands attempts safe probes for a set of dangerous Redis commands.
 // A command is considered "exposed" if the error is NOT a permission denial (NOPERM/NOAUTH/ERR unknown command).
 func probeDangerousCommands(ctx context.Context, client *redisclient.Client) []string {
-	type probe struct {
+	var exposed []string
+
+	// Direct probes: actually invoke each command with a safe read-only argument so that
+	// ACL-denied responses (NOPERM/NOAUTH) are correctly treated as NOT exposed.
+	directProbes := []struct {
 		name string
 		args []interface{}
-	}
-
-	probes := []probe{
+	}{
 		{name: "CONFIG", args: []interface{}{"CONFIG", "GET", "maxmemory"}},
 		{name: "DEBUG", args: []interface{}{"DEBUG", "SLEEP", "0"}},
-		{name: "FLUSHALL", args: []interface{}{"COMMAND", "INFO", "flushall"}},
-		{name: "MODULE", args: []interface{}{"COMMAND", "INFO", "module"}},
+		// MODULE LIST is a safe read-only invocation; NOPERM means the command is ACL-restricted.
+		{name: "MODULE", args: []interface{}{"MODULE", "LIST"}},
 	}
 
-	var exposed []string
-	for _, p := range probes {
+	for _, p := range directProbes {
 		err := client.Do(ctx, p.args...).Err()
-		if err == nil {
-			// Command succeeded — exposed
-			exposed = append(exposed, p.name)
-		} else if !isDeniedError(err) && !isUnknownCommandError(err) {
-			// Got a non-permission error (e.g., wrong args) — command is still accessible
+		if err == nil || (!isDeniedError(err) && !isUnknownCommandError(err)) {
 			exposed = append(exposed, p.name)
 		}
 	}
+
+	// FLUSHALL cannot be invoked safely (it is always destructive). Use ACL DRYRUN
+	// (Redis 7.0+) for a non-destructive, ACL-accurate check. Falls back to
+	// COMMAND INFO with explicit payload parsing on older Redis to avoid treating
+	// an unknown/unregistered command as exposed.
+	if probeFlushAll(ctx, client) {
+		exposed = append(exposed, "FLUSHALL")
+	}
+
 	return exposed
+}
+
+// probeFlushAll returns true if FLUSHALL appears to be accessible to the connected user.
+// It prefers ACL DRYRUN (Redis 7.0+) over COMMAND INFO to avoid false positives from
+// ACL-restricted commands and from nil payloads returned for unknown command names.
+func probeFlushAll(ctx context.Context, client *redisclient.Client) bool {
+	// ACL DRYRUN checks permissions without side effects (Redis 7.0+).
+	dryrunErr := client.Do(ctx, "ACL", "DRYRUN", "default", "FLUSHALL").Err()
+	if dryrunErr == nil {
+		return true
+	}
+	if isDeniedError(dryrunErr) {
+		return false
+	}
+	// ACL DRYRUN not supported (Redis < 7.0): fall back to COMMAND INFO.
+	// Parse the response payload to distinguish "command unknown" (nil element)
+	// from "command registered" (non-nil element).
+	val, err := client.Do(ctx, "COMMAND", "INFO", "flushall").Result()
+	if err != nil {
+		return false
+	}
+	arr, ok := val.([]interface{})
+	if !ok || len(arr) == 0 || arr[0] == nil {
+		// Nil element means FLUSHALL is not registered on this server.
+		return false
+	}
+	// Command is registered. On Redis < 6.0 (no ACL), registered implies callable.
+	// On Redis 6.x with ACL configured to deny FLUSHALL, this may be a false positive;
+	// ACL DRYRUN (Redis 7.0+) is required for ACL-accurate results on those versions.
+	return true
 }
 
 // isNoAuthError returns true if the error is a Redis NOAUTH error.

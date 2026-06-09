@@ -16,7 +16,7 @@
         "connectedClients": 3,
         "requirepassSet": false,
         "aclUsersConfigured": [
-          "user default on nopass ~* &* +@all"
+          "default"
         ],
         "dangerousCommandsExposed": [
           "CONFIG",
