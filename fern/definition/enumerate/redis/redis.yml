@@ -1,0 +1,14 @@
+types:
+  # Report structs
+  EnumerateRedisDetails:
+    properties:
+      target: string
+      canConnect: optional<boolean>
+      serverVersion: optional<string>
+      mode: optional<string>
+      role: optional<string>
+      connectedClients: optional<integer>
+      requirepassSet: optional<boolean>
+      aclUsersConfigured: optional<list<string>>
+      dangerousCommandsExposed: optional<list<string>>
+      error: optional<string>
