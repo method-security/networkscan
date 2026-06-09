@@ -18,4 +18,3 @@ types:
       anonymousAccessAllowed: optional<boolean>
       serverInfo: optional<mongodbProtocol.MongodbServerInfo>
       databases: optional<list<DatabaseInfo>>
-      errors: optional<list<string>>

@@ -194,13 +194,13 @@ type socks5ProbeResult struct {
 	noAuthAllowed         bool
 	userpassAllowed       bool
 	gssapiAvailable       bool
-	bindSupported          bool
-	udpAssociateSupported  bool
-	bndAddr                string
-	bndPort                uint16
-	connectRep             *byte // nil if CONNECT was never attempted
-	bindRepCode            *byte // nil when BIND probe did not complete (no signal)
-	udpAssociateRepCode    *byte // nil when UDP ASSOCIATE probe did not complete (no signal)
+	bindSupported         bool
+	udpAssociateSupported bool
+	bndAddr               string
+	bndPort               uint16
+	connectRep            *byte // nil if CONNECT was never attempted
+	bindRepCode           *byte // nil when BIND probe did not complete (no signal)
+	udpAssociateRepCode   *byte // nil when UDP ASSOCIATE probe did not complete (no signal)
 	responseTimeMs        int64
 	errors                []string
 }
