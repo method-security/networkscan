@@ -315,12 +315,9 @@ func parseErrorMessage(body []byte) string {
 
 // probeDatabases connects as postgres user to template1 with trust auth and lists pg_database.
 func probeDatabases(ctx context.Context, addr string, timeout time.Duration) ([]string, error) {
-	dsn := fmt.Sprintf("host=%s port=%d user=postgres dbname=template1 sslmode=disable connect_timeout=%d",
-		addr, 0, int(timeout.Seconds())+1)
-
 	// addr is already host:port — parse for separate host/port.
 	host, port := utils.ParseHostPort(addr, defaultPort)
-	dsn = fmt.Sprintf("host=%s port=%d user=postgres dbname=template1 sslmode=disable connect_timeout=%d",
+	dsn := fmt.Sprintf("host=%s port=%d user=postgres dbname=template1 sslmode=disable connect_timeout=%d",
 		host, port, int(timeout.Seconds())+1)
 
 	db, err := sql.Open("postgres", dsn)
