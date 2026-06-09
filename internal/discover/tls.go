@@ -756,12 +756,9 @@ func computeJARM(target string, timeout time.Duration) string {
 	}
 	probes := jarm.GetProbes(host, port)
 	rawResults := make([]string, 0, len(probes))
-	// Cap per-probe timeout so 10 sequential probes together cannot exceed the
-	// caller's configured timeout. Minimum 1s per probe to avoid aggressive resets.
+	// Cap per-probe timeout so all 10 sequential probes together stay within the
+	// caller's configured timeout. With --timeout 30 (default) each probe gets 3s.
 	perProbeTimeout := timeout / 10
-	if perProbeTimeout < time.Second {
-		perProbeTimeout = time.Second
-	}
 	for _, probe := range probes {
 		payload := jarm.BuildProbe(probe)
 		resp := sendJARMProbe(target, payload, perProbeTimeout)
