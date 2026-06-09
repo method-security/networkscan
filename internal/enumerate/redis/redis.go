@@ -196,9 +196,18 @@ func probeFlushAll(ctx context.Context, client *redisclient.Client) bool {
 		return true
 	}
 	if isDeniedError(dryrunErr) {
-		return false
+		// A NOPERM response can mean either:
+		//   (a) FLUSHALL is denied for this user → return false (correct)
+		//   (b) ACL DRYRUN itself is restricted → fall through to COMMAND INFO
+		// Distinguish by checking whether the error message names "flushall".
+		// When FLUSHALL is the denied command, Redis includes "flushall" in the message.
+		// When ACL DRYRUN is itself restricted, it names "acl|dryrun" instead.
+		if strings.Contains(strings.ToLower(dryrunErr.Error()), "flushall") {
+			return false
+		}
+		// ACL DRYRUN is restricted for this user — fall through to COMMAND INFO.
 	}
-	// ACL DRYRUN not supported (Redis < 7.0): fall back to COMMAND INFO.
+	// ACL DRYRUN not supported (Redis < 7.0) or restricted for this user: fall back to COMMAND INFO.
 	// Parse the response payload to distinguish "command unknown" (nil element)
 	// from "command registered" (non-nil element).
 	val, err := client.Do(ctx, "COMMAND", "INFO", "flushall").Result()
