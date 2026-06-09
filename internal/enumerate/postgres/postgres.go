@@ -58,22 +58,44 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 	}
 	timeout := time.Duration(timeoutMs) * time.Millisecond
 
+	// probeStart is used to compute a shrinking budget across serial probes so
+	// that each subsequent probe receives at most the time still remaining from
+	// the original budget rather than the full original timeout.
+	probeStart := time.Now()
+
 	// Step 1: Probe SSL support via SSLRequest.
-	sslSupported, sslErr := probeSSL(addr, timeout)
-	if sslErr != nil {
-		log.Info("PostgreSQL SSL probe failed",
+	// probeSSL distinguishes a hard TCP-dial failure (dialFailed=true, host
+	// unreachable) from a softer I/O failure that occurs after a successful dial
+	// (e.g. the server closed the connection before acknowledging the SSLRequest).
+	// Only a dial failure terminates enumeration; an I/O failure after dial means
+	// we could not determine SSL support but the host is still reachable.
+	sslSupported, dialFailed, sslErr := probeSSL(addr, timeout)
+	if dialFailed {
+		log.Info("PostgreSQL TCP dial failed",
 			svc1log.SafeParam("target", addr),
 			svc1log.SafeParam("error", sslErr))
-		// TCP dial failure — stop here.
 		errMsg := fmt.Sprintf("connection failed: %v", sslErr)
 		details.Error = &errMsg
 		errs = append(errs, errMsg)
 		return &enumeratefern.EnumerateServiceDetails{EnumeratePostgresDetails: &details}, errs
 	}
-	details.SslSupported = &sslSupported
+	if sslErr != nil {
+		// I/O failed after TCP dial — SSL status unknown but host is reachable.
+		log.Info("PostgreSQL SSL probe I/O error (continuing)",
+			svc1log.SafeParam("target", addr),
+			svc1log.SafeParam("error", sslErr))
+	} else {
+		details.SslSupported = &sslSupported
+	}
 
 	// Step 2: Probe startup message — get parameters and auth method.
-	serverVersion, serverEncoding, integerDatetimes, timeZone, authMethod, sslRequired, startupErr := probeStartup(addr, timeout)
+	// Pass only the remaining portion of the original budget so that the serial
+	// SSL + startup probes together stay within the initial timeout.
+	startupTimeout := timeout - time.Since(probeStart)
+	if startupTimeout <= 0 {
+		startupTimeout = 100 * time.Millisecond
+	}
+	serverVersion, serverEncoding, integerDatetimes, timeZone, authMethod, sslRequired, startupErr := probeStartup(addr, startupTimeout)
 	if sslRequired != nil {
 		details.SslRequired = sslRequired
 	}
@@ -104,8 +126,14 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 	}
 
 	// Step 3: If trust auth observed, enumerate databases.
+	// Pass the remaining budget so all three serial probes together stay within
+	// the original timeout.
 	if authMethod == "trust" {
-		databases, dbErr := probeDatabases(ctx, addr, timeout)
+		dbTimeout := timeout - time.Since(probeStart)
+		if dbTimeout <= 0 {
+			dbTimeout = 100 * time.Millisecond
+		}
+		databases, dbErr := probeDatabases(ctx, addr, dbTimeout)
 		if dbErr != nil {
 			log.Info("PostgreSQL database enumeration failed",
 				svc1log.SafeParam("target", addr),
@@ -119,11 +147,15 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 }
 
 // probeSSL sends a PostgreSQL SSLRequest and returns whether SSL is supported.
-// Returns (sslSupported, error). Error means TCP dial failure.
-func probeSSL(addr string, timeout time.Duration) (bool, error) {
-	conn, err := net.DialTimeout("tcp", addr, timeout)
-	if err != nil {
-		return false, fmt.Errorf("TCP dial failed: %w", err)
+// Returns (sslSupported, dialFailed, err).
+//   - dialFailed=true, err≠nil: TCP dial failed — host is unreachable.
+//   - dialFailed=false, err≠nil: dial succeeded but SSLRequest I/O failed — host
+//     is reachable but SSL status could not be determined.
+//   - dialFailed=false, err=nil: probe succeeded; sslSupported reflects the result.
+func probeSSL(addr string, timeout time.Duration) (sslSupported bool, dialFailed bool, err error) {
+	conn, connErr := net.DialTimeout("tcp", addr, timeout)
+	if connErr != nil {
+		return false, true, fmt.Errorf("TCP dial failed: %w", connErr)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -134,16 +166,16 @@ func probeSSL(addr string, timeout time.Duration) (bool, error) {
 	binary.BigEndian.PutUint32(msg[0:4], 8)
 	binary.BigEndian.PutUint32(msg[4:8], uint32(sslRequestCode))
 
-	if _, err := conn.Write(msg); err != nil {
-		return false, fmt.Errorf("sending SSLRequest: %w", err)
+	if _, writeErr := conn.Write(msg); writeErr != nil {
+		return false, false, fmt.Errorf("sending SSLRequest: %w", writeErr)
 	}
 
 	resp := make([]byte, 1)
-	if _, err := io.ReadFull(conn, resp); err != nil {
-		return false, fmt.Errorf("reading SSL response: %w", err)
+	if _, readErr := io.ReadFull(conn, resp); readErr != nil {
+		return false, false, fmt.Errorf("reading SSL response: %w", readErr)
 	}
 
-	return resp[0] == 'S', nil
+	return resp[0] == 'S', false, nil
 }
 
 // probeStartup opens a plain TCP connection, sends a PostgreSQL StartupMessage, and reads
@@ -201,10 +233,20 @@ func probeStartup(addr string, timeout time.Duration) (serverVersion, serverEnco
 		}
 
 		switch msgType {
-		case 'R': // AuthenticationRequest
+		case 'R': // Authentication message (AuthenticationRequest or AuthenticationOk)
 			if len(body) >= 4 {
 				authType := int32(binary.BigEndian.Uint32(body[0:4]))
-				authMethod = parseAuthMethod(authType, body[4:])
+				if authType == 0 {
+					// AuthenticationOk (type 0): the server accepted the connection
+					// without requiring any credentials.  Over a plain TCP connection
+					// from a remote client this only happens when the pg_hba.conf
+					// method is "trust".  Record it as such.
+					// Distinct from an AuthenticationRequest (types 2–12) which asks
+					// the client to provide proof of identity.
+					authMethod = "trust"
+				} else {
+					authMethod = parseAuthMethod(authType, body[4:])
+				}
 			}
 		case 'S': // ParameterStatus — key\0value\0
 			key, val := parseKeyValue(body)
@@ -236,11 +278,12 @@ func probeStartup(addr string, timeout time.Duration) (serverVersion, serverEnco
 	return
 }
 
-// parseAuthMethod converts a PostgreSQL auth type code to a human-readable string.
+// parseAuthMethod converts a PostgreSQL AuthenticationRequest type code (types 2–12)
+// to a human-readable string.  Type 0 (AuthenticationOk) is intentionally excluded
+// here — it is handled explicitly by the caller to distinguish "auth complete without
+// credentials" from a genuine auth-method negotiation.
 func parseAuthMethod(authType int32, extra []byte) string {
 	switch authType {
-	case 0:
-		return "trust"
 	case 2:
 		return "kerberos"
 	case 3:
