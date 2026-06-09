@@ -911,7 +911,9 @@ func parseJA4SFromServerHello(data []byte) string {
 	extOffset := extListOffset + 2
 	extEnd := extOffset + extListLen
 	if extEnd > len(data) {
-		extEnd = len(data)
+		// Extension list is truncated — partial extension types would produce
+		// an incorrect fingerprint that differs from the full-read result.
+		return ""
 	}
 
 	var extTypes []int
