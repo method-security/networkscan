@@ -298,6 +298,13 @@ func probeStartup(ctx context.Context, addr string, timeout time.Duration) (serv
 			return
 		}
 	}
+	// The loop exited via break (I/O error, EOF, truncated body, or oversized
+	// message) rather than through a terminal message case ('R'/'E'/'K'/'Z').
+	// Signal this to callers so they can distinguish a complete probe from one
+	// that ended unexpectedly with only partial (or no) data.
+	if err == nil {
+		err = fmt.Errorf("startup probe ended unexpectedly (connection closed or I/O error during message read)")
+	}
 	return
 }
 
