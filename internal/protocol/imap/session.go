@@ -3,6 +3,7 @@ package imap
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"net/textproto"
@@ -77,23 +78,33 @@ func NewSession(ctx context.Context, target string) (*Session, error) {
 	// STARTTLS upgrade if available and not yet TLS
 	if !s.TLSActive && hasCapability(s.Capabilities, "STARTTLS") {
 		upgraded, stlsErr := DoSTARTTLS(ctx, s.Conn, host)
-		if stlsErr != nil {
-			// Server accepted STARTTLS but the TLS handshake failed — the
-			// underlying TCP socket is now in an undefined state (cleartext
-			// IMAP commands would race against the server expecting TLS).
-			// Close it and surface the error so the caller doesn't send
-			// further traffic on a corrupted channel.
-			log.Debug("STARTTLS upgrade failed; closing session", svc1log.SafeParam("error", stlsErr.Error()))
+		switch {
+		case stlsErr == nil:
+			s.Conn = upgraded
+			s.TLSActive = true
+			// Re-CAPABILITY after TLS upgrade — servers commonly advertise
+			// extra AUTH mechanisms only on encrypted transports.
+			tag = s.NextTag()
+			if capLines, capErr := SendCommand(ctx, s.Conn, tag, "CAPABILITY"); capErr == nil {
+				s.Capabilities = extractCapabilities(capLines)
+			}
+		case errors.Is(stlsErr, ErrSTARTTLSRejected):
+			// Server advertised STARTTLS but replied tagged NO/BAD. Plain
+			// connection is still valid per RFC 3501 — keep using it. The
+			// caller's plaintext policy (allowPlaintext / TLSActive) still
+			// gates whether any sensitive ops proceed.
+			log.Debug("STARTTLS advertised but rejected; continuing on plain connection",
+				svc1log.SafeParam("error", stlsErr.Error()))
+		default:
+			// TLS handshake failed (or read/write error mid-negotiation) —
+			// the underlying socket is in an undefined state. DoSTARTTLS
+			// already closed it for us in the handshake-fail path;
+			// defensively close again here (Close is idempotent) so we don't
+			// leak a half-open socket on any other unexpected error.
+			log.Debug("STARTTLS upgrade failed; closing session",
+				svc1log.SafeParam("error", stlsErr.Error()))
 			_ = s.Conn.Close()
 			return nil, fmt.Errorf("STARTTLS upgrade failed: %w", stlsErr)
-		}
-		s.Conn = upgraded
-		s.TLSActive = true
-		// Re-CAPABILITY after TLS upgrade — servers commonly advertise
-		// extra AUTH mechanisms only on encrypted transports.
-		tag = s.NextTag()
-		if capLines, capErr := SendCommand(ctx, s.Conn, tag, "CAPABILITY"); capErr == nil {
-			s.Capabilities = extractCapabilities(capLines)
 		}
 	}
 

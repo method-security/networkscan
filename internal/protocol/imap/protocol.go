@@ -29,6 +29,14 @@ const implicitTLSPeekTimeout = 2 * time.Second
 // caller should close the connection and retry with implicit TLS.
 var ErrImplicitTLSSuspected = fmt.Errorf("no IMAP greeting on plain socket; implicit TLS suspected")
 
+// ErrSTARTTLSRejected signals that the server replied tagged NO/BAD to
+// STARTTLS. The underlying plain IMAP connection is still usable — callers
+// may continue cleartext (subject to their own plaintext policy) rather than
+// teardown the session. Distinct from a TLS handshake failure, which leaves
+// the socket mid-negotiation and unrecoverable. Wrap with %w so callers can
+// use errors.Is.
+var ErrSTARTTLSRejected = fmt.Errorf("STARTTLS rejected by server")
+
 // DeadlineFromContext returns the absolute deadline from ctx. If the context
 // has no deadline, it falls back to a 30 second budget from now. Using the
 // absolute deadline (rather than re-computing now+duration on each call)
@@ -159,8 +167,10 @@ func DoSTARTTLS(ctx context.Context, conn net.Conn, host string) (*tls.Conn, err
 			break
 		}
 		if strings.HasPrefix(resp, tag+" NO") || strings.HasPrefix(resp, tag+" BAD") {
-			// Server rejected STARTTLS — plain channel is still valid.
-			return nil, fmt.Errorf("STARTTLS rejected: %s", resp)
+			// Server rejected STARTTLS — plain channel is still valid. Wrap
+			// the sentinel so callers can detect this case via errors.Is and
+			// keep using the plain connection (per ErrSTARTTLSRejected doc).
+			return nil, fmt.Errorf("%w: %s", ErrSTARTTLSRejected, resp)
 		}
 	}
 	tlsConfig := &tls.Config{
