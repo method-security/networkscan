@@ -1,3 +1,6 @@
+// Package imap implements the IMAP4rev1/IMAP4rev2 wire protocol primitives
+// shared between the enumerate (Mode A — fingerprint) and pentest (Mode B —
+// authenticated actions) tools.
 package imap
 
 import (
@@ -21,16 +24,16 @@ import (
 // TLS (e.g. on port 993 / IMAPS).
 const implicitTLSPeekTimeout = 2 * time.Second
 
-// errImplicitTLSSuspected signals that a plain TCP dial succeeded but the
+// ErrImplicitTLSSuspected signals that a plain TCP dial succeeded but the
 // listener did not send an IMAP greeting within implicitTLSPeekTimeout. The
 // caller should close the connection and retry with implicit TLS.
-var errImplicitTLSSuspected = fmt.Errorf("no IMAP greeting on plain socket; implicit TLS suspected")
+var ErrImplicitTLSSuspected = fmt.Errorf("no IMAP greeting on plain socket; implicit TLS suspected")
 
-// deadlineFromContext returns the absolute deadline from ctx. If the context
+// DeadlineFromContext returns the absolute deadline from ctx. If the context
 // has no deadline, it falls back to a 30 second budget from now. Using the
 // absolute deadline (rather than re-computing now+duration on each call)
 // ensures later commands cannot extend past the per-target timeout budget.
-func deadlineFromContext(ctx context.Context) time.Time {
+func DeadlineFromContext(ctx context.Context) time.Time {
 	if deadline, ok := ctx.Deadline(); ok {
 		return deadline
 	}
@@ -59,11 +62,11 @@ func (c *bufferedConn) Read(b []byte) (int, error) {
 	return c.r.Read(b)
 }
 
-// tryTCPConnection connects via plain TCP and peeks for the untagged IMAP
+// TryTCPConnection connects via plain TCP and peeks for the untagged IMAP
 // greeting. An implicit-TLS listener never sends a plaintext greeting; if the
 // first byte isn't '*', we fall back to TLS.
-func tryTCPConnection(ctx context.Context, host string, port int) (net.Conn, string, error) {
-	deadline := deadlineFromContext(ctx)
+func TryTCPConnection(ctx context.Context, host string, port int) (net.Conn, string, error) {
+	deadline := DeadlineFromContext(ctx)
 	dialTimeout := time.Until(deadline)
 	if dialTimeout <= 0 {
 		dialTimeout = time.Second
@@ -87,11 +90,11 @@ func tryTCPConnection(ctx context.Context, host string, port int) (net.Conn, str
 		// let the full timeout apply for slow plaintext servers.
 		if port == DefaultImapsPort {
 			_ = conn.Close()
-			return nil, "", errImplicitTLSSuspected
+			return nil, "", ErrImplicitTLSSuspected
 		}
 	default:
 		_ = conn.Close()
-		return nil, "", errImplicitTLSSuspected
+		return nil, "", ErrImplicitTLSSuspected
 	}
 
 	_ = conn.SetReadDeadline(deadline)
@@ -103,9 +106,9 @@ func tryTCPConnection(ctx context.Context, host string, port int) (net.Conn, str
 	return &bufferedConn{Conn: conn, r: reader}, strings.TrimRight(greeting, "\r\n"), nil
 }
 
-// tryTLSConnection connects directly via TLS (IMAPS) and reads the greeting.
-func tryTLSConnection(ctx context.Context, host string, port int) (*tls.Conn, string, error) {
-	deadline := deadlineFromContext(ctx)
+// TryTLSConnection connects directly via TLS (IMAPS) and reads the greeting.
+func TryTLSConnection(ctx context.Context, host string, port int) (*tls.Conn, string, error) {
+	deadline := DeadlineFromContext(ctx)
 	dialTimeout := time.Until(deadline)
 	if dialTimeout <= 0 {
 		dialTimeout = time.Second
@@ -131,14 +134,14 @@ func tryTLSConnection(ctx context.Context, host string, port int) (*tls.Conn, st
 	return tlsConn, greeting, nil
 }
 
-// doSTARTTLS upgrades a plain connection to TLS via the IMAP STARTTLS command.
-func doSTARTTLS(ctx context.Context, conn net.Conn, host string) (*tls.Conn, error) {
+// DoSTARTTLS upgrades a plain connection to TLS via the IMAP STARTTLS command.
+func DoSTARTTLS(ctx context.Context, conn net.Conn, host string) (*tls.Conn, error) {
 	const tag = "A001"
 	tconn := textproto.NewConn(conn)
 	if err := tconn.PrintfLine("%s STARTTLS", tag); err != nil {
 		return nil, fmt.Errorf("STARTTLS send failed: %w", err)
 	}
-	_ = conn.SetReadDeadline(deadlineFromContext(ctx))
+	_ = conn.SetReadDeadline(DeadlineFromContext(ctx))
 	for {
 		resp, err := tconn.ReadLine()
 		if err != nil {
@@ -182,12 +185,12 @@ func parseLiteralCount(line string) int {
 	return n
 }
 
-// sendCommand sends a tagged IMAP command and reads response lines until the
+// SendCommand sends a tagged IMAP command and reads response lines until the
 // tagged completion (OK/NO/BAD). Returns all lines including the final tagged
 // line. Tagged NO/BAD is surfaced as an error so partial output is not
 // mistaken for success.
-func sendCommand(ctx context.Context, conn net.Conn, tag, cmd string) ([]string, error) {
-	_ = conn.SetDeadline(deadlineFromContext(ctx))
+func SendCommand(ctx context.Context, conn net.Conn, tag, cmd string) ([]string, error) {
+	_ = conn.SetDeadline(DeadlineFromContext(ctx))
 	tconn := textproto.NewConn(conn)
 	if err := tconn.PrintfLine("%s %s", tag, cmd); err != nil {
 		return nil, fmt.Errorf("command send failed: %w", err)
@@ -224,9 +227,9 @@ func sendCommand(ctx context.Context, conn net.Conn, tag, cmd string) ([]string,
 	return lines, nil
 }
 
-// parseCapabilities extracts capability tokens from a CAPABILITY response.
+// ParseCapabilities extracts capability tokens from a CAPABILITY response.
 // Handles both "* CAPABILITY ..." and "A001 OK [CAPABILITY ...]" formats.
-func parseCapabilities(line string) []string {
+func ParseCapabilities(line string) []string {
 	if idx := strings.Index(line, "[CAPABILITY "); idx >= 0 {
 		end := strings.Index(line[idx:], "]")
 		if end > 0 {
@@ -243,9 +246,9 @@ func parseCapabilities(line string) []string {
 	return nil
 }
 
-// parseFolders parses LIST response lines into ImapFolder values.
+// ParseFolders parses LIST response lines into ImapFolder values.
 // LIST response format: * LIST (\HasNoChildren) "/" "INBOX"
-func parseFolders(lines []string) []*imapfern.ImapFolder {
+func ParseFolders(lines []string) []*imapfern.ImapFolder {
 	var folders []*imapfern.ImapFolder
 	listRe := regexp.MustCompile(`^\* LIST \(([^)]*)\) ("(?:[^"\\]|\\.)*"|NIL) (.+)$`)
 	for _, line := range lines {
@@ -284,9 +287,9 @@ func parseFolders(lines []string) []*imapfern.ImapFolder {
 	return folders
 }
 
-// parseFolderStatus parses a single STATUS response line.
+// ParseFolderStatus parses a single STATUS response line.
 // STATUS response: * STATUS INBOX (MESSAGES 1234 RECENT 0 UNSEEN 42 UIDNEXT 5678 UIDVALIDITY 1234567890)
-func parseFolderStatus(line string) *imapfern.ImapFolderStatus {
+func ParseFolderStatus(line string) *imapfern.ImapFolderStatus {
 	if !strings.HasPrefix(line, "* STATUS ") {
 		return nil
 	}
@@ -325,9 +328,9 @@ func parseFolderStatus(line string) *imapfern.ImapFolderStatus {
 	return status
 }
 
-// parseUIDFetchHeaders parses UID FETCH response lines into ImapMessageHeaders
+// ParseUIDFetchHeaders parses UID FETCH response lines into ImapMessageHeaders
 // keyed by UID. Each message is delimited by "* N FETCH ( ... UID ... )".
-func parseUIDFetchHeaders(folderName string, lines []string, maxMessages int) []*imapfern.ImapMessageHeaders {
+func ParseUIDFetchHeaders(folderName string, lines []string, maxMessages int) []*imapfern.ImapMessageHeaders {
 	var messages []*imapfern.ImapMessageHeaders
 	var currentMsg *imapfern.ImapMessageHeaders
 	inHeader := false
@@ -379,16 +382,16 @@ func parseUIDFetchHeaders(folderName string, lines []string, maxMessages int) []
 	return messages
 }
 
-// stripCRLF removes carriage-return and line-feed characters to prevent CRLF
+// StripCRLF removes carriage-return and line-feed characters to prevent CRLF
 // injection in IMAP command lines sent via textproto.PrintfLine.
-func stripCRLF(s string) string {
+func StripCRLF(s string) string {
 	return strings.NewReplacer("\r", "", "\n", "").Replace(s)
 }
 
-// imapQuoteString wraps s in an IMAP double-quoted string literal per
+// ImapQuoteString wraps s in an IMAP double-quoted string literal per
 // RFC 3501 §4.3. Backslash and double-quote are escaped; CR/LF are stripped.
-func imapQuoteString(s string) string {
-	s = stripCRLF(s)
+func ImapQuoteString(s string) string {
+	s = StripCRLF(s)
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "\"", "\\\"")
 	return `"` + s + `"`

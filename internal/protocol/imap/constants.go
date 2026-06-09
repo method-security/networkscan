@@ -1,8 +1,3 @@
-// Package imap implements credentialed (Mode B) IMAP pentest actions:
-// authentication, folder enumeration, message-header fetching, and UID SEARCH.
-//
-// Mode A (pre-auth fingerprinting — capabilities, STARTTLS, TLS cert, version)
-// lives in internal/enumerate/imap and is invoked from the enumerate command.
 package imap
 
 const (
