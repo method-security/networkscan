@@ -11,4 +11,4 @@ types:
       command: string
       stdout: string
       stderr: optional<string>
-      exit_code: optional<integer>
+      exitCode: optional<integer>
