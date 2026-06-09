@@ -53,17 +53,8 @@ func (m *LibraryEnumerateMSSSQL) EnumerateTarget(ctx context.Context, target str
 	addr := utils.FormatHostPort(host, port)
 	details.Target = addr
 
-	// Derive timeout from context deadline if set, otherwise use default.
-	timeoutMs := defaultTimeoutMs
-	if deadline, ok := ctx.Deadline(); ok {
-		if remaining := time.Until(deadline); remaining > 0 {
-			timeoutMs = int(remaining.Milliseconds())
-		}
-	}
-	timeout := time.Duration(timeoutMs) * time.Millisecond
-
 	// Step A: Raw PRELOGIN probe — extract encrypt mode.
-	encryptMode, preloginErr := probePrelogin(ctx, host, port, timeout)
+	encryptMode, preloginErr := probePrelogin(ctx, host, port)
 	if preloginErr != nil {
 		log.Info("MSSQL PRELOGIN probe failed",
 			svc1log.SafeParam("target", addr),
@@ -73,7 +64,7 @@ func (m *LibraryEnumerateMSSSQL) EnumerateTarget(ctx context.Context, target str
 	}
 
 	// Step B: TDS login probe with dummy credentials — extract server info from error.
-	canConnect, hostname, version, buildNumber, edition, loginErr := probeTDSLogin(ctx, host, port, timeout)
+	canConnect, hostname, version, buildNumber, edition, loginErr := probeTDSLogin(ctx, host, port)
 	details.CanConnect = &canConnect
 
 	if loginErr != nil && !canConnect {
@@ -97,7 +88,7 @@ func (m *LibraryEnumerateMSSSQL) EnumerateTarget(ctx context.Context, target str
 	}
 
 	// Step C: SQL Browser UDP 1434 — discover named instances.
-	namedInstances, browserErr := probeSQLBrowser(ctx, host, timeout)
+	namedInstances, browserErr := probeSQLBrowser(ctx, host)
 	if browserErr != nil {
 		log.Info("SQL Browser probe failed",
 			svc1log.SafeParam("target", host),
@@ -110,9 +101,23 @@ func (m *LibraryEnumerateMSSSQL) EnumerateTarget(ctx context.Context, target str
 	return &enumeratefern.EnumerateServiceDetails{EnumerateMssqlDetails: &details}, errs
 }
 
+// ctxRemaining returns the time remaining until ctx's deadline, or fallback if no deadline is set.
+// Callers use this to set per-probe deadlines that respect the overall context budget rather than
+// reusing a stale duration computed at request start.
+func ctxRemaining(ctx context.Context, fallback time.Duration) time.Duration {
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining > 0 {
+			return remaining
+		}
+		return time.Millisecond // context already expired — let subsequent ops fail fast
+	}
+	return fallback
+}
+
 // probePrelogin sends a raw TDS PRELOGIN packet and reads the ENCRYPTION token from the response.
-func probePrelogin(ctx context.Context, host string, port int, timeout time.Duration) (*mssqlfern.MssqlEncryptMode, error) {
+func probePrelogin(ctx context.Context, host string, port int) (*mssqlfern.MssqlEncryptMode, error) {
 	addr := utils.FormatHostPort(host, port)
+	timeout := ctxRemaining(ctx, time.Duration(defaultTimeoutMs)*time.Millisecond)
 
 	dialCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -124,7 +129,13 @@ func probePrelogin(ctx context.Context, host string, port int, timeout time.Dura
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	// Set connection deadline to the context's absolute deadline (not time.Now()+timeout) so
+	// the deadline is accurate even if earlier probes consumed part of the budget.
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	} else {
+		_ = conn.SetDeadline(time.Now().Add(timeout))
+	}
 
 	// Build TDS PRELOGIN packet.
 	// Option list: VERSION(0x00) at offset 5 len 6, ENCRYPTION(0x01) at offset 11 len 1, TERMINATOR(0xFF)
@@ -193,8 +204,10 @@ func probePrelogin(ctx context.Context, host string, port int, timeout time.Dura
 	if err := readFull(conn, respHeader); err != nil {
 		return nil, fmt.Errorf("read PRELOGIN response header: %w", err)
 	}
-	if respHeader[0] != 0x12 {
-		return nil, fmt.Errorf("unexpected TDS response type 0x%02x (expected 0x12)", respHeader[0])
+	// The server's PRELOGIN response carries TDS packet type 0x04 (tabular data/general response),
+	// not 0x12 (which is only used for the client's PRELOGIN request).
+	if respHeader[0] != 0x04 {
+		return nil, fmt.Errorf("unexpected TDS response type 0x%02x (expected 0x04)", respHeader[0])
 	}
 	respLen := int(binary.BigEndian.Uint16(respHeader[2:4]))
 	if respLen <= headerLen {
@@ -234,6 +247,8 @@ func probePrelogin(ctx context.Context, host string, port int, timeout time.Dura
 }
 
 // byteToEncryptMode converts a TDS encrypt byte to the Fern MssqlEncryptMode enum.
+// Returns nil for unrecognized values (e.g. byte 4 = strict TLS in newer SQL Server versions)
+// so that callers leave encryptMode unset rather than reporting a wrong value.
 func byteToEncryptMode(b byte) *mssqlfern.MssqlEncryptMode {
 	var mode mssqlfern.MssqlEncryptMode
 	switch b {
@@ -246,14 +261,15 @@ func byteToEncryptMode(b byte) *mssqlfern.MssqlEncryptMode {
 	case encryptReq:
 		mode = mssqlfern.MssqlEncryptModeReq
 	default:
-		mode = mssqlfern.MssqlEncryptModeOff
+		return nil // unknown byte — leave encryptMode unset rather than guessing
 	}
 	return &mode
 }
 
 // probeTDSLogin attempts a TDS login with dummy credentials, extracting server info from the error.
 // Returns: canConnect, hostname, version, buildNumber, edition, error.
-func probeTDSLogin(ctx context.Context, host string, port int, timeout time.Duration) (bool, string, string, string, string, error) {
+func probeTDSLogin(ctx context.Context, host string, port int) (bool, string, string, string, string, error) {
+	timeout := ctxRemaining(ctx, time.Duration(defaultTimeoutMs)*time.Millisecond)
 	query := url.Values{}
 	query.Add("app name", "NetworkScan")
 	query.Add("TrustServerCertificate", "true")
@@ -354,7 +370,8 @@ func parseVersionString(s string) (version, buildNumber, edition string) {
 
 // probeSQLBrowser sends an SSRP instance list request to SQL Browser on UDP/1434
 // and returns any named instance names parsed from the response.
-func probeSQLBrowser(ctx context.Context, host string, timeout time.Duration) ([]string, error) {
+func probeSQLBrowser(ctx context.Context, host string) ([]string, error) {
+	timeout := ctxRemaining(ctx, time.Duration(defaultTimeoutMs)*time.Millisecond)
 	addr := fmt.Sprintf("%s:1434", host)
 
 	dialCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -367,7 +384,13 @@ func probeSQLBrowser(ctx context.Context, host string, timeout time.Duration) ([
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	// Use the context's absolute deadline so the connection deadline doesn't outlive the
+	// overall per-target budget.
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	} else {
+		_ = conn.SetDeadline(time.Now().Add(timeout))
+	}
 
 	// SSRP instance list request: single byte 0x02
 	if _, err := conn.Write([]byte{0x02}); err != nil {
