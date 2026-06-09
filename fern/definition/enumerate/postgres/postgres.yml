@@ -1,0 +1,34 @@
+types:
+  EnumeratePostgresDetails:
+    docs: PostgreSQL service enumeration details collected via raw TCP SSLRequest and startup message handshake.
+    properties:
+      target:
+        type: string
+        docs: Target address in host:port format.
+      serverVersion:
+        type: optional<string>
+        docs: Server version string from the server_version GUC in the startup message ParameterStatus messages.
+      serverEncoding:
+        type: optional<string>
+        docs: Server encoding (e.g. UTF8) from the server_encoding GUC.
+      integerDatetimes:
+        type: optional<boolean>
+        docs: Whether the server uses integer datetimes, from the integer_datetimes GUC.
+      timeZone:
+        type: optional<string>
+        docs: Server timezone from the TimeZone GUC.
+      sslSupported:
+        type: optional<boolean>
+        docs: Whether the server accepted our SSLRequest (responded with 'S'). False if it responded with 'N'.
+      sslRequired:
+        type: optional<boolean>
+        docs: Whether the server requires SSL (responded to a non-SSL startup with an error referencing SSL).
+      authMethod:
+        type: optional<string>
+        docs: Authentication method observed from the AuthenticationRequest message (e.g. scram-sha-256, md5, trust, gss, password).
+      databases:
+        type: optional<list<string>>
+        docs: Databases visible when trust auth is observed (queried from template1 pg_database). Unset when auth is required.
+      error:
+        type: optional<string>
+        docs: Error message when enumeration encountered an unrecoverable problem.

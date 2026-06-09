@@ -12,6 +12,7 @@ imports:
   mssql: ./mssql/mssql.yml
   mysql: ./mysql/mysql.yml
   pop3: ./pop3/pop3.yml
+  postgres: ./postgres/postgres.yml
   redis: ./redis/redis.yml
   socks: ./socks/socks.yml
 types:
@@ -31,6 +32,7 @@ types:
       - MSSQL
       - MYSQL
       - POP3
+      - POSTGRES
       - REDIS
       - SOCKS
   # Report structs
@@ -49,6 +51,7 @@ types:
       EnumerateMssqlDetails: mssql.EnumerateMssqlDetails
       EnumerateMysqlDetails: mysql.EnumerateMysqlDetails
       EnumeratePop3Details: pop3.EnumeratePop3Details
+      EnumeratePostgresDetails: postgres.EnumeratePostgresDetails
       EnumerateRedisDetails: redis.EnumerateRedisDetails
       EnumerateSocksDetails: socks.EnumerateSocksDetails
   EnumerateServiceResult:
