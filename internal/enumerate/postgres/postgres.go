@@ -27,6 +27,12 @@ const sslRequestCode int32 = 80877103
 // protocolVersion is the PostgreSQL v3.0 protocol version number.
 const protocolVersion int32 = 196608
 
+// maxMsgBodySize caps the per-message allocation in probeStartup.  A legitimate
+// PostgreSQL server never sends individual startup messages larger than a few
+// kilobytes; capping at 1 MiB prevents a hostile target from forcing an
+// unbounded allocation via an oversized length field.
+const maxMsgBodySize = 1 << 20 // 1 MiB
+
 // LibraryEnumeratePostgres implements NetworkApplicationLibrary for PostgreSQL enumeration.
 // It probes PostgreSQL targets via raw TCP SSLRequest and startup message handshake.
 type LibraryEnumeratePostgres struct{}
@@ -69,7 +75,7 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 	// (e.g. the server closed the connection before acknowledging the SSLRequest).
 	// Only a dial failure terminates enumeration; an I/O failure after dial means
 	// we could not determine SSL support but the host is still reachable.
-	sslSupported, dialFailed, sslErr := probeSSL(addr, timeout)
+	sslSupported, dialFailed, sslErr := probeSSL(ctx, addr, timeout)
 	if dialFailed {
 		log.Info("PostgreSQL TCP dial failed",
 			svc1log.SafeParam("target", addr),
@@ -95,7 +101,7 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 	if startupTimeout <= 0 {
 		startupTimeout = 100 * time.Millisecond
 	}
-	serverVersion, serverEncoding, integerDatetimes, timeZone, authMethod, sslRequired, startupErr := probeStartup(addr, startupTimeout)
+	serverVersion, serverEncoding, integerDatetimes, timeZone, authMethod, sslRequired, startupErr := probeStartup(ctx, addr, startupTimeout)
 	if sslRequired != nil {
 		details.SslRequired = sslRequired
 	}
@@ -157,8 +163,11 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 //   - dialFailed=false, err≠nil: dial succeeded but SSLRequest I/O failed — host
 //     is reachable but SSL status could not be determined.
 //   - dialFailed=false, err=nil: probe succeeded; sslSupported reflects the result.
-func probeSSL(addr string, timeout time.Duration) (sslSupported bool, dialFailed bool, err error) {
-	conn, connErr := net.DialTimeout("tcp", addr, timeout)
+//
+// ctx is used for the dial so that the probe respects context cancellation.
+func probeSSL(ctx context.Context, addr string, timeout time.Duration) (sslSupported bool, dialFailed bool, err error) {
+	dialer := &net.Dialer{Timeout: timeout}
+	conn, connErr := dialer.DialContext(ctx, "tcp", addr)
 	if connErr != nil {
 		return false, true, fmt.Errorf("TCP dial failed: %w", connErr)
 	}
@@ -185,8 +194,10 @@ func probeSSL(addr string, timeout time.Duration) (sslSupported bool, dialFailed
 
 // probeStartup opens a plain TCP connection, sends a PostgreSQL StartupMessage, and reads
 // server responses to extract version, encoding, timezone, auth method, and SSL-required status.
-func probeStartup(addr string, timeout time.Duration) (serverVersion, serverEncoding string, integerDatetimes *bool, timeZone, authMethod string, sslRequired *bool, err error) {
-	conn, dialErr := net.DialTimeout("tcp", addr, timeout)
+// ctx is used for the dial so that the probe respects context cancellation.
+func probeStartup(ctx context.Context, addr string, timeout time.Duration) (serverVersion, serverEncoding string, integerDatetimes *bool, timeZone, authMethod string, sslRequired *bool, err error) {
+	dialer := &net.Dialer{Timeout: timeout}
+	conn, dialErr := dialer.DialContext(ctx, "tcp", addr)
 	if dialErr != nil {
 		err = fmt.Errorf("TCP dial failed: %w", dialErr)
 		return
@@ -226,7 +237,8 @@ func probeStartup(addr string, timeout time.Duration) (serverVersion, serverEnco
 			break
 		}
 		msgBodyLen := int(binary.BigEndian.Uint32(lenBuf)) - 4
-		if msgBodyLen < 0 {
+		if msgBodyLen < 0 || msgBodyLen > maxMsgBodySize {
+			// Malformed or oversized message — stop parsing.
 			break
 		}
 
@@ -323,7 +335,9 @@ func parseAuthMethod(authType int32, extra []byte) string {
 	case 12:
 		return "scram-sha-256-final"
 	default:
-		return fmt.Sprintf("unknown(%d)", authType)
+		// Unknown type code: return empty string so the caller leaves authMethod
+		// unset rather than emitting a sentinel like "unknown(8)" into the report.
+		return ""
 	}
 }
 
