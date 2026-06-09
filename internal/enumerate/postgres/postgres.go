@@ -286,7 +286,16 @@ func probeStartup(ctx context.Context, addr string, timeout time.Duration) (serv
 			}
 		case 'E': // ErrorResponse
 			errMsg := parseErrorMessage(body)
-			if strings.Contains(strings.ToLower(errMsg), "ssl") {
+			// Set sslRequired only when the error message indicates the server
+			// rejected the connection because SSL was not used.  Exclude messages
+			// that merely mention SSL in a different context (e.g. "SSL is not
+			// enabled on the server", which means SSL is UNAVAILABLE rather than
+			// REQUIRED).  The canonical PostgreSQL message for SSL-required
+			// rejections is "no pg_hba.conf entry for … SSL off".
+			lowerErr := strings.ToLower(errMsg)
+			if strings.Contains(lowerErr, "ssl") &&
+				!strings.Contains(lowerErr, "ssl is not enabled") &&
+				!strings.Contains(lowerErr, "ssl not enabled") {
 				req := true
 				sslRequired = &req
 			}
@@ -338,7 +347,9 @@ func parseAuthMethod(authType int32, extra []byte) string {
 			}
 			return "sasl"
 		}
-		return "scram-sha-256"
+		// No mechanism list in the SASL message body — return empty so the caller
+		// leaves authMethod unset rather than guessing "scram-sha-256".
+		return ""
 	case 12:
 		return "scram-sha-256-final"
 	default:
