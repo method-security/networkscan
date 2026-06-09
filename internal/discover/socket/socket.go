@@ -16,6 +16,8 @@ import (
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	// Logging
+	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 // parseHexEscaped converts a string that may contain \x-escaped hex sequences into raw bytes.
@@ -60,6 +62,11 @@ func extractBanner(data []byte) string {
 // RunSocketSend opens a raw TCP or UDP socket to the target, optionally sends data,
 // reads the response, and returns a structured report.
 func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig) (*discoverfern.DiscoverSocketReport, error) {
+	log := svc1log.FromContext(ctx)
+	log.Info("Running socket send",
+		svc1log.SafeParam("target", config.Target),
+		svc1log.SafeParam("protocol", config.Protocol))
+
 	// Apply defaults and enforce caps directly to config so the report reflects effective values used.
 	if config.ReadTimeout <= 0 {
 		config.ReadTimeout = 5
@@ -161,9 +168,17 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 	dialCtx, cancel := context.WithTimeout(ctx, time.Duration(config.ReadTimeout)*time.Second)
 	defer cancel()
 
+	log.Debug("Dialing target",
+		svc1log.SafeParam("network", network),
+		svc1log.SafeParam("target", config.Target),
+		svc1log.SafeParam("timeoutSeconds", config.ReadTimeout))
+
 	var d net.Dialer
 	conn, err := d.DialContext(dialCtx, network, config.Target)
 	if err != nil {
+		log.Info("Socket dial failed",
+			svc1log.SafeParam("target", config.Target),
+			svc1log.SafeParam("error", err.Error()))
 		report.Errors = append(report.Errors, fmt.Sprintf("connection failed: %v", err))
 		connFailed := false
 		report.Result.Response = &discoverfern.SocketResponseDetails{
@@ -175,6 +190,7 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		return report, nil
 	}
 	defer func() { _ = conn.Close() }()
+	log.Debug("Socket dial successful", svc1log.SafeParam("target", config.Target))
 
 	// Fix 1: Resolve the real IP from the established connection's remote address.
 	// host may be a hostname; conn.RemoteAddr() gives us the actual resolved IP.
@@ -217,6 +233,8 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 			}
 			return report, nil
 		}
+		log.Debug("Sent payload",
+			svc1log.SafeParam("bytesSent", len(sendBytes)))
 	}
 
 	// Read deadline comes from the same context deadline — no doubling.
@@ -250,12 +268,19 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 			// Timeout and EOF are normal terminators — not errors.
 			var netErr net.Error
 			isTimeout := errors.As(readErr, &netErr) && netErr.Timeout()
-			if !isTimeout && !errors.Is(readErr, io.EOF) {
+			if isTimeout {
+				log.Debug("Read deadline exceeded",
+					svc1log.SafeParam("target", config.Target),
+					svc1log.SafeParam("bytesReceived", len(responseBytes)))
+			} else if !errors.Is(readErr, io.EOF) {
 				report.Errors = append(report.Errors, fmt.Sprintf("read error: %v", readErr))
 			}
 			break
 		}
 	}
+	log.Info("Socket read complete",
+		svc1log.SafeParam("target", config.Target),
+		svc1log.SafeParam("bytesReceived", len(responseBytes)))
 
 	// Build response details — connection was successful even if read had partial/timeout error
 	hexEncoded := hex.EncodeToString(responseBytes)

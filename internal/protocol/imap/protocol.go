@@ -135,6 +135,14 @@ func TryTLSConnection(ctx context.Context, host string, port int) (*tls.Conn, st
 }
 
 // DoSTARTTLS upgrades a plain connection to TLS via the IMAP STARTTLS command.
+//
+// Failure semantics: any non-nil error returned indicates the underlying
+// `conn` is in an undefined state (the server may have started its TLS
+// handshake mid-stream). Callers MUST close `conn` themselves on error —
+// continuing to send cleartext IMAP on it will race the server's TLS
+// expectation and corrupt protocol state. The function closes `conn` itself
+// when the handshake started but failed (rejected STARTTLS command leaves
+// the plain connection usable, so we don't close in that case).
 func DoSTARTTLS(ctx context.Context, conn net.Conn, host string) (*tls.Conn, error) {
 	const tag = "A001"
 	tconn := textproto.NewConn(conn)
@@ -151,6 +159,7 @@ func DoSTARTTLS(ctx context.Context, conn net.Conn, host string) (*tls.Conn, err
 			break
 		}
 		if strings.HasPrefix(resp, tag+" NO") || strings.HasPrefix(resp, tag+" BAD") {
+			// Server rejected STARTTLS — plain channel is still valid.
 			return nil, fmt.Errorf("STARTTLS rejected: %s", resp)
 		}
 	}
@@ -160,6 +169,10 @@ func DoSTARTTLS(ctx context.Context, conn net.Conn, host string) (*tls.Conn, err
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
 	if err := tlsConn.Handshake(); err != nil {
+		// Server-side STARTTLS already accepted but our TLS handshake failed
+		// — underlying socket is now mid-TLS-negotiation. Close it so the
+		// caller can't accidentally reuse it.
+		_ = conn.Close()
 		return nil, fmt.Errorf("TLS handshake failed: %w", err)
 	}
 	return tlsConn, nil

@@ -78,16 +78,22 @@ func NewSession(ctx context.Context, target string) (*Session, error) {
 	if !s.TLSActive && hasCapability(s.Capabilities, "STARTTLS") {
 		upgraded, stlsErr := DoSTARTTLS(ctx, s.Conn, host)
 		if stlsErr != nil {
-			log.Debug("STARTTLS upgrade failed", svc1log.SafeParam("error", stlsErr.Error()))
-		} else {
-			s.Conn = upgraded
-			s.TLSActive = true
-			// Re-CAPABILITY after TLS upgrade — servers commonly advertise
-			// extra AUTH mechanisms only on encrypted transports.
-			tag = s.NextTag()
-			if capLines, capErr := SendCommand(ctx, s.Conn, tag, "CAPABILITY"); capErr == nil {
-				s.Capabilities = extractCapabilities(capLines)
-			}
+			// Server accepted STARTTLS but the TLS handshake failed — the
+			// underlying TCP socket is now in an undefined state (cleartext
+			// IMAP commands would race against the server expecting TLS).
+			// Close it and surface the error so the caller doesn't send
+			// further traffic on a corrupted channel.
+			log.Debug("STARTTLS upgrade failed; closing session", svc1log.SafeParam("error", stlsErr.Error()))
+			_ = s.Conn.Close()
+			return nil, fmt.Errorf("STARTTLS upgrade failed: %w", stlsErr)
+		}
+		s.Conn = upgraded
+		s.TLSActive = true
+		// Re-CAPABILITY after TLS upgrade — servers commonly advertise
+		// extra AUTH mechanisms only on encrypted transports.
+		tag = s.NextTag()
+		if capLines, capErr := SendCommand(ctx, s.Conn, tag, "CAPABILITY"); capErr == nil {
+			s.Capabilities = extractCapabilities(capLines)
 		}
 	}
 
