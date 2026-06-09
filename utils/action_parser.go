@@ -9,6 +9,7 @@ import (
 	mongodbfern "github.com/Method-Security/networkscan/generated/go/pentest/mongodb"
 	msrpcfern "github.com/Method-Security/networkscan/generated/go/pentest/msrpc"
 	mssqlfern "github.com/Method-Security/networkscan/generated/go/pentest/mssql"
+	postgresfern "github.com/Method-Security/networkscan/generated/go/pentest/postgres"
 	redisfern "github.com/Method-Security/networkscan/generated/go/pentest/redis"
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	sshfern "github.com/Method-Security/networkscan/generated/go/pentest/ssh"
@@ -296,16 +297,17 @@ func (p *MongoDBActionParser) ContainsAction(actions []mongodbfern.PentestMongod
 
 // Global parser instances (singletons)
 var (
-	smbParserInstance     *SMBActionParser
-	sshParserInstance     *SSHActionParser
-	telnetParserInstance  *TelnetActionParser
-	ldapParserInstance    *LDAPActionParser
-	msrpcParserInstance   *MSRPCActionParser
-	ftpParserInstance     *FTPActionParser
-	winrmParserInstance   *WinRMActionParser
-	mongodbParserInstance *MongoDBActionParser
-	redisParserInstance   *RedisActionParser
-	mssqlParserInstance   *MSSQLActionParser
+	smbParserInstance      *SMBActionParser
+	sshParserInstance      *SSHActionParser
+	telnetParserInstance   *TelnetActionParser
+	ldapParserInstance     *LDAPActionParser
+	msrpcParserInstance    *MSRPCActionParser
+	ftpParserInstance      *FTPActionParser
+	winrmParserInstance    *WinRMActionParser
+	mongodbParserInstance  *MongoDBActionParser
+	redisParserInstance    *RedisActionParser
+	mssqlParserInstance    *MSSQLActionParser
+	postgresParserInstance *PostgresActionParser
 )
 
 // GetSMBParser returns the singleton SMB action parser
@@ -494,6 +496,52 @@ func (p *MSSQLActionParser) GetValidActions() []string {
 }
 
 func (p *MSSQLActionParser) ContainsAction(actions []mssqlfern.PentestMssqlAction, target mssqlfern.PentestMssqlAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
+// PostgresActionParser handles Postgres-specific action parsing
+type PostgresActionParser struct{}
+
+// GetPostgresParser returns the singleton Postgres action parser
+func GetPostgresParser() *PostgresActionParser {
+	if postgresParserInstance == nil {
+		postgresParserInstance = &PostgresActionParser{}
+	}
+	return postgresParserInstance
+}
+
+func (p *PostgresActionParser) ParseActions(actionStrings []string) ([]postgresfern.PentestPostgresAction, error) {
+	var actions []postgresfern.PentestPostgresAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			postgresAction, err := postgresfern.NewPentestPostgresActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid Postgres action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, postgresAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *PostgresActionParser) GetValidActions() []string {
+	return []string{"AUTH", "QUERY"}
+}
+
+func (p *PostgresActionParser) ContainsAction(actions []postgresfern.PentestPostgresAction, target postgresfern.PentestPostgresAction) bool {
 	for _, action := range actions {
 		if action == target {
 			return true
