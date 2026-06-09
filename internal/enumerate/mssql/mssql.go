@@ -282,7 +282,7 @@ func probeTDSLogin(ctx context.Context, host string, port int) (bool, string, st
 	u := &url.URL{
 		Scheme:   "sqlserver",
 		User:     url.UserPassword("probe_user_nx", "probe_pass_nx"),
-		Host:     fmt.Sprintf("%s:%d", host, port),
+		Host:     utils.FormatHostPort(host, port),
 		RawQuery: query.Encode(),
 	}
 
@@ -372,7 +372,7 @@ func parseVersionString(s string) (version, buildNumber, edition string) {
 // and returns any named instance names parsed from the response.
 func probeSQLBrowser(ctx context.Context, host string) ([]string, error) {
 	timeout := ctxRemaining(ctx, time.Duration(defaultTimeoutMs)*time.Millisecond)
-	addr := fmt.Sprintf("%s:1434", host)
+	addr := utils.FormatHostPort(host, 1434)
 
 	dialCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
