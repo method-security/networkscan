@@ -55,13 +55,6 @@ types:
       service: SupportedServiceType
       timeout: integer
       wordlist: optional<list<string>>
-      imapUsername: optional<string>
-      imapPassword: optional<string>
-      imapMechanism: optional<string>
-      imapMaxMessages: optional<integer>
-      imapSearch: optional<string>
-      imapTargetFolder: optional<string>
-      imapAllowPlaintextCredentials: optional<boolean>
   # Final report
   EnumerateServiceReport:
     properties:
