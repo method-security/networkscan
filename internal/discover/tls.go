@@ -903,6 +903,14 @@ func parseJA4SFromServerHello(data []byte) string {
 		return ""
 	}
 
+	// Clamp data to the first TLS handshake message. A single TCP read can return
+	// multiple TLS records (e.g. ServerHello + ChangeCipherSpec + Finished). The
+	// handshake message length is the 3-byte big-endian field at bytes 6-8.
+	hsLen := int(data[6])<<16 | int(data[7])<<8 | int(data[8])
+	if maxLen := shOffset + hsLen; maxLen < len(data) {
+		data = data[:maxLen]
+	}
+
 	rawVersion := uint16(data[shOffset])<<8 | uint16(data[shOffset+1])
 	verCode := tlsVersionCode(rawVersion)
 
@@ -951,6 +959,13 @@ func parseJA4SFromServerHello(data []byte) string {
 	for extOffset+4 <= extEnd {
 		extType := int(uint16(data[extOffset])<<8 | uint16(data[extOffset+1]))
 		extLen := int(data[extOffset+2])<<8 | int(data[extOffset+3])
+
+		// Validate that the extension body fits within the declared extension list.
+		// A malformed or hostile ServerHello may advertise an extLen that runs past
+		// extEnd; break rather than counting a truncated extension or wrapping.
+		if extOffset+4+extLen > extEnd {
+			break
+		}
 
 		if !isGREASE(extType) {
 			extTypes = append(extTypes, extType)
