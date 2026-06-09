@@ -848,8 +848,8 @@ func computeJA4S(target, serverName string, timeout time.Duration) string {
 		0x00, 0x10, // type: ALPN
 		0x00, 0x0e, // ext data length = 14
 		0x00, 0x0c, // protocol_name_list length = 12
-		0x02,                                           // "h2" length
-		0x68, 0x32,                                     // "h2"
+		0x02,       // "h2" length
+		0x68, 0x32, // "h2"
 		0x08,                                           // "http/1.1" length
 		0x68, 0x74, 0x74, 0x70, 0x2f, 0x31, 0x2e, 0x31, // "http/1.1"
 	}
@@ -918,8 +918,9 @@ func parseJA4SFromServerHello(data []byte) string {
 
 	extListOffset := cipherOffset + 3
 	if len(data) < extListOffset+2 {
-		// No extensions present
-		return fmt.Sprintf("t%s0100_%s_000000000000", verCode, selectedCipher)
+		// No extensions present: count=00, alpn=00, hash=SHA256("").
+		noExtH := sha256.Sum256([]byte(""))
+		return fmt.Sprintf("t%s0000_%s_%s", verCode, selectedCipher, hex.EncodeToString(noExtH[:])[:12])
 	}
 
 	extListLen := int(data[extListOffset])<<8 | int(data[extListOffset+1])
@@ -931,12 +932,33 @@ func parseJA4SFromServerHello(data []byte) string {
 		return ""
 	}
 
+	// isGREASE returns true for TLS GREASE values (RFC 8701).
+	// GREASE extension types are 0x0a0a, 0x1a1a, …, 0xfafa — both bytes equal,
+	// lower nibble == 0xa.
+	isGREASE := func(v int) bool {
+		lo := v & 0xff
+		hi := (v >> 8) & 0xff
+		return lo == hi && (lo&0x0f) == 0x0a
+	}
+
+	// extTypes holds all non-GREASE extension type values (used for the count).
+	// hashExtTypes further excludes SNI (0x0000) and ALPN (0x0010) per the JA4S
+	// spec: JA4S_c is the hash of the extension list with GREASE, SNI, and ALPN
+	// removed.
 	var extTypes []int
+	var hashExtTypes []int
 	alpn := "00"
 	for extOffset+4 <= extEnd {
 		extType := int(uint16(data[extOffset])<<8 | uint16(data[extOffset+1]))
 		extLen := int(data[extOffset+2])<<8 | int(data[extOffset+3])
-		extTypes = append(extTypes, extType)
+
+		if !isGREASE(extType) {
+			extTypes = append(extTypes, extType)
+			// Exclude SNI (0x0000) and ALPN (0x0010) from the hash list.
+			if extType != 0x0000 && extType != 0x0010 {
+				hashExtTypes = append(hashExtTypes, extType)
+			}
+		}
 
 		// ALPN extension type 0x0010
 		if extType == 0x0010 && extOffset+4+extLen <= extEnd {
@@ -971,16 +993,20 @@ func parseJA4SFromServerHello(data []byte) string {
 		extOffset += 4 + extLen
 	}
 
-	sort.Ints(extTypes)
-	extStrs := make([]string, len(extTypes))
-	for i, t := range extTypes {
-		extStrs[i] = strconv.Itoa(t)
+	// JA4S_b: actual count of non-GREASE extensions, formatted as 2-digit decimal.
+	extCount := fmt.Sprintf("%02d", len(extTypes))
+
+	// JA4S_c: SHA-256 of comma-separated sorted extension types, with GREASE,
+	// SNI (0x0000), and ALPN (0x0010) excluded.
+	sort.Ints(hashExtTypes)
+	hashStrs := make([]string, len(hashExtTypes))
+	for i, t := range hashExtTypes {
+		hashStrs[i] = strconv.Itoa(t)
 	}
-	h := sha256.Sum256([]byte(strings.Join(extStrs, ",")))
+	h := sha256.Sum256([]byte(strings.Join(hashStrs, ",")))
 	extHash := hex.EncodeToString(h[:])[:12]
 
-	// CipherCount in a ServerHello is always 1, formatted as 2-digit decimal.
-	return fmt.Sprintf("t%s01%s_%s_%s", verCode, alpn, selectedCipher, extHash)
+	return fmt.Sprintf("t%s%s%s_%s_%s", verCode, extCount, alpn, selectedCipher, extHash)
 }
 
 // computeJA4XForCert computes the JA4X fingerprint for a single X.509 certificate.

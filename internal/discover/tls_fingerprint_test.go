@@ -88,7 +88,7 @@ func TestParseJA4SFromServerHello_TLS12_WithALPN(t *testing.T) {
 	if !strings.HasPrefix(prefix, "t") {
 		t.Errorf("expected 't' TCP prefix, got %q", result)
 	}
-	// version = "12", count = "01", alpn = "h2" → prefix = "t1201h2"
+	// version = "12", count = "01" (ALPN counted), alpn = "h2" → prefix = "t1201h2"
 	if prefix != "t1201h2" {
 		t.Errorf("expected prefix t1201h2, got %q", prefix)
 	}
@@ -99,12 +99,12 @@ func TestParseJA4SFromServerHello_TLS12_WithALPN(t *testing.T) {
 		t.Errorf("expected 12-char extension hash, got %d chars: %q", len(parts[2]), parts[2])
 	}
 
-	// Verify the extension hash against the known-good value for ext type 16 only.
-	// sorted ext types = [16], joined = "16"
-	h := sha256.Sum256([]byte("16"))
+	// JA4S_c excludes ALPN (0x0010) from the hash input.
+	// With only the ALPN extension present, hashExtTypes is empty → SHA256("").
+	h := sha256.Sum256([]byte(""))
 	wantExtHash := hex.EncodeToString(h[:])[:12]
 	if parts[2] != wantExtHash {
-		t.Errorf("extension hash: want %q, got %q", wantExtHash, parts[2])
+		t.Errorf("extension hash: want %q (sha256(\"\")[:12], ALPN excluded), got %q", wantExtHash, parts[2])
 	}
 }
 
