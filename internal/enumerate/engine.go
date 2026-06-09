@@ -18,6 +18,7 @@ import (
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
 	mongodb "github.com/Method-Security/networkscan/internal/enumerate/mongodb"
 	pop3 "github.com/Method-Security/networkscan/internal/enumerate/pop3"
+	redis "github.com/Method-Security/networkscan/internal/enumerate/redis"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
 	snmp "github.com/Method-Security/networkscan/internal/enumerate/snmp"
@@ -206,6 +207,8 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &mongodb.LibraryEnumerateMongoDB{}}, nil
 	case enumeratefern.SupportedServiceTypePop3:
 		return NetworkApplicationEngine{Library: &pop3.LibraryEnumeratePOP3{}}, nil
+	case enumeratefern.SupportedServiceTypeRedis:
+		return NetworkApplicationEngine{Library: &redis.LibraryEnumerateRedis{}}, nil
 	case enumeratefern.SupportedServiceTypeSocks:
 		return NetworkApplicationEngine{Library: &socks.LibraryEnumerateSocks{}}, nil
 	default:
