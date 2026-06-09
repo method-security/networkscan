@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	etcdfern "github.com/Method-Security/networkscan/generated/go/pentest/etcd"
 	ftpfern "github.com/Method-Security/networkscan/generated/go/pentest/ftp"
 	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
 	mongodbfern "github.com/Method-Security/networkscan/generated/go/pentest/mongodb"
@@ -306,6 +307,7 @@ var (
 	mongodbParserInstance *MongoDBActionParser
 	redisParserInstance   *RedisActionParser
 	mssqlParserInstance   *MSSQLActionParser
+	etcdParserInstance    *EtcdActionParser
 )
 
 // GetSMBParser returns the singleton SMB action parser
@@ -494,6 +496,52 @@ func (p *MSSQLActionParser) GetValidActions() []string {
 }
 
 func (p *MSSQLActionParser) ContainsAction(actions []mssqlfern.PentestMssqlAction, target mssqlfern.PentestMssqlAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
+// EtcdActionParser handles etcd-specific action parsing
+type EtcdActionParser struct{}
+
+// GetEtcdParser returns the singleton etcd action parser
+func GetEtcdParser() *EtcdActionParser {
+	if etcdParserInstance == nil {
+		etcdParserInstance = &EtcdActionParser{}
+	}
+	return etcdParserInstance
+}
+
+func (p *EtcdActionParser) ParseActions(actionStrings []string) ([]etcdfern.PentestEtcdAction, error) {
+	var actions []etcdfern.PentestEtcdAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			etcdAction, err := etcdfern.NewPentestEtcdActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid etcd action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, etcdAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *EtcdActionParser) GetValidActions() []string {
+	return []string{"PROBE", "READ_UNAUTH", "AUTH", "DUMP", "K8S_DECODE"}
+}
+
+func (p *EtcdActionParser) ContainsAction(actions []etcdfern.PentestEtcdAction, target etcdfern.PentestEtcdAction) bool {
 	for _, action := range actions {
 		if action == target {
 			return true

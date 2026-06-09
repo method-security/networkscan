@@ -304,8 +304,12 @@ func (l *LibraryEnumerateIMAP) EnumerateTarget(ctx context.Context, target strin
 			// UID FETCH message headers
 			if l.MaxMessages > 0 {
 				tag = nextTag()
+				fetchEnd := l.MaxMessages
+				if detail.SelectedFolder != nil && detail.SelectedFolder.Exists != nil && *detail.SelectedFolder.Exists > 0 && fetchEnd > *detail.SelectedFolder.Exists {
+					fetchEnd = *detail.SelectedFolder.Exists
+				}
 				fetchLines, fetchErr := sendCommand(conn, tag,
-					fmt.Sprintf("FETCH 1:%d (UID BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)])", l.MaxMessages),
+					fmt.Sprintf("FETCH 1:%d (UID BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)])", fetchEnd),
 					ctx)
 				if fetchErr == nil {
 					msgs := parseMessageHeaders(fetchLines, l.MaxMessages)

@@ -46,8 +46,12 @@ func copyFilesToTmpDirs(cfg Config) (templateDir string, err error) {
 		return "", err
 	}
 
-	// Copy templates
-	for _, src := range cfg.TemplateFS {
+	// Copy templates. Preserve the relative path from each source filesystem
+	// under a per-source subdirectory so nested layouts retain their structure
+	// and identical basenames from different sources do not overwrite each
+	// other.
+	for i, src := range cfg.TemplateFS {
+		srcDir := filepath.Join(templateDir, fmt.Sprintf("src-%d", i))
 		_ = fs.WalkDir(src, ".", func(p string, d fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
@@ -63,7 +67,10 @@ func copyFilesToTmpDirs(cfg Config) (templateDir string, err error) {
 			if err != nil {
 				return err
 			}
-			dst := filepath.Join(templateDir, filepath.Base(p))
+			dst := filepath.Join(srcDir, p)
+			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+				return err
+			}
 			return os.WriteFile(dst, data, 0o600)
 		})
 	}

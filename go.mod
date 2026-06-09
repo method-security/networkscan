@@ -25,6 +25,7 @@ require (
 	github.com/projectdiscovery/nuclei/v3 v3.4.7
 	github.com/projectdiscovery/useragent v0.0.101
 	github.com/redis/go-redis/v9 v9.11.0
+	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	go.mongodb.org/mongo-driver v1.17.4
@@ -357,6 +358,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
+	// Keep >= v0.2.1; v0.1.6 can crash during darwin/arm64 cgo init.
 	github.com/shoenig/go-m1cpu v0.2.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/syndtr/goleveldb v1.0.0 // indirect

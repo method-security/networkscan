@@ -6,6 +6,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -36,10 +37,55 @@ func GetTemplateFileSystem(ctx context.Context, templatePaths []string, protocol
 
 	log.Info("Using template paths", svc1log.SafeParam("templatePaths", templatePaths))
 
-	// Collect all template files from the provided paths
+	// Separate user-supplied OS paths from embedded-FS paths. A path is treated
+	// as an OS path if it exists on disk; otherwise it is resolved against the
+	// embedded CVE templates.
+	var osFilesystems []fs.FS
+	var embeddedPaths []string
+	for _, templatePath := range templatePaths {
+		// Treat the path as OS-supplied only when the caller wrote something that
+		// clearly references the host filesystem. Bare relative paths like
+		// "cve/2024" always resolve against the embedded archive — otherwise a
+		// same-named directory in the working tree would silently shadow it.
+		if !classifyTemplatePath(templatePath) {
+			embeddedPaths = append(embeddedPaths, templatePath)
+			continue
+		}
+		info, err := os.Stat(templatePath)
+		if err != nil {
+			log.Warn("User-supplied template path not found, skipping", svc1log.SafeParam("templatePath", templatePath), svc1log.SafeParam("error", err.Error()))
+			continue
+		}
+		abs, absErr := filepath.Abs(templatePath)
+		if absErr != nil {
+			abs = templatePath
+		}
+		if info.IsDir() {
+			count, walkErr := countTemplateFilesOnDisk(abs)
+			if walkErr != nil {
+				log.Warn("Failed to read user-supplied template directory, skipping", svc1log.SafeParam("templatePath", abs), svc1log.SafeParam("error", walkErr.Error()))
+				continue
+			}
+			if count == 0 {
+				log.Warn("User-supplied template directory contains no .yaml/.yml files, skipping", svc1log.SafeParam("templatePath", abs))
+				continue
+			}
+			osFilesystems = append(osFilesystems, os.DirFS(abs))
+			log.Info("Using user-supplied template directory", svc1log.SafeParam("templatePath", abs), svc1log.SafeParam("templateCount", count))
+		} else if isTemplateFile(abs) {
+			dir := filepath.Dir(abs)
+			base := filepath.Base(abs)
+			osFilesystems = append(osFilesystems, &singleFileFS{baseFS: os.DirFS(dir), name: base})
+			log.Info("Using user-supplied template file", svc1log.SafeParam("templatePath", abs))
+		} else {
+			log.Warn("User-supplied path is not a yaml/yml template, skipping", svc1log.SafeParam("templatePath", abs))
+		}
+	}
+
+	// Collect all template files from the embedded CVE FS
 	var allTemplateFiles []string
 
-	for _, templatePath := range templatePaths {
+	for _, templatePath := range embeddedPaths {
 		// Clean the template path - normalize to cve/ prefix
 		cleanPath := templatePath
 		// Remove any leading slashes or dots
@@ -73,7 +119,7 @@ func GetTemplateFileSystem(ctx context.Context, templatePaths []string, protocol
 		}
 	}
 
-	if len(allTemplateFiles) == 0 {
+	if len(allTemplateFiles) == 0 && len(osFilesystems) == 0 {
 		return nil, fmt.Errorf("no valid template files found")
 	}
 
@@ -120,11 +166,113 @@ func GetTemplateFileSystem(ctx context.Context, templatePaths []string, protocol
 		filesystems = append(filesystems, filteredFS)
 	}
 
+	filesystems = append(filesystems, osFilesystems...)
+
 	if len(filesystems) == 0 {
 		return nil, fmt.Errorf("no valid template directories found")
 	}
 
 	return filesystems, nil
+}
+
+// singleFileFS exposes a single file from a base filesystem as if it were the
+// only entry in the root directory. Used to wrap user-supplied template files
+// so the nuclei runner can discover them via fs.WalkDir.
+type singleFileFS struct {
+	baseFS fs.FS
+	name   string
+}
+
+func (s *singleFileFS) Open(name string) (fs.File, error) {
+	if name == "." {
+		return &singleFileDir{fs: s}, nil
+	}
+	if name == s.name {
+		return s.baseFS.Open(name)
+	}
+	return nil, fs.ErrNotExist
+}
+
+type singleFileDir struct {
+	fs *singleFileFS
+}
+
+func (s *singleFileDir) Stat() (fs.FileInfo, error) { return &dirInfo{name: "."}, nil }
+func (s *singleFileDir) Read([]byte) (int, error)   { return 0, fmt.Errorf("cannot read directory") }
+func (s *singleFileDir) Close() error               { return nil }
+
+func (s *singleFileDir) ReadDir(n int) ([]fs.DirEntry, error) {
+	file, err := s.fs.baseFS.Open(s.fs.name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	entry := &fileDirEntry{
+		name:    s.fs.name,
+		size:    stat.Size(),
+		mode:    stat.Mode(),
+		modTime: stat.ModTime(),
+	}
+	entries := []fs.DirEntry{entry}
+	if n > 0 && n < len(entries) {
+		return entries[:n], nil
+	}
+	return entries, nil
+}
+
+// embeddedPathPrefixes are the top-level directories inside the bundled
+// CVE template archive. A path beginning with one of these is always
+// resolved against the embedded archive — never the host filesystem — so a
+// same-named directory in the working tree cannot shadow bundled templates.
+var embeddedPathPrefixes = []string{"cve/"}
+
+// classifyTemplatePath returns true when the path should be resolved against
+// the host filesystem rather than the embedded archive. The rules:
+//
+//   - Absolute paths and ./- / ../-prefixed paths are always OS paths.
+//   - Paths starting with a known embedded prefix ("cve/") are always
+//     embedded so internal callers' paths can never be shadowed by CWD.
+//   - Any other relative path is treated as an OS path when it exists on
+//     disk; otherwise the embedded resolver gets a chance to match it.
+func classifyTemplatePath(p string) bool {
+	if filepath.IsAbs(p) {
+		return true
+	}
+	if strings.HasPrefix(p, "./") || strings.HasPrefix(p, "../") ||
+		strings.HasPrefix(p, ".\\") || strings.HasPrefix(p, "..\\") {
+		return true
+	}
+	for _, prefix := range embeddedPathPrefixes {
+		if strings.HasPrefix(p, prefix) {
+			return false
+		}
+	}
+	if _, err := os.Stat(p); err == nil {
+		return true
+	}
+	return false
+}
+
+// countTemplateFilesOnDisk counts .yaml/.yml files under dir (recursive).
+func countTemplateFilesOnDisk(dir string) (int, error) {
+	count := 0
+	err := filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if isTemplateFile(d.Name()) {
+			count++
+		}
+		return nil
+	})
+	return count, err
 }
 
 // isTemplateFile checks if the given path appears to be a template file based on extension
