@@ -90,8 +90,9 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 		log.Info("PostgreSQL SSL probe I/O error (continuing)",
 			svc1log.SafeParam("target", addr),
 			svc1log.SafeParam("error", sslErr))
-	} else {
-		details.SslSupported = &sslSupported
+	} else if sslSupported != nil {
+		// nil means ambiguous response — not 'S' or 'N' — so leave SslSupported unset.
+		details.SslSupported = sslSupported
 	}
 
 	// Step 2: Probe startup message — get parameters and auth method.
@@ -175,14 +176,17 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 //   - dialFailed=true, err≠nil: TCP dial failed — host is unreachable.
 //   - dialFailed=false, err≠nil: dial succeeded but SSLRequest I/O failed — host
 //     is reachable but SSL status could not be determined.
-//   - dialFailed=false, err=nil: probe succeeded; sslSupported reflects the result.
+//   - dialFailed=false, err=nil, sslSupported=non-nil: probe succeeded.
+//     *sslSupported is true for 'S' (SSL accepted) and false for 'N' (SSL rejected).
+//   - dialFailed=false, err=nil, sslSupported=nil: received an ambiguous byte (not
+//     'S' or 'N'); the service may not be PostgreSQL; SSL status left unset.
 //
 // ctx is used for the dial so that the probe respects context cancellation.
-func probeSSL(ctx context.Context, addr string, timeout time.Duration) (sslSupported bool, dialFailed bool, err error) {
+func probeSSL(ctx context.Context, addr string, timeout time.Duration) (sslSupported *bool, dialFailed bool, err error) {
 	dialer := &net.Dialer{Timeout: timeout}
 	conn, connErr := dialer.DialContext(ctx, "tcp", addr)
 	if connErr != nil {
-		return false, true, fmt.Errorf("TCP dial failed: %w", connErr)
+		return nil, true, fmt.Errorf("TCP dial failed: %w", connErr)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -194,15 +198,26 @@ func probeSSL(ctx context.Context, addr string, timeout time.Duration) (sslSuppo
 	binary.BigEndian.PutUint32(msg[4:8], uint32(sslRequestCode))
 
 	if _, writeErr := conn.Write(msg); writeErr != nil {
-		return false, false, fmt.Errorf("sending SSLRequest: %w", writeErr)
+		return nil, false, fmt.Errorf("sending SSLRequest: %w", writeErr)
 	}
 
 	resp := make([]byte, 1)
 	if _, readErr := io.ReadFull(conn, resp); readErr != nil {
-		return false, false, fmt.Errorf("reading SSL response: %w", readErr)
+		return nil, false, fmt.Errorf("reading SSL response: %w", readErr)
 	}
 
-	return resp[0] == 'S', false, nil
+	switch resp[0] {
+	case 'S':
+		v := true
+		return &v, false, nil
+	case 'N':
+		v := false
+		return &v, false, nil
+	default:
+		// Ambiguous byte — not a definitive PostgreSQL SSL response.
+		// Leave sslSupported unset rather than falsely reporting unsupported.
+		return nil, false, nil
+	}
 }
 
 // probeStartup opens a plain TCP connection, sends a PostgreSQL StartupMessage, and reads
