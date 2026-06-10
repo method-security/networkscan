@@ -196,7 +196,15 @@ func probeSSL(ctx context.Context, addr string, timeout time.Duration) (sslSuppo
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	// Use the context deadline for socket I/O so that a slow dial does not push
+	// the read deadline past the per-target context deadline.  Fall back to
+	// time.Now().Add(timeout) when the context carries no deadline (e.g. during
+	// unit tests or when the caller did not set a deadline).
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	} else {
+		_ = conn.SetDeadline(time.Now().Add(timeout))
+	}
 
 	// SSLRequest: int32 length=8, int32 requestCode=80877103
 	msg := make([]byte, 8)
@@ -238,7 +246,14 @@ func probeStartup(ctx context.Context, addr string, timeout time.Duration) (serv
 	}
 	defer func() { _ = conn.Close() }()
 
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	// Use the context deadline for socket I/O so that a slow dial does not push
+	// the read deadline past the per-target context deadline.  Fall back to
+	// time.Now().Add(timeout) when the context carries no deadline.
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	} else {
+		_ = conn.SetDeadline(time.Now().Add(timeout))
+	}
 
 	// Build StartupMessage:
 	// int32 length (including itself) + int32 protocol + key=value\0 pairs + \0
