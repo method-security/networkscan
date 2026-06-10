@@ -1,4 +1,5 @@
-// Package postgres provides PostgreSQL service enumeration functionality.
+// Package postgres provides PostgreSQL service enumeration via raw TCP SSLRequest
+// and startup message handshake.
 package postgres
 
 import (
