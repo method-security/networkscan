@@ -7,6 +7,7 @@ imports:
   ntpProtocol: ../common/protocol/ntp.yml
   snmpProtocol: ../common/protocol/snmp.yml
   mongodbProtocol: ../common/protocol/mongodb.yml
+  etcdProtocol: ../common/protocol/etcd.yml
   grpcProtocol: ../common/protocol/grpc.yml
   bgpProtocol: ../common/protocol/bgp.yml
   dcerpcProtocol: ../common/protocol/dcerpc.yml
@@ -59,6 +60,7 @@ types:
       ntp: ntpProtocol.NtpServerInfo
       snmp: snmpProtocol.SnmpServerInfo
       mongodb: mongodbProtocol.MongodbServerInfo
+      etcd: etcdProtocol.EtcdServerInfo
       grpc: grpcProtocol.GrpcServerInfo
       bgp: bgpProtocol.BgpServerInfo
       dcerpc: dcerpcProtocol.DcerpcServerInfo
