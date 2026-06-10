@@ -3,7 +3,6 @@ package discover
 import (
 	// Standard
 	"context"
-	"fmt"
 	"runtime"
 	"strings"
 	"sync"
@@ -45,24 +44,6 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 		maxThreads = *config.ValidateThreads
 	}
 
-	// Resolve validation hostname once before processing all ports
-	// This avoids repeated DNS lookups for every single port
-	var resolvedValidationIP string
-	if config.ValidateHostname != nil {
-		log.Info("Resolving validation hostname once", svc1log.SafeParam("hostname", *config.ValidateHostname))
-		// Import needed: "github.com/Method-Security/networkscan/utils"
-		ips, err := utils.GetIPs(*config.ValidateHostname)
-		if err != nil {
-			errorsMutex.Lock()
-			errors = append(errors, fmt.Sprintf("failed to resolve validation hostname %s: %v", *config.ValidateHostname, err))
-			errorsMutex.Unlock()
-			// Continue with IP-based validation only
-		} else if len(ips) > 0 {
-			resolvedValidationIP = ips[0].String()
-			log.Info("Resolved validation hostname", svc1log.SafeParam("hostname", *config.ValidateHostname), svc1log.SafeParam("ip", resolvedValidationIP))
-		}
-	}
-
 	for _, socket := range sockets {
 		if socket == nil || socket.Ports == nil {
 			continue
@@ -89,13 +70,7 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 					log.Info("Validating port", svc1log.SafeParam("port", port.Port))
 
 					// Use RunServiceFingerprint to check if there's a service on this port
-					// Use pre-resolved IP to avoid repeated DNS lookups
-					var targetStr string
-					if resolvedValidationIP != "" {
-						targetStr = utils.FormatHostPort(resolvedValidationIP, port.Port)
-					} else {
-						targetStr = utils.FormatHostPort(socket.Ip, port.Port)
-					}
+					targetStr := utils.FormatHostPort(socket.Ip, port.Port)
 					serviceConfig := discoverfern.DiscoverServiceConfig{
 						Target:  targetStr,
 						Timeout: *config.ValidateAttemptTimeout,

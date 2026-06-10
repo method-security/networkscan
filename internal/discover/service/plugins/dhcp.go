@@ -6,10 +6,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type DHCPFingerprinter struct{}
@@ -22,14 +22,14 @@ func (DHCPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	// Create UDP connection
-	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)
+	conn, err := helpers.Dial(ctx, "udp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set read deadline
-	if err := conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+	if err := helpers.SetReadDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 
@@ -96,7 +96,7 @@ func (DHCPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeDhcp,
 		Version:   &version,
-		Metadata:  discoverfern.NewServiceMetadataFromGeneric(&discoverfern.GenericServiceMetadata{Metadata: meta}),
+		Metadata:  &discoverfern.ServiceMetadata{Generic: &discoverfern.GenericServiceMetadata{Metadata: meta}},
 	}
 
 	return result, nil

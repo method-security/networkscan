@@ -28,16 +28,16 @@ func (s *LibraryEnumerateSNMP) EnumerateTarget(ctx context.Context, target strin
 	host, portStr, err := net.SplitHostPort(target)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("invalid target format %q: %v", target, err))
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSnmpDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateSnmpDetails: &details}, errors
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("invalid port %q: %v", portStr, err))
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSnmpDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateSnmpDetails: &details}, errors
 	}
 	if port < 1 || port > 65535 {
 		errors = append(errors, fmt.Sprintf("port %d out of range (1-65535)", port))
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSnmpDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateSnmpDetails: &details}, errors
 	}
 	snmpPort := uint16(port)
 
@@ -46,7 +46,7 @@ func (s *LibraryEnumerateSNMP) EnumerateTarget(ctx context.Context, target strin
 		ips, err := net.LookupIP(host)
 		if err != nil || len(ips) == 0 {
 			errors = append(errors, fmt.Sprintf("cannot resolve host %q: %v", host, err))
-			return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSnmpDetails(&details), errors
+			return &enumeratefern.EnumerateServiceDetails{EnumerateSnmpDetails: &details}, errors
 		}
 		ip = ips[0]
 	}
@@ -62,7 +62,7 @@ func (s *LibraryEnumerateSNMP) EnumerateTarget(ctx context.Context, target strin
 		} else {
 			errors = append(errors, "SNMPv3 not detected on target")
 		}
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSnmpDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateSnmpDetails: &details}, errors
 	}
 
 	// Test if NoAuthNoPriv grants actual read access with common usernames
@@ -84,5 +84,5 @@ func (s *LibraryEnumerateSNMP) EnumerateTarget(ctx context.Context, target strin
 		details.V3RequiredSecurityLevel = &level
 	}
 
-	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateSnmpDetails(&details), errors
+	return &enumeratefern.EnumerateServiceDetails{EnumerateSnmpDetails: &details}, errors
 }

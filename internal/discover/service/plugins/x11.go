@@ -6,11 +6,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type X11Fingerprinter struct{}
@@ -28,21 +28,14 @@ func (X11Fingerprinter) DefaultPorts() []int {
 
 func (X11Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-
-	// Create connection with timeout
-	dialer := net.Dialer{
-		Timeout: time.Duration(timeout) * time.Second,
-	}
-
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	conn, err := helpers.Dial(ctx, "tcp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set read/write deadline
-	deadline := time.Now().Add(time.Duration(timeout) * time.Second)
-	if err := conn.SetDeadline(deadline); err != nil {
+	if err := helpers.SetDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 
@@ -167,7 +160,7 @@ func (X11Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeX11,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromX11(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{X11: metadata},
 	}
 
 	return result, nil

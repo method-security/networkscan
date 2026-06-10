@@ -1,0 +1,48 @@
+types:
+  # ENUMs
+
+  # SocksAuthMethod enumerates the SOCKS5 authentication methods (RFC 1928 §4).
+  # Per ontology-definition convention, unknown auth methods leave the field
+  # unset rather than emit an UNKNOWN sentinel.
+  SocksAuthMethod:
+    enum:
+      - NO_AUTH
+      - GSSAPI
+      - USERNAME_PASSWORD
+
+  # SocksImplementationHint provides a best-effort guess at the SOCKS server
+  # implementation based on response-byte and timing heuristics.
+  # Ambiguous fingerprints leave the field unset rather than emit UNKNOWN.
+  SocksImplementationHint:
+    enum:
+      - MICROSOCKS
+      - DANTE
+      - SHADOWSOCKS
+      - TOR
+      - OPENSSH_DYNAMIC
+
+  # Report structs
+
+  # EnumerateSocksDetails captures the result of probing a SOCKS4/4a/5 proxy.
+  EnumerateSocksDetails:
+    properties:
+      target: string
+      port: integer
+      socks4Supported: optional<boolean>
+      socks4aSupported: optional<boolean>
+      socks5Supported: optional<boolean>
+      # The single SOCKS5 auth method the server selected when offered our
+      # standard client menu (NO_AUTH, GSSAPI, USERNAME_PASSWORD). RFC 1928
+      # method negotiation only reveals the chosen method, not the full set
+      # the server would accept — to map that we would need to issue
+      # separate greetings, one per method. Operator-side follow-up.
+      authMethodSelected: optional<SocksAuthMethod>
+      noAuthAllowed: optional<boolean>
+      userpassAuthAllowed: optional<boolean>
+      gssapiAvailable: optional<boolean>
+      bindSupported: optional<boolean>
+      udpAssociateSupported: optional<boolean>
+      bndAddr: optional<string>
+      bndPort: optional<integer>
+      implementationHint: optional<SocksImplementationHint>
+      error: optional<string>

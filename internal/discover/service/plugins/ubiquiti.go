@@ -6,11 +6,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type UbiquitiFingerprinter struct{}
@@ -26,15 +26,14 @@ func (UbiquitiFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 
 	// Create UDP connection
 	hostPort := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-	conn, err := net.Dial("udp", hostPort)
+	conn, err := helpers.Dial(ctx, "udp", hostPort, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 
 	// Set read deadline
-	deadline := time.Now().Add(time.Duration(timeout) * time.Second)
-	if err := conn.SetDeadline(deadline); err != nil {
+	if err := helpers.SetDeadline(conn, timeout); err != nil {
 		return nil, fmt.Errorf("failed to set deadline: %w", err)
 	}
 
@@ -116,7 +115,7 @@ func (UbiquitiFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 		Version:   &deviceVersion,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeUbiquiti,
-		Metadata:  discoverfern.NewServiceMetadataFromUbiquiti(ubiquitiInfo),
+		Metadata:  &discoverfern.ServiceMetadata{Ubiquiti: ubiquitiInfo},
 	}, nil
 }
 

@@ -1,0 +1,19 @@
+types:
+  ImapAuthMechanismType:
+    enum:
+      - PLAIN
+      - LOGIN
+      - CRAM_MD5
+      - GSSAPI
+      - XOAUTH2
+
+  ImapServerInfo:
+    properties:
+      greeting: optional<string>
+      serverName: optional<string>
+      imapVersion: optional<string>
+      capabilities: optional<list<string>>
+      authMechanisms: optional<list<ImapAuthMechanismType>>
+      tlsSupported: optional<boolean>
+      tlsCertSubject: optional<string>
+      tlsCipher: optional<string>

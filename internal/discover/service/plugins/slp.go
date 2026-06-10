@@ -6,11 +6,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type SlpFingerprinter struct{}
@@ -24,10 +24,10 @@ func (SlpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 
 	// Try both TCP and UDP (SLP supports both)
 	// Try UDP first (more common)
-	conn, err := net.DialTimeout("udp", addr, time.Duration(timeout)*time.Second)
+	conn, err := helpers.Dial(ctx, "udp", addr, timeout)
 	if err != nil {
 		// Try TCP if UDP fails
-		conn, err = net.DialTimeout("tcp", addr, time.Duration(timeout)*time.Second)
+		conn, err = helpers.Dial(ctx, "tcp", addr, timeout)
 		if err != nil {
 			return nil, err
 		}
@@ -35,7 +35,7 @@ func (SlpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	defer func() { _ = conn.Close() }()
 
 	// Set read deadline
-	if err := conn.SetReadDeadline(time.Now().Add(time.Duration(timeout) * time.Second)); err != nil {
+	if err := helpers.SetReadDeadline(conn, timeout); err != nil {
 		return nil, err
 	}
 
@@ -154,7 +154,7 @@ func (SlpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Transport: transport,
 		Protocol:  common.ProtocolTypeSlp,
 		Version:   version,
-		Metadata:  discoverfern.NewServiceMetadataFromSlp(metadata),
+		Metadata:  &discoverfern.ServiceMetadata{Slp: metadata},
 	}
 
 	return result, nil

@@ -14,6 +14,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -34,8 +35,8 @@ func (GrpcFingerprinter) DefaultPorts() []int { return []int{} }
 
 func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	// Create a context with timeout
-	timeoutDuration := time.Duration(timeout) * time.Second
-	timeoutCtx, cancel := context.WithTimeout(ctx, timeoutDuration)
+	timeoutDuration := helpers.Timeout(timeout)
+	timeoutCtx, cancel := helpers.Context(ctx, timeout)
 	defer cancel()
 
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
@@ -56,7 +57,7 @@ func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}()
 
 	/* ---- Server-reflection ListServices ---------------------------------- */
-	rctx, cancel := context.WithTimeout(timeoutCtx, timeoutDuration/2)
+	rctx, cancel := helpers.ContextDuration(timeoutCtx, timeoutDuration/2)
 	defer cancel()
 
 	refClient, err := reflectionpb.NewServerReflectionClient(conn).ServerReflectionInfo(rctx)
@@ -94,7 +95,7 @@ func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 /* -------------------------------------------------------------------------- */
 
 func dial(ctx context.Context, addr string, to time.Duration, useTLS bool) (*grpc.ClientConn, bool, error) {
-	dctx, cancel := context.WithTimeout(ctx, to)
+	dctx, cancel := helpers.ContextDuration(ctx, to)
 	defer cancel()
 
 	opts := []grpc.DialOption{grpc.WithBlock()}
@@ -138,6 +139,6 @@ func buildResult(host string, ip net.IP, port int, tlsUsed bool, statusStr strin
 			return common.TransportTypeTcp
 		}(),
 		Protocol: common.ProtocolTypeGrpc,
-		Metadata: discoverfern.NewServiceMetadataFromGrpc(metadata),
+		Metadata: &discoverfern.ServiceMetadata{Grpc: metadata},
 	}
 }

@@ -14,10 +14,16 @@ import (
 	ftp "github.com/Method-Security/networkscan/internal/enumerate/ftp"
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
 	ike "github.com/Method-Security/networkscan/internal/enumerate/ike"
+	imap "github.com/Method-Security/networkscan/internal/enumerate/imap"
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
+	mongodb "github.com/Method-Security/networkscan/internal/enumerate/mongodb"
+	mysql "github.com/Method-Security/networkscan/internal/enumerate/mysql"
+	pop3 "github.com/Method-Security/networkscan/internal/enumerate/pop3"
+	redis "github.com/Method-Security/networkscan/internal/enumerate/redis"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
 	snmp "github.com/Method-Security/networkscan/internal/enumerate/snmp"
+	socks "github.com/Method-Security/networkscan/internal/enumerate/socks"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
 
 	// External
@@ -110,16 +116,27 @@ func RunServiceEnumerate(ctx context.Context, config enumeratefern.EnumerateServ
 		close(errorsChan)
 	}()
 
-	// Collect results
+	// Drain both channels concurrently to prevent deadlock.
+	// Sequential draining can deadlock when workers produce more errors
+	// than the error channel buffer, since workers block on sends,
+	// preventing wg.Wait() from completing and channels from closing.
 	var details []*enumeratefern.EnumerateServiceDetails
 	var errors []string
-
-	for detail := range detailsChan {
-		details = append(details, detail)
-	}
-	for err := range errorsChan {
-		errors = append(errors, err)
-	}
+	var collectWg sync.WaitGroup
+	collectWg.Add(2)
+	go func() {
+		defer collectWg.Done()
+		for detail := range detailsChan {
+			details = append(details, detail)
+		}
+	}()
+	go func() {
+		defer collectWg.Done()
+		for err := range errorsChan {
+			errors = append(errors, err)
+		}
+	}()
+	collectWg.Wait()
 
 	log.Info("Enumeration complete",
 		svc1log.SafeParam("targets", len(config.Targets)),
@@ -149,6 +166,18 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &ike.LibraryEnumerateIKE{}}, nil
 	case enumeratefern.SupportedServiceTypeSnmp:
 		return NetworkApplicationEngine{Library: &snmp.LibraryEnumerateSNMP{}}, nil
+	case enumeratefern.SupportedServiceTypeImap:
+		return NetworkApplicationEngine{Library: &imap.LibraryEnumerateIMAP{}}, nil
+	case enumeratefern.SupportedServiceTypeMongodb:
+		return NetworkApplicationEngine{Library: &mongodb.LibraryEnumerateMongoDB{}}, nil
+	case enumeratefern.SupportedServiceTypeMysql:
+		return NetworkApplicationEngine{Library: &mysql.LibraryEnumerateMySQL{}}, nil
+	case enumeratefern.SupportedServiceTypePop3:
+		return NetworkApplicationEngine{Library: &pop3.LibraryEnumeratePOP3{}}, nil
+	case enumeratefern.SupportedServiceTypeRedis:
+		return NetworkApplicationEngine{Library: &redis.LibraryEnumerateRedis{}}, nil
+	case enumeratefern.SupportedServiceTypeSocks:
+		return NetworkApplicationEngine{Library: &socks.LibraryEnumerateSocks{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}

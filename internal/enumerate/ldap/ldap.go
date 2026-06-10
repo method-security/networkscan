@@ -347,5 +347,5 @@ func (l *LibraryEnumerateLDAP) EnumerateTarget(ctx context.Context, target strin
 
 	log.Info("LDAP enumeration completed", svc1log.SafeParam("target", target))
 
-	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateLdapDetails(&details), errors
+	return &enumeratefern.EnumerateServiceDetails{EnumerateLdapDetails: &details}, errors
 }

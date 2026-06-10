@@ -1,24 +1,41 @@
 types:
   ProtocolType:
     enum:
+      - ADB
+      - AFP
+      - AMQP
       - ARD
       - ATG
+      - BACNET
+      - BEANSTALKD
+      - BECKHOFFADS
       - BGP
+      - CASSANDRA
+      - COAP
+      - CODESYS
       - DCERPC
       - DHCP
       - DNS
+      - DNP3
+      - DUBBO
       - ECHO
+      - ERLANGEPMD
       - ETHERNETIP
       - FGFM
+      - FINGER
       - FINS
       - FOX
       - FTP
       - GESRTP
+      - GITDAEMON
+      - GOPHER
       - GRPC
       - HART
+      - HPDATAPROTECTOR
       - HTTP
       - HTTPS
       - HTTP2
+      - IDENT
       - IEC104
       - IKE
       - IMAP
@@ -26,12 +43,18 @@ types:
       - IPP
       - IPMI
       - IPSEC
+      - IRC
+      - JAVARMI
       - JDWP
+      - JETDIRECT
+      - JMX
       - KAFKA
       - KERBEROS
       - LDAP
       - LDAPS
+      - LPD
       - MEMCACHED
+      - MELSEC
       - MMS
       - MODBUS
       - MONGODB
@@ -39,22 +62,32 @@ types:
       - MSMQ
       - MSSQL
       - MYSQL
+      - NATS
+      - NDMP
       - NETBIOS
+      - NFS
+      - NNTP
       - NTP
-      - ORACLE
       - OPCUA
       - OPENVPN
+      - ORACLE
       - PCOM
       - PCWORX
       - POP3
       - POP3S
+      - POPPASSD
       - POSTGRESQL
       - PPTP
+      - RADIUS
       - RDP
-      - RPC
       - REDIS
+      - RLOGIN
+      - RPC
       - RSYNC
+      - RTMP
       - RTSP
+      - S7COMM
+      - SAPROUTER
       - SIP
       - SLP
       - SMB
@@ -64,13 +97,20 @@ types:
       - SSH
       - SSDP
       - STUN
+      - TARANTOOL
       - TELNET
       - TFTP
       - UBIQUITI
+      - VMWAREAUTHD
       - VNC
+      - WEBLOGICT3
+      - WHOIS
       - WINRM
+      - WSDISCOVERY
       - X11
       - XDMCP
+      - XMPP
+      - ZOOKEEPER
       - UNKNOWN
 
   TransportType:
@@ -79,4 +119,3 @@ types:
       - TCPTLS
       - UDP
       - UNKNOWN
-

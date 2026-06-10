@@ -7,6 +7,12 @@ imports:
   ldap: ./ldap/ldap.yml
   ike: ./ike/ike.yml
   snmp: ./snmp/snmp.yml
+  imap: ./imap/imap.yml
+  mongodb: ./mongodb/mongodb.yml
+  mysql: ./mysql/mysql.yml
+  pop3: ./pop3/pop3.yml
+  redis: ./redis/redis.yml
+  socks: ./socks/socks.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -19,6 +25,12 @@ types:
       - LDAP
       - IKE
       - SNMP
+      - IMAP
+      - MONGODB
+      - MYSQL
+      - POP3
+      - REDIS
+      - SOCKS
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -30,6 +42,12 @@ types:
       EnumerateLdapDetails: ldap.EnumerateLdapDetails
       EnumerateIkeDetails: ike.EnumerateIkeDetails
       EnumerateSnmpDetails: snmp.EnumerateSnmpDetails
+      EnumerateImapDetails: imap.EnumerateImapDetails
+      EnumerateMongodbDetails: mongodb.EnumerateMongodbDetails
+      EnumerateMysqlDetails: mysql.EnumerateMysqlDetails
+      EnumeratePop3Details: pop3.EnumeratePop3Details
+      EnumerateRedisDetails: redis.EnumerateRedisDetails
+      EnumerateSocksDetails: socks.EnumerateSocksDetails
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>

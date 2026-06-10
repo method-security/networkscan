@@ -12,7 +12,7 @@ import (
 	cobra "github.com/spf13/cobra"
 )
 
-// InitEnumerateCommand initializes the enumerate command and its subcommands (ftp, grpc, smtp, ssh).
+// InitEnumerateCommand initializes the enumerate command and its subcommands (ftp, grpc, smtp, ssh, imap, pop3).
 // Each subcommand implements service-specific enumeration functionality for different network protocols.
 func (a *NetworkScan) InitEnumerateCommand() {
 	enumerateCmd := &cobra.Command{
@@ -57,7 +57,12 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				return
 			}
 
-			config := newEnumerateServiceConfig(targets, serviceEnum, timeout, wordlist)
+			config := newEnumerateServiceConfig(EnumerateServiceCobraFlags{
+				Targets:  targets,
+				Service:  serviceEnum,
+				Timeout:  timeout,
+				Wordlist: wordlist,
+			})
 
 			// Generate the report
 			report, err := enumerate.RunServiceEnumerate(cmd.Context(), config)
@@ -69,7 +74,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 		},
 	}
 	enumerateServiceCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to enumerate")
-	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, ldap, smb, smtp, snmp, ssh)")
+	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, imap, ldap, mongodb, mysql, pop3, redis, smb, smtp, snmp, socks, ssh)")
 	enumerateServiceCmd.Flags().Int("timeout", 30, "Timeout in seconds for enumerating each target")
 	enumerateServiceCmd.Flags().StringSlice("wordlist", []string{}, "Custom username wordlist for user enumeration (SMTP VRFY/EXPN/RCPT TO)")
 
@@ -84,15 +89,26 @@ func (a *NetworkScan) InitEnumerateCommand() {
 	a.RootCmd.AddCommand(enumerateCmd)
 }
 
-// newEnumerateServiceConfig creates a new EnumerateServiceConfig with the provided parameters.
-func newEnumerateServiceConfig(targets []string, serviceEnum enumeratefern.SupportedServiceType, timeout int, wordlist []string) enumeratefern.EnumerateServiceConfig {
+// EnumerateServiceCobraFlags bundles the flag values consumed by
+// newEnumerateServiceConfig. Per-service auth/Mode-B knobs (e.g. for IMAP)
+// belong on their own pentest tools (e.g. `pentest service imap`); the
+// enumerate stage is pre-auth fingerprinting only.
+type EnumerateServiceCobraFlags struct {
+	Targets  []string
+	Service  enumeratefern.SupportedServiceType
+	Timeout  int
+	Wordlist []string
+}
+
+// newEnumerateServiceConfig creates a new EnumerateServiceConfig from the flag struct.
+func newEnumerateServiceConfig(flags EnumerateServiceCobraFlags) enumeratefern.EnumerateServiceConfig {
 	config := enumeratefern.EnumerateServiceConfig{
-		Targets: targets,
-		Service: serviceEnum,
-		Timeout: timeout,
+		Targets: flags.Targets,
+		Service: flags.Service,
+		Timeout: flags.Timeout,
 	}
-	if len(wordlist) > 0 {
-		config.Wordlist = wordlist
+	if len(flags.Wordlist) > 0 {
+		config.Wordlist = flags.Wordlist
 	}
 	return config
 }

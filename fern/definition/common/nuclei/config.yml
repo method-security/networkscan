@@ -3,6 +3,7 @@ types:
   NucleiConfig:
     properties:
       targets: list<string>
+      protocol: optional<string> # Application protocol to filter templates (e.g., FTP, SSH, HTTP)
       templatePaths: optional<list<string>>
       timeout: integer
       threads: integer

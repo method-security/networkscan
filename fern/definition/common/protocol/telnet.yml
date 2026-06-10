@@ -5,3 +5,10 @@ types:
       target: optional<string>         # Target host:port
       banner: optional<string>         # Server banner information
       prompts: optional<list<string>>  # Login prompts observed
+
+  TelnetCommandExecution:
+    properties:
+      command: string
+      stdout: string
+      stderr: optional<string>
+      exitCode: optional<integer>

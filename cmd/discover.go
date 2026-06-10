@@ -13,6 +13,7 @@ import (
 	discoverport "github.com/Method-Security/networkscan/internal/discover/port"
 	discoverroute "github.com/Method-Security/networkscan/internal/discover/route"
 	discoverservice "github.com/Method-Security/networkscan/internal/discover/service"
+	discoversocket "github.com/Method-Security/networkscan/internal/discover/socket"
 	"github.com/Method-Security/networkscan/utils"
 
 	// External
@@ -97,9 +98,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 		},
 	}
 	discoverHostCmd.Flags().String("target", "", "Target IP address, hostname, or CIDR range to scan for live hosts")
-	discoverHostCmd.Flags().String("scan-type", "ICMP_ECHO", "Discovery scan type: ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (not needed for stealth mode)")
+	discoverHostCmd.Flags().String("scan-type", "ICMP_ECHO", "Discovery scan type: TCP_SYN, ICMP_ECHO, ICMP_TIMESTAMP, ARP, or ICMP_ADDRESS_MASK (not needed for stealth mode)")
 	discoverHostCmd.Flags().Int("sleep", 0, "Sleep delay in seconds between hosts for stealth scan (stealth mode enabled when sleep > 0)")
-	discoverHostCmd.Flags().Int("jitter", 0, "Jitter percentage (0-100) to randomize sleep delay for stealth scan")
+	discoverHostCmd.Flags().Int("jitter", 0, "Jitter percentage (0 to 100) to randomize sleep delay for stealth scan")
 	discoverHostCmd.Flags().Bool("reverse-lookup", false, "Perform reverse DNS lookup sweep first to identify potential targets")
 
 	// Mark Required Flags
@@ -157,20 +158,10 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
-			var validateHostname *string
 			var validateAttemptTimeout *int
 			var validateThreads *int
 			var maxOpenPortsValidationThreshold *int
 			if validate {
-				// Validate hostname
-				validateHostnameString, err := cmd.Flags().GetString("validate-hostname")
-				if err != nil {
-					a.OutputSignal.AddError(err)
-					return
-				}
-				if validateHostnameString != "" {
-					validateHostname = &validateHostnameString
-				}
 				// Validate attempt timeout
 				validateAttemptTimeoutInt, err := cmd.Flags().GetInt("validate-attempt-timeout")
 				if err != nil {
@@ -216,7 +207,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Set Config
-			config := getDiscoverPortConfig(target, ports, topPorts, threads, packetsPerSecond, scanTypeEnum, validate, validateHostname, validateAttemptTimeout, validateThreads, maxOpenPortsValidationThreshold, sleep, jitter)
+			config := getDiscoverPortConfig(target, ports, topPorts, threads, packetsPerSecond, scanTypeEnum, validate, validateAttemptTimeout, validateThreads, maxOpenPortsValidationThreshold, sleep, jitter)
 
 			// Generate the report
 			report, err := discoverport.RunPortScan(cmd.Context(), config)
@@ -234,7 +225,6 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN (default, requires root) or CONNECT")
 	discoverPortCmd.Flags().Int("packets-per-second", 1000, "Packets per second to send (default: 1000)")
 	discoverPortCmd.Flags().Bool("validate", false, "Validate open ports by using service detection techniques")
-	discoverPortCmd.Flags().String("validate-hostname", "", "Hostname to validate against (e.g., example.com)")
 	discoverPortCmd.Flags().Int("validate-attempt-timeout", 10, "Timeout in seconds for each service detection attempt")
 	discoverPortCmd.Flags().Int("validate-threads", 0, "Number of concurrent threads to use during service detection")
 	discoverPortCmd.Flags().Int("max-open-ports-validation-threshold", 50, "Trigger validation warning when more than this many ports are open (default: 50)")
@@ -465,6 +455,85 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverTLSCmd)
 
+	// Socket Command
+	discoverSocketCmd := &cobra.Command{
+		Use:   "socket",
+		Short: "Send raw bytes to a TCP/UDP port and capture the response banner.",
+		Long:  `Open a raw TCP or UDP connection to a target host:port, optionally send a payload, and return the raw response bytes. Useful for banner grabbing, vulnerability probing, and interacting with custom binary protocols.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			target, err := cmd.Flags().GetString("target")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			protocol, err := cmd.Flags().GetString("protocol")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			sendData, err := cmd.Flags().GetString("send-data")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			readTimeout, err := cmd.Flags().GetInt("read-timeout")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			maxResponseBytes, err := cmd.Flags().GetInt("max-response-bytes")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			// Validate and convert protocol
+			protocolUpper := strings.ToUpper(protocol)
+			if protocolUpper != "TCP" && protocolUpper != "UDP" {
+				a.OutputSignal.AddError(fmt.Errorf("invalid protocol %q: must be tcp or udp", protocol))
+				return
+			}
+
+			protocolEnum, err := discoverfern.NewSocketTransportProtocolFromString(protocolUpper)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			config := discoverfern.DiscoverSocketConfig{
+				Target:           target,
+				Protocol:         protocolEnum,
+				ReadTimeout:      readTimeout,
+				MaxResponseBytes: maxResponseBytes,
+			}
+			if sendData != "" {
+				config.SendData = &sendData
+			}
+
+			report, err := discoversocket.RunSocketSend(cmd.Context(), config)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			a.OutputSignal.Content = report
+		},
+	}
+	discoverSocketCmd.Flags().String("target", "", "Target address (IP:port)")
+	discoverSocketCmd.Flags().String("protocol", "tcp", "Transport protocol (tcp or udp)")
+	discoverSocketCmd.Flags().String("send-data", "", "Data to send (plaintext or \\x-escaped hex bytes)")
+	discoverSocketCmd.Flags().Int("read-timeout", 5, "Timeout in seconds for connection and read")
+	discoverSocketCmd.Flags().Int("max-response-bytes", 10240, "Maximum response bytes to read")
+
+	// Mark Required Flags
+	_ = discoverSocketCmd.MarkFlagRequired("target")
+
+	// Add Command to 'Discover' Command
+	discoverCmd.AddCommand(discoverSocketCmd)
+
 	// Domain Command
 	discoverDomainCmd := &cobra.Command{
 		Use:   "domain",
@@ -503,7 +572,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 // getDiscoverPortConfig creates a configuration for port scanning with the provided parameters.
 // It handles both specific port ranges and top ports scanning modes.
-func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, packetsPerSecond int, scanType discoverfern.PortScanType, validate bool, validateHostname *string, validateAttemptTimeout *int, validateThreads *int, maxOpenPortsValidationThreshold *int, sleep int, jitter int) discoverfern.DiscoverPortConfig {
+func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, packetsPerSecond int, scanType discoverfern.PortScanType, validate bool, validateAttemptTimeout *int, validateThreads *int, maxOpenPortsValidationThreshold *int, sleep int, jitter int) discoverfern.DiscoverPortConfig {
 	// Start with common fields that apply to both stealth and regular scans
 	config := discoverfern.DiscoverPortConfig{
 		Target:           target,
@@ -529,9 +598,6 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 		config.Validate = validate
 
 		// Validation-related fields only apply to regular scans
-		if validateHostname != nil {
-			config.ValidateHostname = validateHostname
-		}
 		if validateAttemptTimeout != nil {
 			config.ValidateAttemptTimeout = validateAttemptTimeout
 		}

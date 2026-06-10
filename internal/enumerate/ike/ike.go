@@ -31,12 +31,12 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 	host, portStr, err := net.SplitHostPort(target)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("invalid target %q: %v", target, err))
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateIkeDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateIkeDetails: &details}, errors
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("invalid port in target %q: %v", target, err))
-		return enumeratefern.NewEnumerateServiceDetailsFromEnumerateIkeDetails(&details), errors
+		return &enumeratefern.EnumerateServiceDetails{EnumerateIkeDetails: &details}, errors
 	}
 	details.Target = host
 	details.Port = port
@@ -160,5 +160,5 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 		serverInfo.DhGroups,
 	)
 	details.ServerInfo = &serverInfo
-	return enumeratefern.NewEnumerateServiceDetailsFromEnumerateIkeDetails(&details), errors
+	return &enumeratefern.EnumerateServiceDetails{EnumerateIkeDetails: &details}, errors
 }
