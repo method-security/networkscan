@@ -108,13 +108,18 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 		details.SslRequired = sslRequired
 	}
 	if startupErr != nil {
-		// Only record the error if we received no useful data.  When the server
-		// sends ParameterStatus messages and/or AuthenticationOk (trust) and then
-		// closes the connection before BackendKeyData / ReadyForQuery, probeStartup
-		// exits via break and returns "startup probe ended unexpectedly".  That
-		// error is spurious when we already have version, encoding, or auth data.
+		// Only record the error if we received no useful data.  Two cases produce
+		// an expected (non-failure) error:
+		//   1. The server sent ParameterStatus/AuthenticationOk (trust) and then
+		//      closed before BackendKeyData/ReadyForQuery — probeStartup returns
+		//      "startup probe ended unexpectedly" but we have version/auth data.
+		//   2. The server sent an ErrorResponse "no pg_hba.conf entry … SSL off",
+		//      setting sslRequired=true — the error is the detection mechanism,
+		//      not a failure.  Without this guard the SSL-required detection would
+		//      be reported as an enumeration error even though we successfully
+		//      determined that the server requires SSL.
 		gotData := serverVersion != "" || serverEncoding != "" || authMethod != "" ||
-			integerDatetimes != nil || timeZone != ""
+			integerDatetimes != nil || timeZone != "" || sslRequired != nil
 		if gotData {
 			log.Info("PostgreSQL startup probe closed early but data received (ignoring error)",
 				svc1log.SafeParam("target", addr),
