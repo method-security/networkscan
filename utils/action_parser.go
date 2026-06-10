@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
+	etcdfern "github.com/Method-Security/networkscan/generated/go/pentest/etcd"
 	ftpfern "github.com/Method-Security/networkscan/generated/go/pentest/ftp"
 	imapfern "github.com/Method-Security/networkscan/generated/go/pentest/imap"
 	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
 	mongodbfern "github.com/Method-Security/networkscan/generated/go/pentest/mongodb"
 	msrpcfern "github.com/Method-Security/networkscan/generated/go/pentest/msrpc"
-	etcdfern "github.com/Method-Security/networkscan/generated/go/pentest/etcd"
 	mssqlfern "github.com/Method-Security/networkscan/generated/go/pentest/mssql"
 	mysqlfern "github.com/Method-Security/networkscan/generated/go/pentest/mysql"
 	postgresfern "github.com/Method-Security/networkscan/generated/go/pentest/postgres"
@@ -603,52 +603,6 @@ func (p *MSSQLActionParser) ContainsAction(actions []mssqlfern.PentestMssqlActio
 	return false
 }
 
-// EtcdActionParser handles etcd-specific action parsing
-type EtcdActionParser struct{}
-
-// GetEtcdParser returns the singleton etcd action parser
-func GetEtcdParser() *EtcdActionParser {
-	if etcdParserInstance == nil {
-		etcdParserInstance = &EtcdActionParser{}
-	}
-	return etcdParserInstance
-}
-
-func (p *EtcdActionParser) ParseActions(actionStrings []string) ([]etcdfern.PentestEtcdAction, error) {
-	var actions []etcdfern.PentestEtcdAction
-
-	for _, actionStr := range actionStrings {
-		parts := strings.Split(actionStr, ",")
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-			upperPart := strings.ToUpper(part)
-			etcdAction, err := etcdfern.NewPentestEtcdActionFromString(upperPart)
-			if err != nil {
-				return nil, fmt.Errorf("invalid etcd action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
-			}
-			actions = append(actions, etcdAction)
-		}
-	}
-
-	return actions, nil
-}
-
-func (p *EtcdActionParser) GetValidActions() []string {
-	return []string{"PROBE", "READ_UNAUTH", "AUTH", "DUMP", "K8S_DECODE"}
-}
-
-func (p *EtcdActionParser) ContainsAction(actions []etcdfern.PentestEtcdAction, target etcdfern.PentestEtcdAction) bool {
-	for _, action := range actions {
-		if action == target {
-			return true
-		}
-	}
-	return false
-}
-
 // PostgresActionParser handles Postgres-specific action parsing
 type PostgresActionParser struct{}
 
@@ -687,6 +641,52 @@ func (p *PostgresActionParser) GetValidActions() []string {
 }
 
 func (p *PostgresActionParser) ContainsAction(actions []postgresfern.PentestPostgresAction, target postgresfern.PentestPostgresAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
+// EtcdActionParser handles etcd-specific action parsing
+type EtcdActionParser struct{}
+
+// GetEtcdParser returns the singleton etcd action parser
+func GetEtcdParser() *EtcdActionParser {
+	if etcdParserInstance == nil {
+		etcdParserInstance = &EtcdActionParser{}
+	}
+	return etcdParserInstance
+}
+
+func (p *EtcdActionParser) ParseActions(actionStrings []string) ([]etcdfern.PentestEtcdAction, error) {
+	var actions []etcdfern.PentestEtcdAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			etcdAction, err := etcdfern.NewPentestEtcdActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid etcd action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, etcdAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *EtcdActionParser) GetValidActions() []string {
+	return []string{"PROBE", "READ_UNAUTH", "AUTH", "DUMP", "K8S_DECODE"}
+}
+
+func (p *EtcdActionParser) ContainsAction(actions []etcdfern.PentestEtcdAction, target etcdfern.PentestEtcdAction) bool {
 	for _, action := range actions {
 		if action == target {
 			return true
