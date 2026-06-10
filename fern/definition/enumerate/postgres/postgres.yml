@@ -1,4 +1,5 @@
 types:
+  # EnumeratePostgresDetails is produced by the networkscan enumerate postgres command.
   EnumeratePostgresDetails:
     docs: PostgreSQL service enumeration details collected via raw TCP SSLRequest and startup message handshake.
     properties:
