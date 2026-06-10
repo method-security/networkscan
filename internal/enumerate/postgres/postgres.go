@@ -160,6 +160,10 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 			dbTimeout = 100 * time.Millisecond
 		}
 		databases, dbErr := probeDatabases(ctx, addr, dbTimeout)
+		// Report whatever rows were collected even if the query failed partway through.
+		if len(databases) > 0 {
+			details.Databases = databases
+		}
 		if dbErr != nil {
 			log.Info("PostgreSQL database enumeration failed",
 				svc1log.SafeParam("target", addr),
@@ -169,8 +173,6 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 			errMsg := fmt.Sprintf("database enumeration failed: %v", dbErr)
 			details.Error = &errMsg
 			errs = append(errs, errMsg)
-		} else {
-			details.Databases = databases
 		}
 	}
 
@@ -388,13 +390,15 @@ func parseAuthMethod(authType int32, extra []byte) string {
 			// Null-terminated mechanism name.
 			end := strings.IndexByte(string(extra), 0)
 			if end > 0 {
-				mech := strings.ToLower(string(extra[:end]))
-				if strings.Contains(mech, "scram-sha-256") {
-					return "scram-sha-256"
-				}
-				return mech
+				// Return the exact mechanism name lowercased so that
+				// SCRAM-SHA-256-PLUS is reported as "scram-sha-256-plus"
+				// rather than being collapsed to "scram-sha-256".
+				return strings.ToLower(string(extra[:end]))
 			}
-			return "sasl"
+			// No null terminator found — body is malformed or truncated.
+			// Return empty so the caller leaves authMethod unset rather
+			// than guessing a generic "sasl" sentinel.
+			return ""
 		}
 		// No mechanism list in the SASL message body — return empty so the caller
 		// leaves authMethod unset rather than guessing "scram-sha-256".
