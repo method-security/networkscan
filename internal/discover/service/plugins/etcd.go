@@ -27,7 +27,7 @@ func (EtcdFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	if timeoutDuration <= 0 {
 		timeoutDuration = 5 * time.Second
 	}
-	addr := fmt.Sprintf("%s:%d", ip.String(), port)
+	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	// Try plain HTTP first, then HTTPS with InsecureSkipVerify
 	for _, scheme := range []string{"http", "https"} {
