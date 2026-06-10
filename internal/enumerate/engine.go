@@ -17,6 +17,7 @@ import (
 	imap "github.com/Method-Security/networkscan/internal/enumerate/imap"
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
 	mongodb "github.com/Method-Security/networkscan/internal/enumerate/mongodb"
+	mssql "github.com/Method-Security/networkscan/internal/enumerate/mssql"
 	mysql "github.com/Method-Security/networkscan/internal/enumerate/mysql"
 	pop3 "github.com/Method-Security/networkscan/internal/enumerate/pop3"
 	redis "github.com/Method-Security/networkscan/internal/enumerate/redis"
@@ -170,6 +171,8 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &imap.LibraryEnumerateIMAP{}}, nil
 	case enumeratefern.SupportedServiceTypeMongodb:
 		return NetworkApplicationEngine{Library: &mongodb.LibraryEnumerateMongoDB{}}, nil
+	case enumeratefern.SupportedServiceTypeMssql:
+		return NetworkApplicationEngine{Library: &mssql.LibraryEnumerateMSSSQL{}}, nil
 	case enumeratefern.SupportedServiceTypeMysql:
 		return NetworkApplicationEngine{Library: &mysql.LibraryEnumerateMySQL{}}, nil
 	case enumeratefern.SupportedServiceTypePop3:

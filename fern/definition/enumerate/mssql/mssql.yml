@@ -1,0 +1,41 @@
+types:
+  MssqlEncryptMode:
+    enum:
+      - OFF
+      - ON
+      - REQ
+      - NOT_SUP
+
+  EnumerateMssqlDetails:
+    docs: MSSQL service enumeration details collected via TDS PRELOGIN and SQL Browser probe.
+    properties:
+      target:
+        type: string
+        docs: Target address in host:port format.
+      canConnect:
+        type: optional<boolean>
+        docs: Whether a TCP connection to the target succeeded.
+      version:
+        type: optional<string>
+        docs: SQL Server version string (e.g. "Microsoft SQL Server 2019").
+      buildNumber:
+        type: optional<string>
+        docs: Build number in major.minor.build format (e.g. "15.0.2000").
+      edition:
+        type: optional<string>
+        docs: Server edition (e.g. "Developer Edition", "Standard Edition").
+      instanceName:
+        type: optional<string>
+        docs: Named instance name (present for non-default instances).
+      hostname:
+        type: optional<string>
+        docs: Server hostname reported in TDS login error.
+      encryptMode:
+        type: optional<MssqlEncryptMode>
+        docs: TLS/encrypt mode from PRELOGIN response. OFF=encryption available but off, ON=encryption on, REQ=encryption required, NOT_SUP=encryption not supported.
+      namedInstances:
+        type: optional<list<string>>
+        docs: Named instances discovered via SQL Browser UDP 1434 (semicolon-delimited instance names parsed from SSRP response).
+      error:
+        type: optional<string>
+        docs: Error message when enumeration encountered an unrecoverable problem.
