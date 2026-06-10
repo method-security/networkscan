@@ -106,13 +106,26 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 		details.SslRequired = sslRequired
 	}
 	if startupErr != nil {
-		log.Info("PostgreSQL startup probe error",
-			svc1log.SafeParam("target", addr),
-			svc1log.SafeParam("error", startupErr))
-		// Record error but don't return early — we may still have partial data.
-		errMsg := startupErr.Error()
-		details.Error = &errMsg
-		errs = append(errs, errMsg)
+		// Only record the error if we received no useful data.  When the server
+		// sends ParameterStatus messages and/or AuthenticationOk (trust) and then
+		// closes the connection before BackendKeyData / ReadyForQuery, probeStartup
+		// exits via break and returns "startup probe ended unexpectedly".  That
+		// error is spurious when we already have version, encoding, or auth data.
+		gotData := serverVersion != "" || serverEncoding != "" || authMethod != "" ||
+			integerDatetimes != nil || timeZone != ""
+		if gotData {
+			log.Info("PostgreSQL startup probe closed early but data received (ignoring error)",
+				svc1log.SafeParam("target", addr),
+				svc1log.SafeParam("error", startupErr))
+		} else {
+			log.Info("PostgreSQL startup probe error",
+				svc1log.SafeParam("target", addr),
+				svc1log.SafeParam("error", startupErr))
+			// Record error but don't return early — we may still have partial data.
+			errMsg := startupErr.Error()
+			details.Error = &errMsg
+			errs = append(errs, errMsg)
+		}
 	}
 
 	if serverVersion != "" {
