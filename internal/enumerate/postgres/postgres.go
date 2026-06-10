@@ -338,15 +338,17 @@ func probeStartup(ctx context.Context, addr string, timeout time.Duration) (serv
 		case 'E': // ErrorResponse
 			errMsg := parseErrorMessage(body)
 			// Set sslRequired only when the error message indicates the server
-			// rejected the connection because SSL was not used.  Exclude messages
-			// that merely mention SSL in a different context (e.g. "SSL is not
-			// enabled on the server", which means SSL is UNAVAILABLE rather than
-			// REQUIRED).  The canonical PostgreSQL message for SSL-required
-			// rejections is "no pg_hba.conf entry for … SSL off".
+			// rejected the connection because SSL was not used.  Two canonical forms:
+			//   - PG 14 and earlier: "no pg_hba.conf entry for … SSL off"
+			//   - PG 15+: "no pg_hba.conf entry for … no encryption"
+			// Exclude messages that merely mention SSL in a different context (e.g.
+			// "SSL is not enabled on the server", which means SSL is UNAVAILABLE
+			// rather than REQUIRED).
 			lowerErr := strings.ToLower(errMsg)
-			if strings.Contains(lowerErr, "ssl") &&
-				!strings.Contains(lowerErr, "ssl is not enabled") &&
-				!strings.Contains(lowerErr, "ssl not enabled") {
+			sslNotEnabled := strings.Contains(lowerErr, "ssl is not enabled") ||
+				strings.Contains(lowerErr, "ssl not enabled")
+			if (!sslNotEnabled && strings.Contains(lowerErr, "ssl")) ||
+				strings.Contains(lowerErr, "no encryption") {
 				req := true
 				sslRequired = &req
 			}
