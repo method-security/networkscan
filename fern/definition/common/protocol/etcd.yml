@@ -1,0 +1,9 @@
+types:
+  EtcdServerInfo:
+    properties:
+      serverVersion: optional<string>
+      clusterVersion: optional<string>
+      leaderId: optional<string>
+      memberIds: optional<list<string>>
+      gatewayVersion: optional<string>
+      kubernetesDetected: optional<boolean>
