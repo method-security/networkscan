@@ -59,6 +59,7 @@ type Fingerprinter interface {
 //   - 44818: Unitronics UniStream before generic EtherNet/IP
 var customFingerprintModules = []Fingerprinter{
 	&localPlugins.SSHFingerprinter{},             // SSH (Secure Shell)
+	&localPlugins.EtcdFingerprinter{},            // etcd distributed key-value store
 	&localPlugins.GrpcFingerprinter{},            // gRPC can run on any port
 	&localPlugins.MongoDBFingerprinter{},         // MongoDB driver manages its own connections
 	&localPlugins.CassandraFingerprinter{},       // Cassandra native protocol
