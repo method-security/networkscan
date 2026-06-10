@@ -9,6 +9,7 @@ imports:
   snmp: ./snmp/snmp.yml
   imap: ./imap/imap.yml
   mongodb: ./mongodb/mongodb.yml
+  mssql: ./mssql/mssql.yml
   mysql: ./mysql/mysql.yml
   pop3: ./pop3/pop3.yml
   redis: ./redis/redis.yml
@@ -27,6 +28,7 @@ types:
       - SNMP
       - IMAP
       - MONGODB
+      - MSSQL
       - MYSQL
       - POP3
       - REDIS
@@ -44,6 +46,7 @@ types:
       EnumerateSnmpDetails: snmp.EnumerateSnmpDetails
       EnumerateImapDetails: imap.EnumerateImapDetails
       EnumerateMongodbDetails: mongodb.EnumerateMongodbDetails
+      EnumerateMssqlDetails: mssql.EnumerateMssqlDetails
       EnumerateMysqlDetails: mysql.EnumerateMysqlDetails
       EnumeratePop3Details: pop3.EnumeratePop3Details
       EnumerateRedisDetails: redis.EnumerateRedisDetails
