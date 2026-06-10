@@ -27,6 +27,7 @@ import (
 	snmp "github.com/Method-Security/networkscan/internal/enumerate/snmp"
 	socks "github.com/Method-Security/networkscan/internal/enumerate/socks"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
+	tr069 "github.com/Method-Security/networkscan/internal/enumerate/tr069"
 
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -184,6 +185,8 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &redis.LibraryEnumerateRedis{}}, nil
 	case enumeratefern.SupportedServiceTypeSocks:
 		return NetworkApplicationEngine{Library: &socks.LibraryEnumerateSocks{}}, nil
+	case enumeratefern.SupportedServiceTypeTr069:
+		return NetworkApplicationEngine{Library: &tr069.LibraryEnumerateTR069{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}

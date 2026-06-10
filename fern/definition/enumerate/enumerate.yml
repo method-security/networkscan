@@ -15,6 +15,7 @@ imports:
   postgres: ./postgres/postgres.yml
   redis: ./redis/redis.yml
   socks: ./socks/socks.yml
+  tr069: ./tr069/tr069.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -35,6 +36,7 @@ types:
       - POSTGRES
       - REDIS
       - SOCKS
+      - TR069
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -54,6 +56,7 @@ types:
       EnumeratePostgresDetails: postgres.EnumeratePostgresDetails
       EnumerateRedisDetails: redis.EnumerateRedisDetails
       EnumerateSocksDetails: socks.EnumerateSocksDetails
+      EnumerateTr069Details: tr069.EnumerateTr069Details
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>

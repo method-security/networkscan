@@ -1,0 +1,13 @@
+types:
+  Tr069VulnSignature:
+    enum:
+      - MISFORTUNE_COOKIE_CVE_2014_9222
+      - MIRAI_DT_CLASS
+
+  Tr069ServerInfo:
+    properties:
+      httpServer: optional<string>
+      cwmpVersion: optional<string>
+      connectionRequestAuthRequired: optional<boolean>
+      connectionRequestRealm: optional<string>
+      knownVulnSignatures: optional<list<Tr069VulnSignature>>

@@ -1,0 +1,10 @@
+imports:
+  tr069Protocol: ../../common/protocol/tr069.yml
+
+types:
+  EnumerateTr069Details:
+    properties:
+      target: string
+      portOpen: optional<boolean>
+      serverInfo: optional<tr069Protocol.Tr069ServerInfo>
+      rawResponse: optional<string>
