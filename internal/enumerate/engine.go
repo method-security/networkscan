@@ -20,6 +20,7 @@ import (
 	mssql "github.com/Method-Security/networkscan/internal/enumerate/mssql"
 	mysql "github.com/Method-Security/networkscan/internal/enumerate/mysql"
 	pop3 "github.com/Method-Security/networkscan/internal/enumerate/pop3"
+	postgres "github.com/Method-Security/networkscan/internal/enumerate/postgres"
 	redis "github.com/Method-Security/networkscan/internal/enumerate/redis"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
@@ -177,6 +178,8 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &mysql.LibraryEnumerateMySQL{}}, nil
 	case enumeratefern.SupportedServiceTypePop3:
 		return NetworkApplicationEngine{Library: &pop3.LibraryEnumeratePOP3{}}, nil
+	case enumeratefern.SupportedServiceTypePostgres:
+		return NetworkApplicationEngine{Library: &postgres.LibraryEnumeratePostgres{}}, nil
 	case enumeratefern.SupportedServiceTypeRedis:
 		return NetworkApplicationEngine{Library: &redis.LibraryEnumerateRedis{}}, nil
 	case enumeratefern.SupportedServiceTypeSocks:
