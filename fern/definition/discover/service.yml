@@ -40,6 +40,7 @@ imports:
   foxProtocol: ../common/protocol/fox.yml
   memcachedProtocol: ../common/protocol/memcached.yml
   unistreamProtocol: ../common/protocol/unistream.yml
+  ethernetipProtocol: ../common/protocol/ethernetip.yml
   smtpProtocol: ../common/protocol/smtp.yml
 
 types:
@@ -93,6 +94,7 @@ types:
       fox: foxProtocol.FoxServerInfo
       memcached: memcachedProtocol.MemcachedServerInfo
       unistream: unistreamProtocol.UnistreamServerInfo
+      ethernetip: ethernetipProtocol.EthernetipServerInfo
       smtp: smtpProtocol.SmtpServerInfo
 
   # Stealth service types

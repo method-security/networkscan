@@ -1,0 +1,17 @@
+types:
+  # EtherNet/IP CIP List Identity (44818) — Identity item (0x000C)
+  EthernetipServerInfo:
+    properties:
+      encapProtocolVersion: optional<integer>
+      vendorId: optional<integer>
+      vendorName: optional<string>     # human-readable when known via lookup table
+      deviceType: optional<integer>
+      deviceTypeName: optional<string> # human-readable device type name when known
+      productCode: optional<integer>
+      productName: optional<string>
+      revisionMajor: optional<integer>
+      revisionMinor: optional<integer>
+      revision: optional<string>       # convenience "major.minor" string
+      status: optional<integer>
+      serialNumber: optional<string>   # hex like "0x01234567" so leading zeros survive JSON
+      state: optional<integer>
