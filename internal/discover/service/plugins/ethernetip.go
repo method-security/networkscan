@@ -104,8 +104,12 @@ func parseEthernetIPIdentity(resp []byte) (*protocol.EthernetipServerInfo, bool)
 		}
 		if itemType == 0x000c && itemLen >= 15 {
 			data := resp[pos : pos+itemLen]
-			info := parseCIPIdentityItem(data)
-			return info, info != nil
+			if info := parseCIPIdentityItem(data); info != nil {
+				return info, true
+			}
+			// Malformed identity item — keep scanning later CPF items rather than
+			// declaring the whole response non-EtherNet/IP. A bad first identity
+			// block must not hide a valid one further in the CPF list.
 		}
 		pos += itemLen
 	}
