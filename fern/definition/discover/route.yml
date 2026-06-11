@@ -18,6 +18,11 @@ types:
       targetIp: string
       hops: list<TracerouteHop>
       completed: boolean
+  # Stealth config
+  RouteStealthConfig:
+    properties:
+      sleep: optional<integer> # Sleep delay in seconds between targets
+      jitter: optional<integer> # Jitter percentage (0-100) to randomize sleep
   # Config
   DiscoverRouteConfig:
     properties:
@@ -30,6 +35,7 @@ types:
       timeout: integer
       probeType: ProbeType
       port: integer
+      stealth: optional<RouteStealthConfig>
   # Result  
   DiscoverRouteResult:
     properties:

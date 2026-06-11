@@ -62,7 +62,14 @@ func RunRouteDiscovery(ctx context.Context, config discoverfern.DiscoverRouteCon
 	var tracerouteResults []*discoverfern.TracerouteResult
 
 	// Process each target
-	for _, target := range config.Targets {
+	for i, target := range config.Targets {
+		if i > 0 && config.Stealth != nil {
+			if delay := utils.CalculateStealthDelay(config.Stealth.Sleep, config.Stealth.Jitter); delay > 0 {
+				log.Info("Applying stealth delay between targets", svc1log.SafeParam("delay", delay))
+				time.Sleep(delay)
+			}
+		}
+
 		log.Info("Processing target", svc1log.SafeParam("target", target))
 
 		// Resolve target to IP
