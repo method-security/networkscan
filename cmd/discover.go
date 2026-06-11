@@ -310,8 +310,28 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				port = 0 // ICMP doesn't use ports
 			}
 
+			// Stealth flags
+			sleep, err := cmd.Flags().GetInt("sleep")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			jitter, err := cmd.Flags().GetInt("jitter")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			if jitter > 0 && sleep == 0 {
+				a.OutputSignal.AddError(fmt.Errorf("jitter parameter can only be used when sleep is also specified"))
+				return
+			}
+			if jitter < 0 || jitter > 100 {
+				a.OutputSignal.AddError(fmt.Errorf("jitter must be between 0 and 100 (percentage), got %d", jitter))
+				return
+			}
+
 			// Set Config
-			config := getDiscoverRouteConfig(targets, hostIP, excludeTimeoutHops, probesPerHop, probeDelay, maxHops, timeout, probeType, port)
+			config := getDiscoverRouteConfig(targets, hostIP, excludeTimeoutHops, probesPerHop, probeDelay, maxHops, timeout, probeType, port, sleep, jitter)
 
 			// Generate the report
 			report, err := discoverroute.RunRouteDiscovery(cmd.Context(), config)
@@ -331,6 +351,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverRouteCmd.Flags().Int("timeout", 5, "Timeout in seconds for each probe (default: 5)")
 	discoverRouteCmd.Flags().String("probe-type", "ICMP", "Probe packet type: UDP or ICMP (default: ICMP)")
 	discoverRouteCmd.Flags().Int("port", 0, "Port number for UDP probes (default: 33434 for UDP)")
+	discoverRouteCmd.Flags().Int("sleep", 0, "Sleep duration in seconds between targets")
+	discoverRouteCmd.Flags().Int("jitter", 0, "Jitter percentage (0-100) to randomize sleep")
 
 	// Mark Required Flags
 	_ = discoverRouteCmd.MarkFlagRequired("targets")
@@ -615,7 +637,7 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 
 // getDiscoverRouteConfig creates a configuration for traceroute with the provided parameters.
 // It sets up the targets, probe settings, and timing configurations.
-func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops bool, probesPerHop, probeDelay, maxHops, timeout int, probeType discoverfern.ProbeType, port int) discoverfern.DiscoverRouteConfig {
+func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops bool, probesPerHop, probeDelay, maxHops, timeout int, probeType discoverfern.ProbeType, port int, sleep int, jitter int) discoverfern.DiscoverRouteConfig {
 	config := discoverfern.DiscoverRouteConfig{
 		Targets:            targets,
 		ExcludeTimeoutHops: excludeTimeoutHops,
@@ -625,6 +647,13 @@ func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops 
 		Timeout:            timeout,
 		ProbeType:          probeType,
 		Port:               port,
+	}
+
+	if sleep > 0 {
+		config.Stealth = &discoverfern.RouteStealthConfig{
+			Sleep:  &sleep,
+			Jitter: &jitter,
+		}
 	}
 
 	if hostIP != "" {
