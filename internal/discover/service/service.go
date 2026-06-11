@@ -374,10 +374,7 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 			}
 		case <-timeoutC:
 			cancel()
-			if best != nil && noEarlierFingerprintersPending(completed, bestIndex) {
-				return best
-			}
-			return nil
+			return best
 		case <-ctx.Done():
 			cancel()
 			return best
@@ -389,6 +386,9 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 func effectivePluginThreads(configured int, total int) int {
 	if total <= 0 {
 		return 0
+	}
+	if configured <= 0 {
+		return 1
 	}
 	if configured > total {
 		return total
@@ -535,19 +535,27 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 		// Run all UDP fingerprinters in parallel
 		resultChan := make(chan *discoverfern.ServiceDetails, len(tasks))
 		doneChan := make(chan struct{}, len(tasks))
+		sem := make(chan struct{}, effectivePluginThreads(config.Threads, len(tasks)))
 
 		for _, task := range tasks {
 			go func(t udpFingerprintTask) {
+				defer func() {
+					doneChan <- struct{}{}
+				}()
+
+				select {
+				case sem <- struct{}{}:
+					defer func() { <-sem }()
+				case <-ctx.Done():
+					return
+				}
+
 				detection, err := t.detect()
 				if err == nil && detection != nil {
 					select {
 					case resultChan <- detection:
 					case <-ctx.Done():
 					}
-				}
-				select {
-				case doneChan <- struct{}{}:
-				case <-ctx.Done():
 				}
 			}(task)
 		}
@@ -569,6 +577,8 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 			case <-doneChan:
 				completedTasks++
 			case <-overallTimeout:
+				break collectLoop
+			case <-ctx.Done():
 				break collectLoop
 			}
 		}
