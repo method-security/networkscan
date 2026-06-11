@@ -161,6 +161,11 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			var validateAttemptTimeout *int
 			var validateThreads *int
 			var maxOpenPortsValidationThreshold *int
+			validatePluginThreads, err := cmd.Flags().GetInt("validate-plugin-threads")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
 			if validate {
 				// Validate attempt timeout
 				validateAttemptTimeoutInt, err := cmd.Flags().GetInt("validate-attempt-timeout")
@@ -207,7 +212,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			}
 
 			// Set Config
-			config := getDiscoverPortConfig(target, ports, topPorts, threads, packetsPerSecond, scanTypeEnum, validate, validateAttemptTimeout, validateThreads, maxOpenPortsValidationThreshold, sleep, jitter)
+			config := getDiscoverPortConfig(target, ports, topPorts, threads, packetsPerSecond, scanTypeEnum, validate, validateAttemptTimeout, validateThreads, validatePluginThreads, maxOpenPortsValidationThreshold, sleep, jitter)
 
 			// Generate the report
 			report, err := discoverport.RunPortScan(cmd.Context(), config)
@@ -227,6 +232,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().Bool("validate", false, "Validate open ports by using service detection techniques")
 	discoverPortCmd.Flags().Int("validate-attempt-timeout", 10, "Timeout in seconds for each service detection attempt")
 	discoverPortCmd.Flags().Int("validate-threads", 0, "Number of concurrent threads to use during service detection")
+	discoverPortCmd.Flags().Int("validate-plugin-threads", 4, "Maximum number of custom service plugins to run concurrently per port during validation")
 	discoverPortCmd.Flags().Int("max-open-ports-validation-threshold", 50, "Trigger validation warning when more than this many ports are open (default: 50)")
 	discoverPortCmd.Flags().Int("sleep", 0, "Sleep delay in seconds between port scans for stealth scan (stealth mode enabled when sleep > 0)")
 	discoverPortCmd.Flags().Int("jitter", 0, "Jitter percentage (0-100) to randomize sleep delay for stealth scan")
@@ -384,15 +390,15 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				return
 			}
 
-			// Fingerprintx timeout flag
-			fingerprintxTimeout, err := cmd.Flags().GetInt("fingerprintx-timeout")
+			// Threads flag
+			threads, err := cmd.Flags().GetInt("threads")
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
 			}
 
 			// Set Config
-			config, err := getDiscoverServiceConfig(target, timeout, serviceType, udp, fingerprintxTimeout)
+			config, err := getDiscoverServiceConfig(target, timeout, serviceType, udp, threads)
 			if err != nil {
 				a.OutputSignal.AddError(err)
 				return
@@ -409,7 +415,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	discoverServiceCmd.Flags().String("target", "", "Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)")
 	discoverServiceCmd.Flags().Int("timeout", 5, "Timeout in seconds for each service fingerprinting attempt")
-	discoverServiceCmd.Flags().Int("fingerprintx-timeout", 0, "Timeout in seconds for fingerprintx attempt (default is no timeout)")
+	discoverServiceCmd.Flags().Int("threads", 4, "Maximum number of custom service plugins to run concurrently per target")
 	discoverServiceCmd.Flags().Bool("udp", false, "Enable UDP service discovery mode (scans common UDP ports like DNS, NTP, SNMP, etc.)")
 	discoverServiceCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
 
@@ -572,13 +578,14 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 // getDiscoverPortConfig creates a configuration for port scanning with the provided parameters.
 // It handles both specific port ranges and top ports scanning modes.
-func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, packetsPerSecond int, scanType discoverfern.PortScanType, validate bool, validateAttemptTimeout *int, validateThreads *int, maxOpenPortsValidationThreshold *int, sleep int, jitter int) discoverfern.DiscoverPortConfig {
+func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, packetsPerSecond int, scanType discoverfern.PortScanType, validate bool, validateAttemptTimeout *int, validateThreads *int, validatePluginThreads int, maxOpenPortsValidationThreshold *int, sleep int, jitter int) discoverfern.DiscoverPortConfig {
 	// Start with common fields that apply to both stealth and regular scans
 	config := discoverfern.DiscoverPortConfig{
-		Target:           target,
-		Ports:            &ports,
-		TopPorts:         &topPorts,
-		PacketsPerSecond: packetsPerSecond,
+		Target:                target,
+		Ports:                 &ports,
+		TopPorts:              &topPorts,
+		PacketsPerSecond:      packetsPerSecond,
+		ValidatePluginThreads: validatePluginThreads,
 	}
 
 	if sleep > 0 || jitter > 0 {
@@ -636,11 +643,11 @@ func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops 
 
 // getDiscoverServiceConfig creates a configuration for service fingerprinting with the provided parameters.
 // It sets up the target (in IP:port format for TCP, or just IP for UDP), timeout, UDP mode, and stealth-specific options.
-func getDiscoverServiceConfig(target string, timeout int, serviceType string, udp bool, fingerprintxTimeout int) (discoverfern.DiscoverServiceConfig, error) {
+func getDiscoverServiceConfig(target string, timeout int, serviceType string, udp bool, threads int) (discoverfern.DiscoverServiceConfig, error) {
 	config := discoverfern.DiscoverServiceConfig{
-		Target:              target,
-		Timeout:             timeout,
-		FingerprintxTimeout: fingerprintxTimeout,
+		Target:  target,
+		Timeout: timeout,
+		Threads: threads,
 	}
 	if udp {
 		config.Udp = &udp

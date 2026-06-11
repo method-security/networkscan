@@ -127,7 +127,7 @@ types:
     properties:
       target: string # Format: IP:port or hostname:port for TCP, IP or hostname for UDP mode
       timeout: integer
-      fingerprintxTimeout: integer # Timeout in seconds for fingerprintx attempt
+      threads: integer # Maximum number of custom service plugins to run concurrently per target
       stealth: optional<ServiceStealthConfig>
       udp: optional<boolean> # Enable UDP service discovery mode (scans common UDP ports)
   # Final report
