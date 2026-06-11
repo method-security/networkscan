@@ -493,13 +493,6 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 	for _, ip := range ips {
 		ipStr := ip.String()
 
-		fingerprintConfig := scan.Config{
-			FastMode:       true,
-			DefaultTimeout: servicehelpers.Timeout(config.Timeout),
-			UDP:            true,
-			Verbose:        true,
-		}
-
 		// Collect all UDP fingerprinters with their ports.
 		type udpFingerprintTask struct {
 			port   int
@@ -513,21 +506,6 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 				port: port,
 				detect: func() (*discoverfern.ServiceDetails, error) {
 					return fingerprinter.Detect(ctx, ip, port, ipStr, config.Timeout)
-				},
-			})
-		}
-		for _, port := range fingerprintxUDPPorts() {
-			port := port
-			addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(port))
-			fingerprintTarget := plugins.Target{Address: addrPort, Host: ipStr}
-			tasks = append(tasks, udpFingerprintTask{
-				port: port,
-				detect: func() (*discoverfern.ServiceDetails, error) {
-					result, err := fingerprintConfig.UDPScanTarget(fingerprintTarget)
-					if err != nil || result == nil || result.Protocol == "" {
-						return nil, err
-					}
-					return fxToServiceDetails(result), nil
 				},
 			})
 		}
@@ -571,9 +549,7 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 		for completedTasks < len(tasks) {
 			select {
 			case detection := <-resultChan:
-				if !hasServiceResult(results, detection) {
-					results = append(results, detection)
-				}
+				results = append(results, detection)
 			case <-doneChan:
 				completedTasks++
 			case <-overallTimeout:
@@ -590,36 +566,4 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 
 	report.Result = &discoverfern.DiscoverServiceResult{Services: results}
 	return report, nil
-}
-
-func fingerprintxUDPPorts() []int {
-	return []int{
-		53,   // DNS
-		67,   // DHCP
-		123,  // NTP
-		137,  // NetBIOS Name Service
-		161,  // SNMP
-		500,  // IPsec/IKE
-		623,  // IPMI
-		1194, // OpenVPN
-		3478, // STUN
-	}
-}
-
-func hasServiceResult(results []*discoverfern.ServiceDetails, candidate *discoverfern.ServiceDetails) bool {
-	if candidate == nil {
-		return true
-	}
-	for _, result := range results {
-		if result == nil {
-			continue
-		}
-		if result.Ip == candidate.Ip &&
-			result.Port == candidate.Port &&
-			result.Transport == candidate.Transport &&
-			result.Protocol == candidate.Protocol {
-			return true
-		}
-	}
-	return false
 }
