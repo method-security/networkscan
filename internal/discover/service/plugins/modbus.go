@@ -44,6 +44,14 @@ const (
 
 	// Protocol ID must be 0x0000 for Modbus/TCP
 	modbusProtocolID = 0x0000
+
+	// Spec ceiling for what we read off the wire after the MBAP header. The
+	// MBAP Length field counts (UnitID + PDU); per Modbus TCP spec the PDU is
+	// capped at 253 bytes, so total is at most 254. We allow a little slack
+	// (260) in case of vendor-specific padding, and reject anything beyond —
+	// otherwise a hostile peer could advertise Length = 65535 and force us to
+	// allocate a 64KB buffer per probe during a discovery scan.
+	maxMbapAfterHeader = 260
 )
 
 // Detect connects to the target and attempts Modbus TCP identification.
@@ -61,39 +69,46 @@ const (
 // responds with an exception to 43/14 — this still confirms a Modbus device.
 func (ModbusFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
+	info := &protocol.ModbusServerInfo{}
 
-	conn, err := helpers.Dial(ctx, "tcp", addr, timeout)
-	if err != nil {
-		return nil, err
+	// --- Probe 1: Basic, with unit ID 0xFF first and 0x01 as fallback. ---
+	// We dial a fresh connection per attempt and close any rejected one before
+	// trying the next, so exactly one connection is alive when we exit the
+	// loop. This keeps the defer hygiene simple — a single defer outside the
+	// loop closes whichever conn we ended up keeping.
+	var conn net.Conn
+	var basicOK []byte
+	var basicException bool
+	var lastErr error
+	var unitID byte
+	for _, candidate := range []byte{0xFF, 0x01} {
+		c, dialErr := helpers.Dial(ctx, "tcp", addr, timeout)
+		if dialErr != nil {
+			lastErr = dialErr
+			continue
+		}
+		body, exc, probeErr := sendReadDeviceID(c, timeout, candidate, rdBasic, 0x00)
+		if probeErr != nil {
+			_ = c.Close()
+			lastErr = probeErr
+			continue
+		}
+		conn = c
+		basicOK = body
+		basicException = exc
+		unitID = candidate
+		lastErr = nil
+		break
+	}
+	if conn == nil {
+		if lastErr == nil {
+			lastErr = fmt.Errorf("modbus: probe failed for unknown reason")
+		}
+		return nil, fmt.Errorf("modbus: failed basic probe (units 0xFF, 0x01): %w", lastErr)
 	}
 	defer func() { _ = conn.Close() }()
 
-	info := &protocol.ModbusServerInfo{}
-
-	// --- Probe 1: Basic (unit ID 0xFF) ---
-	unitID := byte(0xFF)
-	basicOK, basicException, err := sendReadDeviceID(conn, timeout, unitID, rdBasic, 0x00)
-	if err != nil {
-		// Try fallback unit ID 0x01 on any I/O error during basic probe.
-		// Re-establish the connection since the first one may be dead.
-		_ = conn.Close()
-		conn2, err2 := helpers.Dial(ctx, "tcp", addr, timeout)
-		if err2 != nil {
-			return nil, fmt.Errorf("modbus: failed to connect for fallback probe: %w", err2)
-		}
-		defer func() { _ = conn2.Close() }()
-		conn = conn2
-		unitID = 0x01
-		basicOK, basicException, err = sendReadDeviceID(conn, timeout, unitID, rdBasic, 0x00)
-		if err != nil {
-			return nil, fmt.Errorf("modbus: failed basic probe (unit 0x01): %w", err)
-		}
-	}
-
 	unitIDStr := fmt.Sprintf("%d", int(unitID))
-	if unitID == 0xFF {
-		unitIDStr = "255"
-	}
 	info.UnitId = &unitIDStr
 
 	if basicException {
@@ -184,22 +199,31 @@ func sendReadDeviceID(conn net.Conn, timeout int, unitID byte, devIDCode byte, o
 		return nil, false, fmt.Errorf("modbus: unexpected protocol ID 0x%04X", protoID)
 	}
 
-	// Read remaining PDU based on length field
+	// Determine how many PDU bytes still need to be read. The MBAP Length
+	// field counts (UnitID + PDU); the unit ID was already consumed as part of
+	// the 7-byte MBAP header, so the bytes remaining on the wire are
+	// pduLen - 1.
 	pduLen := int(binary.BigEndian.Uint16(header[4:6]))
-	if pduLen < 1 {
+	if pduLen < 2 {
+		// Need at least UnitID + function code.
 		return nil, false, fmt.Errorf("modbus: PDU length too short (%d)", pduLen)
 	}
-	// pduLen includes unitID, so actual PDU data is pduLen-1 bytes
-	pduData := make([]byte, pduLen)
+	if pduLen > maxMbapAfterHeader {
+		// Reject suspiciously large advertised lengths so a hostile or buggy
+		// peer cannot force an oversized allocation during a discovery scan.
+		return nil, false, fmt.Errorf("modbus: PDU length %d exceeds ceiling %d", pduLen, maxMbapAfterHeader)
+	}
+	pduData := make([]byte, pduLen-1)
 	if _, err := readFull(conn, pduData); err != nil {
 		return nil, false, fmt.Errorf("modbus: failed to read PDU: %w", err)
 	}
-	// pduData[0] is unitID (already in header[6]), pduData[1] is function code
+	// After fix: pduData[0] is the function code, pduData[1] is MEI type,
+	// pduData[2] is readDevIDCode, ... matching parseBasicObjects' offsets.
 	if len(pduData) < 2 {
 		return nil, false, fmt.Errorf("modbus: PDU too short")
 	}
 
-	fc := pduData[1]
+	fc := pduData[0]
 	// Exception response
 	if fc == fcReadDeviceID+fcException {
 		return nil, true, nil
@@ -209,11 +233,11 @@ func sendReadDeviceID(conn net.Conn, timeout int, unitID byte, devIDCode byte, o
 		return nil, false, fmt.Errorf("modbus: unexpected function code 0x%02X", fc)
 	}
 	// Validate MEI type
-	if len(pduData) < 3 || pduData[2] != meiTypeDeviceID {
+	if pduData[1] != meiTypeDeviceID {
 		return nil, false, fmt.Errorf("modbus: unexpected MEI type")
 	}
 
-	return pduData[1:], false, nil // strip leading unitID
+	return pduData, false, nil
 }
 
 // readFull reads exactly len(buf) bytes from conn.
