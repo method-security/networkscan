@@ -1,0 +1,34 @@
+{
+  "description": "CIP vendor and device type lookups for EtherNet/IP List Identity responses. Vendor IDs are from the ODVA EtherNet/IP vendor registry (common entries). Device type codes are from the CIP common specification.",
+  "vendors": {
+    "1": "Rockwell Automation/Allen-Bradley",
+    "5": "Schneider Automation (Square D / Modicon)",
+    "12": "Schneider Electric / Modicon",
+    "26": "Festo",
+    "40": "WAGO",
+    "46": "ABB",
+    "47": "OMRON Corporation",
+    "50": "Pepperl+Fuchs",
+    "90": "Honeywell",
+    "96": "Belden / Hirschmann",
+    "108": "ProSoft Technology",
+    "256": "Phoenix Contact",
+    "283": "HMS Industrial Networks",
+    "318": "Unitronics",
+    "504": "Mitsubishi Electric",
+    "575": "Bosch Rexroth",
+    "678": "Yokogawa",
+    "691": "Beckhoff",
+    "808": "Murrelektronik",
+    "900": "Festo Didactic",
+    "999": "Stratus Technologies",
+    "1126": "B&R Industrial Automation",
+    "1454": "ifm electronic"
+  },
+  "device_types": {
+    "12": "Communications Adapter",
+    "14": "PLC",
+    "40": "AC Drive",
+    "43": "Generic Device"
+  }
+}

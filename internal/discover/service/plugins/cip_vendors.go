@@ -1,47 +1,71 @@
 package plugins
 
-// cipVendorNames maps CIP Vendor IDs to human-readable vendor names.
-// Source: ODVA EtherNet/IP vendor ID registry (common entries).
-var cipVendorNames = map[uint16]string{
-	1:    "Rockwell Automation/Allen-Bradley",
-	5:    "Schneider Automation (Square D / Modicon)",
-	12:   "Schneider Electric / Modicon",
-	26:   "Festo",
-	40:   "WAGO",
-	46:   "ABB",
-	47:   "OMRON Corporation",
-	50:   "Pepperl+Fuchs",
-	90:   "Honeywell",
-	96:   "Belden / Hirschmann",
-	108:  "ProSoft Technology",
-	256:  "Phoenix Contact",
-	283:  "HMS Industrial Networks",
-	318:  "Unitronics",
-	504:  "Mitsubishi Electric",
-	575:  "Bosch Rexroth",
-	678:  "Yokogawa",
-	691:  "Beckhoff",
-	808:  "Murrelektronik",
-	900:  "Festo Didactic",
-	999:  "Stratus Technologies",
-	1126: "B&R Industrial Automation",
-	1454: "ifm electronic",
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"sync"
+
+	"github.com/Method-Security/networkscan/configs"
+)
+
+// cipVendorsConfig mirrors the on-disk JSON layout under configs/discover/service/cip_vendors.json.
+// Vendor IDs and device type codes are uint16 on the wire; the JSON keys are decimal strings.
+type cipVendorsConfig struct {
+	Vendors     map[string]string `json:"vendors"`
+	DeviceTypes map[string]string `json:"device_types"`
 }
 
-// cipDeviceTypeNames maps CIP Device Type codes to human-readable names.
-var cipDeviceTypeNames = map[uint16]string{
-	0x000C: "Communications Adapter",
-	0x000E: "PLC",
-	0x0028: "AC Drive",
-	0x002B: "Generic Device",
+var (
+	cipVendorsConfigOnce sync.Once
+	cipVendorNames       map[uint16]string
+	cipDeviceTypeNames   map[uint16]string
+	cipVendorsConfigErr  error
+)
+
+// loadCIPVendorsConfig reads the embedded JSON config once and populates the lookup maps.
+// On parse failure the maps are left empty and the error is cached so callers
+// degrade gracefully (numeric IDs are still returned even without name lookup).
+func loadCIPVendorsConfig() {
+	cipVendorsConfigOnce.Do(func() {
+		data, err := configs.ReadFile("discover/service/cip_vendors.json")
+		if err != nil {
+			cipVendorsConfigErr = fmt.Errorf("failed to read cip_vendors config: %w", err)
+			return
+		}
+		var cfg cipVendorsConfig
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			cipVendorsConfigErr = fmt.Errorf("failed to parse cip_vendors config: %w", err)
+			return
+		}
+		cipVendorNames = parseUint16KeyedMap(cfg.Vendors)
+		cipDeviceTypeNames = parseUint16KeyedMap(cfg.DeviceTypes)
+	})
+}
+
+// parseUint16KeyedMap converts a map[string]string with decimal-string keys
+// into a map[uint16]string. Entries whose keys don't parse or overflow uint16
+// are silently dropped (config is dev-controlled; nothing useful to do at runtime).
+func parseUint16KeyedMap(src map[string]string) map[uint16]string {
+	out := make(map[uint16]string, len(src))
+	for k, v := range src {
+		n, err := strconv.ParseUint(k, 10, 16)
+		if err != nil {
+			continue
+		}
+		out[uint16(n)] = v
+	}
+	return out
 }
 
 // cipVendorName returns the vendor name for a given vendor ID, or empty string if unknown.
 func cipVendorName(vendorID uint16) string {
+	loadCIPVendorsConfig()
 	return cipVendorNames[vendorID]
 }
 
 // cipDeviceTypeName returns the device type name for a given device type code, or empty string if unknown.
 func cipDeviceTypeName(deviceType uint16) string {
+	loadCIPVendorsConfig()
 	return cipDeviceTypeNames[deviceType]
 }
