@@ -237,19 +237,27 @@ func parseDeviceAttributes(resp []byte, info *protocol.Dnp3ServerInfo) {
 }
 
 // reassembleDNP3UserData strips the CRC bytes (2 bytes after every 16 data bytes)
-// and returns the raw user-data payload.
+// and returns the raw user-data payload. The final block is typically shorter
+// than 16 data bytes but still carries a trailing 2-byte block CRC — must be
+// stripped from the tail too, otherwise the CRC octets get appended to the
+// payload and corrupt downstream transport/application parsing.
 func reassembleDNP3UserData(blocks []byte) []byte {
 	var out []byte
 	for len(blocks) > 0 {
-		chunkSize := 16
-		if len(blocks) < chunkSize {
-			chunkSize = len(blocks)
+		if len(blocks) < 16 {
+			// Final tail block: <16 data bytes followed by a 2-byte CRC.
+			if len(blocks) < 2 {
+				// Truncated — return what we have so far.
+				return out
+			}
+			dataChunk := blocks[:len(blocks)-2]
+			out = append(out, dataChunk...)
+			return out
 		}
-		dataChunk := blocks[:chunkSize]
-		blocks = blocks[chunkSize:]
-		// Each chunk is followed by 2 CRC bytes (if we have them)
+		dataChunk := blocks[:16]
+		blocks = blocks[16:]
 		if len(blocks) >= 2 {
-			blocks = blocks[2:] // skip CRC
+			blocks = blocks[2:] // skip block CRC
 		}
 		out = append(out, dataChunk...)
 	}
@@ -285,7 +293,16 @@ func parseDNP3AttributeObjects(data []byte, info *protocol.Dnp3ServerInfo) {
 			}
 			count := stopIdx - startIdx + 1
 			for c := 0; c < count && i < len(data); c++ {
-				attrLen, ok := readDNP3VisibleString(data, i, variation, info)
+				// For group 0 with header variation 254 ("all"), the SPECIFIC
+				// attribute variation for each item in a range response comes
+				// from the start index + offset, not from the header variation.
+				// Fall back to the header variation when the derived index is 0
+				// (rare but spec-permitted "range as pure index" case).
+				effectiveVariation := byte(startIdx + c)
+				if effectiveVariation == 0 {
+					effectiveVariation = variation
+				}
+				attrLen, ok := readDNP3VisibleString(data, i, effectiveVariation, info)
 				if !ok {
 					return
 				}
@@ -350,7 +367,15 @@ func parseDNP3AttributeObjects(data []byte, info *protocol.Dnp3ServerInfo) {
 			}
 			count := stopIdx - startIdx + 1
 			for c := 0; c < count && i < len(data); c++ {
-				attrLen, ok := readDNP3VisibleString(data, i, variation, info)
+				// Same per-item variation derivation as qualifier 0x00 — the
+				// range encodes the attribute variation in the index, not the
+				// header. Group 0 attribute variations are in 240-252 so the
+				// byte cast is safe.
+				effectiveVariation := byte(startIdx + c)
+				if effectiveVariation == 0 {
+					effectiveVariation = variation
+				}
+				attrLen, ok := readDNP3VisibleString(data, i, effectiveVariation, info)
 				if !ok {
 					return
 				}
