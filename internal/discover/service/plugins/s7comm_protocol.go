@@ -1,4 +1,4 @@
-package s7
+package plugins
 
 import (
 	"encoding/binary"
@@ -7,7 +7,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 )
 
-// buildCOTPConnectionRequest constructs an ISO 8073 Class 0 Connection
+// buildS7COTPConnectionRequest constructs an ISO 8073 Class 0 Connection
 // Request inside an RFC 1006 TPKT envelope. The calling/called TSAP pair
 // determines which S7 CPU family the probe targets.
 //
@@ -19,7 +19,11 @@ import (
 //	Param C0 01 0A  — TPDU size 1024 bytes
 //	Param C1 02 <calling-TSAP>
 //	Param C2 02 <called-TSAP>
-func buildCOTPConnectionRequest(pair tsapPair) []byte {
+//
+// Named to avoid colliding with the MMS plugin's `buildCOTPConnectionRequest`
+// in this same `plugins` package — MMS uses a fixed TSAP pair, S7 needs the
+// variant-specific one.
+func buildS7COTPConnectionRequest(pair s7TSAPPair) []byte {
 	return []byte{
 		// TPKT header (4 bytes)
 		0x03, 0x00, 0x00, 0x16,
@@ -163,8 +167,6 @@ func parseSZLResponse(resp []byte) ([][]byte, int, error) {
 	}
 	paramLen := int(binary.BigEndian.Uint16(resp[13:15]))
 	dataLen := int(binary.BigEndian.Uint16(resp[15:17]))
-	// Header is at offset 7, length 12 (extended ack-data form for userdata).
-	// Parameters follow at offset 19, data follows after parameters.
 	const headerSize = 12
 	paramStart := 7 + headerSize
 	dataStart := paramStart + paramLen
@@ -174,7 +176,6 @@ func parseSZLResponse(resp []byte) ([][]byte, int, error) {
 	// User data response has an error code at offset 10..11 of params (relative);
 	// reject any non-success here.
 	if paramLen >= 12 {
-		// Params: 00 01 12, param_len, method, function, seq, dur, last, err[2]
 		errCode := binary.BigEndian.Uint16(resp[paramStart+10 : paramStart+12])
 		if errCode != 0 {
 			return nil, 0, fmt.Errorf("szl error 0x%04x", errCode)
@@ -234,19 +235,19 @@ func mergeSZL0011(info *protocol.S7CommServerInfo, records [][]byte, recordLen i
 		}
 		mlfb := trimASCII(rec[2:22])
 		if mlfb != "" && info.OrderCode == nil {
-			info.OrderCode = strPtr(mlfb)
+			info.OrderCode = s7StrPtr(mlfb)
 		}
 		ausbg := rec[24:26]
 		ausbe := rec[26:28]
 		version := formatS7Version(ausbg, ausbe)
 		if version != "" && info.FirmwareVersion == nil {
-			info.FirmwareVersion = strPtr(version)
+			info.FirmwareVersion = s7StrPtr(version)
 		}
 		// Hardware version sometimes encoded in BGType byte 1.
 		hw := rec[22:24]
 		if hw[0] != 0 || hw[1] != 0 {
 			if info.HardwareVersion == nil {
-				info.HardwareVersion = strPtr(fmt.Sprintf("0x%02x%02x", hw[0], hw[1]))
+				info.HardwareVersion = s7StrPtr(fmt.Sprintf("0x%02x%02x", hw[0], hw[1]))
 			}
 		}
 		return
@@ -303,40 +304,40 @@ func mergeSZL001C(info *protocol.S7CommServerInfo, records [][]byte, recordLen i
 		switch index {
 		case 0x0001:
 			if info.SystemName == nil {
-				info.SystemName = strPtr(val)
+				info.SystemName = s7StrPtr(val)
 			}
 		case 0x0002:
 			if info.ModuleName == nil {
-				info.ModuleName = strPtr(val)
+				info.ModuleName = s7StrPtr(val)
 			}
 			if info.CpuType == nil {
-				info.CpuType = strPtr(val)
+				info.CpuType = s7StrPtr(val)
 			}
 		case 0x0004:
 			if info.Copyright == nil {
-				info.Copyright = strPtr(val)
+				info.Copyright = s7StrPtr(val)
 			}
 		case 0x0005:
 			if info.SerialNumber == nil {
-				info.SerialNumber = strPtr(val)
+				info.SerialNumber = s7StrPtr(val)
 			}
 		case 0x0006:
 			if info.ModuleTypeName == nil {
-				info.ModuleTypeName = strPtr(val)
+				info.ModuleTypeName = s7StrPtr(val)
 			}
 		case 0x0007:
 			if info.PlantId == nil {
-				info.PlantId = strPtr(val)
+				info.PlantId = s7StrPtr(val)
 			}
 		case 0x0008:
 			if info.LocationDesignation == nil {
-				info.LocationDesignation = strPtr(val)
+				info.LocationDesignation = s7StrPtr(val)
 			}
 		}
 	}
 }
 
-// trimASCII strips trailing NUL / control bytes and returns the printable prefix.
+// trimASCII strips trailing NUL / space bytes and returns the printable prefix.
 func trimASCII(b []byte) string {
 	end := len(b)
 	for end > 0 && (b[end-1] == 0x00 || b[end-1] == 0x20) {
@@ -347,38 +348,6 @@ func trimASCII(b []byte) string {
 		if c >= 0x20 && c < 0x7F {
 			out = append(out, c)
 		}
-	}
-	return string(out)
-}
-
-// cpuFamilyFromOrderCode infers the S7 family from an MLFB prefix.
-// Returns "" when the prefix is unrecognised.
-func cpuFamilyFromOrderCode(mlfb string) string {
-	s := mlfbNormalize(mlfb)
-	switch {
-	case len(s) >= 6 && s[:4] == "6ES7" && s[4] >= '5' && s[4] <= '5':
-		return "S7-1500"
-	case len(s) >= 7 && s[:4] == "6ES7" && s[4] == '2' && s[5] == '1':
-		return "S7-1200"
-	case len(s) >= 6 && s[:4] == "6ES7" && s[4] == '3':
-		return "S7-300"
-	case len(s) >= 6 && s[:4] == "6ES7" && s[4] == '4':
-		return "S7-400"
-	case len(s) >= 6 && s[:4] == "6ES7" && s[4] == '1':
-		return "ET200"
-	case len(s) >= 4 && s[:4] == "6ED1":
-		return "LOGO"
-	}
-	return ""
-}
-
-func mlfbNormalize(s string) string {
-	out := make([]byte, 0, len(s))
-	for _, c := range []byte(s) {
-		if c == ' ' || c == '-' {
-			continue
-		}
-		out = append(out, c)
 	}
 	return string(out)
 }
