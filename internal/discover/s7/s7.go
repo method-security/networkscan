@@ -87,10 +87,12 @@ func rackSlotFromTSAP(called [2]byte) (rack, slot int) {
 // it managed to extract. Per-step failures land in stepErrors; a fatal
 // error (e.g., COTP CR rejected on every TSAP variant) is returned via
 // the error.
+//
+// Timeout values <= 0 are forwarded to the helpers as "no timeout" — the
+// per-step deadline is then driven entirely by the supplied context.
+// Callers (cobra commands, processors) are responsible for setting their
+// own defaults; we do not invent one here.
 func Probe(ctx context.Context, ip net.IP, port int, opts Options) (*protocol.S7CommServerInfo, []string, error) {
-	if opts.Timeout <= 0 {
-		opts.Timeout = 5
-	}
 	variant := strings.ToLower(strings.TrimSpace(opts.TSAPVariant))
 	if variant == "" {
 		variant = TSAPVariantAuto
@@ -271,10 +273,10 @@ func RunDiscoverS7(ctx context.Context, config discoverfern.DiscoverS7Config) (d
 		return report, nil
 	}
 
+	// Timeout is taken verbatim from the config. The cobra command supplies
+	// the default (--timeout 5); a non-positive value here is honored as
+	// "no timeout" — see helpers.HasTimeout.
 	timeout := config.Timeout
-	if timeout <= 0 {
-		timeout = 5
-	}
 	variant := TSAPVariantAuto
 	if config.TsapVariant != nil {
 		variant = *config.TsapVariant
