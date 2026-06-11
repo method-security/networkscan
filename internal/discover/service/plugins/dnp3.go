@@ -76,10 +76,14 @@ func (DNP3Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	// the constant's docstring for why this matters.
 	readAttrReq := buildDNP3ReadAttributesRequest(outstationAddr, dnp3MasterSourceAddress)
 	if _, err := conn.Write(readAttrReq); err == nil {
-		// Read response (up to 1024 bytes)
+		// Read response (up to 1024 bytes). Accept partial payloads paired with
+		// io.EOF / read errors as long as we got a full DNP3 frame header — same
+		// reasoning as the link-layer Read above. Outstations frequently half-close
+		// after sending the attribute response, which would otherwise discard
+		// parseable metadata.
 		attrBuf := make([]byte, 1024)
-		attrN, attrErr := conn.Read(attrBuf)
-		if attrErr == nil && attrN >= 10 {
+		attrN, _ := conn.Read(attrBuf)
+		if attrN >= 10 {
 			parseDeviceAttributes(attrBuf[:attrN], info)
 		}
 		// If parsing fails we still have link-layer data — fall through gracefully
@@ -312,24 +316,27 @@ func parseDNP3AttributeObjects(data []byte, info *protocol.Dnp3ServerInfo) {
 	}
 }
 
-// readDNP3VisibleString reads one IEEE 1815 visible-string attribute at data[offset].
+// readDNP3VisibleString reads one IEEE 1815 attribute at data[offset]. All DNP3
+// attribute encodings use the same [type(1) | length(1) | payload(length)] shape
+// (§ 4.3.13 / OpenDNP3), so we always advance past the full encoded attribute
+// even when the type isn't visible-string (0x01) — only visible-strings populate
+// the Dnp3ServerInfo fields; other types (unsigned int, bit string, octet string,
+// etc.) are skipped but their length is still consumed so the parser cursor
+// stays aligned with subsequent objects.
 // Returns the number of bytes consumed and whether parsing succeeded.
 func readDNP3VisibleString(data []byte, offset int, variation byte, info *protocol.Dnp3ServerInfo) (int, bool) {
-	if offset >= len(data) {
-		return 0, false
-	}
-	// Attribute type byte: 1 = visible string
-	attrType := data[offset]
-	if attrType != 0x01 {
-		// Not a visible-string attribute type; consume 1 byte and continue
-		return 1, true
-	}
 	if offset+2 > len(data) {
 		return 0, false
 	}
+	attrType := data[offset]
 	attrLen := int(data[offset+1])
 	if offset+2+attrLen > len(data) {
 		return 0, false
+	}
+	if attrType != 0x01 {
+		// Non-visible-string attribute: consume type + length + payload to keep
+		// the object walk aligned, but don't populate any Dnp3ServerInfo field.
+		return 2 + attrLen, true
 	}
 	attrValue := string(data[offset+2 : offset+2+attrLen])
 	setDNP3AttributeField(variation, attrValue, info)

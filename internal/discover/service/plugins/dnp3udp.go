@@ -47,9 +47,11 @@ func (DNP3UDPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 		defer func() { _ = attrConn.Close() }()
 		readAttrReq := buildDNP3ReadAttributesRequest(outstationAddr, dnp3MasterSourceAddress)
 		if _, writeErr := attrConn.Write(readAttrReq); writeErr == nil {
+			// Accept partial payloads paired with read errors — same EOF tolerance
+			// as the TCP path (a half-closed peer would otherwise drop parseable metadata).
 			attrBuf := make([]byte, 1024)
-			attrN, readErr := attrConn.Read(attrBuf)
-			if readErr == nil && attrN >= 10 {
+			attrN, _ := attrConn.Read(attrBuf)
+			if attrN >= 10 {
 				parseDeviceAttributes(attrBuf[:attrN], info)
 			}
 		}
