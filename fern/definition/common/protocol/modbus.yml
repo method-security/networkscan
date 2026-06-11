@@ -1,0 +1,17 @@
+types:
+  # Modbus TCP Server Information (function 43/14 Read Device Identification)
+  ModbusServerInfo:
+    properties:
+      # Basic device identification (Read Device ID Code 0x01, Object IDs 0x00-0x02)
+      vendorName: optional<string>          # Object ID 0x00 — device manufacturer
+      productCode: optional<string>         # Object ID 0x01 — product/part number
+      majorMinorRevision: optional<string>  # Object ID 0x02 — firmware revision
+      # Regular device identification (Read Device ID Code 0x02, Object IDs 0x03-0x06)
+      vendorUrl: optional<string>           # Object ID 0x03 — vendor URL
+      productName: optional<string>         # Object ID 0x04 — product name
+      modelName: optional<string>           # Object ID 0x05 — model name
+      userApplicationName: optional<string> # Object ID 0x06 — user-defined application name
+      # Response metadata
+      conformityLevel: optional<string>     # Conformity level from response header (0x01-0x83)
+      unitId: optional<string>              # Unit ID that provided a successful response
+      additionalUnitIds: optional<list<string>> # Reserved: other unit IDs that responded during enumeration sweep

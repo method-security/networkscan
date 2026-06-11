@@ -75,6 +75,7 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.X11Fingerprinter{},             // X11 (X Window System)
 	&localPlugins.PcomFingerprinter{},            // Unitronics PCOM (PLC Communication)
 	&localPlugins.Iec104Fingerprinter{},          // IEC 60870-5-104 (SCADA protocol)
+	&localPlugins.ModbusFingerprinter{},          // Modbus TCP (deeper probe than vendored fingerprintx)
 	&localPlugins.GesrtpFingerprinter{},          // GE SRTP (Service Request Transport Protocol)
 	&localPlugins.FinsFingerprinter{},            // FINS (Omron PLC)
 	&localPlugins.AtgFingerprinter{},             // ATG (Automatic Tank Gauging)
