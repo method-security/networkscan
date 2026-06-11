@@ -62,7 +62,10 @@ func RunRouteDiscovery(ctx context.Context, config discoverfern.DiscoverRouteCon
 	var tracerouteResults []*discoverfern.TracerouteResult
 
 	// partialReport returns the report accumulated so far; used when the
-	// context is cancelled between targets.
+	// context is cancelled between targets. The error is recorded inside
+	// the report's Errors slice and the function returns (report, nil) so
+	// callers that gate on err != nil still surface partial results to the
+	// user — matching the pattern used by RunHostDiscovery.
 	partialReport := func(err error) *discoverfern.DiscoverRouteReport {
 		return &discoverfern.DiscoverRouteReport{
 			Config: &config,
@@ -86,11 +89,11 @@ func RunRouteDiscovery(ctx context.Context, config discoverfern.DiscoverRouteCon
 				log.Info("Applying stealth delay between targets", svc1log.SafeParam("delay", delay))
 				select {
 				case <-ctx.Done():
-					return partialReport(ctx.Err()), ctx.Err()
+					return partialReport(ctx.Err()), nil
 				case <-time.After(delay):
 				}
 			} else if err := ctx.Err(); err != nil {
-				return partialReport(err), err
+				return partialReport(err), nil
 			}
 		}
 
