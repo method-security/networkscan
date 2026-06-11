@@ -390,9 +390,6 @@ func effectivePluginThreads(configured int, total int) int {
 	if total <= 0 {
 		return 0
 	}
-	if configured <= 0 {
-		return 1
-	}
 	if configured > total {
 		return total
 	}
