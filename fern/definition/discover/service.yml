@@ -41,6 +41,7 @@ imports:
   memcachedProtocol: ../common/protocol/memcached.yml
   unistreamProtocol: ../common/protocol/unistream.yml
   smtpProtocol: ../common/protocol/smtp.yml
+  s7commProtocol: ../common/protocol/s7comm.yml
 
 types:
   # Generic metadata for fingerprintx and other sources
@@ -94,6 +95,7 @@ types:
       memcached: memcachedProtocol.MemcachedServerInfo
       unistream: unistreamProtocol.UnistreamServerInfo
       smtp: smtpProtocol.SmtpServerInfo
+      s7comm: s7commProtocol.S7CommServerInfo
 
   # Stealth service types
   StealthServiceType:

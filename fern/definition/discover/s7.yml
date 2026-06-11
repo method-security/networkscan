@@ -1,0 +1,32 @@
+imports:
+  s7comm: ../common/protocol/s7comm.yml
+  common: ../common/common.yml
+
+types:
+  S7Detail:
+    properties:
+      socket: string                                # ip:port that responded
+      ip: optional<string>
+      host: optional<string>
+      port: integer
+      transport: common.TransportType
+      protocol: common.ProtocolType                 # = S7COMM
+      serverInfo: s7comm.S7CommServerInfo
+      errors: optional<list<string>>                # per-target step-level errors
+
+  DiscoverS7Config:
+    properties:
+      targets: list<string>                         # host:port (or just host, default 102)
+      timeout: integer                              # per-step timeout seconds
+      tsapVariant: optional<string>                 # auto | s7_300 | s7_1200 | s7_1500
+      skipSzl: optional<boolean>                    # bail after SETUP if true
+
+  DiscoverS7Result:
+    properties:
+      details: optional<list<S7Detail>>
+
+  DiscoverS7Report:
+    properties:
+      config: DiscoverS7Config
+      result: DiscoverS7Result
+      errors: optional<list<string>>

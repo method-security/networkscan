@@ -12,6 +12,7 @@ import (
 	discoverhost "github.com/Method-Security/networkscan/internal/discover/host"
 	discoverport "github.com/Method-Security/networkscan/internal/discover/port"
 	discoverroute "github.com/Method-Security/networkscan/internal/discover/route"
+	discovers7 "github.com/Method-Security/networkscan/internal/discover/s7"
 	discoverservice "github.com/Method-Security/networkscan/internal/discover/service"
 	discoversocket "github.com/Method-Security/networkscan/internal/discover/socket"
 	"github.com/Method-Security/networkscan/utils"
@@ -454,6 +455,66 @@ func (a *NetworkScan) InitDiscoverCommand() {
 
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverTLSCmd)
+
+	// S7 Command — deep Siemens S7 PLC probe (ISO-on-TCP / COTP + S7 SETUP + SZL reads).
+	discoverS7Cmd := &cobra.Command{
+		Use:   "s7",
+		Short: "Probe Siemens S7 PLCs over ISO-on-TCP (port 102) for CPU type, firmware, order code, and rack/slot.",
+		Long:  `Run a read-only Siemens S7comm probe against one or more targets. The probe performs a COTP Connection Request, an S7 Setup Communication, and SZL reads of SSL_ID 0x0011 (Module Identification) and 0x001C (Component Identification). Covers S7-300/400/1200/1500. No writes, no PG_RUN/PG_STOP.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			targets, err := cmd.Flags().GetStringSlice("targets")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			timeout, err := cmd.Flags().GetInt("timeout")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			tsapVariant, err := cmd.Flags().GetString("tsap-variant")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			skipSZL, err := cmd.Flags().GetBool("skip-szl")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
+			// Validate tsap-variant against the allowed set so a typo fails fast.
+			switch strings.ToLower(strings.TrimSpace(tsapVariant)) {
+			case discovers7.TSAPVariantAuto, discovers7.TSAPVariantS7_300, discovers7.TSAPVariantS7_400, discovers7.TSAPVariantS7_1200, discovers7.TSAPVariantS7_1500:
+				// ok
+			default:
+				a.OutputSignal.AddError(fmt.Errorf("invalid --tsap-variant %q: must be one of auto, s7_300, s7_400, s7_1200, s7_1500", tsapVariant))
+				return
+			}
+
+			config := discoverfern.DiscoverS7Config{
+				Targets:     targets,
+				Timeout:     timeout,
+				TsapVariant: &tsapVariant,
+				SkipSzl:     &skipSZL,
+			}
+
+			report, err := discovers7.RunDiscoverS7(cmd.Context(), config)
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			a.OutputSignal.Content = report
+		},
+	}
+	discoverS7Cmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP[:port] or hostname[:port], default port 102)")
+	discoverS7Cmd.Flags().Int("timeout", 5, "Timeout in seconds for each protocol step (dial, write, read)")
+	discoverS7Cmd.Flags().String("tsap-variant", discovers7.TSAPVariantAuto, "TSAP variant: auto | s7_300 | s7_400 | s7_1200 | s7_1500 (auto tries 1500 first, then 300)")
+	discoverS7Cmd.Flags().Bool("skip-szl", false, "Skip SZL reads — stop after COTP CC + S7 SETUP for a minimal-touch probe")
+	_ = discoverS7Cmd.MarkFlagRequired("targets")
+
+	// Add Command to 'Discover' Command
+	discoverCmd.AddCommand(discoverS7Cmd)
 
 	// Socket Command
 	discoverSocketCmd := &cobra.Command{

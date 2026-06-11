@@ -1,0 +1,17 @@
+types:
+  S7CommServerInfo:
+    properties:
+      cpuFamily: optional<string>           # "S7-1500" | "S7-1200" | "S7-300" | "S7-400" | "LOGO" | "S7-200" | "ET200"
+      cpuType: optional<string>             # e.g. "CPU 1515-2 PN"
+      orderCode: optional<string>           # MLFB, e.g. "6ES7515-2AM02-0AB0"
+      firmwareVersion: optional<string>     # "V2.9.4" — built as V.R.A from raw bytes
+      hardwareVersion: optional<string>
+      moduleName: optional<string>          # SZL 0x0011 index 1 friendly name
+      moduleTypeName: optional<string>      # SZL 0x001C index 2
+      systemName: optional<string>          # SZL 0x001C index 1
+      copyright: optional<string>           # SZL 0x001C index 4
+      serialNumber: optional<string>        # SZL 0x001C index 5
+      plantId: optional<string>             # SZL 0x001C index 7
+      locationDesignation: optional<string> # SZL 0x001C index 6
+      rack: optional<integer>               # parsed from TSAP we connected with
+      slot: optional<integer>               # parsed from TSAP we connected with
