@@ -40,11 +40,17 @@ func (DNP3Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		return nil, err
 	}
 
-	// Read link-layer response (up to 292 bytes)
+	// Read link-layer response (up to 292 bytes). Accept partial responses paired
+	// with io.EOF / read errors as long as we got a full DNP3 frame header — Go's
+	// conn.Read can legitimately return (n>0, io.EOF) when the peer half-closes
+	// after the response, and rejecting those would drop valid DNP3 targets.
 	linkBuf := make([]byte, 292)
 	n, err := conn.Read(linkBuf)
-	if err != nil || n < 10 {
-		return nil, fmt.Errorf("no DNP3 link-layer response")
+	if n < 10 {
+		if err != nil {
+			return nil, fmt.Errorf("no DNP3 link-layer response: %w", err)
+		}
+		return nil, fmt.Errorf("DNP3 link-layer response too short: %d bytes", n)
 	}
 
 	// Validate DNP3 frame
@@ -218,17 +224,20 @@ func parseDNP3AttributeObjects(data []byte, info *protocol.Dnp3ServerInfo) {
 			return
 		}
 
-		// Determine how many objects and how to read the index
+		// Determine how many objects and how to read the index.
+		// Qualifier code: high nibble = index prefix code, low nibble = range/count code (IEEE 1815 § 4.4).
 		switch qualifier {
-		case 0x00: // 8-bit index, 8-bit count
+		case 0x00: // 8-bit start index, 8-bit stop index (NOT count) — IEEE 1815 § 4.4.4.2
 			if i+2 > len(data) {
 				return
 			}
-			index := data[i]
-			_ = index
-			count := int(data[i+1])
+			startIdx := int(data[i])
+			stopIdx := int(data[i+1])
 			i += 2
-			// Read 'count' attribute objects
+			if stopIdx < startIdx {
+				return
+			}
+			count := stopIdx - startIdx + 1
 			for c := 0; c < count && i < len(data); c++ {
 				attrLen, ok := readDNP3VisibleString(data, i, variation, info)
 				if !ok {
@@ -238,17 +247,34 @@ func parseDNP3AttributeObjects(data []byte, info *protocol.Dnp3ServerInfo) {
 			}
 		case 0x06: // no range — all points (variation 254 response may use this)
 			// The response to "all attributes" typically echoes each attribute as
-			// a separate object with qualifier 0x00 or 0x07 (8-bit index, 1 item).
+			// a separate object with qualifier 0x00 or 0x17 (per OpenDNP3).
 			// If we see 0x06 in the response, skip — not a valid attribute response encoding.
 			return
-		case 0x07: // 8-bit index, count follows
-			if i+2 > len(data) {
+		case 0x07: // PrefixCode 0 + RangeCode 7: 8-bit object count, no per-item prefix
+			if i+1 > len(data) {
 				return
 			}
-			_ = data[i] // index
-			count := int(data[i+1])
-			i += 2
+			count := int(data[i])
+			i++
 			for c := 0; c < count && i < len(data); c++ {
+				attrLen, ok := readDNP3VisibleString(data, i, variation, info)
+				if !ok {
+					return
+				}
+				i += attrLen
+			}
+		case 0x17: // PrefixCode 1 + RangeCode 7: 8-bit object count, each item with 8-bit index prefix
+			if i+1 > len(data) {
+				return
+			}
+			count := int(data[i])
+			i++
+			for c := 0; c < count && i < len(data); c++ {
+				if i >= len(data) {
+					return
+				}
+				_ = data[i] // 8-bit index prefix
+				i++
 				attrLen, ok := readDNP3VisibleString(data, i, variation, info)
 				if !ok {
 					return
