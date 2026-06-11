@@ -68,11 +68,18 @@ func (S7CommFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 	for _, pair := range attempts {
 		info, err := s7Probe(ctx, ip, port, timeout, pair)
 		if err == nil {
+			// version is the human-facing service-version string. Prefer the
+			// CPU product designation (SZL 0x001C index 7, e.g. "CPU 1515-2 PN"),
+			// then the inferred family (from the MLFB), then the friendly
+			// module name, and finally a bare "Siemens S7comm" if SZL failed.
 			version := "Siemens S7comm"
-			if info.CpuType != nil && *info.CpuType != "" {
+			switch {
+			case info.CpuType != nil && *info.CpuType != "":
 				version = "Siemens S7comm — " + *info.CpuType
-			} else if info.CpuFamily != nil && *info.CpuFamily != "" {
+			case info.CpuFamily != nil && *info.CpuFamily != "":
 				version = "Siemens S7comm — " + *info.CpuFamily
+			case info.ModuleName != nil && *info.ModuleName != "":
+				version = "Siemens S7comm — " + *info.ModuleName
 			}
 			return &discoverfern.ServiceDetails{
 				Host:      host,

@@ -317,9 +317,6 @@ func mergeSZL001C(info *protocol.S7CommServerInfo, records [][]byte, recordLen i
 			if info.ModuleName == nil {
 				info.ModuleName = s7StrPtr(val)
 			}
-			if info.CpuType == nil {
-				info.CpuType = s7StrPtr(val)
-			}
 		case 0x0003:
 			if info.PlantId == nil {
 				info.PlantId = s7StrPtr(val)
@@ -333,8 +330,14 @@ func mergeSZL001C(info *protocol.S7CommServerInfo, records [][]byte, recordLen i
 				info.SerialNumber = s7StrPtr(val)
 			}
 		case 0x0007:
+			// Module type name is the CPU product string (e.g. "CPU 1515-2 PN").
+			// Surface it as both ModuleTypeName and CpuType — the latter is the
+			// schema's canonical "CPU product" field.
 			if info.ModuleTypeName == nil {
 				info.ModuleTypeName = s7StrPtr(val)
+			}
+			if info.CpuType == nil {
+				info.CpuType = s7StrPtr(val)
 			}
 		case 0x000B:
 			if info.LocationDesignation == nil {
