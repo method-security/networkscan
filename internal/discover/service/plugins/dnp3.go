@@ -338,17 +338,24 @@ func parseDNP3AttributeObjects(data []byte, info *protocol.Dnp3ServerInfo) {
 				}
 				i += attrLen
 			}
-		case 0x01: // 8-bit index, no count (single item with explicit index)
-			if i+1 > len(data) {
+		case 0x01: // 16-bit start index + 16-bit stop index, no per-item prefix — IEEE 1815 § 4.4.4.2
+			if i+4 > len(data) {
 				return
 			}
-			_ = data[i] // index byte
-			i++
-			attrLen, ok := readDNP3VisibleString(data, i, variation, info)
-			if !ok {
+			startIdx := int(binary.LittleEndian.Uint16(data[i : i+2]))
+			stopIdx := int(binary.LittleEndian.Uint16(data[i+2 : i+4]))
+			i += 4
+			if stopIdx < startIdx {
 				return
 			}
-			i += attrLen
+			count := stopIdx - startIdx + 1
+			for c := 0; c < count && i < len(data); c++ {
+				attrLen, ok := readDNP3VisibleString(data, i, variation, info)
+				if !ok {
+					return
+				}
+				i += attrLen
+			}
 		default:
 			// Unknown qualifier; stop parsing to avoid corruption
 			return
