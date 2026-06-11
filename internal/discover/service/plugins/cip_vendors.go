@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"sync"
 
@@ -20,22 +19,20 @@ var (
 	cipVendorsConfigOnce sync.Once
 	cipVendorNames       map[uint16]string
 	cipDeviceTypeNames   map[uint16]string
-	cipVendorsConfigErr  error
 )
 
 // loadCIPVendorsConfig reads the embedded JSON config once and populates the lookup maps.
-// On parse failure the maps are left empty and the error is cached so callers
-// degrade gracefully (numeric IDs are still returned even without name lookup).
+// On read/parse failure the maps are left as nil — callers gracefully degrade to
+// returning empty strings for unknown IDs, which the rest of the pipeline already
+// tolerates (numeric vendor/device IDs are still emitted on the wire-decoded struct).
 func loadCIPVendorsConfig() {
 	cipVendorsConfigOnce.Do(func() {
 		data, err := configs.ReadFile("discover/service/cip_vendors.json")
 		if err != nil {
-			cipVendorsConfigErr = fmt.Errorf("failed to read cip_vendors config: %w", err)
 			return
 		}
 		var cfg cipVendorsConfig
 		if err := json.Unmarshal(data, &cfg); err != nil {
-			cipVendorsConfigErr = fmt.Errorf("failed to parse cip_vendors config: %w", err)
 			return
 		}
 		cipVendorNames = parseUint16KeyedMap(cfg.Vendors)
