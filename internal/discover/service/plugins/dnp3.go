@@ -71,8 +71,10 @@ func (DNP3Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		SourceAddress: &sourceAddrStr,
 	}
 
-	// Step 3: Issue DNP3 application-layer Read Device Attributes (object group 0, var 254)
-	readAttrReq := buildDNP3ReadAttributesRequest(outstationAddr, 1 /* master address */)
+	// Step 3: Issue DNP3 application-layer Read Device Attributes (object group 0, var 254).
+	// Master source MUST equal dnp3MasterSourceAddress used in the link-layer probe; see
+	// the constant's docstring for why this matters.
+	readAttrReq := buildDNP3ReadAttributesRequest(outstationAddr, dnp3MasterSourceAddress)
 	if _, err := conn.Write(readAttrReq); err == nil {
 		// Read response (up to 1024 bytes)
 		attrBuf := make([]byte, 1024)
@@ -263,7 +265,14 @@ func parseDNP3AttributeObjects(data []byte, info *protocol.Dnp3ServerInfo) {
 				}
 				i += attrLen
 			}
-		case 0x17: // PrefixCode 1 + RangeCode 7: 8-bit object count, each item with 8-bit index prefix
+		case 0x17: // PrefixCode 1 + RangeCode 7: 8-bit object count, each item with 8-bit index prefix.
+			// For group 0 responses where the request used variation 254 ("all attributes"),
+			// each item's 8-bit index prefix carries the SPECIFIC attribute variation. The header
+			// variation tells you which set was requested (254 = all); the per-item prefix tells
+			// you which attribute this particular item is. Use the prefix as the effective
+			// variation when mapping to Dnp3ServerInfo fields, falling back to the header
+			// variation when the prefix is 0 (i.e. the prefix is being used purely as an index,
+			// not as the variation selector — rare but spec-permitted).
 			if i+1 > len(data) {
 				return
 			}
@@ -273,9 +282,13 @@ func parseDNP3AttributeObjects(data []byte, info *protocol.Dnp3ServerInfo) {
 				if i >= len(data) {
 					return
 				}
-				_ = data[i] // 8-bit index prefix
+				itemVariation := data[i]
 				i++
-				attrLen, ok := readDNP3VisibleString(data, i, variation, info)
+				effectiveVariation := itemVariation
+				if effectiveVariation == 0 {
+					effectiveVariation = variation
+				}
+				attrLen, ok := readDNP3VisibleString(data, i, effectiveVariation, info)
 				if !ok {
 					return
 				}
@@ -353,11 +366,19 @@ func setDNP3AttributeField(variation byte, value string, info *protocol.Dnp3Serv
 	}
 }
 
+// dnp3MasterSourceAddress is the source (master) address used in both the
+// link-layer probe and the application-layer Read Device Attributes request.
+// Some outstations bind application traffic to the link-layer master address
+// they last saw, so the two MUST match — otherwise the outstation may ignore
+// or reject the attribute read after accepting the link-layer probe.
+const dnp3MasterSourceAddress uint16 = 1
+
 func buildDNP3LinkStatusRequest() []byte {
 	probe := make([]byte, 0, 101*10)
 	for destination := uint16(0); destination <= 100; destination++ {
 		frame := []byte{0x05, 0x64, 0x05, 0xc9, 0x00, 0x00, 0x00, 0x00}
 		binary.LittleEndian.PutUint16(frame[4:6], destination)
+		binary.LittleEndian.PutUint16(frame[6:8], dnp3MasterSourceAddress)
 		probe = append(probe, frame...)
 		probe = append(probe, dnp3CRC(frame)...)
 	}

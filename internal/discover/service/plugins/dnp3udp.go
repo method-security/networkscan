@@ -45,7 +45,7 @@ func (DNP3UDPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 	attrConn, dialErr := helpers.Dial(ctx, "udp", addr, timeout)
 	if dialErr == nil {
 		defer func() { _ = attrConn.Close() }()
-		readAttrReq := buildDNP3ReadAttributesRequest(outstationAddr, 1)
+		readAttrReq := buildDNP3ReadAttributesRequest(outstationAddr, dnp3MasterSourceAddress)
 		if _, writeErr := attrConn.Write(readAttrReq); writeErr == nil {
 			attrBuf := make([]byte, 1024)
 			attrN, readErr := attrConn.Read(attrBuf)
