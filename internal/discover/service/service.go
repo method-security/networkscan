@@ -226,7 +226,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 
 		/* --- Phase 2: Run fingerprintx (has its own port priority) --------- */
 		if !serviceFound {
-			fxCtx, cancel := context.WithCancel(ctx)
+			fxCtx, cancel := servicehelpers.Context(ctx, config.Timeout)
 
 			resultChan := make(chan *plugins.Service, 1)
 			errChan := make(chan error, 1)
@@ -374,7 +374,10 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 			}
 		case <-timeoutC:
 			cancel()
-			return best
+			timeoutC = nil
+			if best == nil || noEarlierFingerprintersPending(completed, bestIndex) {
+				return best
+			}
 		case <-ctx.Done():
 			cancel()
 			return best
