@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -198,7 +199,11 @@ func s7ReadTPKT(conn net.Conn, timeout int) ([]byte, error) {
 		return nil, err
 	}
 	header := make([]byte, 4)
-	if _, err := s7ReadFull(conn, header); err != nil {
+	// io.ReadFull treats `(n == len, io.EOF)` as success and only returns
+	// io.ErrUnexpectedEOF on a genuine short read — important because the
+	// PLC may close the connection in the same TCP segment as the final
+	// frame bytes.
+	if _, err := io.ReadFull(conn, header); err != nil {
 		return nil, err
 	}
 	if header[0] != 0x03 || header[1] != 0x00 {
@@ -210,28 +215,11 @@ func s7ReadTPKT(conn net.Conn, timeout int) ([]byte, error) {
 	}
 	rest := make([]byte, length-4)
 	if len(rest) > 0 {
-		if _, err := s7ReadFull(conn, rest); err != nil {
+		if _, err := io.ReadFull(conn, rest); err != nil {
 			return nil, err
 		}
 	}
 	return append(header, rest...), nil
-}
-
-// s7ReadFull reads exactly len(buf) bytes from conn, returning an error
-// on short read or underlying conn failure.
-func s7ReadFull(conn net.Conn, buf []byte) (int, error) {
-	total := 0
-	for total < len(buf) {
-		n, err := conn.Read(buf[total:])
-		total += n
-		if err != nil {
-			return total, err
-		}
-		if n == 0 {
-			return total, fmt.Errorf("short read")
-		}
-	}
-	return total, nil
 }
 
 // cpuFamilyFromOrderCode infers the S7 family from an MLFB prefix.
