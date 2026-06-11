@@ -66,7 +66,17 @@ func RunRouteDiscovery(ctx context.Context, config discoverfern.DiscoverRouteCon
 		if i > 0 && config.Stealth != nil {
 			if delay := utils.CalculateStealthDelay(config.Stealth.Sleep, config.Stealth.Jitter); delay > 0 {
 				log.Info("Applying stealth delay between targets", svc1log.SafeParam("delay", delay))
-				time.Sleep(delay)
+				select {
+				case <-ctx.Done():
+					return &discoverfern.DiscoverRouteReport{
+						Config: &config,
+						Result: &discoverfern.DiscoverRouteResult{
+							Traceroutes: tracerouteResults,
+						},
+						Errors: append(errors, ctx.Err().Error()),
+					}, nil
+				case <-time.After(delay):
+				}
 			}
 		}
 
