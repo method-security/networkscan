@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
@@ -70,6 +71,26 @@ func (DNP3Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Version:       &dnp3Version,
 		SourceAddress: &sourceAddrStr,
 	}
+
+	// Drain any pending data on the socket BEFORE issuing the app-layer Read.
+	// The link-layer probe sprays 101 destination addresses, and outstations can
+	// respond to more than one — leaving stale link-layer frames queued in the
+	// socket buffer. Without draining, the next Read would consume one of those
+	// stale frames instead of the attribute reply, and parseDeviceAttributes
+	// would silently run on the wrong bytes.
+	drainBuf := make([]byte, 4096)
+	_ = conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	for {
+		dn, derr := conn.Read(drainBuf)
+		if dn == 0 || derr != nil {
+			break
+		}
+	}
+	// Restore the original deadline before the app-layer round trip. Ignore the
+	// error — if SetDeadline fails the subsequent Write/Read will hit the stale
+	// short deadline (or fail), and the link-layer data path below still returns
+	// a populated ServiceDetails.
+	_ = helpers.SetDeadline(conn, timeout)
 
 	// Step 3: Issue DNP3 application-layer Read Device Attributes (object group 0, var 254).
 	// Master source MUST equal dnp3MasterSourceAddress used in the link-layer probe; see
@@ -169,8 +190,27 @@ func parseDeviceAttributes(resp []byte, info *protocol.Dnp3ServerInfo) {
 		return
 	}
 
+	// Bound the user-data window using the link-layer LEN field — extra bytes
+	// after the frame (another queued frame, tail data) would otherwise
+	// desynchronize the attribute object walk. LEN counts CTRL(1) + DEST(2) +
+	// SRC(2) + user_data_bytes (CRCs are NOT counted). Each 16-byte user-data
+	// block has a trailing 2-byte CRC, so the total bytes after the 10-byte
+	// link header is user_data_bytes + 2 * ceil(user_data_bytes / 16).
+	linkLen := int(resp[2])
+	if linkLen < 5 {
+		return
+	}
+	userDataBytes := linkLen - 5
+	numBlocks := (userDataBytes + 15) / 16
+	totalAfterHeader := userDataBytes + 2*numBlocks
+	if 10+totalAfterHeader > len(resp) {
+		// Frame truncated mid-payload — work with what we have rather than
+		// drop everything; the chunker tolerates a short final block.
+		totalAfterHeader = len(resp) - 10
+	}
+
 	// Reassemble user data by stripping CRCs from 16-byte blocks
-	userDataBlocks := resp[10:] // skip the 10-byte link header
+	userDataBlocks := resp[10 : 10+totalAfterHeader]
 	payload := reassembleDNP3UserData(userDataBlocks)
 	if len(payload) < 2 {
 		return
