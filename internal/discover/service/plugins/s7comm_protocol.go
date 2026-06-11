@@ -278,16 +278,23 @@ func formatS7Version(ausbg, ausbe []byte) string {
 //
 //	index[2], data[32 ASCII bytes]
 //
-// Indices we care about:
+// Indices per the Siemens SZL_ID 0x001C ("Identification of the component")
+// specification:
 //
-//	1 = system name (W#16#0001 -- PLC name)
-//	2 = module name
-//	3 = plant designation
-//	4 = copyright
-//	5 = serial number
-//	6 = module type name
-//	7 = OEM identification of a module (plant ID)
-//	8 = location designation of a module
+//	1 = Name of the automation system (PLC / ASName)
+//	2 = Name of the module
+//	3 = Plant designation                          <- maps to plantId
+//	4 = Copyright entry
+//	5 = Serial number of module
+//	6 = Reserved for operating system               <- skip
+//	7 = Module type name (e.g. "CPU 315-2 DP")      <- maps to moduleTypeName
+//	8 = Serial number of memory card                <- no field; skip
+//	9 = Manufacturer / profile of a CPU module      <- no field; skip
+//	A = OEM ID of a module                          <- no field; skip
+//	B = Location designation of a module            <- maps to locationDesignation
+//
+// Previous mapping shifted 6/7/8 -> moduleTypeName/plantId/locationDesignation,
+// which produced swapped/empty/misleading data on real PLCs (Bugbot AITF-103).
 func mergeSZL001C(info *protocol.S7CommServerInfo, records [][]byte, recordLen int) {
 	if recordLen < 34 {
 		return
@@ -313,6 +320,10 @@ func mergeSZL001C(info *protocol.S7CommServerInfo, records [][]byte, recordLen i
 			if info.CpuType == nil {
 				info.CpuType = s7StrPtr(val)
 			}
+		case 0x0003:
+			if info.PlantId == nil {
+				info.PlantId = s7StrPtr(val)
+			}
 		case 0x0004:
 			if info.Copyright == nil {
 				info.Copyright = s7StrPtr(val)
@@ -321,15 +332,11 @@ func mergeSZL001C(info *protocol.S7CommServerInfo, records [][]byte, recordLen i
 			if info.SerialNumber == nil {
 				info.SerialNumber = s7StrPtr(val)
 			}
-		case 0x0006:
+		case 0x0007:
 			if info.ModuleTypeName == nil {
 				info.ModuleTypeName = s7StrPtr(val)
 			}
-		case 0x0007:
-			if info.PlantId == nil {
-				info.PlantId = s7StrPtr(val)
-			}
-		case 0x0008:
+		case 0x000B:
 			if info.LocationDesignation == nil {
 				info.LocationDesignation = s7StrPtr(val)
 			}
