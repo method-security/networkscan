@@ -1,0 +1,17 @@
+types:
+  # DNP3 (Distributed Network Protocol 3) Server Information
+  Dnp3ServerInfo:
+    properties:
+      # Discovery fields (link layer)
+      version: optional<string>          # e.g. "DNP3" or "DNP3 L3"
+      sourceAddress: optional<string>    # outstation source address discovered during link-layer probe
+      # Device Attributes (object group 0) -- IEEE 1815 attribute variations
+      deviceManufacturerName: optional<string>                # var 252
+      deviceManufacturerHardwareVersion: optional<string>     # var 246
+      deviceManufacturerSoftwareVersion: optional<string>     # var 247
+      userAssignedLocation: optional<string>                  # var 245 (device location)
+      userAssignedName: optional<string>                      # var 242 (device name)
+      userAssignedId: optional<string>                        # var 243 / 250
+      deviceSerialNumber: optional<string>                    # var 248
+      dnp3SubsetAndConformance: optional<string>              # var 244
+      userAssignedProductName: optional<string>               # var 240 (product name string)

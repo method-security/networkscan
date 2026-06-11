@@ -1,3 +1,4 @@
+// Package plugins provides DNP3 (Distributed Network Protocol 3) service fingerprinting
 package plugins
 
 import (
@@ -5,8 +6,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"strconv"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
+	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
@@ -18,14 +21,310 @@ func (DNP3Fingerprinter) Name() string { return "dnp3" }
 func (DNP3Fingerprinter) DefaultPorts() []int { return []int{20000} }
 
 func (DNP3Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	resp, err := helpers.TCPExchange(ctx, ip, port, timeout, buildDNP3LinkStatusRequest(), 292)
+	addr := net.JoinHostPort(ip.String(), strconv.Itoa(port))
+
+	conn, err := helpers.Dial(ctx, "tcp", addr, timeout)
 	if err != nil {
 		return nil, err
 	}
-	if !validDNP3Frame(resp) {
+	defer func() { _ = conn.Close() }()
+
+	// Set overall deadline for the connection
+	if err := helpers.SetDeadline(conn, timeout); err != nil {
+		return nil, err
+	}
+
+	// Step 1: Send link-layer Link Status Request (spray multiple destination addresses)
+	linkProbe := buildDNP3LinkStatusRequest()
+	if _, err := conn.Write(linkProbe); err != nil {
+		return nil, err
+	}
+
+	// Read link-layer response (up to 292 bytes)
+	linkBuf := make([]byte, 292)
+	n, err := conn.Read(linkBuf)
+	if err != nil || n < 10 {
+		return nil, fmt.Errorf("no DNP3 link-layer response")
+	}
+
+	// Validate DNP3 frame
+	if !validDNP3Frame(linkBuf[:n]) {
 		return nil, fmt.Errorf("not DNP3")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "DNP3", "DNP3", map[string]string{"response": "link-layer"}), nil
+
+	// Step 2: Extract outstation source address from link-layer response.
+	// DNP3 frame layout: [0x05][0x64][LEN][CTRL][DEST_LSB][DEST_MSB][SRC_LSB][SRC_MSB][CRC_LSB][CRC_MSB]
+	// The outstation's address is in the SRC bytes (indices 6-7).
+	outstationAddr := binary.LittleEndian.Uint16(linkBuf[6:8])
+	sourceAddrStr := strconv.Itoa(int(outstationAddr))
+
+	// Build partial result — link-layer success guarantees we return ServiceDetails
+	dnp3Version := "DNP3 L3"
+	info := &protocol.Dnp3ServerInfo{
+		Version:       &dnp3Version,
+		SourceAddress: &sourceAddrStr,
+	}
+
+	// Step 3: Issue DNP3 application-layer Read Device Attributes (object group 0, var 254)
+	readAttrReq := buildDNP3ReadAttributesRequest(outstationAddr, 1 /* master address */)
+	if _, err := conn.Write(readAttrReq); err == nil {
+		// Read response (up to 1024 bytes)
+		attrBuf := make([]byte, 1024)
+		attrN, attrErr := conn.Read(attrBuf)
+		if attrErr == nil && attrN >= 10 {
+			parseDeviceAttributes(attrBuf[:attrN], info)
+		}
+		// If parsing fails we still have link-layer data — fall through gracefully
+	}
+
+	result := &discoverfern.ServiceDetails{
+		Host:      host,
+		Ip:        ip.String(),
+		Port:      port,
+		Tls:       false,
+		Transport: common.TransportTypeTcp,
+		Protocol:  common.ProtocolTypeDnp3,
+		Version:   &dnp3Version,
+		Metadata:  &discoverfern.ServiceMetadata{Dnp3: info},
+	}
+
+	return result, nil
+}
+
+// buildDNP3ReadAttributesRequest constructs a DNP3 application-layer Read request
+// for device attributes (object group 0, variation 254 = all attributes).
+// The request is wrapped in transport and data-link layers per IEEE 1815.
+func buildDNP3ReadAttributesRequest(destAddr, srcAddr uint16) []byte {
+	// Application layer: AC=0xC0 (FIR+FIN), FC=0x01 (READ), OBJ=0x00 0xFE (G0V254), QUAL=0x06 (all points)
+	appLayer := []byte{0xC0, 0x01, 0x00, 0xFE, 0x06}
+
+	// Transport header: 0xC0 = FIN=1 FIR=1 SEQ=0
+	transportByte := byte(0xC0)
+
+	// User data = transport byte + app layer
+	userDataPayload := append([]byte{transportByte}, appLayer...)
+
+	// Chunk user data into 16-byte blocks, each followed by a 2-byte CRC.
+	var userDataBlocks []byte
+	for len(userDataPayload) > 0 {
+		chunkSize := 16
+		if len(userDataPayload) < chunkSize {
+			chunkSize = len(userDataPayload)
+		}
+		chunk := userDataPayload[:chunkSize]
+		userDataPayload = userDataPayload[chunkSize:]
+		userDataBlocks = append(userDataBlocks, chunk...)
+		userDataBlocks = append(userDataBlocks, dnp3CRC(chunk)...)
+	}
+
+	// DNP3 link-layer LEN field = number of bytes from CTRL (byte 3) through end of user data payload
+	// (i.e., not counting start bytes 0x05 0x64, not counting the header CRC).
+	// Per IEEE 1815 § 9.2.2.1: LEN = 5 (CTRL + DEST + SRC) + len(userDataBlocks)
+	// Actually LEN covers: CTRL(1) + DEST(2) + SRC(2) + userDataPayload (without CRCs counted separately)
+	// Standard formula: LEN = 5 + len(userDataPayload_before_chunking)
+	// But userDataPayload at this point is consumed; reconstruct original length:
+	origUserDataLen := 1 + len(appLayer) // transport byte + app bytes
+	linkLen := byte(5 + origUserDataLen)
+
+	// Link header (before CRC): [0x05][0x64][LEN][0xC4][DEST_LSB][DEST_MSB][SRC_LSB][SRC_MSB]
+	// 0xC4 = DIR=1(from master) PRM=1 FCB=0 FCV=0 FC=4 (UNCONFIRMED_USER_DATA)
+	header := []byte{
+		0x05, 0x64,
+		linkLen,
+		0xC4,
+		byte(destAddr & 0xFF), byte(destAddr >> 8),
+		byte(srcAddr & 0xFF), byte(srcAddr >> 8),
+	}
+	headerCRC := dnp3CRC(header)
+
+	// Assemble full frame
+	frame := make([]byte, 0, 10+len(userDataBlocks))
+	frame = append(frame, header...)
+	frame = append(frame, headerCRC...)
+	frame = append(frame, userDataBlocks...)
+
+	return frame
+}
+
+// parseDeviceAttributes parses a DNP3 device attributes response and populates info.
+// It tolerates malformed frames gracefully.
+func parseDeviceAttributes(resp []byte, info *protocol.Dnp3ServerInfo) {
+	// Validate link-layer header: [0x05][0x64][LEN][CTRL][DEST][SRC][CRC]
+	if len(resp) < 10 || resp[0] != 0x05 || resp[1] != 0x64 {
+		return
+	}
+	if !dnp3CRCOK(resp[:8], resp[8:10]) {
+		return
+	}
+
+	// Reassemble user data by stripping CRCs from 16-byte blocks
+	userDataBlocks := resp[10:] // skip the 10-byte link header
+	payload := reassembleDNP3UserData(userDataBlocks)
+	if len(payload) < 2 {
+		return
+	}
+
+	// Skip transport byte (first byte)
+	if len(payload) < 2 {
+		return
+	}
+	appData := payload[1:]
+
+	// Application layer: AC(1) + FC(1) + IIN(2) + objects
+	if len(appData) < 4 {
+		return
+	}
+	// fc := appData[1]  // should be 0x81 = Response
+	// IIN bytes at [2] and [3]
+	objects := appData[4:]
+
+	// Parse object group 0 attributes
+	// Each attribute object encoding: group(1) variation(1) qualifier(1) ...
+	// For group 0, qualifier 0x00 means single index follows, qualifier 0x06 = all
+	parseDNP3AttributeObjects(objects, info)
+}
+
+// reassembleDNP3UserData strips the CRC bytes (2 bytes after every 16 data bytes)
+// and returns the raw user-data payload.
+func reassembleDNP3UserData(blocks []byte) []byte {
+	var out []byte
+	for len(blocks) > 0 {
+		chunkSize := 16
+		if len(blocks) < chunkSize {
+			chunkSize = len(blocks)
+		}
+		dataChunk := blocks[:chunkSize]
+		blocks = blocks[chunkSize:]
+		// Each chunk is followed by 2 CRC bytes (if we have them)
+		if len(blocks) >= 2 {
+			blocks = blocks[2:] // skip CRC
+		}
+		out = append(out, dataChunk...)
+	}
+	return out
+}
+
+// parseDNP3AttributeObjects walks the object stream for group 0 attribute variations.
+func parseDNP3AttributeObjects(data []byte, info *protocol.Dnp3ServerInfo) {
+	i := 0
+	for i+2 < len(data) {
+		grp := data[i]
+		variation := data[i+1]
+		qualifier := data[i+2]
+		i += 3
+
+		if grp != 0x00 {
+			// Not a device attribute object; we can't reliably skip without more info
+			return
+		}
+
+		// Determine how many objects and how to read the index
+		switch qualifier {
+		case 0x00: // 8-bit index, 8-bit count
+			if i+2 > len(data) {
+				return
+			}
+			index := data[i]
+			_ = index
+			count := int(data[i+1])
+			i += 2
+			// Read 'count' attribute objects
+			for c := 0; c < count && i < len(data); c++ {
+				attrLen, ok := readDNP3VisibleString(data, i, variation, info)
+				if !ok {
+					return
+				}
+				i += attrLen
+			}
+		case 0x06: // no range — all points (variation 254 response may use this)
+			// The response to "all attributes" typically echoes each attribute as
+			// a separate object with qualifier 0x00 or 0x07 (8-bit index, 1 item).
+			// If we see 0x06 in the response, skip — not a valid attribute response encoding.
+			return
+		case 0x07: // 8-bit index, count follows
+			if i+2 > len(data) {
+				return
+			}
+			_ = data[i] // index
+			count := int(data[i+1])
+			i += 2
+			for c := 0; c < count && i < len(data); c++ {
+				attrLen, ok := readDNP3VisibleString(data, i, variation, info)
+				if !ok {
+					return
+				}
+				i += attrLen
+			}
+		case 0x01: // 8-bit index, no count (single item with explicit index)
+			if i+1 > len(data) {
+				return
+			}
+			_ = data[i] // index byte
+			i++
+			attrLen, ok := readDNP3VisibleString(data, i, variation, info)
+			if !ok {
+				return
+			}
+			i += attrLen
+		default:
+			// Unknown qualifier; stop parsing to avoid corruption
+			return
+		}
+	}
+}
+
+// readDNP3VisibleString reads one IEEE 1815 visible-string attribute at data[offset].
+// Returns the number of bytes consumed and whether parsing succeeded.
+func readDNP3VisibleString(data []byte, offset int, variation byte, info *protocol.Dnp3ServerInfo) (int, bool) {
+	if offset >= len(data) {
+		return 0, false
+	}
+	// Attribute type byte: 1 = visible string
+	attrType := data[offset]
+	if attrType != 0x01 {
+		// Not a visible-string attribute type; consume 1 byte and continue
+		return 1, true
+	}
+	if offset+2 > len(data) {
+		return 0, false
+	}
+	attrLen := int(data[offset+1])
+	if offset+2+attrLen > len(data) {
+		return 0, false
+	}
+	attrValue := string(data[offset+2 : offset+2+attrLen])
+	setDNP3AttributeField(variation, attrValue, info)
+	return 2 + attrLen, true
+}
+
+// setDNP3AttributeField maps a DNP3 attribute variation to the corresponding Dnp3ServerInfo field.
+func setDNP3AttributeField(variation byte, value string, info *protocol.Dnp3ServerInfo) {
+	v := value
+	switch variation {
+	case 240:
+		info.UserAssignedProductName = &v
+	case 242:
+		info.UserAssignedName = &v
+	case 243:
+		info.UserAssignedId = &v
+	case 244:
+		info.Dnp3SubsetAndConformance = &v
+	case 245:
+		info.UserAssignedLocation = &v
+	case 246:
+		info.DeviceManufacturerHardwareVersion = &v
+	case 247:
+		info.DeviceManufacturerSoftwareVersion = &v
+	case 248:
+		info.DeviceSerialNumber = &v
+	case 250:
+		// Combine with 243 if not already set
+		if info.UserAssignedId == nil {
+			info.UserAssignedId = &v
+		}
+	case 252:
+		info.DeviceManufacturerName = &v
+	}
 }
 
 func buildDNP3LinkStatusRequest() []byte {

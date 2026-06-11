@@ -26,6 +26,7 @@ imports:
   x11Protocol: ../common/protocol/x11.yml
   xdmcpProtocol: ../common/protocol/xdmcp.yml
   pcomProtocol: ../common/protocol/pcom.yml
+  dnp3Protocol: ../common/protocol/dnp3.yml
   iec104Protocol: ../common/protocol/iec104.yml
   ikeProtocol: ../common/protocol/ike.yml
   gesrtpProtocol: ../common/protocol/gesrtp.yml
@@ -80,6 +81,7 @@ types:
       xdmcp: xdmcpProtocol.XdmcpServerInfo
       pcom: pcomProtocol.PcomServerInfo
       iec104: iec104Protocol.Iec104ServerInfo
+      dnp3: dnp3Protocol.Dnp3ServerInfo
       ike: ikeProtocol.IkeServerInfo
       gesrtp: gesrtpProtocol.GesrtpServerInfo
       fins: finsProtocol.FinsServerInfo
