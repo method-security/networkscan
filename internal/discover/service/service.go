@@ -323,27 +323,31 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 
 	for index, fingerprinter := range fingerprinters {
 		go func(index int, fingerprinter Fingerprinter) {
+			result := fingerprinterResult{index: index}
+			defer func() {
+				if recover() != nil {
+					result.details = nil
+				}
+				resultChan <- result
+			}()
+
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
 			case <-probeCtx.Done():
-				resultChan <- fingerprinterResult{index: index}
 				return
 			}
 
 			select {
 			case <-probeCtx.Done():
-				resultChan <- fingerprinterResult{index: index}
 				return
 			default:
 			}
 
 			detection, err := fingerprinter.Detect(probeCtx, ip, port, host, timeout)
-			result := fingerprinterResult{index: index}
 			if err == nil && detection != nil {
 				result.details = detection
 			}
-			resultChan <- result
 		}(index, fingerprinter)
 	}
 
