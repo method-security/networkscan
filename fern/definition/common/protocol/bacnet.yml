@@ -1,0 +1,24 @@
+types:
+  # BACnet/IP (Building Automation and Control networks over IP) Server Information.
+  # Captured by the BACnet service-discover fingerprinter from the device's I-Am
+  # response and (optionally) follow-up ReadProperty requests against the Device
+  # object. All fields are optional because BACnet devices vary widely in what
+  # they expose, and ReadProperty may be denied or unsupported. See ASHRAE 135.
+  BacnetServerInfo:
+    properties:
+      # From the I-Am response
+      deviceInstance: optional<integer> # 22-bit Device object instance number from I-Am
+      vendorId: optional<integer> # IANA-assigned BACnet Vendor ID from I-Am
+      vendorName: optional<string> # Human-readable vendor name (resolved from vendorId table or ReadProperty 121)
+      maxApdu: optional<integer> # Max APDU length accepted from I-Am
+      segmentationSupported: optional<string> # SEGMENTED_BOTH | SEGMENTED_TRANSMIT | SEGMENTED_RECEIVE | NO_SEGMENTATION
+      respondingAddress: optional<string> # The IP we actually heard the I-Am from (Who-Is is broadcast-capable)
+
+      # From follow-up ReadProperty requests on Device:<instance>
+      modelName: optional<string> # ReadProperty 70 (model-name)
+      firmwareRevision: optional<string> # ReadProperty 44 (firmware-revision)
+      applicationSoftwareVersion: optional<string> # ReadProperty 12 (application-software-version)
+      objectName: optional<string> # ReadProperty 77 (object-name)
+      description: optional<string> # ReadProperty 28 (description)
+      protocolVersion: optional<integer> # ReadProperty 98 (protocol-version)
+      protocolRevision: optional<integer> # ReadProperty 139 (protocol-revision)
