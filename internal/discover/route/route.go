@@ -61,22 +61,36 @@ func RunRouteDiscovery(ctx context.Context, config discoverfern.DiscoverRouteCon
 
 	var tracerouteResults []*discoverfern.TracerouteResult
 
+	// partialReport returns the report accumulated so far; used when the
+	// context is cancelled between targets.
+	partialReport := func(err error) *discoverfern.DiscoverRouteReport {
+		return &discoverfern.DiscoverRouteReport{
+			Config: &config,
+			Result: &discoverfern.DiscoverRouteResult{
+				Traceroutes: tracerouteResults,
+			},
+			Errors: append(errors, err.Error()),
+		}
+	}
+
 	// Process each target
 	for i, target := range config.Targets {
-		if i > 0 && config.Stealth != nil {
-			if delay := utils.CalculateStealthDelay(config.Stealth.Sleep, config.Stealth.Jitter); delay > 0 {
+		// Always honour cancellation between targets, even when no stealth
+		// delay is configured.
+		if i > 0 {
+			delay := time.Duration(0)
+			if config.Stealth != nil {
+				delay = utils.CalculateStealthDelay(config.Stealth.Sleep, config.Stealth.Jitter)
+			}
+			if delay > 0 {
 				log.Info("Applying stealth delay between targets", svc1log.SafeParam("delay", delay))
 				select {
 				case <-ctx.Done():
-					return &discoverfern.DiscoverRouteReport{
-						Config: &config,
-						Result: &discoverfern.DiscoverRouteResult{
-							Traceroutes: tracerouteResults,
-						},
-						Errors: append(errors, ctx.Err().Error()),
-					}, nil
+					return partialReport(ctx.Err()), ctx.Err()
 				case <-time.After(delay):
 				}
+			} else if err := ctx.Err(); err != nil {
+				return partialReport(err), err
 			}
 		}
 
