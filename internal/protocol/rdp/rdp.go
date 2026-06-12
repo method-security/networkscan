@@ -497,11 +497,20 @@ func ReadAttachUserConfirm(r io.Reader) (userID uint16, raw []byte, err error) {
 
 // WriteChannelJoinRequest sends an MCS Channel-Join-Request PDU.
 // Per T.125 §10.5: APER ChannelJoinRequest initiator(2) channelId(2).
+//
+// `userID` is the full MCS user channel ID (e.g. 1001) as returned by
+// ReadAttachUserConfirm. T.125 §10.4 encodes UserId on the wire as an
+// offset from the base value 1001, so the initiator field is written
+// as userID - 1001 to match the wire format the server expects (and to
+// stay consistent with the +1001 adjustment ReadAttachUserConfirm
+// applies on the receive side).
 func WriteChannelJoinRequest(w io.Writer, userID, channelID uint16) error {
-	// APER: ChannelJoinRequest = 0x38 + initiator (BE uint16) + channelId (BE uint16)
+	const mcsUserIDBase = 1001
+	wireInitiator := userID - mcsUserIDBase
+	// APER: ChannelJoinRequest = 0x38 + initiator (BE uint16, offset-from-1001) + channelId (BE uint16)
 	mcsJoin := []byte{
 		0x38,
-		byte(userID >> 8), byte(userID & 0xff),
+		byte(wireInitiator >> 8), byte(wireInitiator & 0xff),
 		byte(channelID >> 8), byte(channelID & 0xff),
 	}
 	payload := make([]byte, 0, len(x224DataHeader)+len(mcsJoin))
@@ -527,14 +536,20 @@ func ReadChannelJoinConfirm(r io.Reader) (acceptedChannelID uint16, raw []byte, 
 		// Could be a disconnect PDU — return the raw bytes for the caller to inspect.
 		return 0, payload, fmt.Errorf("rdp: ReadChannelJoinConfirm: unexpected PDU type 0x%02x", payload[3])
 	}
-	if len(payload) < 10 {
+	// Layout (offsets into payload, after the X.224 DT header at 0..2):
+	//   3      APER tag (0x3e)
+	//   4      result        (1 byte)
+	//   5..6   initiator     (2 bytes, uint16 BE)
+	//   7..8   requested     (2 bytes, uint16 BE)
+	//   9..10  channelId     (2 bytes, uint16 BE)  ← what we want
+	if len(payload) < 11 {
 		return 0, payload, fmt.Errorf("rdp: ReadChannelJoinConfirm: confirm too short")
 	}
 	result := payload[4]
 	if result != 0 {
 		return 0, payload, nil
 	}
-	acceptedChannelID = binary.BigEndian.Uint16(payload[8:10])
+	acceptedChannelID = binary.BigEndian.Uint16(payload[9:11])
 	return acceptedChannelID, payload, nil
 }
 
