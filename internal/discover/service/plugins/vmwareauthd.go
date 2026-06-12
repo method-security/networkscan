@@ -44,12 +44,28 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	_ = helpers.SetReadDeadlineDuration(conn, dur)
 	reader := bufio.NewReader(conn)
 
-	// Read banner — single line that starts with "220 VMware Authentication Daemon"
-	banner, err := reader.ReadString('\n')
-	if err != nil {
-		return nil, err
+	// Read and drain the full 220 greeting — authd may emit SMTP-style
+	// "220-" continuation lines before the final "220 " terminator.
+	// Without draining all of them the bufio buffer would contain leftover
+	// greeting lines that readMultiline200 would mis-parse as the CAPS reply,
+	// marking the wire dirty and skipping VERSION + SSL/TLS.
+	var bannerLines []string
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		line = strings.TrimRight(line, "\r\n")
+		if !strings.HasPrefix(line, "220") {
+			return nil, fmt.Errorf("not VMware authd: %s", line)
+		}
+		bannerLines = append(bannerLines, line)
+		if len(line) < 4 || line[3] == ' ' {
+			break // terminal line
+		}
+		// line[3] == '-': continuation line, keep reading
 	}
-	banner = strings.TrimRight(banner, "\r\n")
+	banner := bannerLines[len(bannerLines)-1]
 	if !strings.HasPrefix(banner, "220 VMware Authentication Daemon") {
 		return nil, fmt.Errorf("not VMware authd: %s", banner)
 	}
