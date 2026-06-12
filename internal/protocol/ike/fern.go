@@ -1,6 +1,8 @@
 package ike
 
 import (
+	"strings"
+
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 )
 
@@ -213,4 +215,43 @@ func appendUniqueTyped[T comparable](slice []T, item T) []T {
 		}
 	}
 	return append(slice, item)
+}
+
+// EncryptionAlgorithmToString converts a Fern IkeEncryptionAlgorithm to its
+// protocol-friendly display name (e.g., "3DES-CBC" not "THREE_DES_CBC").
+func EncryptionAlgorithmToString(e commonprotocolfern.IkeEncryptionAlgorithm) string {
+	switch e {
+	case commonprotocolfern.IkeEncryptionAlgorithmThreeDesCbc:
+		return "3DES-CBC"
+	case commonprotocolfern.IkeEncryptionAlgorithmBlowfishCbc:
+		return "Blowfish-CBC"
+	case commonprotocolfern.IkeEncryptionAlgorithmCamelliaCbc:
+		return "Camellia-CBC"
+	case commonprotocolfern.IkeEncryptionAlgorithmChacha20Poly1305:
+		return "ChaCha20-Poly1305"
+	}
+	return strings.ReplaceAll(string(e), "_", "-")
+}
+
+// HashAlgorithmToString converts a Fern IkeHashAlgorithm to its protocol display name.
+func HashAlgorithmToString(h commonprotocolfern.IkeHashAlgorithm) string {
+	return strings.ReplaceAll(string(h), "_", "-")
+}
+
+// DHGroupToString converts a Fern IkeDhGroup to its protocol display name.
+func DHGroupToString(g commonprotocolfern.IkeDhGroup) string {
+	switch g {
+	case commonprotocolfern.IkeDhGroupCurve25519:
+		return "Curve25519"
+	case commonprotocolfern.IkeDhGroupCurve448:
+		return "Curve448"
+	}
+	return strings.ReplaceAll(string(g), "_", "-")
+}
+
+// AuthMethodToString converts a Fern IkeAuthenticationMethod to its protocol display name.
+// Auth method names use underscores (e.g., "RSA_SIGNATURE") to match ToFernAuthenticationMethod
+// input strings and the rest of the IKE parsing stack.
+func AuthMethodToString(a commonprotocolfern.IkeAuthenticationMethod) string {
+	return string(a)
 }
