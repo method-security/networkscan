@@ -60,17 +60,32 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	// without this, three sequential calls of `timeout/3` each could
 	// still triple-budget when integer division flooring forces us
 	// to floor each probe's per-call timeout to 1s (e.g. timeout=1).
+	//
+	// When timeout <= 0 the caller explicitly asked for no deadline
+	// (helpers.ContextDuration short-circuits to context.WithCancel).
+	// In that case the per-probe value must propagate "no timeout"
+	// too — helpers.HasTimeout treats timeout=0 as "deadline=now"
+	// (immediate failure), so we use -1 instead.
 	hostCtx, cancel := helpers.ContextDuration(ctx, helpers.Timeout(timeout))
 	defer cancel()
 
-	// Per-probe UDP timeout. Floor at 1s because helpers.Dial treats
-	// timeout==0 as "set deadline = now" — instant failure. The outer
-	// hostCtx is what actually prevents three 1s probes from totalling
-	// 3 seconds; this value is just the upper bound on a single hung
-	// read.
-	perProbeTimeout := timeout / 3
-	if perProbeTimeout < 1 {
-		perProbeTimeout = 1
+	var perProbeTimeout int
+	if timeout > 0 {
+		// Per-probe UDP timeout. Floor at 1s because helpers.Dial
+		// treats timeout==0 as "set deadline = now" — instant failure.
+		// The outer hostCtx is what actually prevents three 1s probes
+		// from totalling 3s; this value is just the upper bound on a
+		// single hung read.
+		perProbeTimeout = timeout / 3
+		if perProbeTimeout < 1 {
+			perProbeTimeout = 1
+		}
+	} else {
+		// No-timeout requested: propagate to per-probe so reads block
+		// until data or peer close, matching the host-level intent.
+		// hostCtx has no deadline either, so cumulative wall time is
+		// unbounded but consistent with the caller's contract.
+		perProbeTimeout = -1
 	}
 
 	addr := utils.FormatHostPort(ip.String(), port)
