@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	// Generated
@@ -87,7 +86,7 @@ func enumerateRDP(ctx context.Context, target string) *rdpfern.EnumerateRdpDetai
 		result.ErrorMessage = &errMsg
 		return result
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	_ = conn.SetDeadline(time.Now().Add(deadline))
 
@@ -293,18 +292,6 @@ func inferSupportedProtocols(selectedProtocol uint32, failureCode uint32, isFail
 		flag := mapProtocolToFlags(selectedProtocol)
 		return []rdpfern.RdpProtocolFlag{flag}
 	}
-}
-
-// splitHostNoPort extracts the host from a "host:port" or bare "host" string.
-func splitHostNoPort(target string) string {
-	if !strings.Contains(target, ":") {
-		return target
-	}
-	host, _, err := net.SplitHostPort(target)
-	if err != nil {
-		return target
-	}
-	return host
 }
 
 // RunEnumerateRDP is a legacy entry point kept for direct callers. It returns
