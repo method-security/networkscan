@@ -34,7 +34,6 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	ipmiprotocol "github.com/Method-Security/networkscan/internal/protocol/ipmi"
-	"github.com/Method-Security/networkscan/utils"
 )
 
 // IPMIFingerprinter is the UDP/623 IPMI discovery plugin. See package
@@ -88,10 +87,8 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		perProbeTimeout = -1
 	}
 
-	addr := utils.FormatHostPort(ip.String(), port)
-
 	// Probe A: Get-Channel-Authentication-Capabilities (always-run).
-	caps, rawCapsResp, err := runAuthCapsProbe(hostCtx, addr, perProbeTimeout)
+	caps, rawCapsResp, err := runAuthCapsProbe(hostCtx, ip, port, perProbeTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +118,7 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	// run when the BMC advertised IPMI 2.0 support; running it against
 	// a v1.5-only BMC will just time out.
 	if caps.IPMI20Supported {
-		accepted, ok := runCipherZeroProbe(hostCtx, addr, perProbeTimeout)
+		accepted, ok := runCipherZeroProbe(hostCtx, ip, port, perProbeTimeout)
 		if ok {
 			metadata.CipherZeroAccepted = &accepted
 		}
@@ -130,7 +127,7 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	// Probe C: RAKP HMAC-SHA1 disclosure (CVE-2013-4786). Same gate as
 	// Probe B — RAKP only exists in IPMI 2.0.
 	if caps.IPMI20Supported {
-		probed, disclosures := runRAKPExistenceOracle(hostCtx, addr, perProbeTimeout, ipmiprotocol.DefaultUsernameGuesses)
+		probed, disclosures := runRAKPExistenceOracle(hostCtx, ip, port, perProbeTimeout, ipmiprotocol.DefaultUsernameGuesses)
 		if len(probed) > 0 {
 			metadata.ProbedUsernames = probed
 		}
@@ -153,8 +150,8 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 
 // runAuthCapsProbe performs Probe A. It is the gate for the whole
 // fingerprinter: failure here means the host is not IPMI.
-func runAuthCapsProbe(ctx context.Context, addr string, timeout int) (ipmiprotocol.AuthCapabilities, []byte, error) {
-	resp, err := udpExchange(ctx, addr, timeout, ipmiprotocol.BuildGetChannelAuthCapabilitiesRequest())
+func runAuthCapsProbe(ctx context.Context, ip net.IP, port int, timeout int) (ipmiprotocol.AuthCapabilities, []byte, error) {
+	resp, err := helpers.UDPExchange(ctx, ip, port, timeout, ipmiprotocol.BuildGetChannelAuthCapabilitiesRequest(), udpReadBufferSize)
 	if err != nil {
 		return ipmiprotocol.AuthCapabilities{}, nil, err
 	}
@@ -168,14 +165,14 @@ func runAuthCapsProbe(ctx context.Context, addr string, timeout int) (ipmiprotoc
 // runCipherZeroProbe performs Probe B. Returns (accepted, ok) — ok==false
 // means we never got a parseable response and the field should be
 // omitted from the report.
-func runCipherZeroProbe(ctx context.Context, addr string, timeout int) (bool, bool) {
+func runCipherZeroProbe(ctx context.Context, ip net.IP, port int, timeout int) (bool, bool) {
 	const messageTag byte = 0x00
 	consoleSID, err := ipmiprotocol.GenerateConsoleSessionID()
 	if err != nil {
 		return false, false
 	}
 	probe := ipmiprotocol.BuildCipherZeroOpenSessionRequest(messageTag, consoleSID)
-	resp, err := udpExchange(ctx, addr, timeout, probe)
+	resp, err := helpers.UDPExchange(ctx, ip, port, timeout, probe, udpReadBufferSize)
 	if err != nil {
 		return false, false
 	}
@@ -186,6 +183,12 @@ func runCipherZeroProbe(ctx context.Context, addr string, timeout int) (bool, bo
 	return openResp.Accepted(), true
 }
 
+// udpReadBufferSize bounds the maximum response payload we'll accept
+// from a BMC in a single read. IPMI 2.0 open-session + RAKP-2 success
+// responses are under 100 bytes; 1024 leaves plenty of headroom while
+// matching what the helper expects.
+const udpReadBufferSize = 1024
+
 // runRAKPExistenceOracle performs Probe C. Returns the list of
 // usernames we tried and the disclosures for any that succeeded.
 //
@@ -194,27 +197,40 @@ func runCipherZeroProbe(ctx context.Context, addr string, timeout int) (bool, bo
 // guesses × 2 UDP exchanges (open-session + RAKP-1) bounds the actual
 // wall time. Without this division Probe C could blow well past the
 // caller's per-host budget (5 guesses × 2 calls × probeBudget ≈ 10×
-// the intended ceiling). Per-call timeouts of 0 would mean "no
-// timeout" in helpers.Dial, so we clamp to a 1s floor.
-func runRAKPExistenceOracle(ctx context.Context, addr string, probeBudget int, usernames []string) ([]string, []*protocol.IpmiRakpHashDisclosure) {
+// the intended ceiling). A negative probeBudget means "no timeout"
+// (matches Detect's timeout<=0 contract) and is propagated to the
+// per-call value verbatim so RAKP reads can block — flooring it to
+// 1s would defeat the caller's intent.
+func runRAKPExistenceOracle(ctx context.Context, ip net.IP, port int, probeBudget int, usernames []string) ([]string, []*protocol.IpmiRakpHashDisclosure) {
 	probed := make([]string, 0, len(usernames))
 	disclosures := make([]*protocol.IpmiRakpHashDisclosure, 0, len(usernames))
 
-	// Per-call budget: each username burns up to 2 UDP exchanges.
-	// Integer floor; 1s minimum so we never pass 0 (which means
-	// "no timeout" to helpers.Dial).
-	denom := 2 * len(usernames)
-	if denom < 1 {
-		denom = 1
-	}
-	perCallTimeout := probeBudget / denom
-	if perCallTimeout < 1 {
-		perCallTimeout = 1
+	var perCallTimeout int
+	if probeBudget < 0 {
+		// Caller asked for no deadline at the host level — preserve
+		// that for each RAKP UDP exchange. helpers.SetDeadline
+		// short-circuits on HasTimeout=false (timeout<0), so reads
+		// block until data or peer close.
+		perCallTimeout = -1
+	} else {
+		// Per-call budget: each username burns up to 2 UDP exchanges.
+		// Integer floor; 1s minimum so we never pass 0 (which means
+		// "deadline=now" to helpers.SetDeadline).
+		denom := 2 * len(usernames)
+		if denom < 1 {
+			denom = 1
+		}
+		perCallTimeout = probeBudget / denom
+		if perCallTimeout < 1 {
+			perCallTimeout = 1
+		}
 	}
 
 	// Also wrap the loop with a context deadline tied to the overall
 	// probe budget. If individual calls overrun (BMCs do that), the
-	// outer deadline short-circuits the remaining guesses.
+	// outer deadline short-circuits the remaining guesses. When
+	// probeBudget<=0, ContextDuration returns context.WithCancel —
+	// no deadline, matching the caller's contract.
 	probeCtx, cancel := helpers.ContextDuration(ctx, helpers.Timeout(probeBudget))
 	defer cancel()
 
@@ -226,7 +242,7 @@ func runRAKPExistenceOracle(ctx context.Context, addr string, probeBudget int, u
 			break
 		}
 		probed = append(probed, username)
-		disclosure, ok := runSingleRAKP(probeCtx, addr, perCallTimeout, username)
+		disclosure, ok := runSingleRAKP(probeCtx, ip, port, perCallTimeout, username)
 		if ok {
 			disclosures = append(disclosures, disclosure)
 		}
@@ -239,7 +255,7 @@ func runRAKPExistenceOracle(ctx context.Context, addr string, probeBudget int, u
 // returned an HMAC-SHA1 blob (CVE-2013-4786). Returns ok==false for
 // any failure: bad open-session response, timed-out RAKP-1, RAKP-2
 // status != 0 (username not found), or truncated response.
-func runSingleRAKP(ctx context.Context, addr string, timeout int, username string) (*protocol.IpmiRakpHashDisclosure, bool) {
+func runSingleRAKP(ctx context.Context, ip net.IP, port int, timeout int, username string) (*protocol.IpmiRakpHashDisclosure, bool) {
 	consoleSID, err := ipmiprotocol.GenerateConsoleSessionID()
 	if err != nil {
 		return nil, false
@@ -253,7 +269,7 @@ func runSingleRAKP(ctx context.Context, addr string, timeout int, username strin
 		ipmiprotocol.AuthAlgorithmRAKPHMACSHA1,
 		ipmiprotocol.IntegrityAlgorithmHMACSHA196,
 		ipmiprotocol.ConfidentialityAlgorithmAESCBC128)
-	openResp, err := udpExchange(ctx, addr, timeout, openReq)
+	openResp, err := helpers.UDPExchange(ctx, ip, port, timeout, openReq, udpReadBufferSize)
 	if err != nil {
 		return nil, false
 	}
@@ -271,7 +287,7 @@ func runSingleRAKP(ctx context.Context, addr string, timeout int, username strin
 	if err != nil {
 		return nil, false
 	}
-	rakp2Raw, err := udpExchange(ctx, addr, timeout, rakp1)
+	rakp2Raw, err := helpers.UDPExchange(ctx, ip, port, timeout, rakp1, udpReadBufferSize)
 	if err != nil {
 		return nil, false
 	}
@@ -309,30 +325,6 @@ func runSingleRAKP(ctx context.Context, addr string, timeout int, username strin
 		HmacSha1:         hmacHex,
 		HashcatLine:      &hashcatLine,
 	}, true
-}
-
-// udpExchange sends a single UDP datagram to addr and reads one
-// response within timeout seconds. We do not share the socket across
-// probes — UDP is connectionless and each probe targets a different
-// session state, so a fresh socket is cleaner than juggling deadlines.
-func udpExchange(ctx context.Context, addr string, timeout int, probe []byte) ([]byte, error) {
-	conn, err := helpers.Dial(ctx, "udp", addr, timeout)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = conn.Close() }()
-	if err := helpers.SetDeadline(conn, timeout); err != nil {
-		return nil, err
-	}
-	if _, err := conn.Write(probe); err != nil {
-		return nil, err
-	}
-	buf := make([]byte, 1024)
-	n, err := conn.Read(buf)
-	if err != nil {
-		return nil, err
-	}
-	return buf[:n], nil
 }
 
 // authCapsToFern translates the parsed AuthCapabilities struct into
