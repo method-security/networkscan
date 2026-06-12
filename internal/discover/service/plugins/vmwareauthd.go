@@ -242,12 +242,18 @@ func parseAuthdBanner(banner string, info *protocol.VmwareAuthdServerInfo) {
 		info.DaemonVersion = &v
 	}
 	upper := strings.ToUpper(banner)
-	if strings.Contains(upper, "SSL REQUIRED") {
+	// Use word-boundary matching to distinguish the standalone "SSL REQUIRED" /
+	// "SSL RECOMMENDED" tokens from "NFCSSL RECOMMENDED" (NFC-over-SSL, a separate
+	// transport). "NFCSSL RECOMMENDED" contains "SSL RECOMMENDED" as a substring
+	// and would otherwise incorrectly trigger the SSL upgrade probe.
+	sslRequired := regexp.MustCompile(`\bSSL REQUIRED\b`).MatchString(upper)
+	sslRecommended := regexp.MustCompile(`\bSSL RECOMMENDED\b`).MatchString(upper)
+	if sslRequired {
 		t := true
 		f := false
 		info.SslRequired = &t
 		info.SslRecommended = &f
-	} else if strings.Contains(upper, "SSL RECOMMENDED") {
+	} else if sslRecommended {
 		t := true
 		f := false
 		info.SslRequired = &f
