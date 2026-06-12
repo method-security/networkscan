@@ -1,0 +1,64 @@
+types:
+  # ENUMs
+  VncSecurityType:
+    enum:
+      - NONE
+      - VNC_AUTH
+      - RA2
+      - RA2NE
+      - TIGHT
+      - ULTRA
+      - TLS
+      - VENCRYPT
+      - SASL
+      - MD5_HASH
+      - XVP
+      - MAC_ARD
+      - ARD_EXTENDED
+
+  # Common Objects
+  VncPixelFormat:
+    properties:
+      bitsPerPixel: optional<integer>
+      depth: optional<integer>
+      bigEndian: optional<boolean>
+      trueColor: optional<boolean>
+      redMax: optional<integer>
+      greenMax: optional<integer>
+      blueMax: optional<integer>
+      redShift: optional<integer>
+      greenShift: optional<integer>
+      blueShift: optional<integer>
+
+  VncEnumerateConfig:
+    properties:
+      skipScreenshot: optional<boolean>
+      portRange: optional<string>
+
+  # Report struct
+  EnumerateVncDetails:
+    properties:
+      target: string
+      port: integer
+      canConnect: optional<boolean>
+      protocolVersion: optional<string>
+      advertisedSecurityTypes: optional<list<VncSecurityType>>
+      unknownSecurityTypes: optional<list<integer>>
+      noneAuthOffered: optional<boolean>
+      noneAuthAccepted: optional<boolean>
+      vncAuthOffered: optional<boolean>
+      vencryptOffered: optional<boolean>
+      vencryptPlaintextSubtypes: optional<list<string>>
+      tlsTunneled: optional<boolean>
+      weakDeploymentFindings: optional<list<string>>
+      desktopName: optional<string>
+      framebufferWidth: optional<integer>
+      framebufferHeight: optional<integer>
+      pixelFormat: optional<VncPixelFormat>
+      screenshotPngBase64: optional<string>
+      errors: optional<list<string>>
+
+  EnumerateVncReport:
+    properties:
+      details: list<EnumerateVncDetails>
+      errors: optional<list<string>>
