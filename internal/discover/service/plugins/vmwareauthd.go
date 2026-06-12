@@ -5,6 +5,7 @@ package plugins
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/tls"
@@ -12,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"net"
 	"regexp"
 	"strings"
@@ -93,13 +95,27 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 			ack, _ := reader.ReadString('\n')
 			ack = strings.TrimSpace(ack)
 			if strings.HasPrefix(ack, "200") || ack == "" {
+				// Drain any bytes the bufio.Reader has buffered beyond the SSL
+				// ack line — if the server pipelined the ack and the first TLS
+				// record in one TCP segment, those TLS bytes are sitting in the
+				// bufio buffer and would be invisible to tls.Client(conn).
+				// Wrap conn so the TLS layer sees the buffered prefix first,
+				// then the underlying socket. Without this the handshake will
+				// fail spuriously on TLS-capable hosts.
+				tlsConn := conn
+				if buffered := reader.Buffered(); buffered > 0 {
+					prefix := make([]byte, buffered)
+					if _, peekErr := io.ReadFull(reader, prefix); peekErr == nil {
+						tlsConn = &prefixedConn{Conn: conn, prefix: bytes.NewReader(prefix)}
+					}
+				}
 				// InsecureSkipVerify is intentional: this is a fingerprinting probe.
 				// We connect specifically to capture whatever certificate the host
 				// presents — typically a self-signed ESXi vmware-vpxa cert — so a
 				// trust-chain check would defeat the purpose. The captured chain is
 				// returned for downstream analysis; we never use this TLS session
 				// for authenticated traffic.
-				tc := tls.Client(conn, makeAuthdTLSConfig(host))
+				tc := tls.Client(tlsConn, makeAuthdTLSConfig(host))
 				_ = helpers.SetDeadlineDuration(tc, dur)
 				if hsErr := tc.Handshake(); hsErr == nil {
 					tlsUsed = true
@@ -130,7 +146,10 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 		_, _ = conn.Write([]byte("QUIT\r\n"))
 	}
 
-	version := banner
+	// Display version: prefer "VMware authd <ver>" when the daemon version
+	// parsed cleanly; otherwise fall back to the short label rather than the
+	// full 220 banner string so downstream display fields stay short.
+	version := "VMware authd"
 	if info.DaemonVersion != nil && *info.DaemonVersion != "" {
 		version = "VMware authd " + *info.DaemonVersion
 	}
@@ -245,6 +264,27 @@ func parseVersionReply(line string, info *protocol.VmwareAuthdServerInfo) {
 			info.EsxiVersion = &s
 		}
 	}
+}
+
+// prefixedConn is a net.Conn that yields the bytes in `prefix` before reading
+// from the underlying Conn. We need this so tls.Client can see any bytes that
+// were buffered inside a bufio.Reader on the cleartext side before the SSL
+// upgrade — without it, pipelined "200 ack + first TLS record" payloads stall
+// the handshake.
+type prefixedConn struct {
+	net.Conn
+	prefix *bytes.Reader
+}
+
+func (p *prefixedConn) Read(b []byte) (int, error) {
+	if p.prefix != nil && p.prefix.Len() > 0 {
+		n, err := p.prefix.Read(b)
+		if err == io.EOF {
+			err = nil
+		}
+		return n, err
+	}
+	return p.Conn.Read(b)
 }
 
 // makeAuthdTLSConfig returns a TLS client config that intentionally skips
