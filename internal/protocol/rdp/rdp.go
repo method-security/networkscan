@@ -16,12 +16,12 @@ import (
 
 // Protocol flag constants per MS-RDPBCGR §2.2.1.1.1 rdpNegReq / §2.2.1.2.1 rdpNegRsp.
 const (
-	ProtocolRDP              uint32 = 0x00000000
-	ProtocolSSL              uint32 = 0x00000001
-	ProtocolHybrid           uint32 = 0x00000002
-	ProtocolRDSTLS           uint32 = 0x00000004
-	ProtocolHybridEx         uint32 = 0x00000008
-	ProtocolHybridRecLimit   uint32 = 0x00000010
+	ProtocolRDP            uint32 = 0x00000000
+	ProtocolSSL            uint32 = 0x00000001
+	ProtocolHybrid         uint32 = 0x00000002
+	ProtocolRDSTLS         uint32 = 0x00000004
+	ProtocolHybridEx       uint32 = 0x00000008
+	ProtocolHybridRecLimit uint32 = 0x00000010
 )
 
 // All protocols requested in a normal negotiation request.
@@ -36,12 +36,12 @@ const (
 
 // Failure codes per MS-RDPBCGR §2.2.1.2.2 rdpNegFailure.
 const (
-	FailureSSLRequiredByServer              uint32 = 0x00000001
-	FailureSSLNotAllowedByServer            uint32 = 0x00000002
-	FailureSSLCertNotOnServer               uint32 = 0x00000003
-	FailureInconsistentFlags                uint32 = 0x00000004
-	FailureHybridRequiredByServer           uint32 = 0x00000005
-	FailureSSLWithUserAuthRequiredByServer  uint32 = 0x00000006
+	FailureSSLRequiredByServer             uint32 = 0x00000001
+	FailureSSLNotAllowedByServer           uint32 = 0x00000002
+	FailureSSLCertNotOnServer              uint32 = 0x00000003
+	FailureInconsistentFlags               uint32 = 0x00000004
+	FailureHybridRequiredByServer          uint32 = 0x00000005
+	FailureSSLWithUserAuthRequiredByServer uint32 = 0x00000006
 )
 
 // ConnectionConfirm is the result of parsing an X.224 Connection Confirm PDU.
@@ -124,7 +124,7 @@ func WriteX224ConnectionRequest(w io.Writer, cookie string, requestedFlags uint3
 	// rdpNegReq (8 bytes): type, flags, length (LE), requestedProtocols (LE).
 	negReq := []byte{
 		typeRdpNegReq,
-		0x00, // flags
+		0x00,       // flags
 		0x08, 0x00, // length LE
 		byte(requestedFlags), byte(requestedFlags >> 8), byte(requestedFlags >> 16), byte(requestedFlags >> 24),
 	}
@@ -140,8 +140,8 @@ func WriteX224ConnectionRequest(w io.Writer, cookie string, requestedFlags uint3
 		byte(x224BodyLen), // LI
 		0xe0,              // Connection Request
 		0x00, 0x00,        // DST-REF
-		0x00, 0x00,        // SRC-REF
-		0x00,              // CLASS
+		0x00, 0x00, // SRC-REF
+		0x00, // CLASS
 	}
 	x224 = append(x224, x224Header...)
 	x224 = append(x224, cookieBytes...)
@@ -201,19 +201,21 @@ func ReadX224ConnectionConfirm(r io.Reader) (*ConnectionConfirm, error) {
 // outer TPKT + X.224 DT headers are added by WriteMCSConnectInitial.
 //
 // The structure is (per T.125 §8.2 and T.124):
-//   BER SEQUENCE MCSConnectInitial:
-//     callingDomainSelector (OCTET STRING, len=1, value=0x01)
-//     calledDomainSelector  (OCTET STRING, len=1, value=0x01)
-//     upwardFlag            (BOOLEAN, TRUE)
-//     targetParameters      (DomainParameters)
-//     minimumParameters     (DomainParameters)
-//     maximumParameters     (DomainParameters)
-//     userData              (OCTET STRING containing GCC ConferenceCreateRequest)
+//
+//	BER SEQUENCE MCSConnectInitial:
+//	  callingDomainSelector (OCTET STRING, len=1, value=0x01)
+//	  calledDomainSelector  (OCTET STRING, len=1, value=0x01)
+//	  upwardFlag            (BOOLEAN, TRUE)
+//	  targetParameters      (DomainParameters)
+//	  minimumParameters     (DomainParameters)
+//	  maximumParameters     (DomainParameters)
+//	  userData              (OCTET STRING containing GCC ConferenceCreateRequest)
 //
 // The GCC Conference Create Request user data in turn encodes:
-//   Core data (TS_UD_CS_CORE)
-//   Security data (TS_UD_CS_SEC)
-//   Network data (TS_UD_CS_NET) — includes the channel list with MS_T120
+//
+//	Core data (TS_UD_CS_CORE)
+//	Security data (TS_UD_CS_SEC)
+//	Network data (TS_UD_CS_NET) — includes the channel list with MS_T120
 var mcsConnectInitialData = []byte{
 	// MCS Connect-Initial, BER encoded (outer application tag 0x7f, 0x65)
 	// Per T.125 §8.2 MCSConnectInitial ::= [APPLICATION 101] IMPLICIT SEQUENCE
@@ -372,9 +374,10 @@ var mcsConnectInitialData = []byte{
 }
 
 // X224DataHeader is the 3-byte X.224 Data TPDU header:
-//   LI=2 (length indicator, not counting LI itself)
-//   PDU type 0xf0 (Data)
-//   EOT=0x80 (end of transmission)
+//
+//	LI=2 (length indicator, not counting LI itself)
+//	PDU type 0xf0 (Data)
+//	EOT=0x80 (end of transmission)
 var x224DataHeader = []byte{0x02, 0xf0, 0x80}
 
 // WriteMCSConnectInitial writes an MCS Connect-Initial PDU with a canned GCC
@@ -441,7 +444,7 @@ func WriteErectDomainRequest(w io.Writer) error {
 	// MCS APER-encoded ErectDomainRequest = 0x04 0x01 0x00 0x01 0x00
 	// This is the standard 5-byte blob from all public RDP PoCs.
 	mcsErect := []byte{
-		0x04, // MCS APER: ErectDomainRequest (tag=1, shifted left by 2)
+		0x04,       // MCS APER: ErectDomainRequest (tag=1, shifted left by 2)
 		0x01, 0x00, // subHeight BER INTEGER 0
 		0x01, 0x00, // subInterval BER INTEGER 0
 	}
@@ -464,7 +467,9 @@ func WriteAttachUserRequest(w io.Writer) error {
 
 // ReadAttachUserConfirm reads an MCS Attach-User-Confirm and extracts the userID.
 // Per T.125 §10.4:
-//   APER AttachUserConfirm: 0x2e result(1) initiator(2)
+//
+//	APER AttachUserConfirm: 0x2e result(1) initiator(2)
+//
 // The initiator (userID) is a uint16 with a base offset of 1001.
 func ReadAttachUserConfirm(r io.Reader) (userID uint16, raw []byte, err error) {
 	payload, err := ReadTPKTPayload(r)

@@ -18,19 +18,30 @@ import (
 	"time"
 
 	// Generated
+	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	rdpfern "github.com/Method-Security/networkscan/generated/go/enumerate/rdp"
+
 	// Internal
 	rdpproto "github.com/Method-Security/networkscan/internal/protocol/rdp"
-
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 const defaultRDPPort = 3389
 
-// EnumerateRDP performs a pre-auth RDP fingerprint against the given target (host:port).
-// It returns a populated EnumerateRdpTargetResult.
-func EnumerateRDP(ctx context.Context, target string, timeoutSec int) *rdpfern.EnumerateRdpTargetResult {
+// LibraryEnumerateRDP implements NetworkApplicationLibrary for RDP enumeration.
+type LibraryEnumerateRDP struct{}
+
+// EnumerateTarget implements NetworkApplicationLibrary and performs pre-auth RDP
+// fingerprinting against a single target (host:port or bare host).
+func (l *LibraryEnumerateRDP) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
+	detail := enumerateRDP(ctx, target)
+	return &enumeratefern.EnumerateServiceDetails{EnumerateRdpDetails: detail}, nil
+}
+
+// enumerateRDP performs a pre-auth RDP fingerprint against the given target (host:port).
+// It returns a populated EnumerateRdpDetails.
+func enumerateRDP(ctx context.Context, target string) *rdpfern.EnumerateRdpDetails {
 	log := svc1log.FromContext(ctx)
 	log.Info("Starting RDP enumeration", svc1log.SafeParam("target", target))
 
@@ -43,31 +54,36 @@ func EnumerateRDP(ctx context.Context, target string, timeoutSec int) *rdpfern.E
 	if err != nil {
 		errMsg := fmt.Sprintf("invalid port in target '%s': %v", target, err)
 		success := false
-		return &rdpfern.EnumerateRdpTargetResult{
+		return &rdpfern.EnumerateRdpDetails{
 			Target:       target,
-			Port:         defaultRDPPort,
 			Success:      success,
 			ErrorMessage: &errMsg,
 		}
 	}
 
-	result := &rdpfern.EnumerateRdpTargetResult{
-		Target:                 fmt.Sprintf("%s:%d", host, port),
-		Port:                   port,
-		RequestedProtocolFlags: int(rdpproto.RequestAllProtocols),
+	// Use net.JoinHostPort to correctly handle IPv6 addresses
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+
+	requestedFlags := int(rdpproto.RequestAllProtocols)
+	result := &rdpfern.EnumerateRdpDetails{
+		Target:                 addr,
+		Success:                false,
+		RequestedProtocolFlags: &requestedFlags,
 	}
 
-	// Connect TCP with timeout.
-	deadline := time.Duration(timeoutSec) * time.Second
-	dialer := &net.Dialer{}
-	connCtx, connCancel := context.WithTimeout(ctx, deadline)
-	defer connCancel()
+	// Connect TCP with timeout from context deadline (set by engine) or fallback.
+	deadline := 30 * time.Second
+	if dl, ok := ctx.Deadline(); ok {
+		deadline = time.Until(dl)
+		if deadline <= 0 {
+			deadline = 5 * time.Second
+		}
+	}
 
-	conn, err := dialer.DialContext(connCtx, "tcp", fmt.Sprintf("%s:%d", host, port))
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		errMsg := fmt.Sprintf("TCP connection failed: %v", err)
-		success := false
-		result.Success = success
 		result.ErrorMessage = &errMsg
 		return result
 	}
@@ -79,8 +95,6 @@ func EnumerateRDP(ctx context.Context, target string, timeoutSec int) *rdpfern.E
 	const cookie = "test"
 	if err := rdpproto.WriteX224ConnectionRequest(conn, cookie, rdpproto.RequestAllProtocols); err != nil {
 		errMsg := fmt.Sprintf("X.224 CR send failed: %v", err)
-		success := false
-		result.Success = success
 		result.ErrorMessage = &errMsg
 		return result
 	}
@@ -89,28 +103,35 @@ func EnumerateRDP(ctx context.Context, target string, timeoutSec int) *rdpfern.E
 	cc, err := rdpproto.ReadX224ConnectionConfirm(conn)
 	if err != nil {
 		errMsg := fmt.Sprintf("X.224 CC read failed: %v", err)
-		success := false
-		result.Success = success
 		result.ErrorMessage = &errMsg
 		return result
 	}
 
 	// Mark as success — we got a well-formed response.
-	success := true
-	result.Success = success
+	result.Success = true
 
 	// Parse negotiation response.
 	if cc.NegResponseReceived {
 		selected := mapProtocolToFlags(cc.SelectedProtocol)
 		result.SelectedProtocol = &selected
-		result.SelectedProtocolFlags = int(cc.SelectedProtocol)
-		result.SupportedProtocols = parseSupportedProtocols(rdpproto.RequestAllProtocols)
+		selectedFlags := int(cc.SelectedProtocol)
+		result.SelectedProtocolFlags = &selectedFlags
+		// Infer supported protocols from what the server actually selected
+		supported := inferSupportedProtocols(cc.SelectedProtocol, cc.FailureCode, false)
+		if len(supported) > 0 {
+			result.SupportedProtocols = supported
+		}
 	} else if cc.NegFailureReceived {
-		// Failure code — infer NLA required if HYBRID_REQUIRED_BY_SERVER.
+		// Failure code — infer supported protocols from failure and set nlaRequired flag.
 		failCode := mapFailureCode(cc.FailureCode)
 		result.NegFailureCode = &failCode
+		supported := inferSupportedProtocols(0, cc.FailureCode, true)
+		if len(supported) > 0 {
+			result.SupportedProtocols = supported
+		}
 		if cc.FailureCode == rdpproto.FailureHybridRequiredByServer {
-			result.NlaRequired = true
+			nlaRequired := true
+			result.NlaRequired = &nlaRequired
 		}
 	}
 
@@ -127,44 +148,9 @@ func EnumerateRDP(ctx context.Context, target string, timeoutSec int) *rdpfern.E
 	return result
 }
 
-// RunEnumerateRDP performs RDP enumeration for multiple targets and returns a report.
-func RunEnumerateRDP(ctx context.Context, targets []string, timeoutSec int) *rdpfern.EnumerateRdpServiceReport {
-	log := svc1log.FromContext(ctx)
-
-	timeout := timeoutSec
-	if timeout == 0 {
-		timeout = 30
-	}
-
-	config := &rdpfern.RdpEnumerateConfig{
-		Timeout: &timeout,
-	}
-
-	var results []*rdpfern.EnumerateRdpTargetResult
-	var errors []string
-
-	for _, target := range targets {
-		targetCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
-		r := EnumerateRDP(targetCtx, target, timeout)
-		cancel()
-		results = append(results, r)
-		if r.ErrorMessage != nil {
-			log.Debug("RDP enumeration error",
-				svc1log.SafeParam("target", target),
-				svc1log.SafeParam("error", *r.ErrorMessage))
-		}
-	}
-
-	return &rdpfern.EnumerateRdpServiceReport{
-		Config:  config,
-		Results: results,
-		Errors:  errors,
-	}
-}
-
 // upgradeToTLS performs a TLS client handshake on an existing TCP connection
 // and returns the server certificate information.
-func upgradeToTLS(conn net.Conn, serverName string) (*rdpfern.TlsCertificate, error) {
+func upgradeToTLS(conn net.Conn, serverName string) (*rdpfern.RdpTlsCertificate, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: true, //nolint:gosec
 		ServerName:         serverName,
@@ -183,8 +169,8 @@ func upgradeToTLS(conn net.Conn, serverName string) (*rdpfern.TlsCertificate, er
 	return buildTLSCertificate(cert), nil
 }
 
-// buildTLSCertificate converts an x509.Certificate to a Fern TlsCertificate.
-func buildTLSCertificate(cert *x509.Certificate) *rdpfern.TlsCertificate {
+// buildTLSCertificate converts an x509.Certificate to a Fern RdpTlsCertificate.
+func buildTLSCertificate(cert *x509.Certificate) *rdpfern.RdpTlsCertificate {
 	selfSigned := cert.Issuer.String() == cert.Subject.String()
 
 	var sans []string
@@ -198,7 +184,7 @@ func buildTLSCertificate(cert *x509.Certificate) *rdpfern.TlsCertificate {
 		sans = append(sans, email)
 	}
 
-	return &rdpfern.TlsCertificate{
+	return &rdpfern.RdpTlsCertificate{
 		Subject:    cert.Subject.String(),
 		Issuer:     cert.Issuer.String(),
 		NotBefore:  cert.NotBefore.UTC().Format(time.RFC3339),
@@ -208,7 +194,13 @@ func buildTLSCertificate(cert *x509.Certificate) *rdpfern.TlsCertificate {
 	}
 }
 
-// mapProtocolToFlags converts a raw protocol uint32 to the Fern RdpProtocolFlag enum.
+// MapProtocolToFlags converts a raw protocol uint32 to the Fern RdpProtocolFlag enum.
+// Exported so it can be used by the bluekeep pentest package.
+func MapProtocolToFlags(proto uint32) rdpfern.RdpProtocolFlag {
+	return mapProtocolToFlags(proto)
+}
+
+// mapProtocolToFlags is the internal implementation.
 func mapProtocolToFlags(proto uint32) rdpfern.RdpProtocolFlag {
 	switch proto {
 	case rdpproto.ProtocolRDP:
@@ -248,22 +240,52 @@ func mapFailureCode(code uint32) rdpfern.RdpNegFailureCode {
 	}
 }
 
-// parseSupportedProtocols returns the list of protocols from a bitmap of requested flags.
-func parseSupportedProtocols(bitmap uint32) []rdpfern.RdpProtocolFlag {
-	var flags []rdpfern.RdpProtocolFlag
-	if bitmap&rdpproto.ProtocolSSL != 0 {
-		flags = append(flags, rdpfern.RdpProtocolFlagProtocolSsl)
+// inferSupportedProtocols infers what protocols the server supports from the
+// server's actual response rather than echoing the requested bitmap.
+//
+// Logic:
+//   - If negFailure and HYBRID_REQUIRED_BY_SERVER → server only supports HYBRID (NLA).
+//   - If negFailure and SSL_REQUIRED_BY_SERVER → server supports SSL family (SSL+HYBRID+HYBRID_EX).
+//   - If negRsp with selectedProtocol=HYBRID → server supports at least HYBRID (probably HYBRID_EX too).
+//   - If negRsp with selectedProtocol=SSL → server supports SSL.
+//   - If negRsp with selectedProtocol=RDP → server supports RDP.
+//   - Otherwise emit the selected protocol as a single member.
+func inferSupportedProtocols(selectedProtocol uint32, failureCode uint32, isFailure bool) []rdpfern.RdpProtocolFlag {
+	if isFailure {
+		switch failureCode {
+		case rdpproto.FailureHybridRequiredByServer:
+			return []rdpfern.RdpProtocolFlag{rdpfern.RdpProtocolFlagProtocolHybrid}
+		case rdpproto.FailureSSLRequiredByServer, rdpproto.FailureSSLWithUserAuthRequiredByServer:
+			return []rdpfern.RdpProtocolFlag{
+				rdpfern.RdpProtocolFlagProtocolSsl,
+				rdpfern.RdpProtocolFlagProtocolHybrid,
+				rdpfern.RdpProtocolFlagProtocolHybridEx,
+			}
+		default:
+			return nil
+		}
 	}
-	if bitmap&rdpproto.ProtocolHybrid != 0 {
-		flags = append(flags, rdpfern.RdpProtocolFlagProtocolHybrid)
+
+	// Negotiation success — infer from selected protocol
+	switch selectedProtocol {
+	case rdpproto.ProtocolHybrid:
+		return []rdpfern.RdpProtocolFlag{
+			rdpfern.RdpProtocolFlagProtocolHybrid,
+			rdpfern.RdpProtocolFlagProtocolHybridEx,
+		}
+	case rdpproto.ProtocolHybridEx:
+		return []rdpfern.RdpProtocolFlag{
+			rdpfern.RdpProtocolFlagProtocolHybrid,
+			rdpfern.RdpProtocolFlagProtocolHybridEx,
+		}
+	case rdpproto.ProtocolSSL:
+		return []rdpfern.RdpProtocolFlag{rdpfern.RdpProtocolFlagProtocolSsl}
+	case rdpproto.ProtocolRDP:
+		return []rdpfern.RdpProtocolFlag{rdpfern.RdpProtocolFlagProtocolRdp}
+	default:
+		flag := mapProtocolToFlags(selectedProtocol)
+		return []rdpfern.RdpProtocolFlag{flag}
 	}
-	if bitmap&rdpproto.ProtocolRDSTLS != 0 {
-		flags = append(flags, rdpfern.RdpProtocolFlagProtocolRdstls)
-	}
-	if bitmap&rdpproto.ProtocolHybridEx != 0 {
-		flags = append(flags, rdpfern.RdpProtocolFlagProtocolHybridEx)
-	}
-	return flags
 }
 
 // splitHostNoPort extracts the host from a "host:port" or bare "host" string.
@@ -276,4 +298,13 @@ func splitHostNoPort(target string) string {
 		return target
 	}
 	return host
+}
+
+// RunEnumerateRDP is a legacy entry point kept for direct callers. It returns
+// an EnumerateRdpDetails for a single target.
+func RunEnumerateRDP(ctx context.Context, target string, timeoutSec int) *rdpfern.EnumerateRdpDetails {
+	// Create a timeout context from the timeout parameter.
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
+	defer cancel()
+	return enumerateRDP(timeoutCtx, target)
 }

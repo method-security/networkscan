@@ -22,7 +22,7 @@ types:
       - SSL_WITH_USER_AUTH_REQUIRED_BY_SERVER
 
   # TLS certificate information
-  TlsCertificate:
+  RdpTlsCertificate:
     properties:
       subject: string
       issuer: string
@@ -31,30 +31,17 @@ types:
       sans: list<string>
       selfSigned: boolean
 
-  # Per-target RDP enumeration result
-  EnumerateRdpTargetResult:
+  # Main enumeration details — mirrors EnumerateImapDetails shape
+  EnumerateRdpDetails:
     properties:
       target: string
-      port: integer
       success: boolean
       errorMessage: optional<string>
-      supportedProtocols: list<RdpProtocolFlag>
+      supportedProtocols: optional<list<RdpProtocolFlag>>
       selectedProtocol: optional<RdpProtocolFlag>
-      nlaRequired: boolean
-      requestedProtocolFlags: integer
-      selectedProtocolFlags: integer
+      nlaRequired: optional<boolean>
+      requestedProtocolFlags: optional<integer>
+      selectedProtocolFlags: optional<integer>
       negFailureCode: optional<RdpNegFailureCode>
-      certificate: optional<TlsCertificate>
+      certificate: optional<RdpTlsCertificate>
       cookieEcho: optional<string>
-
-  # Config for RDP enumerate operations
-  RdpEnumerateConfig:
-    properties:
-      timeout: optional<integer>
-
-  # Report wrapping per-target results
-  EnumerateRdpServiceReport:
-    properties:
-      config: RdpEnumerateConfig
-      results: list<EnumerateRdpTargetResult>
-      errors: optional<list<string>>
