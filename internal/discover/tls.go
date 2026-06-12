@@ -727,14 +727,18 @@ func buildTLSRecord(contentType, versionMajor, versionMinor byte, payload []byte
 }
 
 // sendJARMProbe opens a TCP connection, sends payload, and reads one response buffer.
-// Returns nil on any error. This mirrors the probeSSLv3 transport pattern.
+// Returns nil on any error. The entire probe (dial + write + read) is bounded by a
+// single absolute deadline derived from timeout, so dial and read share one budget
+// rather than each independently consuming the full timeout.
 func sendJARMProbe(target string, payload []byte, timeout time.Duration) []byte {
-	conn, err := net.DialTimeout("tcp", target, timeout)
+	deadline := time.Now().Add(timeout)
+	dialer := net.Dialer{Deadline: deadline}
+	conn, err := dialer.Dial("tcp", target)
 	if err != nil {
 		return nil
 	}
 	defer func() { _ = conn.Close() }()
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	_ = conn.SetDeadline(deadline)
 	if _, err := conn.Write(payload); err != nil {
 		return nil
 	}
@@ -743,8 +747,20 @@ func sendJARMProbe(target string, payload []byte, timeout time.Duration) []byte 
 	return resp[:n]
 }
 
+// minJARMProbeTimeout is the lower bound applied to each JARM probe's budget.
+// Without a floor, --timeout values smaller than the probe count would
+// integer-divide to zero, which net.Dialer treats as "no deadline" and lets
+// probes run unbounded. 500ms is short enough that 10 sequential probes
+// against an unresponsive target still complete in <5s.
+const minJARMProbeTimeout = 500 * time.Millisecond
+
 // computeJARM sends the 10 standard JARM probes and returns the resulting 62-character hash.
 // Returns jarm.ZeroHash if the target is unreachable or does not respond to any probe.
+//
+// Per-probe budget is max(timeout/probeCount, minJARMProbeTimeout). The floor protects
+// against tiny --timeout values that would otherwise yield a 0 budget; for the default
+// --timeout 30s each probe gets the expected 3s. Inside sendJARMProbe a single absolute
+// deadline covers dial + write + read so each probe consumes its budget once, not twice.
 func computeJARM(target string, timeout time.Duration) string {
 	host, portStr, err := net.SplitHostPort(target)
 	if err != nil {
@@ -756,9 +772,10 @@ func computeJARM(target string, timeout time.Duration) string {
 	}
 	probes := jarm.GetProbes(host, port)
 	rawResults := make([]string, 0, len(probes))
-	// Cap per-probe timeout so all 10 sequential probes together stay within the
-	// caller's configured timeout. With --timeout 30 (default) each probe gets 3s.
-	perProbeTimeout := timeout / 10
+	perProbeTimeout := timeout / time.Duration(len(probes))
+	if perProbeTimeout < minJARMProbeTimeout {
+		perProbeTimeout = minJARMProbeTimeout
+	}
 	for _, probe := range probes {
 		payload := jarm.BuildProbe(probe)
 		resp := sendJARMProbe(target, payload, perProbeTimeout)
