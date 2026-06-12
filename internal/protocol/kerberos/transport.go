@@ -43,15 +43,16 @@ func SendTGSReqToKDC(host string, port int, tgsReq messages.TGSReq, timeout time
 		return nil, nil, nil, err
 	}
 
-	_, _, krbErr, err = discriminateResponse(raw)
-	if err != nil {
-		return raw, nil, nil, err
-	}
-	if krbErr != nil {
-		return raw, nil, krbErr, nil
+	if len(raw) == 0 {
+		return raw, nil, nil, fmt.Errorf("empty response from KDC")
 	}
 
-	// Parse TGS-REP
+	// Try KRB-ERROR first, then TGS-REP (a TGS-REQ never produces an AS-REP).
+	krbErrMsg := new(messages.KRBError)
+	if unmarshalErr := krbErrMsg.Unmarshal(raw); unmarshalErr == nil {
+		return raw, nil, krbErrMsg, nil
+	}
+
 	rep := new(messages.TGSRep)
 	if unmarshalErr := rep.Unmarshal(raw); unmarshalErr != nil {
 		return raw, nil, nil, fmt.Errorf("failed to unmarshal TGS-REP: %w", unmarshalErr)
