@@ -91,19 +91,19 @@ func (l *LibraryEnumerateIPMI) EnumerateTarget(ctx context.Context, target strin
 		ip = resolved[0]
 	}
 
-	// Per-probe UDP read timeout. Derive from the surrounding context's
-	// deadline (the enumerate engine creates a per-target ctx with the
-	// CLI's --timeout) so a slow BMC can't pin the whole budget on one
-	// probe. Three sequential probes, so /3.
-	//
-	// helpers.UDPExchange treats timeout==0 as "deadline=now" (instant
-	// failure), so we floor to 1s. A negative value means "no
-	// deadline" — propagate that if the caller asked for it.
-	perProbeTimeout := perProbeTimeoutFromCtx(ctx)
-
 	// Probe A: Get-Channel-Authentication-Capabilities. Gate of the
 	// whole pipeline — failure here means the host is not IPMI.
-	caps, rawCapsResp, capsErr := runAuthCapsProbe(ctx, ip, port, perProbeTimeout)
+	//
+	// budgetFor() re-derives the per-probe UDP read timeout from the
+	// context's REMAINING deadline divided by the number of probes
+	// still to come. Recomputing per probe (vs caching a static
+	// timeout/3) means a fast Probe A leaves more budget for the
+	// heavier Probe C — important because RAKP is the per-username
+	// loop that actually needs the bulk of the wall-clock when BMCs
+	// are slow. With three probes ahead, this is timeout/3; after A
+	// finishes in 200ms with 30s on the clock, B gets ~15s and C gets
+	// the rest.
+	caps, rawCapsResp, capsErr := runAuthCapsProbe(ctx, ip, port, budgetFor(ctx, 3))
 	if capsErr != nil {
 		errors = append(errors, fmt.Sprintf("auth-caps probe failed: %v", capsErr))
 		return &enumeratefern.EnumerateServiceDetails{EnumerateIpmiDetails: details}, errors
@@ -122,14 +122,18 @@ func (l *LibraryEnumerateIPMI) EnumerateTarget(ctx context.Context, target strin
 		return &enumeratefern.EnumerateServiceDetails{EnumerateIpmiDetails: details}, errors
 	}
 
-	// Probe B: Cipher Zero Open Session Request (CVE-2013-4031).
-	accepted, ok := runCipherZeroProbe(ctx, ip, port, perProbeTimeout)
+	// Probe B: Cipher Zero Open Session Request (CVE-2013-4031). Two
+	// probes left (B, C), so we get half the remaining budget.
+	accepted, ok := runCipherZeroProbe(ctx, ip, port, budgetFor(ctx, 2))
 	if ok {
 		details.CipherZeroAccepted = &accepted
 	}
 
-	// Probe C: RAKP HMAC-SHA1 disclosure (CVE-2013-4786).
-	probed, disclosures := runRAKPExistenceOracle(ctx, ip, port, perProbeTimeout, ipmiprotocol.DefaultUsernameGuesses)
+	// Probe C: RAKP HMAC-SHA1 disclosure (CVE-2013-4786). Last probe,
+	// so it gets ALL the remaining budget — slow BMCs that ate into
+	// A/B's slice still have the operator's full --timeout available
+	// to enumerate the username list.
+	probed, disclosures := runRAKPExistenceOracle(ctx, ip, port, budgetFor(ctx, 1), ipmiprotocol.DefaultUsernameGuesses)
 	if len(probed) > 0 {
 		details.ProbedUsernames = probed
 	}
@@ -140,15 +144,17 @@ func (l *LibraryEnumerateIPMI) EnumerateTarget(ctx context.Context, target strin
 	return &enumeratefern.EnumerateServiceDetails{EnumerateIpmiDetails: details}, errors
 }
 
-// perProbeTimeoutFromCtx derives the per-UDP-call timeout (in seconds)
-// from the context's deadline. The engine sets a per-target deadline
-// of config.Timeout seconds; we split that three ways across the
-// auth-caps / cipher-zero / RAKP probes.
+// budgetFor returns the per-call UDP read timeout (in seconds) for one
+// of `remainingProbes` probes that still need to run before ctx's
+// deadline. Splitting the *current* remaining deadline rather than
+// caching the initial slice means a fast Probe A (say 200ms of the
+// initial 30s/3 budget) hands the unused ~9.8s back to whichever probe
+// runs next, instead of leaving it on the table.
 //
 // Returns -1 when ctx has no deadline (caller asked for no timeout).
 // Returns 1 (the floor) when integer division would underflow to 0,
 // since helpers.UDPExchange treats 0 as "deadline=now".
-func perProbeTimeoutFromCtx(ctx context.Context) int {
+func budgetFor(ctx context.Context, remainingProbes int) int {
 	deadline, ok := ctx.Deadline()
 	if !ok {
 		return -1
@@ -157,7 +163,10 @@ func perProbeTimeoutFromCtx(ctx context.Context) int {
 	if remaining <= 0 {
 		return 1
 	}
-	perProbe := int(remaining.Seconds()) / 3
+	if remainingProbes < 1 {
+		remainingProbes = 1
+	}
+	perProbe := int(remaining.Seconds()) / remainingProbes
 	if perProbe < 1 {
 		perProbe = 1
 	}
