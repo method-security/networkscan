@@ -86,6 +86,9 @@ types:
       issuerCommonName: optional<string> # Can be empty
       subjectCommonName: optional<string> # Can be empty
       subjectAlternativeNames: optional<list<string>> # Can be empty
+      ja4xFingerprint:
+        type: optional<string>
+        docs: JA4X X.509 certificate fingerprint (SHA-256 of issuer, subject, and public key info, each truncated to 12 hex chars)
   TlsVersionSupport:
     properties:
       version: TlsVersion
@@ -100,6 +103,12 @@ types:
       versionSupport: list<TlsVersionSupport>
       supportedEllipticCurves: optional<list<string>>
       certificates: list<Certificate>
+      ja4sFingerprint:
+        type: optional<string>
+        docs: JA4S server-side TLS fingerprint (version, extension count, ALPN, cipher, and extension hash)
+      jarmFingerprint:
+        type: optional<string>
+        docs: JARM 62-character fingerprint produced by 10 customised TLS ClientHello probes
   TlsSummary:
     properties:
       socket: string
@@ -114,6 +123,15 @@ types:
     properties:
       targets: list<string>
       timeout: integer
+      ja4s:
+        type: optional<boolean>
+        docs: When true, compute the JA4S server-side TLS fingerprint for each target
+      jarm:
+        type: optional<boolean>
+        docs: When true, compute the JARM fingerprint (10 sequential TLS probes) for each target; adds ~1-5s per target
+      ja4x:
+        type: optional<boolean>
+        docs: When true, compute the JA4X X.509 certificate fingerprint for each certificate
   # Report Types
   DiscoverTlsReport:
     properties:
