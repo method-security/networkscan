@@ -120,26 +120,40 @@ func (l *LibraryEnumerateVNC) EnumerateTarget(ctx context.Context, target string
 				errors = append(errors, fmt.Sprintf("port %d: %s", p, e))
 			}
 		}
-		// Early-exit on first RFB-speaking listener — ProtocolVersion is only
-		// set after the 12-byte banner validates as "RFB xxx.yyy\n", so this is
-		// a stronger success signal than canConnect (TCP-level only).
-		if detail.ProtocolVersion != nil {
+		// Early-exit on the first port that both spoke RFB at the banner AND
+		// returned a security-type list. ProtocolVersion alone is not enough:
+		// a banner-only stub (parse error after the version line, a server
+		// that closes after sending "RFB 003.008\n", or one that returns 0
+		// security types with no reason) on an earlier port would otherwise
+		// mask a healthy VNC instance on a later display port.
+		if detail.ProtocolVersion != nil &&
+			(len(detail.AdvertisedSecurityTypes) > 0 || len(detail.UnknownSecurityTypes) > 0) {
 			break
 		}
 	}
 
-	// Return the first detail that actually spoke RFB (not just any port that
-	// answered TCP — a sibling service on 5901 with no RFB banner would
-	// otherwise mask a real VNC listener on 5902). Fall back to canConnect, and
-	// only then to the last attempt.
+	// Return the first detail that actually completed the RFB handshake far
+	// enough to enumerate security types. Walk a graceful fallback chain so a
+	// sibling service on 5901 with no RFB banner doesn't mask a real VNC
+	// listener on 5902, but we still surface SOMETHING when the entire sweep
+	// fell short of full handshake.
 	if len(allDetails) == 1 {
 		return &enumeratefern.EnumerateServiceDetails{EnumerateVncDetails: allDetails[0]}, errors
 	}
+	// (1) Best: RFB version parsed AND security types enumerated.
+	for _, d := range allDetails {
+		if d.ProtocolVersion != nil &&
+			(len(d.AdvertisedSecurityTypes) > 0 || len(d.UnknownSecurityTypes) > 0) {
+			return &enumeratefern.EnumerateServiceDetails{EnumerateVncDetails: d}, errors
+		}
+	}
+	// (2) Banner-only: RFB version parsed but security negotiation failed.
 	for _, d := range allDetails {
 		if d.ProtocolVersion != nil {
 			return &enumeratefern.EnumerateServiceDetails{EnumerateVncDetails: d}, errors
 		}
 	}
+	// (3) TCP-only: anything that accepted a connection.
 	for _, d := range allDetails {
 		if d.CanConnect != nil && *d.CanConnect {
 			return &enumeratefern.EnumerateServiceDetails{EnumerateVncDetails: d}, errors
@@ -282,15 +296,24 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int, s
 		}
 
 		if numTypes == 0 {
-			// Server sent 0 types followed by a reason string (failure)
+			// RFB 3.7+: 0 advertised types is a connection-failed signal
+			// followed by uint32 reason length + reason string. Mirror the
+			// RFB 3.3 path's shape — every wire outcome (empty reason,
+			// oversized reason, reason-read error, length-read error) MUST
+			// append a description to errs, otherwise the caller sees a
+			// reachable VNC with no failure explanation.
 			var reasonLen uint32
 			if err := binary.Read(conn, binary.BigEndian, &reasonLen); err != nil {
-				errs = append(errs, "vnc connection failed (0 security types)")
+				errs = append(errs, fmt.Sprintf("vnc 3.7+ server rejected connection (reason length read: %v)", err))
 			} else if reasonLen > 0 && reasonLen < 1024 {
 				reason := make([]byte, reasonLen)
 				if _, err := readFull(conn, reason); err == nil {
-					errs = append(errs, fmt.Sprintf("vnc server refused: %s", string(reason)))
+					errs = append(errs, fmt.Sprintf("vnc 3.7+ server refused: %s", string(reason)))
+				} else {
+					errs = append(errs, fmt.Sprintf("vnc 3.7+ server refused (reason read: %v)", err))
 				}
+			} else {
+				errs = append(errs, fmt.Sprintf("vnc 3.7+ server refused (unexpected reason length %d)", reasonLen))
 			}
 			detail.Errors = errs
 			return detail
