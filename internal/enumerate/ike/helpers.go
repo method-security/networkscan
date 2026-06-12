@@ -264,8 +264,118 @@ func extractVendorIdentification(vendorIDs []string) *string {
 		if name, ok := knownVendorIDs[lower]; ok {
 			return &name
 		}
+		// Also check the external vendor database (prefix matching)
+		if name := lookupVendorName(lower); name != "" {
+			return &name
+		}
 	}
 	return nil
+}
+
+// vendorIdPayload holds a raw vendor ID and its matched class.
+type vendorIdPayload struct {
+	RawBytes    string
+	VendorClass *string
+}
+
+// buildVendorIdPayloads converts raw hex vendor ID strings to structured payloads
+// with matched vendor class. Returns nil if vendorIDs is empty.
+func buildVendorIdPayloads(vendorIDs []string) []vendorIdPayload {
+	if len(vendorIDs) == 0 {
+		return nil
+	}
+	result := make([]vendorIdPayload, 0, len(vendorIDs))
+	for _, vid := range vendorIDs {
+		p := vendorIdPayload{
+			RawBytes: vid,
+		}
+		// Check both the legacy map (exact match) and the prefix database
+		lower := strings.ToLower(vid)
+		if name, ok := knownVendorIDs[lower]; ok {
+			class := vendorClassFromLegacyName(name)
+			p.VendorClass = &class
+		} else if class := lookupVendorClass(lower); class != "" {
+			p.VendorClass = &class
+		}
+		result = append(result, p)
+	}
+	return result
+}
+
+// vendorClassFromLegacyName extracts a vendor class from a legacy display name.
+func vendorClassFromLegacyName(name string) string {
+	switch {
+	case strings.HasPrefix(name, "Cisco"):
+		return "Cisco"
+	case name == "XAUTH":
+		// XAUTH is a Cisco IKE extension (draft-beaulieu-ike-xauth)
+		return "Cisco"
+	case strings.HasPrefix(name, "Fortinet"):
+		return "Fortinet"
+	case strings.HasPrefix(name, "strongSwan"):
+		return "strongSwan"
+	case strings.HasPrefix(name, "Microsoft"):
+		return "Microsoft"
+	case strings.HasPrefix(name, "Check Point"):
+		return "CheckPoint"
+	case strings.HasPrefix(name, "Dead Peer"):
+		return "DPD"
+	case strings.HasPrefix(name, "NAT-T"):
+		return "NAT-T"
+	default:
+		return name
+	}
+}
+
+// ikeTransformGroup holds a single grouped transform proposal.
+type ikeTransformGroup struct {
+	Encryption string
+	Hash       string
+	DHGroup    string
+	AuthMethod string
+}
+
+// groupTransforms zips parallel algorithm lists into grouped IkeTransform structs.
+// Each transform combines one encryption + one hash + one DH group + one auth method.
+// If lists have different lengths, uses the maximum length. Returns nil if all lists are empty.
+func groupTransforms(
+	encAlgs []string,
+	hashAlgs []string,
+	dhGroups []string,
+	authMethods []string,
+) []ikeTransformGroup {
+	// Determine the maximum non-zero length
+	maxLen := len(encAlgs)
+	if l := len(hashAlgs); l > maxLen {
+		maxLen = l
+	}
+	if l := len(dhGroups); l > maxLen {
+		maxLen = l
+	}
+	if l := len(authMethods); l > maxLen {
+		maxLen = l
+	}
+	if maxLen == 0 {
+		return nil
+	}
+	result := make([]ikeTransformGroup, 0, maxLen)
+	for i := 0; i < maxLen; i++ {
+		t := ikeTransformGroup{}
+		if i < len(encAlgs) {
+			t.Encryption = encAlgs[i]
+		}
+		if i < len(hashAlgs) {
+			t.Hash = hashAlgs[i]
+		}
+		if i < len(dhGroups) {
+			t.DHGroup = dhGroups[i]
+		}
+		if i < len(authMethods) {
+			t.AuthMethod = authMethods[i]
+		}
+		result = append(result, t)
+	}
+	return result
 }
 
 // stripNonESPMarker removes the 4-byte RFC 3948 Non-ESP marker (0x00000000)
