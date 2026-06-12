@@ -1,5 +1,8 @@
 types:
   # ENUMs
+  # RFB security types per RFC 6143 §7.1.2 + RA2/Tight/Mac extensions.
+  # Numeric values intentionally omitted from the enum; emitters carry the
+  # raw number alongside in UnknownSecurityTypes.
   VncSecurityType:
     enum:
       - NONE
