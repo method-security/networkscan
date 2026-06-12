@@ -1050,9 +1050,12 @@ func parseJA4SFromServerHello(data []byte) string {
 	// with GREASE, SNI (0x0000), and ALPN (0x0010) excluded.
 	// Note: unlike JA4 (ClientHello), JA4S does NOT sort the extension list — the
 	// hash preserves the order in which the server sent the extensions.
+	// Per the FoxIO JA4S spec, extension type IDs are joined as 4-character
+	// lowercase hex codes (e.g. "002b" for 0x002b), NOT decimal. Using decimal
+	// here would produce a SHA-256 suffix that doesn't match reference tooling.
 	hashStrs := make([]string, len(hashExtTypes))
 	for i, t := range hashExtTypes {
-		hashStrs[i] = strconv.Itoa(t)
+		hashStrs[i] = fmt.Sprintf("%04x", t)
 	}
 	h := sha256.Sum256([]byte(strings.Join(hashStrs, ",")))
 	extHash := hex.EncodeToString(h[:])[:12]
