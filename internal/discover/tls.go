@@ -194,7 +194,7 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 
 	var ja4sFingerprint *string
 	if config.Ja4S != nil && *config.Ja4S {
-		v := computeJA4S(targetAddress, serverName, tlsTimeout)
+		v := computeJA4S(ctx, targetAddress, serverName, tlsTimeout)
 		if v != "" {
 			ja4sFingerprint = &v
 		}
@@ -202,7 +202,7 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 
 	var jarmFingerprint *string
 	if config.Jarm != nil && *config.Jarm {
-		v := computeJARM(targetAddress, tlsTimeout)
+		v := computeJARM(ctx, targetAddress, tlsTimeout)
 		jarmFingerprint = &v
 	}
 
@@ -727,13 +727,20 @@ func buildTLSRecord(contentType, versionMajor, versionMinor byte, payload []byte
 }
 
 // sendJARMProbe opens a TCP connection, sends payload, and reads one response buffer.
-// Returns nil on any error. The entire probe (dial + write + read) is bounded by a
-// single absolute deadline derived from timeout, so dial and read share one budget
-// rather than each independently consuming the full timeout.
-func sendJARMProbe(target string, payload []byte, timeout time.Duration) []byte {
+// Returns nil on any error or if ctx is cancelled. The entire probe (dial + write + read)
+// is bounded by a single absolute deadline derived from timeout — or ctx's deadline if
+// it expires sooner — so dial and read share one budget rather than each independently
+// consuming the full timeout.
+func sendJARMProbe(ctx context.Context, target string, payload []byte, timeout time.Duration) []byte {
+	if err := ctx.Err(); err != nil {
+		return nil
+	}
 	deadline := time.Now().Add(timeout)
+	if ctxDL, ok := ctx.Deadline(); ok && ctxDL.Before(deadline) {
+		deadline = ctxDL
+	}
 	dialer := net.Dialer{Deadline: deadline}
-	conn, err := dialer.Dial("tcp", target)
+	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		return nil
 	}
@@ -755,13 +762,16 @@ func sendJARMProbe(target string, payload []byte, timeout time.Duration) []byte 
 const minJARMProbeTimeout = 500 * time.Millisecond
 
 // computeJARM sends the 10 standard JARM probes and returns the resulting 62-character hash.
-// Returns jarm.ZeroHash if the target is unreachable or does not respond to any probe.
+// Returns jarm.ZeroHash if the target is unreachable, does not respond to any probe, or
+// if ctx is cancelled before the probes complete.
 //
 // Per-probe budget is max(timeout/probeCount, minJARMProbeTimeout). The floor protects
 // against tiny --timeout values that would otherwise yield a 0 budget; for the default
 // --timeout 30s each probe gets the expected 3s. Inside sendJARMProbe a single absolute
 // deadline covers dial + write + read so each probe consumes its budget once, not twice.
-func computeJARM(target string, timeout time.Duration) string {
+// ctx cancellation is checked before each probe so callers (e.g. the GetTLSInfo request
+// pipeline) can abort the remaining probes promptly.
+func computeJARM(ctx context.Context, target string, timeout time.Duration) string {
 	host, portStr, err := net.SplitHostPort(target)
 	if err != nil {
 		return jarm.ZeroHash
@@ -777,8 +787,11 @@ func computeJARM(target string, timeout time.Duration) string {
 		perProbeTimeout = minJARMProbeTimeout
 	}
 	for _, probe := range probes {
+		if err := ctx.Err(); err != nil {
+			return jarm.ZeroHash
+		}
 		payload := jarm.BuildProbe(probe)
-		resp := sendJARMProbe(target, payload, perProbeTimeout)
+		resp := sendJARMProbe(ctx, target, payload, perProbeTimeout)
 		result, _ := jarm.ParseServerHello(resp, probe)
 		rawResults = append(rawResults, result)
 	}
@@ -814,13 +827,21 @@ func tlsVersionCode(version uint16) string {
 //   - SelectedCipher: selected cipher suite as 4-hex lowercase
 //   - ExtensionHash: lowercase SHA-256 of comma-joined sorted extension type
 //     decimal strings, truncated to 12 chars
-func computeJA4S(target, serverName string, timeout time.Duration) string {
-	conn, err := net.DialTimeout("tcp", target, timeout)
+func computeJA4S(ctx context.Context, target, serverName string, timeout time.Duration) string {
+	if err := ctx.Err(); err != nil {
+		return ""
+	}
+	deadline := time.Now().Add(timeout)
+	if ctxDL, ok := ctx.Deadline(); ok && ctxDL.Before(deadline) {
+		deadline = ctxDL
+	}
+	dialer := net.Dialer{Deadline: deadline}
+	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		return ""
 	}
 	defer func() { _ = conn.Close() }()
-	_ = conn.SetDeadline(time.Now().Add(timeout))
+	_ = conn.SetDeadline(deadline)
 
 	// Build a TLS 1.3 ClientHello that also supports TLS 1.2.
 	sniExt := buildSNIExtension(serverName)
