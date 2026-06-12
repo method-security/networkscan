@@ -28,6 +28,7 @@ import (
 	snmp "github.com/Method-Security/networkscan/internal/enumerate/snmp"
 	socks "github.com/Method-Security/networkscan/internal/enumerate/socks"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
+	vnc "github.com/Method-Security/networkscan/internal/enumerate/vnc"
 
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -187,6 +188,17 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &socks.LibraryEnumerateSocks{}}, nil
 	case enumeratefern.SupportedServiceTypeRdp:
 		return NetworkApplicationEngine{Library: &rdp.LibraryEnumerateRDP{}}, nil
+	case enumeratefern.SupportedServiceTypeVnc:
+		lib := &vnc.LibraryEnumerateVNC{}
+		if config.VncConfig != nil {
+			if config.VncConfig.SkipScreenshot != nil {
+				lib.SkipScreenshot = *config.VncConfig.SkipScreenshot
+			}
+			if config.VncConfig.PortRange != nil {
+				lib.PortRange = *config.VncConfig.PortRange
+			}
+		}
+		return NetworkApplicationEngine{Library: lib}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}

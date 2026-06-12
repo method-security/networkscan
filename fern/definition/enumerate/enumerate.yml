@@ -16,6 +16,7 @@ imports:
   redis: ./redis/redis.yml
   socks: ./socks/socks.yml
   rdp: ./rdp/rdp.yml
+  vnc: ./vnc/vnc.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -37,6 +38,7 @@ types:
       - REDIS
       - SOCKS
       - RDP
+      - VNC
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -57,6 +59,7 @@ types:
       EnumerateRedisDetails: redis.EnumerateRedisDetails
       EnumerateSocksDetails: socks.EnumerateSocksDetails
       EnumerateRdpDetails: rdp.EnumerateRdpDetails
+      EnumerateVncDetails: vnc.EnumerateVncDetails
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>
@@ -67,6 +70,7 @@ types:
       service: SupportedServiceType
       timeout: integer
       wordlist: optional<list<string>>
+      vncConfig: optional<vnc.VncEnumerateConfig>
   # Final report
   EnumerateServiceReport:
     properties:
