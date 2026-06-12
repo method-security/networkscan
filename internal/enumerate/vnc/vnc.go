@@ -72,30 +72,37 @@ func (l *LibraryEnumerateVNC) EnumerateTarget(ctx context.Context, target string
 
 	host, port := utils.ParseHostPort(target, 0)
 	hasExplicitPort := (port != 0)
-	if !hasExplicitPort {
-		port = defaultVNCPort
-	}
 
-	portRange := l.PortRange
-	if portRange == "" {
-		portRange = defaultPortRangeStr
-	}
-
-	// Build list of ports to probe
+	// Build list of ports to probe. With no explicit port, sweep the configured
+	// range — falling back through PortRange → default literal → defaultVNCPort
+	// only here (the per-port path no longer re-defaults, avoiding the duplicate
+	// fallback chain).
 	var ports []int
 	if hasExplicitPort {
 		ports = []int{port}
 	} else {
+		portRange := l.PortRange
+		if portRange == "" {
+			portRange = defaultPortRangeStr
+		}
 		ports = parsePortRange(portRange)
 		if len(ports) == 0 {
 			ports = []int{defaultVNCPort}
 		}
 	}
 
-	// Collect all details across all ports
+	// Share the caller's context deadline across all per-port probes so a sweep
+	// of 11 ports doesn't exceed the EnumerateServiceConfig.Timeout. Without
+	// this, an 11-port sweep with a 10s per-port deadline (rfbHandshakeTimeout)
+	// can run for ~110s under the default 30s tool timeout.
 	var allDetails []*vncfern.EnumerateVncDetails
-
 	for _, p := range ports {
+		// Stop early if the shared deadline expired (the next probePort would
+		// just record connect-deadline-exceeded for every remaining port).
+		if err := ctx.Err(); err != nil {
+			errors = append(errors, fmt.Sprintf("port %d: ctx: %v", p, err))
+			break
+		}
 		detail := probePort(ctx, log, host, p, l.SkipScreenshot)
 		allDetails = append(allDetails, detail)
 		if detail.Errors != nil {
@@ -103,26 +110,41 @@ func (l *LibraryEnumerateVNC) EnumerateTarget(ctx context.Context, target string
 				errors = append(errors, fmt.Sprintf("port %d: %s", p, e))
 			}
 		}
+		// Early-exit on first RFB-speaking listener — ProtocolVersion is only
+		// set after the 12-byte banner validates as "RFB xxx.yyy\n", so this is
+		// a stronger success signal than canConnect (TCP-level only).
+		if detail.ProtocolVersion != nil {
+			break
+		}
 	}
 
-	// If only one port was probed, return it directly
+	// Return the first detail that actually spoke RFB (not just any port that
+	// answered TCP — a sibling service on 5901 with no RFB banner would
+	// otherwise mask a real VNC listener on 5902). Fall back to canConnect, and
+	// only then to the last attempt.
 	if len(allDetails) == 1 {
 		return &enumeratefern.EnumerateServiceDetails{EnumerateVncDetails: allDetails[0]}, errors
 	}
-
-	// For multi-port sweeps, return the first successful connection or the last one
+	for _, d := range allDetails {
+		if d.ProtocolVersion != nil {
+			return &enumeratefern.EnumerateServiceDetails{EnumerateVncDetails: d}, errors
+		}
+	}
 	for _, d := range allDetails {
 		if d.CanConnect != nil && *d.CanConnect {
 			return &enumeratefern.EnumerateServiceDetails{EnumerateVncDetails: d}, errors
 		}
 	}
-	// All failed — return last
 	if len(allDetails) > 0 {
 		return &enumeratefern.EnumerateServiceDetails{EnumerateVncDetails: allDetails[len(allDetails)-1]}, errors
 	}
 
-	// Fallback — should not reach here
-	detail := &vncfern.EnumerateVncDetails{Target: target, Port: port}
+	// Fallback — no ports probed (e.g. ctx cancelled before the loop body ran).
+	fallbackPort := defaultVNCPort
+	if hasExplicitPort {
+		fallbackPort = port
+	}
+	detail := &vncfern.EnumerateVncDetails{Target: target, Port: fallbackPort}
 	return &enumeratefern.EnumerateServiceDetails{EnumerateVncDetails: detail}, errors
 }
 
@@ -205,16 +227,37 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int, s
 	var noneTypeNum byte
 
 	if serverMajor == 3 && serverMinor < 7 {
-		// RFB 3.3: server sends single uint32 security type
+		// RFB 3.3: server sends single uint32 security type. A value of 0
+		// signals rejection — the server then sends a uint32 reason length and
+		// the reason string. Treat that as a connection failure rather than
+		// silently dropping into screenshot capture against a stream that
+		// continues with the reason bytes.
 		var secType uint32
 		if err := binary.Read(conn, binary.BigEndian, &secType); err != nil {
 			errs = append(errs, fmt.Sprintf("vnc security type read (3.3): %v", err))
 			detail.Errors = errs
 			return detail
 		}
+		if secType == 0 {
+			var reasonLen uint32
+			if err := binary.Read(conn, binary.BigEndian, &reasonLen); err != nil {
+				errs = append(errs, "vnc 3.3 server rejected connection (no reason)")
+			} else if reasonLen > 0 && reasonLen < 1024 {
+				reason := make([]byte, reasonLen)
+				if _, err := readFull(conn, reason); err == nil {
+					errs = append(errs, fmt.Sprintf("vnc 3.3 server rejected: %s", string(reason)))
+				} else {
+					errs = append(errs, fmt.Sprintf("vnc 3.3 server rejected (reason read: %v)", err))
+				}
+			} else {
+				errs = append(errs, fmt.Sprintf("vnc 3.3 server rejected (unexpected reason length %d)", reasonLen))
+			}
+			detail.Errors = errs
+			return detail
+		}
 		if st, ok := securityTypeMap[byte(secType)]; ok {
 			advertisedTypes = append(advertisedTypes, st)
-		} else if secType != 0 {
+		} else {
 			unknownTypes = append(unknownTypes, int(secType))
 		}
 		categorizeSecType(byte(secType), &noneOffered, &vncAuthOffered, &vencryptOffered, &tlsTunneled)
@@ -281,9 +324,15 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int, s
 		detail.WeakDeploymentFindings = weakFindings
 	}
 
-	// If None auth is offered, proceed with anonymous login to collect server info
-	if noneOffered && !skipScreenshot {
-		if err := doNoneAuth(conn, detail, &errs, serverMajor, serverMinor, noneTypeNum, deadline); err != nil {
+	// If None auth is offered, proceed with anonymous login to collect server
+	// info (desktop name, framebuffer dims, pixel format, none_auth_accepted).
+	// `--vnc-skip-screenshot` is *only* a guard on the framebuffer download —
+	// see doNoneAuth, which gates the SetPixelFormat → FramebufferUpdateRequest
+	// dance on `skipScreenshot` instead of skipping the entire authenticated
+	// branch. Otherwise we'd lose the ServerInit metadata, which is the
+	// reconnaissance intel the ticket actually wants.
+	if noneOffered {
+		if err := doNoneAuth(conn, detail, serverMajor, serverMinor, noneTypeNum, deadline, skipScreenshot); err != nil {
 			errs = append(errs, fmt.Sprintf("vnc none auth: %v", err))
 		}
 	}
@@ -308,8 +357,24 @@ func categorizeSecType(tb byte, noneOffered, vncAuthOffered, vencryptOffered, tl
 	}
 }
 
-// doNoneAuth performs anonymous (None) authentication and optionally captures a screenshot.
-func doNoneAuth(conn net.Conn, detail *vncfern.EnumerateVncDetails, errs *[]string, serverMajor, serverMinor int, noneTypeNum byte, deadline time.Time) error {
+// doNoneAuth performs anonymous (None) authentication, reads ServerInit, and
+// optionally captures a framebuffer screenshot. NoneAuthAccepted is *only* set
+// after ServerInit completes successfully — earlier we incorrectly stamped it
+// true right after the security handshake, so a server that disconnected
+// between SecurityResult and ServerInit produced false-positive
+// none_auth_accepted=true intel.
+//
+// When skipScreenshot is true, ServerInit metadata (desktop name, framebuffer
+// dimensions, pixel format, none_auth_accepted) is still captured — only the
+// SetPixelFormat + FramebufferUpdateRequest dance is skipped.
+func doNoneAuth(
+	conn net.Conn,
+	detail *vncfern.EnumerateVncDetails,
+	serverMajor, serverMinor int,
+	noneTypeNum byte,
+	deadline time.Time,
+	skipScreenshot bool,
+) error {
 	// For RFB 3.7+, we need to select the security type (send [1] for None)
 	if serverMajor > 3 || (serverMajor == 3 && serverMinor >= 7) {
 		if _, err := conn.Write([]byte{noneTypeNum}); err != nil {
@@ -336,9 +401,6 @@ func doNoneAuth(conn net.Conn, detail *vncfern.EnumerateVncDetails, errs *[]stri
 		}
 	}
 
-	noneAccepted := true
-	detail.NoneAuthAccepted = &noneAccepted
-
 	// Send ClientInit{shared=1}
 	if _, err := conn.Write([]byte{1}); err != nil {
 		return fmt.Errorf("client init: %w", err)
@@ -359,18 +421,44 @@ func doNoneAuth(conn net.Conn, detail *vncfern.EnumerateVncDetails, errs *[]stri
 		return fmt.Errorf("pixel format read: %w", err)
 	}
 
-	// Read desktop name
+	// Read desktop name. If nameLen exceeds the 4096-byte cap, we still have to
+	// consume the remaining bytes off the stream — otherwise the next read
+	// (FramebufferUpdate header, or just connection close) reads the tail of
+	// the name and the protocol state desyncs.
 	var nameLen uint32
 	if err := binary.Read(conn, binary.BigEndian, &nameLen); err != nil {
 		return fmt.Errorf("name len read: %w", err)
 	}
-	if nameLen > 4096 {
-		nameLen = 4096
+	const maxDesktopName = 4096
+	readLen := nameLen
+	if readLen > maxDesktopName {
+		readLen = maxDesktopName
 	}
-	nameBuf := make([]byte, nameLen)
+	nameBuf := make([]byte, readLen)
 	if _, err := readFull(conn, nameBuf); err != nil {
 		return fmt.Errorf("desktop name read: %w", err)
 	}
+	if nameLen > maxDesktopName {
+		// Drain the rest of the name bytes from the wire so the next message
+		// header lines up with the protocol position.
+		remaining := nameLen - maxDesktopName
+		discard := make([]byte, 1024)
+		for remaining > 0 {
+			chunk := uint32(len(discard))
+			if chunk > remaining {
+				chunk = remaining
+			}
+			if _, err := readFull(conn, discard[:chunk]); err != nil {
+				return fmt.Errorf("desktop name drain: %w", err)
+			}
+			remaining -= chunk
+		}
+	}
+
+	// ServerInit completed — NOW it is safe to claim NoneAuth was actually
+	// accepted end-to-end.
+	noneAccepted := true
+	detail.NoneAuthAccepted = &noneAccepted
 
 	// Populate server info
 	w := int(width)
@@ -383,6 +471,12 @@ func doNoneAuth(conn net.Conn, detail *vncfern.EnumerateVncDetails, errs *[]stri
 	// Parse pixel format
 	pf := parsePixelFormat(pfBytes)
 	detail.PixelFormat = pf
+
+	// The screenshot capture is the only thing `--vnc-skip-screenshot` gates;
+	// ServerInit metadata above is always recorded.
+	if skipScreenshot {
+		return nil
+	}
 
 	// Attempt screenshot only if dimensions are reasonable
 	totalBytes := int(width) * int(height) * 4
@@ -547,27 +641,19 @@ func parsePixelFormat(b []byte) *vncfern.VncPixelFormat {
 }
 
 // parseRFBVersion extracts major and minor version numbers from "MAJ.MIN" string.
+// strconv.Atoi already handles leading zeros correctly ("003" → 3), so we use it directly.
 func parseRFBVersion(versionStr string) (int, int, error) {
 	parts := strings.SplitN(versionStr, ".", 2)
 	if len(parts) != 2 {
 		return 0, 0, fmt.Errorf("invalid RFB version: %q", versionStr)
 	}
-	major, err := strconv.Atoi(strings.TrimLeft(parts[0], "0"))
+	major, err := strconv.Atoi(parts[0])
 	if err != nil {
-		// Handle "000" → 0
-		if parts[0] == "000" || strings.TrimLeft(parts[0], "0") == "" {
-			major = 0
-		} else {
-			return 0, 0, fmt.Errorf("invalid RFB major version: %q", parts[0])
-		}
+		return 0, 0, fmt.Errorf("invalid RFB major version: %q", parts[0])
 	}
-	minor, err := strconv.Atoi(strings.TrimLeft(parts[1], "0"))
+	minor, err := strconv.Atoi(parts[1])
 	if err != nil {
-		if parts[1] == "000" || strings.TrimLeft(parts[1], "0") == "" {
-			minor = 0
-		} else {
-			return 0, 0, fmt.Errorf("invalid RFB minor version: %q", parts[1])
-		}
+		return 0, 0, fmt.Errorf("invalid RFB minor version: %q", parts[1])
 	}
 	return major, minor, nil
 }
