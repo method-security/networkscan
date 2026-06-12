@@ -48,12 +48,18 @@ func BuildASReq(realm, principal string, cfg *config.Config, withPreauth bool) (
 // this function extracts just the symbolic name prefix.
 func LookupKrbErrName(code int32) string {
 	full := errorcode.Lookup(code)
-	// Lookup returns "(<code>) <NAME> <description>"
-	// Extract just the NAME part (first word after the parenthetical)
-	// e.g. "(25) KDC_ERR_PREAUTH_REQUIRED Additional pre-authentication required"
-	// We want "KDC_ERR_PREAUTH_REQUIRED"
+	// Lookup returns "(<code>) <NAME> <description>" for known codes, e.g.
+	//   "(25) KDC_ERR_PREAUTH_REQUIRED Additional pre-authentication required"
+	// → we want "KDC_ERR_PREAUTH_REQUIRED".
+	// For unknown codes Lookup returns "Unknown ErrorCode <n>" — a naive
+	// splitN+parts[1] would yield "ErrorCode", which is useless. Detect the
+	// unknown-form sentinel and synthesize a code-bearing name instead so
+	// callers can still discriminate.
+	if strings.HasPrefix(full, "Unknown") {
+		return fmt.Sprintf("UNKNOWN_ERROR_CODE_%d", code)
+	}
 	parts := strings.SplitN(full, " ", 3)
-	if len(parts) >= 2 {
+	if len(parts) >= 2 && strings.HasPrefix(parts[0], "(") {
 		return parts[1]
 	}
 	return full
