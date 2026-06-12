@@ -11,12 +11,15 @@ import (
 	"github.com/jfjallid/gokrb5/v8/types"
 )
 
-// BuildASReq builds an AS-REQ for the specified realm and principal.
-// If withPreauth is false, the request omits PA-ENC-TIMESTAMP (AS-REP roast).
-// Password and ntlmHash are unused when withPreauth is false; PA data is not added here —
-// callers that need pre-auth should use the gokrb5 client.ASExchange path which handles
-// PA-ENC-TIMESTAMP encryption automatically.
-func BuildASReq(realm, principal string, cfg *config.Config, withPreauth bool) (messages.ASReq, error) {
+// BuildASReq builds a raw AS-REQ for the specified realm and principal.
+// The raw primitive path always omits PA-ENC-TIMESTAMP — the KDC will respond
+// with KDC_ERR_PREAUTH_REQUIRED for pre-auth-enabled accounts (the probe
+// signal) or an AS-REP for pre-auth-disabled accounts (the AS-REP-roast
+// condition). Callers that need real PA-ENC-TIMESTAMP must go through the
+// gokrb5 client.ASExchange path which encrypts the timestamp with the
+// principal's key material; that's not modeled here because the raw
+// primitive is intentionally credential-free.
+func BuildASReq(realm, principal string, cfg *config.Config) (messages.ASReq, error) {
 	cname := types.NewPrincipalName(nametype.KRB_NT_PRINCIPAL, principal)
 	sname := types.PrincipalName{
 		NameType:   nametype.KRB_NT_SRV_INST,
@@ -26,18 +29,6 @@ func BuildASReq(realm, principal string, cfg *config.Config, withPreauth bool) (
 	asReq, err := messages.NewASReq(strings.ToUpper(realm), cfg, cname, sname)
 	if err != nil {
 		return messages.ASReq{}, fmt.Errorf("failed to create AS-REQ: %w", err)
-	}
-
-	// If withPreauth is false (AS-REP roast mode), leave PA data empty so KDC
-	// returns the AS-REP without requiring pre-authentication.
-	// PA-ENC-TIMESTAMP would normally be added by the gokrb5 client internals;
-	// for the raw primitive path we simply don't add it.
-	if withPreauth {
-		// For the raw transport path, we intentionally send without PA-ENC-TIMESTAMP
-		// and let the KDC tell us what it wants. Full preauth requires the gokrb5
-		// client.ASExchange path (which encrypts the timestamp with the key material).
-		// This is intentional: the AS_REQ primitive is primarily useful for
-		// KDC_ERR_PREAUTH_REQUIRED probing and AS-REP roast (noPreauth=true).
 	}
 
 	return asReq, nil
