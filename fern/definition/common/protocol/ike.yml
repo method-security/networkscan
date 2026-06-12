@@ -83,6 +83,18 @@ types:
       - CURVE25519
       - CURVE448
 
+  IkeVendorIdPayload:
+    properties:
+      rawBytes: string
+      vendorClass: optional<string>
+
+  IkeTransform:
+    properties:
+      encryption: optional<string>
+      hash: optional<string>
+      dhGroup: optional<string>
+      authMethod: optional<string>
+
   # IKE Server Information
   IkeServerInfo:
     properties:
@@ -111,3 +123,10 @@ types:
       deadPeerDetectionSupported: optional<boolean>
       weakAlgorithmsDetected: optional<list<string>>
       vendorIdentification: optional<string>
+
+      # Enriched vendor ID payloads (additive, parallel to vendorIds)
+      vendorIdPayloads: optional<list<IkeVendorIdPayload>>
+      # Grouped transform proposals
+      transforms: optional<list<IkeTransform>>
+      # Backoff timing pattern in milliseconds (-1 = no response)
+      backoffPattern: optional<list<integer>>
