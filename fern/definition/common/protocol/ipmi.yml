@@ -1,7 +1,63 @@
 types:
+  # IPMI Get-Channel-Authentication-Capabilities bitmap, parsed from
+  # Auth-Type-Support-1/2/3 of the IPMI 2.0 response (per IPMI 2.0 spec
+  # section 22.13). Each field corresponds to one bit; omitted fields
+  # mean we could not parse them (response was truncated).
+  IpmiAuthCapabilities:
+    properties:
+      # Auth-Type-Support-1 (channel auth-type bitmap)
+      none: optional<boolean>
+      md2: optional<boolean>
+      md5: optional<boolean>
+      straightPassword: optional<boolean>
+      oem: optional<boolean>
+      ipmi20ExtendedCapabilities: optional<boolean>
+      # Auth-Type-Support-3 (IPMI version flags)
+      ipmi15Supported: optional<boolean>
+      ipmi20Supported: optional<boolean>
+      # Auth-Type-Support-2 (user / per-message flags)
+      perMessageAuthDisabled: optional<boolean>
+      userLevelAuthDisabled: optional<boolean>
+      anonymousLoginEnabled: optional<boolean>
+      nullUsernameEnabled: optional<boolean>
+      nonNullUsernameEnabled: optional<boolean>
+      kgSet: optional<boolean>
+      oemId: optional<integer>
+      channelNumber: optional<integer>
+
+  # Result of a single RAKP-1/RAKP-2 round trip against the BMC with a
+  # guessed username. If the BMC accepted the RAKP-1 (status==0x00) and
+  # returned the HMAC-SHA1 key-exchange-authcode in RAKP-2, the username
+  # exists (CVE-2013-4786 existence oracle) and the captured blob is
+  # offline-crackable.
+  IpmiRakpHashDisclosure:
+    properties:
+      username: string
+      bmcGuid: optional<string>
+      consoleNonce: optional<string>
+      bmcNonce: optional<string>
+      bmcSessionId: optional<string>
+      consoleSessionId: optional<string>
+      privilegeLevel: optional<integer>
+      hmacSha1: string
+      hashcatLine: optional<string>
+
   # IPMI (Intelligent Platform Management Interface) Server Information
   IpmiServerInfo:
     properties:
-      # Discovery fields
+      # Discovery fields (kept for backward compatibility with downstream).
       version: optional<string>
       authType: optional<string>
+      # Structured Get-Channel-Auth-Caps bitmap.
+      authCapabilities: optional<IpmiAuthCapabilities>
+      # CVE-2013-4031 — true if the BMC accepted an RMCP+ Open Session
+      # Request with cipher suite 0 (no auth / no integrity / no
+      # confidentiality). Critical finding.
+      cipherZeroAccepted: optional<boolean>
+      # CVE-2013-4786 — usernames the BMC disclosed RAKP HMAC-SHA1 hashes
+      # for, with the captured material. Each entry is independently
+      # offline-crackable.
+      rakpHashesDisclosed: optional<list<IpmiRakpHashDisclosure>>
+      # Full list of usernames the deep probe tried (the existence
+      # oracle reads as "all tried, these returned hashes").
+      probedUsernames: optional<list<string>>
