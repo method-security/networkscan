@@ -81,19 +81,28 @@ func FormatASRepHashcat(asrep messages.ASRep) string {
 
 // FormatTGSRepHashcat formats a TGS-REP in hashcat $krb5tgs$ format. Returns
 // empty string if the ticket cipher is too short or if the etype isn't a
-// known kerberoast etype. RC4 uses asterisk-delimited segments
-// (mode 13100); AES uses a single cipher blob without asterisks
-// (modes 19600/19700). Format references: hashcat example_hashes.txt.
+// known kerberoast etype.
+//
+// Layouts (cross-checked against impacket GetUserSPNs.py and Rubeus):
+//   - RC4 (13100): $krb5tgs$23$*<user>$<realm>$<spn>*$<checksum[:16]>$<edata[16:]>
+//     checksum is the FIRST 16 bytes (RFC 4757 layout).
+//   - AES128 (19600) / AES256 (19700): $krb5tgs$<etype>$<user>$<realm>$*<spn>*$<HMAC[-12:]>$<edata[:-12]>
+//     HMAC-SHA1-96 is the LAST 12 bytes (RFC 3962 layout). The asterisks
+//     wrap the SPN — both impacket and Rubeus emit this shape and hashcat
+//     parses it.
+//
+// The earlier "AES is one blob with no asterisks" layout that lived here
+// loaded into hashcat as garbage; AES kerberoasts looked successful in the
+// report but never cracked. Spotted by Bugbot round-8.
 func FormatTGSRepHashcat(rep messages.TGSRep, username string) string {
 	cipher := rep.Ticket.EncPart.Cipher
 	etype := rep.Ticket.EncPart.EType
-	if len(cipher) < 16 {
-		return ""
-	}
 	spn := strings.Join(rep.Ticket.SName.NameString, "/")
 	switch etype {
 	case etypeRC4HMAC:
-		// 13100 layout: $krb5tgs$23$*<user>$<realm>$<spn>*$<checksum[:16]>$<edata[16:]>
+		if len(cipher) < 16 {
+			return ""
+		}
 		return fmt.Sprintf("$krb5tgs$%d$*%s$%s$%s*$%s$%s",
 			etype,
 			username,
@@ -102,14 +111,20 @@ func FormatTGSRepHashcat(rep messages.TGSRep, username string) string {
 			hex.EncodeToString(cipher[:16]),
 			hex.EncodeToString(cipher[16:]))
 	case etypeAES128CTSHMACSHA196, etypeAES256CTSHMACSHA196:
-		// 19600 / 19700 layout: $krb5tgs$<etype>$<user>$<realm>$<spn>$<cipher>
-		// (single blob, no asterisks — the AES HMAC is part of the cipher tail).
-		return fmt.Sprintf("$krb5tgs$%d$%s$%s$%s$%s",
+		// AES HMAC-SHA1-96 is the trailing 12 bytes; everything before is
+		// the confounder + encrypted ticket body.
+		if len(cipher) < 12 {
+			return ""
+		}
+		hmac := cipher[len(cipher)-12:]
+		edata := cipher[:len(cipher)-12]
+		return fmt.Sprintf("$krb5tgs$%d$%s$%s$*%s*$%s$%s",
 			etype,
 			username,
 			rep.Ticket.Realm,
 			spn,
-			hex.EncodeToString(cipher))
+			hex.EncodeToString(hmac),
+			hex.EncodeToString(edata))
 	}
 	return ""
 }
