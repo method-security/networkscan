@@ -36,6 +36,7 @@ types:
       validate: boolean
       validateAttemptTimeout: optional<integer>
       validateThreads: optional<integer>
+      validatePluginThreads: integer
       maxOpenPortsValidationThreshold: optional<integer>
       stealth: optional<PortStealthConfig>
   # Final report
