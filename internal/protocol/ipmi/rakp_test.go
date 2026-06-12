@@ -137,7 +137,7 @@ func TestFormatHashcatLineRoundTrip(t *testing.T) {
 	}
 	const bmcSID uint32 = 0x11112222
 	const consoleSID uint32 = 0x33334444
-	role := byte(HashcatRoleByte)
+	role := HashcatRoleByte
 
 	mac := hmac.New(sha1.New, []byte(password))
 	var sidBuf [4]byte
