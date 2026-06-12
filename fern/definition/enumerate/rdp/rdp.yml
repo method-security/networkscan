@@ -1,7 +1,5 @@
 types:
-  # ENUMs
-
-  # RDP protocol flags per MS-RDPBCGR §2.2.1.1.1 rdpNegReq and §2.2.1.2.1 rdpNegRsp
+  # RDP protocol flags per MS-RDPBCGR §2.2.1.1.1 rdpNegReq and §2.2.1.2.1 rdpNegRsp.
   RdpProtocolFlag:
     enum:
       - PROTOCOL_RDP
@@ -11,7 +9,7 @@ types:
       - PROTOCOL_HYBRID_EX
       - PROTOCOL_HYBRID_REC_LIMIT_REACHED
 
-  # RDP negotiation failure codes per MS-RDPBCGR §2.2.1.2.2 rdpNegFailure
+  # RDP negotiation failure codes per MS-RDPBCGR §2.2.1.2.2 rdpNegFailure.
   RdpNegFailureCode:
     enum:
       - SSL_REQUIRED_BY_SERVER
@@ -21,7 +19,7 @@ types:
       - HYBRID_REQUIRED_BY_SERVER
       - SSL_WITH_USER_AUTH_REQUIRED_BY_SERVER
 
-  # TLS certificate information
+  # TLS certificate captured after the X.224 + TLS upgrade.
   RdpTlsCertificate:
     properties:
       subject: string
@@ -31,7 +29,7 @@ types:
       sans: list<string>
       selfSigned: boolean
 
-  # Main enumeration details — mirrors EnumerateImapDetails shape
+  # Main enumeration details — mirrors EnumerateImapDetails shape.
   EnumerateRdpDetails:
     properties:
       target: string
