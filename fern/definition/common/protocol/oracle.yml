@@ -1,0 +1,8 @@
+types:
+  OracleServerInfo:
+    properties:
+      version: optional<string>
+      edition: optional<string>
+      vsnnum: optional<string>
+      errorCode: optional<string>
+      protocolVersion: optional<string>

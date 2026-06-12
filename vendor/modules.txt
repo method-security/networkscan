@@ -1944,6 +1944,18 @@ github.com/shoenig/go-m1cpu
 github.com/shurcooL/graphql
 github.com/shurcooL/graphql/ident
 github.com/shurcooL/graphql/internal/jsonutil
+# github.com/sijms/go-ora/v2 v2.9.0
+## explicit; go 1.18
+github.com/sijms/go-ora/v2
+github.com/sijms/go-ora/v2/advanced_nego
+github.com/sijms/go-ora/v2/advanced_nego/ntlmssp
+github.com/sijms/go-ora/v2/configurations
+github.com/sijms/go-ora/v2/converters
+github.com/sijms/go-ora/v2/lazy_init
+github.com/sijms/go-ora/v2/network
+github.com/sijms/go-ora/v2/network/security
+github.com/sijms/go-ora/v2/network/security/md4
+github.com/sijms/go-ora/v2/trace
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus

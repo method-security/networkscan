@@ -8,6 +8,7 @@ imports:
   ike: ./ike/ike.yml
   snmp: ./snmp/snmp.yml
   imap: ./imap/imap.yml
+  ipmi: ./ipmi/ipmi.yml
   mongodb: ./mongodb/mongodb.yml
   mssql: ./mssql/mssql.yml
   mysql: ./mysql/mysql.yml
@@ -30,6 +31,7 @@ types:
       - IKE
       - SNMP
       - IMAP
+      - IPMI
       - MONGODB
       - MSSQL
       - MYSQL
@@ -51,6 +53,7 @@ types:
       EnumerateIkeDetails: ike.EnumerateIkeDetails
       EnumerateSnmpDetails: snmp.EnumerateSnmpDetails
       EnumerateImapDetails: imap.EnumerateImapDetails
+      EnumerateIpmiDetails: ipmi.EnumerateIpmiDetails
       EnumerateMongodbDetails: mongodb.EnumerateMongodbDetails
       EnumerateMssqlDetails: mssql.EnumerateMssqlDetails
       EnumerateMysqlDetails: mysql.EnumerateMysqlDetails
