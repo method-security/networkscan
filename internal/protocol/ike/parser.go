@@ -189,6 +189,19 @@ func BuildIKEv2SAInitRequest() []byte {
 	return append(header, body...)
 }
 
+// BuildIKEv2SAInitRequestForProbe creates an IKEv2 IKE_SA_INIT request with a
+// unique initiator SPI derived from probeIndex (1-based). Using distinct SPIs
+// per probe prevents IKEv2 peers from treating subsequent probes as retransmits
+// of the first exchange and answering from cache, which would skew RTT
+// measurements in backoff fingerprinting.
+func BuildIKEv2SAInitRequestForProbe(probeIndex int) []byte {
+	pkt := BuildIKEv2SAInitRequest()
+	// Overwrite bytes 0–7 (initiator SPI). probeIndex+1 avoids SPI=0 which has
+	// special meaning in IKEv2 (RFC 7296 §3.1).
+	binary.BigEndian.PutUint64(pkt[0:8], uint64(probeIndex+1))
+	return pkt
+}
+
 // BuildNATTIKEv1AMRequest wraps an IKEv1 Aggressive Mode packet with the
 // 4-byte Non-ESP marker required by RFC 3948 §2.3 for UDP port 4500.
 // The caller supplies the raw IKEv1 AM probe bytes.
