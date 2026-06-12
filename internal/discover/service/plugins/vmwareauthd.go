@@ -49,8 +49,14 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	// Without draining all of them the bufio buffer would contain leftover
 	// greeting lines that readMultiline200 would mis-parse as the CAPS reply,
 	// marking the wire dirty and skipping VERSION + SSL/TLS.
+	//
+	// bannerStoreCap bounds memory when a hostile peer floods continuation
+	// lines. bannerDrainCap limits the total reads; if a terminal is not
+	// seen within this many lines the peer is treated as non-authd.
+	const bannerStoreCap = 64
+	const bannerDrainCap = 128
 	var bannerLines []string
-	for {
+	for i := 0; i < bannerDrainCap; i++ {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			return nil, err
@@ -59,7 +65,9 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 		if !strings.HasPrefix(line, "220") {
 			return nil, fmt.Errorf("not VMware authd: %s", line)
 		}
-		bannerLines = append(bannerLines, line)
+		if len(bannerLines) < bannerStoreCap {
+			bannerLines = append(bannerLines, line)
+		}
 		if len(line) < 4 || line[3] == ' ' {
 			break // terminal line
 		}
@@ -91,7 +99,7 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	_ = helpers.SetWriteDeadlineDuration(conn, dur)
 	if _, err := conn.Write([]byte("CAPS\r\n")); err == nil {
 		_ = helpers.SetReadDeadlineDuration(conn, dur)
-		caps, capsWireClean := readMultiline200(reader)
+		caps, _, capsWireClean := readMultiline200(reader)
 		if len(caps) > 0 {
 			info.Capabilities = caps
 		}
@@ -130,13 +138,20 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	if sslAdvertised && wireClean {
 		_ = helpers.SetWriteDeadlineDuration(conn, dur)
 		if _, err := conn.Write([]byte("SSL\r\n")); err == nil {
-			// Read SSL ack — single 200-prefixed line is typical; tolerate empty/non-200.
+			// Read the SSL ack. authd may send an SMTP-style multi-line ack:
+			//   "200-Starting SSL\r\n200 Go ahead\r\n"
+			// A single ReadString('\n') would leave the second line in the
+			// bufio buffer; prefixedConn would then feed those plaintext bytes
+			// to tls.Client before the TLS record bytes, corrupting the
+			// handshake. Use readMultiline200 to fully drain all ack lines.
+			// Only proceed when the terminal "200 " was seen (ackComplete);
+			// a non-200 reply (server declined the upgrade) leaves ackComplete
+			// false and we skip the TLS dial.
 			_ = helpers.SetReadDeadlineDuration(conn, dur)
-			ack, _ := reader.ReadString('\n')
-			ack = strings.TrimSpace(ack)
-			if strings.HasPrefix(ack, "200") || ack == "" {
+			_, ackComplete, _ := readMultiline200(reader)
+			if ackComplete {
 				// Drain any bytes the bufio.Reader has buffered beyond the SSL
-				// ack line — if the server pipelined the ack and the first TLS
+				// ack — if the server pipelined the ack and the first TLS
 				// record in one TCP segment, those TLS bytes are sitting in the
 				// bufio buffer and would be invisible to tls.Client(conn).
 				// Wrap conn so the TLS layer sees the buffered prefix first,
@@ -207,14 +222,16 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 }
 
 // readMultiline200 reads SMTP-style multi-line "200-…" replies, stopping at
-// "200 …". Returns the payload lines and a wireClean flag.
+// "200 …". Returns the payload lines, a complete flag, and a wireClean flag.
+//
+// complete is true only when the terminal "200 " line was seen — i.e. the
+// server responded successfully to the command.
 //
 // wireClean is true when the bufio buffer has no unconsumed bytes that would
 // corrupt a subsequent read:
-//   - The terminal "200 " line was seen (happy path).
+//   - The terminal "200 " line was seen (complete=true implies wireClean=true).
 //   - The server replied with a single non-200 line (e.g. 5xx error) that was
-//     fully consumed — the wire is clean even though no capabilities were
-//     exchanged.
+//     fully consumed — wire is clean even though no capabilities were exchanged.
 //
 // wireClean is false when bytes may still remain:
 //   - A read error occurred (connection reset, timeout, partial data).
@@ -223,14 +240,14 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 //
 // Storage is bounded at storeCap entries; the wire is drained up to drainCap
 // lines so subsequent reads aren't polluted by leftover continuation lines.
-func readMultiline200(r *bufio.Reader) ([]string, bool) {
+func readMultiline200(r *bufio.Reader) ([]string, bool, bool) {
 	const storeCap = 64
 	const drainCap = 4096
 	var out []string
 	for i := 0; i < drainCap; i++ {
 		line, err := r.ReadString('\n')
 		if err != nil {
-			return out, false // read error: wire state unknown
+			return out, false, false // read error: wire state unknown
 		}
 		line = strings.TrimRight(line, "\r\n")
 		if len(line) < 4 || !strings.HasPrefix(line, "200") {
@@ -238,7 +255,7 @@ func readMultiline200(r *bufio.Reader) ([]string, bool) {
 			// continuation lines were seen yet (first/only reply line, e.g.
 			// a 5xx error). After some 200- continuations a mid-stream
 			// non-200 is malformed; treat wire as dirty.
-			return out, len(out) == 0
+			return out, false, len(out) == 0
 		}
 		if len(out) < storeCap {
 			payload := strings.TrimSpace(line[4:])
@@ -247,10 +264,10 @@ func readMultiline200(r *bufio.Reader) ([]string, bool) {
 			}
 		}
 		if line[3] == ' ' {
-			return out, true // terminal line: wire clean
+			return out, true, true // terminal line: command succeeded and wire is clean
 		}
 	}
-	return out, false // drainCap exhausted: leftover lines remain
+	return out, false, false // drainCap exhausted: leftover lines remain
 }
 
 // parseAuthdBanner extracts daemon version, SSL requirement, sub-protocols,
