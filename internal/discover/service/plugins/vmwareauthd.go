@@ -59,35 +59,47 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	info.Banner = &bannerCopy
 	parseAuthdBanner(banner, info)
 
-	// CAPS exchange — multi-line "200-…" / final "200 …" (SMTP final-space convention)
+	// CAPS exchange — multi-line "200-…" / final "200 …" (SMTP final-space convention).
+	// capsComplete tracks whether we saw the terminator line; if not, there may be
+	// unread CAPS bytes left on the wire and follow-up commands (VERSION, SSL)
+	// would mis-parse a leftover continuation line as their reply.
+	capsComplete := false
 	_ = helpers.SetWriteDeadlineDuration(conn, dur)
 	if _, err := conn.Write([]byte("CAPS\r\n")); err == nil {
 		_ = helpers.SetReadDeadlineDuration(conn, dur)
-		caps := readMultiline200(reader)
+		caps, complete := readMultiline200(reader)
 		if len(caps) > 0 {
 			info.Capabilities = caps
 		}
+		capsComplete = complete
 	}
 
-	// VERSION exchange — single line response
-	_ = helpers.SetWriteDeadlineDuration(conn, dur)
-	if _, err := conn.Write([]byte("VERSION\r\n")); err == nil {
-		_ = helpers.SetReadDeadlineDuration(conn, dur)
-		if v, err := reader.ReadString('\n'); err == nil {
-			v = strings.TrimRight(v, "\r\n")
-			info.VersionResponse = &v
-			// Some builds echo ESXi version / build in VERSION reply too.
-			parseVersionReply(v, info)
+	// VERSION exchange — single line response. Skipped if CAPS didn't terminate
+	// cleanly: the next ReadString would pick up a stale "200-…" continuation
+	// and clobber versionResponse / build / esxi fields.
+	if capsComplete {
+		_ = helpers.SetWriteDeadlineDuration(conn, dur)
+		if _, err := conn.Write([]byte("VERSION\r\n")); err == nil {
+			_ = helpers.SetReadDeadlineDuration(conn, dur)
+			if v, err := reader.ReadString('\n'); err == nil {
+				v = strings.TrimRight(v, "\r\n")
+				info.VersionResponse = &v
+				// Some builds echo ESXi version / build in VERSION reply too.
+				parseVersionReply(v, info)
+			}
 		}
 	}
 
 	tlsUsed := false
 	transport := common.TransportTypeTcp
 
-	// SSL upgrade — only if banner advertised SSL (Required or Recommended)
+	// SSL upgrade — only if banner advertised SSL (Required or Recommended) AND
+	// the CAPS exchange terminated cleanly. With a dirty wire the prefixedConn
+	// hand-off below would feed leftover plaintext CAPS bytes into the TLS
+	// handshake and corrupt it.
 	sslAdvertised := (info.SslRequired != nil && *info.SslRequired) ||
 		(info.SslRecommended != nil && *info.SslRecommended)
-	if sslAdvertised {
+	if sslAdvertised && capsComplete {
 		_ = helpers.SetWriteDeadlineDuration(conn, dur)
 		if _, err := conn.Write([]byte("SSL\r\n")); err == nil {
 			// Read SSL ack — single 200-prefixed line is typical; tolerate empty/non-200.
@@ -166,28 +178,39 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	}, nil
 }
 
-// readMultiline200 reads SMTP-style multi-line "200-…" replies, stopping at "200 …".
-// Returns the payload portion of each line (after "200-" / "200 ").
-func readMultiline200(r *bufio.Reader) []string {
+// readMultiline200 reads SMTP-style multi-line "200-…" replies, stopping at
+// "200 …". Returns the payload portion of each line (after "200-" / "200 ")
+// and a `complete` flag indicating whether the terminator line was seen.
+//
+// Storage is bounded at storeCap entries (memory bound against pathological
+// peers). The wire is drained up to drainCap lines (time bound) so subsequent
+// reads on the same conn don't pick up leftover continuation lines. If the
+// drain bound trips without seeing the terminator, complete=false signals the
+// caller that the wire is still dirty and follow-up commands would mis-parse.
+func readMultiline200(r *bufio.Reader) ([]string, bool) {
+	const storeCap = 64
+	const drainCap = 4096
 	var out []string
-	for i := 0; i < 64; i++ { // hard cap to bound malicious peers
+	for i := 0; i < drainCap; i++ {
 		line, err := r.ReadString('\n')
 		if err != nil {
-			return out
+			return out, false
 		}
 		line = strings.TrimRight(line, "\r\n")
 		if len(line) < 4 || !strings.HasPrefix(line, "200") {
-			return out
+			return out, false
 		}
-		payload := strings.TrimSpace(line[4:])
-		if payload != "" {
-			out = append(out, payload)
+		if len(out) < storeCap {
+			payload := strings.TrimSpace(line[4:])
+			if payload != "" {
+				out = append(out, payload)
+			}
 		}
 		if line[3] == ' ' {
-			return out
+			return out, true
 		}
 	}
-	return out
+	return out, false
 }
 
 // parseAuthdBanner extracts daemon version, SSL requirement, sub-protocols,
