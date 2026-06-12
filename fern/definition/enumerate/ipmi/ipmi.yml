@@ -1,0 +1,27 @@
+imports:
+  ipmiProtocol: ../../common/protocol/ipmi.yml
+types:
+  # Deep-probe output of `enumerate ipmi`. The discover plugin produces
+  # the Get-Channel-Auth-Capabilities banner (ServerInfo); enumerate
+  # extends that with two opt-in pre-auth validators:
+  #
+  #   - cipherZeroAccepted: CVE-2013-4031 — a BMC that returns status
+  #     0x00 to an RMCP+ Open Session Request with cipher suite 0 (no
+  #     auth / no integrity / no confidentiality) is critically
+  #     misconfigured.
+  #
+  #   - rakpHashesDisclosed: CVE-2013-4786 — for each guessed username,
+  #     RAKP-2 carries an HMAC-SHA1 keyed with the user's password
+  #     material. Each entry is an offline-crackable hashcat -m 7300
+  #     blob and confirms that username exists on the BMC.
+  #
+  # `probedUsernames` is the full list of guesses tried so consumers can
+  # read the existence oracle as "all tried, these returned hashes."
+  EnumerateIpmiDetails:
+    properties:
+      target: string
+      port: integer
+      serverInfo: optional<ipmiProtocol.IpmiServerInfo>
+      cipherZeroAccepted: optional<boolean>
+      rakpHashesDisclosed: optional<list<ipmiProtocol.IpmiRakpHashDisclosure>>
+      probedUsernames: optional<list<string>>
