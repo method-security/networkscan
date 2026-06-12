@@ -82,7 +82,7 @@ func (l *LibraryEnumerateVNC) EnumerateTarget(ctx context.Context, target string
 	}
 
 	// Build list of ports to probe
-	ports := []int{}
+	var ports []int
 	if hasExplicitPort {
 		ports = []int{port}
 	} else {
@@ -148,7 +148,7 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int, s
 		detail.Errors = errs
 		return detail
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := conn.SetDeadline(deadline); err != nil {
 		errs = append(errs, fmt.Sprintf("vnc set deadline: %v", err))
