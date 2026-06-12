@@ -60,10 +60,13 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	parseAuthdBanner(banner, info)
 
 	// CAPS exchange — multi-line "200-…" / final "200 …" (SMTP final-space convention).
-	// capsComplete tracks whether we saw the terminator line; if not, there may be
-	// unread CAPS bytes left on the wire and follow-up commands (VERSION, SSL)
-	// would mis-parse a leftover continuation line as their reply.
-	capsComplete := false
+	// wireClean tracks whether subsequent reads on this conn are safe: true when
+	// we never sent CAPS (so nothing to consume) OR when CAPS terminated with the
+	// final "200 " line. Set to false only when we DID send CAPS but the
+	// multiline reader bailed (read error, non-200 line, or hit the drain bound)
+	// — at that point unread bytes may still be on the wire and any follow-up
+	// command would mis-parse them.
+	wireClean := true
 	_ = helpers.SetWriteDeadlineDuration(conn, dur)
 	if _, err := conn.Write([]byte("CAPS\r\n")); err == nil {
 		_ = helpers.SetReadDeadlineDuration(conn, dur)
@@ -71,13 +74,13 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 		if len(caps) > 0 {
 			info.Capabilities = caps
 		}
-		capsComplete = complete
+		wireClean = complete
 	}
 
-	// VERSION exchange — single line response. Skipped if CAPS didn't terminate
-	// cleanly: the next ReadString would pick up a stale "200-…" continuation
-	// and clobber versionResponse / build / esxi fields.
-	if capsComplete {
+	// VERSION exchange — single line response. Skipped if CAPS started but
+	// didn't terminate cleanly: the next ReadString would pick up a stale
+	// "200-…" continuation and clobber versionResponse / build / esxi fields.
+	if wireClean {
 		_ = helpers.SetWriteDeadlineDuration(conn, dur)
 		if _, err := conn.Write([]byte("VERSION\r\n")); err == nil {
 			_ = helpers.SetReadDeadlineDuration(conn, dur)
@@ -94,12 +97,12 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	transport := common.TransportTypeTcp
 
 	// SSL upgrade — only if banner advertised SSL (Required or Recommended) AND
-	// the CAPS exchange terminated cleanly. With a dirty wire the prefixedConn
-	// hand-off below would feed leftover plaintext CAPS bytes into the TLS
-	// handshake and corrupt it.
+	// the wire is still clean. With a dirty wire the prefixedConn hand-off
+	// below would feed leftover plaintext CAPS bytes into the TLS handshake
+	// and corrupt it.
 	sslAdvertised := (info.SslRequired != nil && *info.SslRequired) ||
 		(info.SslRecommended != nil && *info.SslRecommended)
-	if sslAdvertised && capsComplete {
+	if sslAdvertised && wireClean {
 		_ = helpers.SetWriteDeadlineDuration(conn, dur)
 		if _, err := conn.Write([]byte("SSL\r\n")); err == nil {
 			// Read SSL ack — single 200-prefixed line is typical; tolerate empty/non-200.
