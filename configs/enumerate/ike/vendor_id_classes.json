@@ -1,0 +1,89 @@
+{
+  "vendorIds": [
+    {
+      "hexPrefix": "afcad71368a1f1c96b8696fc77570100",
+      "vendor": "Dead Peer Detection (RFC 3706)",
+      "class": "DPD"
+    },
+    {
+      "hexPrefix": "4a131c81070358455c5728f20e95452f",
+      "vendor": "NAT-T (RFC 3947)",
+      "class": "NAT-T"
+    },
+    {
+      "hexPrefix": "cd60464335df21f87cfdb2fc68b6a448",
+      "vendor": "Cisco XAUTH",
+      "class": "Cisco"
+    },
+    {
+      "hexPrefix": "12f5f28c457168a9702d9fe274cc0100",
+      "vendor": "Cisco Unity",
+      "class": "Cisco"
+    },
+    {
+      "hexPrefix": "1e2b516905991c7d7c96fcbfb587e461",
+      "vendor": "Cisco VPN 3000",
+      "class": "Cisco"
+    },
+    {
+      "hexPrefix": "26244d38eddb61b3172a36e3d0cfb819",
+      "vendor": "Cisco ASA",
+      "class": "Cisco"
+    },
+    {
+      "hexPrefix": "c0f8f3a4c20f75ef0bb6a96a697d0aff",
+      "vendor": "Fortinet FortiGate",
+      "class": "Fortinet"
+    },
+    {
+      "hexPrefix": "882fe56d6fd20dbc2251613b2ebe5beb",
+      "vendor": "strongSwan",
+      "class": "strongSwan"
+    },
+    {
+      "hexPrefix": "699369228741c6d4ca094c93e242c9de",
+      "vendor": "Microsoft Windows IKE",
+      "class": "Microsoft"
+    },
+    {
+      "hexPrefix": "4048b7d56ebce88525e7de7f00d6c2d3",
+      "vendor": "Check Point VPN-1",
+      "class": "CheckPoint"
+    },
+    {
+      "hexPrefix": "f4ed19e0c114eb516faaac0ee37daf28",
+      "vendor": "Check Point R65",
+      "class": "CheckPoint"
+    },
+    {
+      "hexPrefix": "90cb80913ebb696e086381b5ec427b1f",
+      "vendor": "SonicWall",
+      "class": "SonicWall"
+    },
+    {
+      "hexPrefix": "404bf439522ca3f6",
+      "vendor": "SonicWall (short)",
+      "class": "SonicWall"
+    },
+    {
+      "hexPrefix": "8f8d83826d246b6fc7a8a6a428c11de8",
+      "vendor": "Juniper Networks",
+      "class": "Juniper"
+    },
+    {
+      "hexPrefix": "1aa8840b04c95a45",
+      "vendor": "Juniper (Netscreen)",
+      "class": "Juniper"
+    },
+    {
+      "hexPrefix": "e3a5966a76379fe707228231e5ce8652",
+      "vendor": "Libreswan / Openswan",
+      "class": "Libreswan"
+    },
+    {
+      "hexPrefix": "4485152d18b6bbcd0be8a8469579ddcc",
+      "vendor": "Libreswan KLIPS",
+      "class": "Libreswan"
+    }
+  ]
+}

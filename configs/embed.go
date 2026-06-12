@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-//go:embed pentest discover
+//go:embed pentest discover enumerate
 var configFS embed.FS
 
 // ReadFile reads a file from the embedded config filesystem.
