@@ -158,14 +158,17 @@ func ReadX224ConnectionConfirm(r io.Reader) (*ConnectionConfirm, error) {
 		return nil, fmt.Errorf("rdp: ReadX224CC: %w", err)
 	}
 	cc := &ConnectionConfirm{RawPDU: payload}
-	if len(payload) < 7 {
-		return cc, nil // bare CC with no negotiation response
-	}
-
 	// payload[0] = LI (length indicator)
 	// payload[1] = PDU type: 0xd0 = Connection Confirm
+	// Require at least the 7-byte X.224 CC header (LI + PDU type + 2*DST_REF +
+	// 2*SRC_REF + CLASS_OPTION). A payload shorter than 7 bytes or one whose
+	// PDU type isn't 0xd0 is not a valid CC — bail with an error so callers
+	// don't treat random short / non-RDP responses as "handshake established."
+	if len(payload) < 7 {
+		return cc, fmt.Errorf("rdp: ReadX224CC: payload too short for X.224 CC header (%d bytes, need >= 7)", len(payload))
+	}
 	if payload[1] != 0xd0 {
-		return nil, fmt.Errorf("rdp: ReadX224CC: expected CC PDU type 0xd0, got 0x%02x", payload[1])
+		return cc, fmt.Errorf("rdp: ReadX224CC: expected CC PDU type 0xd0, got 0x%02x", payload[1])
 	}
 
 	// Optional negotiation response starts at offset 7 (after the 7-byte X.224 CC header).
