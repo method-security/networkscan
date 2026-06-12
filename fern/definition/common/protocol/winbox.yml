@@ -3,9 +3,6 @@ types:
   WinboxServerInfo:
     properties:
       # Discovery fields
-      routerosVersion: optional<string>             # e.g., "6.42.0"
-      boardName: optional<string>                   # e.g., "RB951Ui-2HnD"
-      boardIdentity: optional<string>               # system identity (hostname-like)
-      # CVE-2018-14847 patch-state evidence
-      vulnerableToCve201814847: optional<boolean>   # nil = indeterminate, true/false otherwise
-      userDatResponseBytes: optional<integer>       # raw payload byte count
+      routerosVersion: optional<string>   # e.g., "6.42.0"
+      boardName: optional<string>         # e.g., "RB951Ui-2HnD"
+      boardIdentity: optional<string>     # system identity (hostname-like)

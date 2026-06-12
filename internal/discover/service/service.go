@@ -122,7 +122,7 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.NDMPFingerprinter{},            // Network Data Management Protocol
 	&localPlugins.HPDataProtectorFingerprinter{}, // HP Data Protector OmniInet (overlaps ADB on TCP/5555)
 	&localPlugins.NFSFingerprinter{},             // Network File System
-	&localPlugins.WinboxFingerprinter{},          // MikroTik Winbox (TCP/8291) + CVE-2018-14847 patch check
+	&localPlugins.WinboxFingerprinter{},          // MikroTik Winbox (TCP/8291) service fingerprinter
 }
 
 // UDP fingerprinters mapped to their specific ports
