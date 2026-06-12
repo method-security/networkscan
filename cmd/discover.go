@@ -21,10 +21,10 @@ import (
 )
 
 const (
-	defaultServiceFingerprintTimeout = 10
-	defaultServicePluginThreads      = 4
+	defaultServiceFingerprintTimeout = 20
+	defaultServicePluginThreads      = 8
 	defaultCustomPluginThreads       = 1
-	defaultValidatePluginThreads     = 4
+	defaultValidatePluginThreads     = 8
 )
 
 // InitDiscoverCommand initializes the discover command and its subcommands (host, os, port, service, tls).
@@ -237,7 +237,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN (default, requires root) or CONNECT")
 	discoverPortCmd.Flags().Int("packets-per-second", 1000, "Packets per second to send (default: 1000)")
 	discoverPortCmd.Flags().Bool("validate", false, "Validate open ports by using service detection techniques")
-	discoverPortCmd.Flags().Int("validate-attempt-timeout", 10, "Timeout in seconds for each service detection attempt")
+	discoverPortCmd.Flags().Int("validate-attempt-timeout", defaultServiceFingerprintTimeout, "Timeout in seconds for each service detection attempt")
 	discoverPortCmd.Flags().Int("validate-threads", 0, "Number of concurrent threads to use during service detection")
 	discoverPortCmd.Flags().Int("validate-plugin-threads", defaultValidatePluginThreads, "Maximum number of custom service plugins to run concurrently per port during validation")
 	discoverPortCmd.Flags().Int("max-open-ports-validation-threshold", 50, "Trigger validation warning when more than this many ports are open (default: 50)")
