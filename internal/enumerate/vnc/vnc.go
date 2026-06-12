@@ -220,7 +220,9 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int, s
 		return detail
 	}
 
-	// Parse version: "RFB MAJ.MIN\n"
+	// Initially capture the raw banner so a parse failure still surfaces what
+	// the server sent on the wire (the operator wouldn't otherwise see the
+	// malformed string).
 	versionStr := strings.TrimSpace(bannerStr[4:])
 	detail.ProtocolVersion = &versionStr
 
@@ -231,13 +233,22 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int, s
 		return detail
 	}
 
-	// Negotiate version: send min(server, 003.008)
+	// Negotiate version: send min(server, 003.008). The session runs at the
+	// negotiated minimum, NOT the server's banner — a server that banners
+	// "RFB 003.010\n" or "RFB 004.x\n" still steps down to 003.008 when our
+	// client reply specifies that.
 	clientMajor, clientMinor := 3, 8
 	if serverMajor < clientMajor || (serverMajor == clientMajor && serverMinor < clientMinor) {
 		clientMajor = serverMajor
 		clientMinor = serverMinor
 	}
-	clientVersionMsg := fmt.Sprintf("RFB %03d.%03d\n", clientMajor, clientMinor)
+	// Overwrite ProtocolVersion with the NEGOTIATED value — the version that
+	// every byte after this point will be interpreted under. Reporting the
+	// server's banner instead would misstate what was on the wire.
+	negotiatedVersion := fmt.Sprintf("%03d.%03d", clientMajor, clientMinor)
+	detail.ProtocolVersion = &negotiatedVersion
+
+	clientVersionMsg := fmt.Sprintf("RFB %s\n", negotiatedVersion)
 	if _, err := conn.Write([]byte(clientVersionMsg)); err != nil {
 		errs = append(errs, fmt.Sprintf("vnc version send: %v", err))
 		detail.Errors = errs
