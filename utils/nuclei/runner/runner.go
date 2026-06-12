@@ -52,7 +52,7 @@ func copyFilesToTmpDirs(cfg Config) (templateDir string, err error) {
 	// other.
 	for i, src := range cfg.TemplateFS {
 		srcDir := filepath.Join(templateDir, fmt.Sprintf("src-%d", i))
-		_ = fs.WalkDir(src, ".", func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr := fs.WalkDir(src, ".", func(p string, d fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
@@ -72,7 +72,13 @@ func copyFilesToTmpDirs(cfg Config) (templateDir string, err error) {
 				return err
 			}
 			return os.WriteFile(dst, data, 0o600)
-		})
+		}); walkErr != nil {
+			// Surface walk/copy failures so callers don't operate on an empty
+			// or partial template tree as if it were complete.  Best-effort
+			// cleanup of the half-populated temp dir before returning.
+			_ = os.RemoveAll(templateDir)
+			return "", fmt.Errorf("copy templates from source %d: %w", i, walkErr)
+		}
 	}
 
 	return templateDir, nil
