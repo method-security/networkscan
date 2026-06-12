@@ -17,6 +17,8 @@ import (
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
+var runServiceFingerprintForValidation = discoverservice.RunServiceFingerprint
+
 // validatePortScan verifies that discovered ports actually have legitimate services running on them.
 //
 // Many port scanners report false positives - ports that appear open but don't actually host services,
@@ -74,9 +76,10 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 					serviceConfig := discoverfern.DiscoverServiceConfig{
 						Target:  targetStr,
 						Timeout: *config.ValidateAttemptTimeout,
+						Threads: config.ValidatePluginThreads,
 					}
 
-					serviceReport, err := discoverservice.RunServiceFingerprint(ctx, serviceConfig)
+					serviceReport, err := runServiceFingerprintForValidation(ctx, serviceConfig)
 					if err != nil {
 						// Don't fail validation on errors, just log them
 						errorsMutex.Lock()

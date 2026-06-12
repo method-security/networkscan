@@ -12,6 +12,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jfjallid/go-smb v0.6.6
 	github.com/jfjallid/gokrb5/v8 v8.5.1
+	github.com/lib/pq v1.10.9
 	github.com/masterzen/winrm v0.0.0-20250927112105-5f8e6c707321
 	github.com/microsoft/go-mssqldb v1.9.2
 	github.com/miekg/dns v1.1.68
@@ -189,7 +190,6 @@ require (
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/leslie-qiwa/flat v0.0.0-20230424180412-f9d1cf014baa // indirect
-	github.com/lib/pq v1.10.9 // indirect
 	github.com/libdns/libdns v0.2.1 // indirect
 	github.com/lor00x/goldap v0.0.0-20180618054307-a546dffdd1a3 // indirect
 	github.com/mackerelio/go-osstat v0.2.4 // indirect
