@@ -1,0 +1,60 @@
+types:
+  # ENUMs
+
+  # RDP protocol flags per MS-RDPBCGR §2.2.1.1.1 rdpNegReq and §2.2.1.2.1 rdpNegRsp
+  RdpProtocolFlag:
+    enum:
+      - PROTOCOL_RDP
+      - PROTOCOL_SSL
+      - PROTOCOL_HYBRID
+      - PROTOCOL_RDSTLS
+      - PROTOCOL_HYBRID_EX
+      - PROTOCOL_HYBRID_REC_LIMIT_REACHED
+
+  # RDP negotiation failure codes per MS-RDPBCGR §2.2.1.2.2 rdpNegFailure
+  RdpNegFailureCode:
+    enum:
+      - SSL_REQUIRED_BY_SERVER
+      - SSL_NOT_ALLOWED_BY_SERVER
+      - SSL_CERT_NOT_ON_SERVER
+      - INCONSISTENT_FLAGS
+      - HYBRID_REQUIRED_BY_SERVER
+      - SSL_WITH_USER_AUTH_REQUIRED_BY_SERVER
+
+  # TLS certificate information
+  TlsCertificate:
+    properties:
+      subject: string
+      issuer: string
+      notBefore: string
+      notAfter: string
+      sans: list<string>
+      selfSigned: boolean
+
+  # Per-target RDP enumeration result
+  EnumerateRdpTargetResult:
+    properties:
+      target: string
+      port: integer
+      success: boolean
+      errorMessage: optional<string>
+      supportedProtocols: list<RdpProtocolFlag>
+      selectedProtocol: optional<RdpProtocolFlag>
+      nlaRequired: boolean
+      requestedProtocolFlags: integer
+      selectedProtocolFlags: integer
+      negFailureCode: optional<RdpNegFailureCode>
+      certificate: optional<TlsCertificate>
+      cookieEcho: optional<string>
+
+  # Config for RDP enumerate operations
+  RdpEnumerateConfig:
+    properties:
+      timeout: optional<integer>
+
+  # Report wrapping per-target results
+  EnumerateRdpServiceReport:
+    properties:
+      config: RdpEnumerateConfig
+      results: list<EnumerateRdpTargetResult>
+      errors: optional<list<string>>
