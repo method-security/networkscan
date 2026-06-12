@@ -109,6 +109,13 @@ func enumerateRDP(ctx context.Context, target string) *rdpfern.EnumerateRdpDetai
 		if len(supported) > 0 {
 			result.SupportedProtocols = supported
 		}
+		// HYBRID and HYBRID_EX use CredSSP/NLA; record that as nlaRequired so the
+		// successful-HYBRID-handshake path agrees with the failure-side
+		// HYBRID_REQUIRED_BY_SERVER branch below.
+		if cc.SelectedProtocol == rdpproto.ProtocolHybrid || cc.SelectedProtocol == rdpproto.ProtocolHybridEx {
+			nlaRequired := true
+			result.NlaRequired = &nlaRequired
+		}
 	} else if cc.NegFailureReceived {
 		// Failure code — infer supported protocols from failure and set nlaRequired flag.
 		// mapFailureCode returns nil for unrecognized codes; leave
