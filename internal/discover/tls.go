@@ -754,23 +754,19 @@ func sendJARMProbe(ctx context.Context, target string, payload []byte, timeout t
 	return resp[:n]
 }
 
-// minJARMProbeTimeout is the lower bound applied to each JARM probe's budget.
-// Without a floor, --timeout values smaller than the probe count would
-// integer-divide to zero, which net.Dialer treats as "no deadline" and lets
-// probes run unbounded. 500ms is short enough that 10 sequential probes
-// against an unresponsive target still complete in <5s.
-const minJARMProbeTimeout = 500 * time.Millisecond
-
 // computeJARM sends the 10 standard JARM probes and returns the resulting 62-character hash.
 // Returns jarm.ZeroHash if the target is unreachable, does not respond to any probe, or
 // if ctx is cancelled before the probes complete.
 //
-// Per-probe budget is max(timeout/probeCount, minJARMProbeTimeout). The floor protects
-// against tiny --timeout values that would otherwise yield a 0 budget; for the default
-// --timeout 30s each probe gets the expected 3s. Inside sendJARMProbe a single absolute
-// deadline covers dial + write + read so each probe consumes its budget once, not twice.
-// ctx cancellation is checked before each probe so callers (e.g. the GetTLSInfo request
+// Budget discipline: the total wall-time stays within the caller's configured timeout.
+// Per-probe budget is timeout/probeCount; inside sendJARMProbe a single absolute deadline
+// covers dial + write + read so each probe consumes its budget once, not twice. ctx
+// cancellation is checked before each probe so callers (e.g. the GetTLSInfo request
 // pipeline) can abort the remaining probes promptly.
+//
+// No floor is applied to perProbeTimeout: time.Duration is nanoseconds, so even small
+// integer --timeout values (e.g. 1s → 100ms/probe) produce a non-zero budget. Adding a
+// floor would let tiny --timeout values overshoot the user-configured per-target budget.
 func computeJARM(ctx context.Context, target string, timeout time.Duration) string {
 	host, portStr, err := net.SplitHostPort(target)
 	if err != nil {
@@ -783,9 +779,6 @@ func computeJARM(ctx context.Context, target string, timeout time.Duration) stri
 	probes := jarm.GetProbes(host, port)
 	rawResults := make([]string, 0, len(probes))
 	perProbeTimeout := timeout / time.Duration(len(probes))
-	if perProbeTimeout < minJARMProbeTimeout {
-		perProbeTimeout = minJARMProbeTimeout
-	}
 	for _, probe := range probes {
 		if err := ctx.Err(); err != nil {
 			return jarm.ZeroHash
