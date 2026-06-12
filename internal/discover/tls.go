@@ -5,17 +5,21 @@ import (
 	// Standard
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	// External
+	jarm "github.com/hdm/jarm-go"
 )
 
 // isIPAddress checks if a given host string is an IP address (IPv4 or IPv6)
@@ -139,7 +143,8 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	defaultState := defaultConn.ConnectionState()
 	negotiatedVersion = tlsVersionToString(defaultState.Version)
 	negotiatedCipherSuite = convertCipherSuiteToEnum(defaultState.CipherSuite)
-	certificates = extractCertificates(defaultState.PeerCertificates)
+	computeJA4X := config.Ja4X != nil && *config.Ja4X
+	certificates = extractCertificates(defaultState.PeerCertificates, computeJA4X)
 	_ = defaultConn.Close()
 
 	compressionEnabled := probeCompression(targetAddress, serverName, dialer)
@@ -185,6 +190,22 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	// Note: Go's crypto/tls doesn't expose the server's supported curves directly
 	// We can only see what was negotiated
 
+	tlsTimeout := time.Duration(config.Timeout) * time.Second
+
+	var ja4sFingerprint *string
+	if config.Ja4S != nil && *config.Ja4S {
+		v := computeJA4S(ctx, targetAddress, serverName, tlsTimeout)
+		if v != "" {
+			ja4sFingerprint = &v
+		}
+	}
+
+	var jarmFingerprint *string
+	if config.Jarm != nil && *config.Jarm {
+		v := computeJARM(ctx, targetAddress, tlsTimeout)
+		jarmFingerprint = &v
+	}
+
 	return &discoverfern.TlsConfiguration{
 		NegotiatedVersion:            negotiatedVersion,
 		NegotiatedCipherSuite:        negotiatedCipherSuite,
@@ -193,6 +214,8 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 		VersionSupport:               versionSupport,
 		SupportedEllipticCurves:      supportedCurves,
 		Certificates:                 certificates,
+		Ja4SFingerprint:              ja4sFingerprint,
+		JarmFingerprint:              jarmFingerprint,
 	}, errors
 }
 
@@ -296,7 +319,8 @@ func convertCipherSuiteToEnum(cipherSuiteID uint16) discoverfern.CipherSuite {
 }
 
 // extractCertificates converts x509 certificates to our Certificate type.
-func extractCertificates(x509Certs []*x509.Certificate) []*discoverfern.Certificate {
+// When withJA4X is true, a JA4X fingerprint is computed for each certificate.
+func extractCertificates(x509Certs []*x509.Certificate, withJA4X bool) []*discoverfern.Certificate {
 	certificates := []*discoverfern.Certificate{}
 
 	for _, cert := range x509Certs {
@@ -330,6 +354,11 @@ func extractCertificates(x509Certs []*x509.Certificate) []*discoverfern.Certific
 		publicKeyAlgorithm, err := discoverfern.NewPublicKeyAlgorithmFromString(cert.PublicKeyAlgorithm.String())
 		if err == nil {
 			certificate.PublicKeyAlgorithm = publicKeyAlgorithm
+		}
+
+		if withJA4X {
+			fp := computeJA4XForCert(cert)
+			certificate.Ja4XFingerprint = &fp
 		}
 
 		certificates = append(certificates, certificate)
@@ -695,4 +724,360 @@ func buildClientHello(versionMajor, versionMinor byte, cipherSuites, extensions,
 func buildTLSRecord(contentType, versionMajor, versionMinor byte, payload []byte) []byte {
 	header := []byte{contentType, versionMajor, versionMinor, byte(len(payload) >> 8), byte(len(payload) & 0xff)}
 	return append(header, payload...)
+}
+
+// sendJARMProbe opens a TCP connection, sends payload, and reads one response buffer.
+// Returns nil on any error or if ctx is cancelled. The entire probe (dial + write + read)
+// is bounded by a single absolute deadline derived from timeout — or ctx's deadline if
+// it expires sooner — so dial and read share one budget rather than each independently
+// consuming the full timeout.
+func sendJARMProbe(ctx context.Context, target string, payload []byte, timeout time.Duration) []byte {
+	if err := ctx.Err(); err != nil {
+		return nil
+	}
+	deadline := time.Now().Add(timeout)
+	if ctxDL, ok := ctx.Deadline(); ok && ctxDL.Before(deadline) {
+		deadline = ctxDL
+	}
+	dialer := net.Dialer{Deadline: deadline}
+	conn, err := dialer.DialContext(ctx, "tcp", target)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(deadline)
+	if _, err := conn.Write(payload); err != nil {
+		return nil
+	}
+	resp := make([]byte, 1484)
+	n, _ := conn.Read(resp)
+	return resp[:n]
+}
+
+// computeJARM sends the 10 standard JARM probes and returns the resulting 62-character hash.
+// Returns jarm.ZeroHash if the target is unreachable, does not respond to any probe, or
+// if ctx is cancelled before the probes complete.
+//
+// Budget discipline: the total wall-time stays within the caller's configured timeout.
+// Per-probe budget is timeout/probeCount; inside sendJARMProbe a single absolute deadline
+// covers dial + write + read so each probe consumes its budget once, not twice. ctx
+// cancellation is checked before each probe so callers (e.g. the GetTLSInfo request
+// pipeline) can abort the remaining probes promptly.
+//
+// No floor is applied to perProbeTimeout: time.Duration is nanoseconds, so even small
+// integer --timeout values (e.g. 1s → 100ms/probe) produce a non-zero budget. Adding a
+// floor would let tiny --timeout values overshoot the user-configured per-target budget.
+func computeJARM(ctx context.Context, target string, timeout time.Duration) string {
+	host, portStr, err := net.SplitHostPort(target)
+	if err != nil {
+		return jarm.ZeroHash
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return jarm.ZeroHash
+	}
+	probes := jarm.GetProbes(host, port)
+	rawResults := make([]string, 0, len(probes))
+	perProbeTimeout := timeout / time.Duration(len(probes))
+	for _, probe := range probes {
+		if err := ctx.Err(); err != nil {
+			return jarm.ZeroHash
+		}
+		payload := jarm.BuildProbe(probe)
+		resp := sendJARMProbe(ctx, target, payload, perProbeTimeout)
+		result, _ := jarm.ParseServerHello(resp, probe)
+		rawResults = append(rawResults, result)
+	}
+	return jarm.RawHashToFuzzyHash(strings.Join(rawResults, ","))
+}
+
+// tlsVersionCode maps a TLS version uint16 to its 2-character JA4 version code.
+func tlsVersionCode(version uint16) string {
+	switch version {
+	case tls.VersionTLS13:
+		return "13"
+	case tls.VersionTLS12:
+		return "12"
+	case tls.VersionTLS11:
+		return "11"
+	case tls.VersionTLS10:
+		return "10"
+	case tls.VersionSSL30:
+		return "s3"
+	default:
+		return "00"
+	}
+}
+
+// computeJA4S connects to target, sends a TLS 1.3-capable ClientHello, reads the
+// ServerHello, and returns the JA4S fingerprint string. Returns "" on failure.
+//
+// JA4S format: t{TLSVersion}{CipherCount}{ALPN}_{SelectedCipher}_{ExtensionHash}
+//
+//   - TLSVersion: 2-char code ("13" = TLS 1.3, "12" = TLS 1.2, etc.)
+//   - CipherCount: number of cipher suites in the ServerHello (always "01")
+//   - ALPN: first 2 chars of selected ALPN protocol, or "00" if absent
+//   - SelectedCipher: selected cipher suite as 4-hex lowercase
+//   - ExtensionHash: lowercase SHA-256 of comma-joined sorted extension type
+//     decimal strings, truncated to 12 chars
+func computeJA4S(ctx context.Context, target, serverName string, timeout time.Duration) string {
+	if err := ctx.Err(); err != nil {
+		return ""
+	}
+	deadline := time.Now().Add(timeout)
+	if ctxDL, ok := ctx.Deadline(); ok && ctxDL.Before(deadline) {
+		deadline = ctxDL
+	}
+	dialer := net.Dialer{Deadline: deadline}
+	conn, err := dialer.DialContext(ctx, "tcp", target)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(deadline)
+
+	// Build a TLS 1.3 ClientHello that also supports TLS 1.2.
+	sniExt := buildSNIExtension(serverName)
+
+	// supported_versions extension (0x002b): offer TLS 1.3 + TLS 1.2
+	suppVersExt := []byte{
+		0x00, 0x2b, // type: supported_versions
+		0x00, 0x05, // ext length
+		0x04,       // versions list length
+		0x03, 0x04, // TLS 1.3
+		0x03, 0x03, // TLS 1.2
+	}
+	// supported_groups extension (0x000a): x25519, secp256r1, secp384r1
+	suppGroupsExt := []byte{
+		0x00, 0x0a, // type: supported_groups
+		0x00, 0x08, // ext length
+		0x00, 0x06, // groups list length
+		0x00, 0x1d, // x25519
+		0x00, 0x17, // secp256r1
+		0x00, 0x18, // secp384r1
+	}
+
+	// key_share extension (0x0033): required for TLS 1.3 – without it a pure
+	// TLS 1.3 server responds with HelloRetryRequest (handshake type 0x02,
+	// identical to ServerHello) instead of a full ServerHello.
+	keyShareExt := []byte{
+		0x00, 0x33, // type: key_share
+		0x00, 0x26, // ext data length = 38
+		0x00, 0x24, // key_share_list length = 36
+		0x00, 0x1d, // group: x25519
+		0x00, 0x20, // key_exchange length = 32
+		// 32-byte placeholder x25519 public key (zeroes are fine for fingerprinting)
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+
+	// ALPN extension (0x0010): offer h2 and http/1.1 so servers that support
+	// ALPN will select and return their preferred protocol in the ServerHello.
+	// Without this, the probe never elicits an ALPN extension in the response
+	// and the JA4S ALPN field is always "00" even for HTTP/2-capable servers.
+	alpnExt := []byte{
+		0x00, 0x10, // type: ALPN
+		0x00, 0x0e, // ext data length = 14
+		0x00, 0x0c, // protocol_name_list length = 12
+		0x02,       // "h2" length
+		0x68, 0x32, // "h2"
+		0x08,                                           // "http/1.1" length
+		0x68, 0x74, 0x74, 0x70, 0x2f, 0x31, 0x2e, 0x31, // "http/1.1"
+	}
+
+	var extensions []byte
+	extensions = append(extensions, sniExt...)
+	extensions = append(extensions, alpnExt...)
+	extensions = append(extensions, suppVersExt...)
+	extensions = append(extensions, suppGroupsExt...)
+	extensions = append(extensions, keyShareExt...)
+
+	hello := buildClientHello(0x03, 0x03, baseCipherSuites, extensions, []byte{0x00})
+	record := buildTLSRecord(0x16, 0x03, 0x01, hello)
+
+	if _, err := conn.Write(record); err != nil {
+		return ""
+	}
+
+	buf := make([]byte, 4096)
+	n, _ := conn.Read(buf)
+	// Must be a TLS Handshake (0x16) containing a ServerHello (0x02)
+	if n < 44 || buf[0] != 0x16 || buf[5] != 0x02 {
+		return ""
+	}
+	// Detect HelloRetryRequest: same handshake type (0x02) as ServerHello but
+	// carries a special 32-byte magic Random (SHA-256 of "HelloRetryRequest").
+	// This happens when the server rejects all offered key_share groups.
+	const shBase = 9 // TLS record (5) + handshake header (4)
+	if n >= shBase+34 {
+		hrrMagic := [32]byte{
+			0xCF, 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11,
+			0xBE, 0x1D, 0x8C, 0x02, 0x1E, 0x65, 0xB8, 0x91,
+			0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E,
+			0x07, 0x9E, 0x09, 0xE2, 0xC8, 0xA8, 0x33, 0x9C,
+		}
+		var random [32]byte
+		copy(random[:], buf[shBase+2:shBase+34])
+		if random == hrrMagic {
+			return "" // HelloRetryRequest — cannot fingerprint
+		}
+	}
+
+	return parseJA4SFromServerHello(buf[:n])
+}
+
+// parseJA4SFromServerHello extracts the JA4S fingerprint from raw ServerHello bytes.
+func parseJA4SFromServerHello(data []byte) string {
+	// TLS record header: 5 bytes. Handshake header: 4 bytes. ServerHello starts at offset 9.
+	shOffset := 9
+	if len(data) < shOffset+35 {
+		return ""
+	}
+
+	// Clamp data to the first TLS handshake message. A single TCP read can return
+	// multiple TLS records (e.g. ServerHello + ChangeCipherSpec + Finished). The
+	// handshake message length is the 3-byte big-endian field at bytes 6-8.
+	hsLen := int(data[6])<<16 | int(data[7])<<8 | int(data[8])
+	if maxLen := shOffset + hsLen; maxLen < len(data) {
+		data = data[:maxLen]
+	}
+
+	rawVersion := uint16(data[shOffset])<<8 | uint16(data[shOffset+1])
+	verCode := tlsVersionCode(rawVersion)
+
+	// Random is 32 bytes at shOffset+2. session_id_len at shOffset+34.
+	sessionIDLen := int(data[shOffset+34])
+
+	cipherOffset := shOffset + 34 + 1 + sessionIDLen
+	if len(data) < cipherOffset+3 {
+		return ""
+	}
+	selectedCipher := fmt.Sprintf("%04x", uint16(data[cipherOffset])<<8|uint16(data[cipherOffset+1]))
+	// compression method at cipherOffset+2 (skip)
+
+	extListOffset := cipherOffset + 3
+	if len(data) < extListOffset+2 {
+		// No extensions present: count=00, alpn=00, hash=SHA256("").
+		noExtH := sha256.Sum256([]byte(""))
+		return fmt.Sprintf("t%s0000_%s_%s", verCode, selectedCipher, hex.EncodeToString(noExtH[:])[:12])
+	}
+
+	extListLen := int(data[extListOffset])<<8 | int(data[extListOffset+1])
+	extOffset := extListOffset + 2
+	extEnd := extOffset + extListLen
+	if extEnd > len(data) {
+		// Extension list is truncated — partial extension types would produce
+		// an incorrect fingerprint that differs from the full-read result.
+		return ""
+	}
+
+	// isGREASE returns true for TLS GREASE values (RFC 8701).
+	// GREASE extension types are 0x0a0a, 0x1a1a, …, 0xfafa — both bytes equal,
+	// lower nibble == 0xa.
+	isGREASE := func(v int) bool {
+		lo := v & 0xff
+		hi := (v >> 8) & 0xff
+		return lo == hi && (lo&0x0f) == 0x0a
+	}
+
+	// extTypes holds all non-GREASE extension type values (used for the count).
+	// hashExtTypes further excludes SNI (0x0000) and ALPN (0x0010) per the JA4S
+	// spec: JA4S_c is the hash of the extension list with GREASE, SNI, and ALPN
+	// removed.
+	var extTypes []int
+	var hashExtTypes []int
+	alpn := "00"
+	for extOffset+4 <= extEnd {
+		extType := int(uint16(data[extOffset])<<8 | uint16(data[extOffset+1]))
+		extLen := int(data[extOffset+2])<<8 | int(data[extOffset+3])
+
+		// Validate that the extension body fits within the declared extension list.
+		// A malformed or hostile ServerHello may advertise an extLen that runs past
+		// extEnd; break rather than counting a truncated extension or wrapping.
+		if extOffset+4+extLen > extEnd {
+			break
+		}
+
+		if !isGREASE(extType) {
+			extTypes = append(extTypes, extType)
+			// Exclude SNI (0x0000) and ALPN (0x0010) from the hash list.
+			if extType != 0x0000 && extType != 0x0010 {
+				hashExtTypes = append(hashExtTypes, extType)
+			}
+		}
+
+		// ALPN extension type 0x0010
+		if extType == 0x0010 && extOffset+4+extLen <= extEnd {
+			alpnData := data[extOffset+4 : extOffset+4+extLen]
+			// alpnData layout (RFC 7301, same in ClientHello and ServerHello):
+			//   proto_list_len(2) | proto_len(1) | proto_name
+			if len(alpnData) >= 4 {
+				protoLen := int(alpnData[2])
+				if protoLen > 0 && len(alpnData) >= 3+protoLen {
+					protoName := string(alpnData[3 : 3+protoLen])
+					// JA4S ALPN segment = first char + last char of the selected protocol
+					// (per FoxIO JA4S spec). Examples: "h2"→"h2", "http/1.1"→"h1", "grpc"→"gc".
+					if len(protoName) >= 2 {
+						alpn = string(protoName[0]) + string(protoName[len(protoName)-1])
+					} else {
+						alpn = protoName
+					}
+				}
+			}
+		}
+
+		// supported_versions extension type 0x002b
+		// In a ServerHello this carries a single 2-byte selected version (RFC 8446
+		// §4.2.1).  TLS 1.3 mandates legacy_version == 0x0303, so the real
+		// negotiated version MUST be read from here — reading legacy_version
+		// alone would always yield "12" for TLS 1.3.
+		if extType == 0x002b && extOffset+4+extLen <= extEnd && extLen >= 2 {
+			selectedVer := uint16(data[extOffset+4])<<8 | uint16(data[extOffset+5])
+			if code := tlsVersionCode(selectedVer); code != "00" {
+				verCode = code
+			}
+		}
+
+		extOffset += 4 + extLen
+	}
+
+	// JA4S_b: actual count of non-GREASE extensions, formatted as 2-digit decimal.
+	extCount := fmt.Sprintf("%02d", len(extTypes))
+
+	// JA4S_c: SHA-256 of comma-separated extension types in ServerHello wire order,
+	// with GREASE, SNI (0x0000), and ALPN (0x0010) excluded.
+	// Note: unlike JA4 (ClientHello), JA4S does NOT sort the extension list — the
+	// hash preserves the order in which the server sent the extensions.
+	// Per the FoxIO JA4S spec, extension type IDs are joined as 4-character
+	// lowercase hex codes (e.g. "002b" for 0x002b), NOT decimal. Using decimal
+	// here would produce a SHA-256 suffix that doesn't match reference tooling.
+	hashStrs := make([]string, len(hashExtTypes))
+	for i, t := range hashExtTypes {
+		hashStrs[i] = fmt.Sprintf("%04x", t)
+	}
+	h := sha256.Sum256([]byte(strings.Join(hashStrs, ",")))
+	extHash := hex.EncodeToString(h[:])[:12]
+
+	return fmt.Sprintf("t%s%s%s_%s_%s", verCode, extCount, alpn, selectedCipher, extHash)
+}
+
+// computeJA4XForCert computes the JA4X fingerprint for a single X.509 certificate.
+//
+// JA4X format: {IssuerHash}_{SubjectHash}_{PublicKeyHash}
+//
+//   - IssuerHash:    SHA-256 of DER-encoded issuer distinguished name, truncated to 12 hex chars
+//   - SubjectHash:   SHA-256 of DER-encoded subject distinguished name, truncated to 12 hex chars
+//   - PublicKeyHash: SHA-256 of DER-encoded SubjectPublicKeyInfo, truncated to 12 hex chars
+func computeJA4XForCert(cert *x509.Certificate) string {
+	issuerHash := sha256.Sum256(cert.RawIssuer)
+	subjectHash := sha256.Sum256(cert.RawSubject)
+	pubKeyHash := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+
+	return fmt.Sprintf("%s_%s_%s",
+		hex.EncodeToString(issuerHash[:])[:12],
+		hex.EncodeToString(subjectHash[:])[:12],
+		hex.EncodeToString(pubKeyHash[:])[:12],
+	)
 }
