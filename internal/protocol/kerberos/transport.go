@@ -63,13 +63,21 @@ func SendTGSReqToKDC(host string, port int, tgsReq messages.TGSReq, timeout time
 // sendAndReceiveKDC handles the raw TCP send/receive with the 4-byte length prefix.
 func sendAndReceiveKDC(host string, port int, msgBytes []byte, timeout time.Duration) ([]byte, error) {
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	conn, err := net.DialTimeout("tcp", addr, timeout)
+
+	// Bound the whole exchange (dial + write + read) by a single deadline so
+	// total wall-clock stays at most `timeout` from the call site. Using
+	// DialTimeout(timeout) plus SetDeadline(now+timeout) after the dial
+	// completes would let a slow dial consume most of the budget and still
+	// allow another full `timeout` for the I/O — up to ~2x the configured ms.
+	deadline := time.Now().Add(timeout)
+	dialer := net.Dialer{Deadline: deadline}
+	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to KDC %s: %w", addr, err)
 	}
 	defer conn.Close() //nolint:errcheck
 
-	if err := conn.SetDeadline(time.Now().Add(timeout)); err != nil {
+	if err := conn.SetDeadline(deadline); err != nil {
 		return nil, fmt.Errorf("failed to set deadline: %w", err)
 	}
 
