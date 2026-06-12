@@ -16,6 +16,7 @@ imports:
   postgres: ./postgres/postgres.yml
   redis: ./redis/redis.yml
   socks: ./socks/socks.yml
+  vnc: ./vnc/vnc.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -37,6 +38,7 @@ types:
       - POSTGRES
       - REDIS
       - SOCKS
+      - VNC
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -57,6 +59,7 @@ types:
       EnumeratePostgresDetails: postgres.EnumeratePostgresDetails
       EnumerateRedisDetails: redis.EnumerateRedisDetails
       EnumerateSocksDetails: socks.EnumerateSocksDetails
+      EnumerateVncDetails: vnc.EnumerateVncDetails
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>
@@ -67,6 +70,7 @@ types:
       service: SupportedServiceType
       timeout: integer
       wordlist: optional<list<string>>
+      vncConfig: optional<vnc.VncEnumerateConfig>
   # Final report
   EnumerateServiceReport:
     properties:
