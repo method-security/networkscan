@@ -22,6 +22,7 @@ import (
 
 	// Internal
 	rdpproto "github.com/Method-Security/networkscan/internal/protocol/rdp"
+	"github.com/Method-Security/networkscan/utils"
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -44,21 +45,9 @@ func enumerateRDP(ctx context.Context, target string) *rdpfern.EnumerateRdpDetai
 	log := svc1log.FromContext(ctx)
 	log.Info("Starting RDP enumeration", svc1log.SafeParam("target", target))
 
-	host, portStr, err := net.SplitHostPort(target)
-	if err != nil {
-		host = target
-		portStr = strconv.Itoa(defaultRDPPort)
-	}
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		errMsg := fmt.Sprintf("invalid port in target '%s': %v", target, err)
-		success := false
-		return &rdpfern.EnumerateRdpDetails{
-			Target:       target,
-			Success:      success,
-			ErrorMessage: &errMsg,
-		}
-	}
+	// Parse target via the shared helper so out-of-range / non-numeric ports
+	// fall back to the default 3389 (matches enumerate/{ldap,mongodb,mysql,…}).
+	host, port := utils.ParseHostPort(target, defaultRDPPort)
 
 	// Use net.JoinHostPort to correctly handle IPv6 addresses
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
@@ -122,8 +111,9 @@ func enumerateRDP(ctx context.Context, target string) *rdpfern.EnumerateRdpDetai
 		}
 	} else if cc.NegFailureReceived {
 		// Failure code — infer supported protocols from failure and set nlaRequired flag.
-		failCode := mapFailureCode(cc.FailureCode)
-		result.NegFailureCode = &failCode
+		// mapFailureCode returns nil for unrecognized codes; leave
+		// result.NegFailureCode unset in that case rather than guessing.
+		result.NegFailureCode = mapFailureCode(cc.FailureCode)
 		supported := inferSupportedProtocols(0, cc.FailureCode, true)
 		if len(supported) > 0 {
 			result.SupportedProtocols = supported
@@ -226,24 +216,31 @@ func mapProtocolToFlags(proto uint32) rdpfern.RdpProtocolFlag {
 	}
 }
 
-// mapFailureCode converts a raw failure code uint32 to the Fern RdpNegFailureCode enum.
-func mapFailureCode(code uint32) rdpfern.RdpNegFailureCode {
+// mapFailureCode converts a raw failure code uint32 to the Fern RdpNegFailureCode
+// enum, or nil if the code is not one of the codes defined by [MS-RDPBCGR]
+// §2.2.1.2.2. Returning nil (rather than guessing) lets the caller leave
+// EnumerateRdpDetails.NegFailureCode unset for unrecognized codes, matching the
+// ontology-definition convention against UNKNOWN/OTHER enum sentinels — the raw
+// 32-bit code is still preserved in the signal payload for forensics.
+func mapFailureCode(code uint32) *rdpfern.RdpNegFailureCode {
+	var v rdpfern.RdpNegFailureCode
 	switch code {
 	case rdpproto.FailureSSLRequiredByServer:
-		return rdpfern.RdpNegFailureCodeSslRequiredByServer
+		v = rdpfern.RdpNegFailureCodeSslRequiredByServer
 	case rdpproto.FailureSSLNotAllowedByServer:
-		return rdpfern.RdpNegFailureCodeSslNotAllowedByServer
+		v = rdpfern.RdpNegFailureCodeSslNotAllowedByServer
 	case rdpproto.FailureSSLCertNotOnServer:
-		return rdpfern.RdpNegFailureCodeSslCertNotOnServer
+		v = rdpfern.RdpNegFailureCodeSslCertNotOnServer
 	case rdpproto.FailureInconsistentFlags:
-		return rdpfern.RdpNegFailureCodeInconsistentFlags
+		v = rdpfern.RdpNegFailureCodeInconsistentFlags
 	case rdpproto.FailureHybridRequiredByServer:
-		return rdpfern.RdpNegFailureCodeHybridRequiredByServer
+		v = rdpfern.RdpNegFailureCodeHybridRequiredByServer
 	case rdpproto.FailureSSLWithUserAuthRequiredByServer:
-		return rdpfern.RdpNegFailureCodeSslWithUserAuthRequiredByServer
+		v = rdpfern.RdpNegFailureCodeSslWithUserAuthRequiredByServer
 	default:
-		return rdpfern.RdpNegFailureCodeSslRequiredByServer
+		return nil
 	}
+	return &v
 }
 
 // inferSupportedProtocols infers what protocols the server supports from the

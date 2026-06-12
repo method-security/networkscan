@@ -547,7 +547,11 @@ func ReadChannelJoinConfirm(r io.Reader) (acceptedChannelID uint16, raw []byte, 
 	}
 	result := payload[4]
 	if result != 0 {
-		return 0, payload, nil
+		// Server rejected the join — return the raw payload so the caller can
+		// inspect it (e.g. distinguish patched/vulnerable in the BlueKeep
+		// probe), and a non-nil error so callers don't treat a rejected join
+		// as a successful one.
+		return 0, payload, fmt.Errorf("rdp: ReadChannelJoinConfirm: server returned result %d (non-zero = rejected)", result)
 	}
 	acceptedChannelID = binary.BigEndian.Uint16(payload[9:11])
 	return acceptedChannelID, payload, nil
