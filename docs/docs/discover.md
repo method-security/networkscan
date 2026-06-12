@@ -131,8 +131,8 @@ Flags:
       --threads int                     Number of concurrent threads to use during port scanning (default 25)
       --top-ports string                Scan the top N most common TCP ports (options: full, 100, 1000)
       --validate                                    Validate open ports by using service detection techniques
-      --validate-attempt-timeout int               Timeout in seconds for each service detection attempt (default 10)
-      --validate-plugin-threads int                Maximum number of custom service plugins to run concurrently per port during validation (default 4)
+      --validate-attempt-timeout int               Timeout in seconds for each service detection attempt (default 20)
+      --validate-plugin-threads int                Maximum number of custom service plugins to run concurrently per port during validation (default 8)
       --validate-threads int                       Number of concurrent threads to use during service detection
       --max-open-ports-validation-threshold int    Trigger validation warning when more than this many ports are open (default 50)
 
@@ -175,10 +175,10 @@ Usage:
 
 Flags:
   -h, --help                 help for service
-      --threads int                Maximum number of custom service plugins to run concurrently per target (default 4)
+      --threads int                Maximum number of custom service plugins to run concurrently per target (default 8)
       --service-type string        Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
       --target string              Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)
-      --timeout int                Timeout in seconds for each service fingerprinting attempt (default 10)
+      --timeout int                Timeout in seconds for each service fingerprinting attempt (default 20)
       --udp                        Enable UDP service discovery mode (scans common UDP ports like DNS, NTP, SNMP, etc.)
 
 Global Flags:

@@ -244,7 +244,7 @@ func ensureRequiredPorts(config discoverfern.DiscoverPortConfig, requiredPorts [
 	if config.Ports != nil && *config.Ports != "" {
 		existingPorts := *config.Ports
 		for _, port := range requiredPorts {
-			if !strings.Contains(existingPorts, port) {
+			if !portSpecContainsPort(existingPorts, port) {
 				existingPorts += "," + port
 			}
 		}
@@ -273,6 +273,36 @@ func ensureRequiredPorts(config discoverfern.DiscoverPortConfig, requiredPorts [
 	}
 
 	return config
+}
+
+func portSpecContainsPort(portSpec string, port string) bool {
+	requiredPort, err := strconv.Atoi(port)
+	if err != nil {
+		return false
+	}
+
+	for _, token := range strings.Split(portSpec, ",") {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		if token == port {
+			return true
+		}
+		start, end, ok := strings.Cut(token, "-")
+		if !ok {
+			continue
+		}
+		startPort, startErr := strconv.Atoi(strings.TrimSpace(start))
+		endPort, endErr := strconv.Atoi(strings.TrimSpace(end))
+		if startErr != nil || endErr != nil {
+			continue
+		}
+		if requiredPort >= startPort && requiredPort <= endPort {
+			return true
+		}
+	}
+	return false
 }
 
 // hasOpenRequiredPorts checks if any of the required ports (as strings) are open in the scan results
