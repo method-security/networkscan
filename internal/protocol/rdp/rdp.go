@@ -412,10 +412,14 @@ func ReadMCSConnectResponse(r io.Reader) (*ConnectResponse, error) {
 	}
 	cr := &ConnectResponse{RawPDU: payload}
 
-	// Minimal sanity check: the outer tag should be 0x7f 0x66 (APPLICATION 102 = ConnectResponse).
+	// Sanity check the outer BER tag: payload[3..5] should be 0x7f 0x66
+	// (APPLICATION 102 = ConnectResponse). Return an error so callers don't
+	// treat a Disconnect-Provider-Ultimatum (or any other non-ConnectResponse
+	// payload) as a successful MCS Connect-Response. The raw bytes are still
+	// returned alongside so callers can inspect (e.g. IsDisconnectProviderUltimatum)
+	// for forensics.
 	if len(payload) < 5 || payload[3] != 0x7f || payload[4] != 0x66 {
-		// Might be a disconnect or an error; return what we have.
-		return cr, nil
+		return cr, fmt.Errorf("rdp: ReadMCSConnectResponse: payload is not an MCS Connect-Response (likely Disconnect-Provider-Ultimatum or malformed)")
 	}
 
 	// Attempt to locate the MS_T120 channel ID in the userData blob.
