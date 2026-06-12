@@ -100,8 +100,10 @@ func enumerateRDP(ctx context.Context, target string) *rdpfern.EnumerateRdpDetai
 
 	// Parse negotiation response.
 	if cc.NegResponseReceived {
-		selected := mapProtocolToFlags(cc.SelectedProtocol)
-		result.SelectedProtocol = &selected
+		// mapProtocolToFlags returns nil for unrecognized flags; leave
+		// result.SelectedProtocol unset in that case (the raw uint32 is still
+		// preserved in selectedProtocolFlags below for forensics).
+		result.SelectedProtocol = mapProtocolToFlags(cc.SelectedProtocol)
 		selectedFlags := int(cc.SelectedProtocol)
 		result.SelectedProtocolFlags = &selectedFlags
 		// Infer supported protocols from what the server actually selected
@@ -197,30 +199,36 @@ func buildTLSCertificate(cert *x509.Certificate) *rdpfern.RdpTlsCertificate {
 	}
 }
 
-// MapProtocolToFlags converts a raw protocol uint32 to the Fern RdpProtocolFlag enum.
+// MapProtocolToFlags converts a raw protocol uint32 to the Fern RdpProtocolFlag enum,
+// or nil if proto is not one of the values defined by [MS-RDPBCGR] §2.2.1.1.1.
 // Exported so it can be used by the bluekeep pentest package.
-func MapProtocolToFlags(proto uint32) rdpfern.RdpProtocolFlag {
+func MapProtocolToFlags(proto uint32) *rdpfern.RdpProtocolFlag {
 	return mapProtocolToFlags(proto)
 }
 
-// mapProtocolToFlags is the internal implementation.
-func mapProtocolToFlags(proto uint32) rdpfern.RdpProtocolFlag {
+// mapProtocolToFlags is the internal implementation. Returns nil for unrecognized
+// values rather than guessing — keeps EnumerateRdpDetails.SelectedProtocol unset
+// on future/unknown flags instead of mislabeling them as PROTOCOL_RDP (the raw
+// 32-bit value is still preserved in SelectedProtocolFlags for forensics).
+func mapProtocolToFlags(proto uint32) *rdpfern.RdpProtocolFlag {
+	var v rdpfern.RdpProtocolFlag
 	switch proto {
 	case rdpproto.ProtocolRDP:
-		return rdpfern.RdpProtocolFlagProtocolRdp
+		v = rdpfern.RdpProtocolFlagProtocolRdp
 	case rdpproto.ProtocolSSL:
-		return rdpfern.RdpProtocolFlagProtocolSsl
+		v = rdpfern.RdpProtocolFlagProtocolSsl
 	case rdpproto.ProtocolHybrid:
-		return rdpfern.RdpProtocolFlagProtocolHybrid
+		v = rdpfern.RdpProtocolFlagProtocolHybrid
 	case rdpproto.ProtocolRDSTLS:
-		return rdpfern.RdpProtocolFlagProtocolRdstls
+		v = rdpfern.RdpProtocolFlagProtocolRdstls
 	case rdpproto.ProtocolHybridEx:
-		return rdpfern.RdpProtocolFlagProtocolHybridEx
+		v = rdpfern.RdpProtocolFlagProtocolHybridEx
 	case rdpproto.ProtocolHybridRecLimit:
-		return rdpfern.RdpProtocolFlagProtocolHybridRecLimitReached
+		v = rdpfern.RdpProtocolFlagProtocolHybridRecLimitReached
 	default:
-		return rdpfern.RdpProtocolFlagProtocolRdp
+		return nil
 	}
+	return &v
 }
 
 // mapFailureCode converts a raw failure code uint32 to the Fern RdpNegFailureCode
@@ -293,8 +301,10 @@ func inferSupportedProtocols(selectedProtocol uint32, failureCode uint32, isFail
 	case rdpproto.ProtocolRDP:
 		return []rdpfern.RdpProtocolFlag{rdpfern.RdpProtocolFlagProtocolRdp}
 	default:
-		flag := mapProtocolToFlags(selectedProtocol)
-		return []rdpfern.RdpProtocolFlag{flag}
+		if flag := mapProtocolToFlags(selectedProtocol); flag != nil {
+			return []rdpfern.RdpProtocolFlag{*flag}
+		}
+		return nil
 	}
 }
 
