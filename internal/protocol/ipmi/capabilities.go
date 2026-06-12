@@ -54,10 +54,11 @@ func BuildGetChannelAuthCapabilitiesRequest() []byte {
 }
 
 // AuthCapabilities is the parsed Get-Channel-Auth-Capabilities
-// response. Pointer-typed bools are *not* used here: every field is
-// populated when the response is long enough for us to read the byte
-// the field lives in; truncated responses surface as a partial struct
-// + an error from ParseAuthCapabilities.
+// response. The Bitmap*Parsed booleans report whether the source byte
+// for each group of fields was actually present in the response: a
+// v1.5-only BMC may legitimately truncate after Auth-Type-Support-1
+// and the caller must distinguish "field is false" from "we never read
+// the byte." Bitmap1 is always parsed on a successful return.
 type AuthCapabilities struct {
 	// Channel number echoed by the BMC (response data byte 1).
 	ChannelNumber byte
@@ -83,6 +84,16 @@ type AuthCapabilities struct {
 
 	// OEM identifier (response data bytes 5-7, LSB-first 24-bit).
 	OEMID uint32
+
+	// Tracking which optional bitmaps actually appeared in the response.
+	// Bitmap1Parsed is always true on a successful return; Bitmap2Parsed
+	// covers Auth-Type-Support-2 (Anonymous/Null/etc + per-msg flags);
+	// Bitmap3Parsed covers Auth-Type-Support-3 (IPMI 1.5/2.0 support);
+	// OEMIDParsed covers the OEM ID bytes 5-7.
+	Bitmap1Parsed bool
+	Bitmap2Parsed bool
+	Bitmap3Parsed bool
+	OEMIDParsed   bool
 }
 
 // Version returns "2.0" if the bitmap reports IPMI 2.0 support and
@@ -134,12 +145,14 @@ func ParseAuthCapabilities(resp []byte) (AuthCapabilities, error) {
 	// 4-byte RMCP envelope; the IPMB message starts at offset 14.
 	const ipmbStart = RMCPHeaderSize + IPMI15SessionHeaderSize
 
-	// Need at least through channel# (data byte 1 of response payload)
-	// to call this a valid auth-caps reply. That's response offsets
-	// 14-21 inclusive, i.e. 22 bytes total.
-	if len(resp) < ipmbStart+8 {
+	// Need at least through Auth-Type-Support-1 (data byte 2 of the
+	// response payload, absolute offset 22). The parser reads cmd echo
+	// (offset 19), completion code (20), channel (21), and bitmap1
+	// (22) unconditionally, so we require at least 23 bytes —
+	// `ipmbStart + 9` covers offsets 0..(ipmbStart+8) = 0..22.
+	if len(resp) < ipmbStart+9 {
 		return AuthCapabilities{}, fmt.Errorf("%w: auth-caps reply needs >=%d bytes, got %d",
-			ErrTruncatedResponse, ipmbStart+8, len(resp))
+			ErrTruncatedResponse, ipmbStart+9, len(resp))
 	}
 
 	// IPMB response framing sanity. Byte at ipmbStart+5 (offset 19)
@@ -171,11 +184,12 @@ func ParseAuthCapabilities(resp []byte) (AuthCapabilities, error) {
 	caps.AuthStraight = bitmap1&0x10 != 0
 	caps.AuthOEM = bitmap1&0x20 != 0
 	caps.IPMI20ExtendedCapabilities = bitmap1&0x80 != 0
+	caps.Bitmap1Parsed = true
 
 	// Auth-Type-Support-2 (offset 23) — present whenever the response
-	// payload runs at least one byte further. v1.5-only BMCs may
-	// truncate here; we keep the partial result instead of erroring.
-	if len(resp) > ipmbStart+9 {
+	// payload includes byte ipmbStart+9. v1.5-only BMCs may truncate
+	// here; we keep the partial result instead of erroring.
+	if len(resp) >= ipmbStart+10 {
 		bitmap2 := resp[ipmbStart+9]
 		caps.AnonymousLoginEnabled = bitmap2&0x01 != 0
 		caps.NullUsernameEnabled = bitmap2&0x02 != 0
@@ -183,23 +197,26 @@ func ParseAuthCapabilities(resp []byte) (AuthCapabilities, error) {
 		caps.UserLevelAuthDisabled = bitmap2&0x08 != 0
 		caps.PerMessageAuthDisabled = bitmap2&0x10 != 0
 		caps.KgSet = bitmap2&0x20 != 0
+		caps.Bitmap2Parsed = true
 	}
 
 	// Auth-Type-Support-3 (offset 24) — IPMI 2.0 only. When the BMC
 	// did not include this byte, we leave IPMI15/20Supported false
 	// and Version() falls back to "1.5".
-	if len(resp) > ipmbStart+10 {
+	if len(resp) >= ipmbStart+11 {
 		bitmap3 := resp[ipmbStart+10]
 		caps.IPMI15Supported = bitmap3&0x01 != 0
 		caps.IPMI20Supported = bitmap3&0x02 != 0
+		caps.Bitmap3Parsed = true
 	}
 
 	// OEM ID (offsets 25-27) — LSB-first 24-bit value. Only present
 	// alongside Auth-Type-Support-3 in the 2.0 extended response.
-	if len(resp) > ipmbStart+13 {
+	if len(resp) >= ipmbStart+14 {
 		caps.OEMID = uint32(resp[ipmbStart+11]) |
 			uint32(resp[ipmbStart+12])<<8 |
 			uint32(resp[ipmbStart+13])<<16
+		caps.OEMIDParsed = true
 	}
 
 	return caps, nil

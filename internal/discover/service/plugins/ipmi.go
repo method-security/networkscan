@@ -163,19 +163,45 @@ func runCipherZeroProbe(ctx context.Context, addr string, timeout int) (bool, bo
 
 // runRAKPExistenceOracle performs Probe C. Returns the list of
 // usernames we tried and the disclosures for any that succeeded.
-func runRAKPExistenceOracle(ctx context.Context, addr string, timeout int, usernames []string) ([]string, []*protocol.IpmiRakpHashDisclosure) {
+//
+// probeBudget is the *total* per-probe time budget (in seconds) Probe
+// C is allowed to consume — splitting that across `len(usernames)`
+// guesses × 2 UDP exchanges (open-session + RAKP-1) bounds the actual
+// wall time. Without this division Probe C could blow well past the
+// caller's per-host budget (5 guesses × 2 calls × probeBudget ≈ 10×
+// the intended ceiling). Per-call timeouts of 0 would mean "no
+// timeout" in helpers.Dial, so we clamp to a 1s floor.
+func runRAKPExistenceOracle(ctx context.Context, addr string, probeBudget int, usernames []string) ([]string, []*protocol.IpmiRakpHashDisclosure) {
 	probed := make([]string, 0, len(usernames))
 	disclosures := make([]*protocol.IpmiRakpHashDisclosure, 0, len(usernames))
+
+	// Per-call budget: each username burns up to 2 UDP exchanges.
+	// Integer floor; 1s minimum so we never pass 0 (which means
+	// "no timeout" to helpers.Dial).
+	denom := 2 * len(usernames)
+	if denom < 1 {
+		denom = 1
+	}
+	perCallTimeout := probeBudget / denom
+	if perCallTimeout < 1 {
+		perCallTimeout = 1
+	}
+
+	// Also wrap the loop with a context deadline tied to the overall
+	// probe budget. If individual calls overrun (BMCs do that), the
+	// outer deadline short-circuits the remaining guesses.
+	probeCtx, cancel := helpers.ContextDuration(ctx, helpers.Timeout(probeBudget))
+	defer cancel()
 
 	for _, username := range usernames {
 		// Context cancellation between guesses gives the outer
 		// discovery sweep a way out without waiting on the per-probe
 		// UDP timeout for every remaining username.
-		if err := ctx.Err(); err != nil {
+		if err := probeCtx.Err(); err != nil {
 			break
 		}
 		probed = append(probed, username)
-		disclosure, ok := runSingleRAKP(ctx, addr, timeout, username)
+		disclosure, ok := runSingleRAKP(probeCtx, addr, perCallTimeout, username)
 		if ok {
 			disclosures = append(disclosures, disclosure)
 		}
@@ -280,42 +306,63 @@ func udpExchange(ctx context.Context, addr string, timeout int, probe []byte) ([
 }
 
 // authCapsToFern translates the parsed AuthCapabilities struct into
-// the Fern model. All fields are pointer-typed booleans on the Fern
-// side so we copy through addresses of locals.
+// the Fern model. The Fern schema documents that omitted fields mean
+// "the response was too short to parse that byte" — so we leave the
+// pointer nil whenever the source bitmap wasn't actually read, rather
+// than emitting `false` and lying about partial v1.5-only responses.
+//
+// Bitmap1Parsed gates None/MD2/MD5/Straight/OEM/IPMI20-extended.
+// Bitmap2Parsed gates the user-class / per-msg flags.
+// Bitmap3Parsed gates IPMI 1.5 / 2.0 support flags.
+// OEMIDParsed gates the OEM ID.
+// Channel number is always populated when ParseAuthCapabilities
+// succeeds (it's read before the bitmap1 gate).
 func authCapsToFern(caps ipmiprotocol.AuthCapabilities) *protocol.IpmiAuthCapabilities {
-	authNone := caps.AuthNone
-	authMD2 := caps.AuthMD2
-	authMD5 := caps.AuthMD5
-	authStraight := caps.AuthStraight
-	authOEM := caps.AuthOEM
-	ipmi20Ext := caps.IPMI20ExtendedCapabilities
-	ipmi15Supp := caps.IPMI15Supported
-	ipmi20Supp := caps.IPMI20Supported
-	perMsg := caps.PerMessageAuthDisabled
-	userLvl := caps.UserLevelAuthDisabled
-	anon := caps.AnonymousLoginEnabled
-	nullUser := caps.NullUsernameEnabled
-	nonNull := caps.NonNullUsernameEnabled
-	kg := caps.KgSet
-	oemID := int(caps.OEMID)
+	out := &protocol.IpmiAuthCapabilities{}
 	channel := int(caps.ChannelNumber)
+	out.ChannelNumber = &channel
 
-	return &protocol.IpmiAuthCapabilities{
-		None:                       &authNone,
-		Md2:                        &authMD2,
-		Md5:                        &authMD5,
-		StraightPassword:           &authStraight,
-		Oem:                        &authOEM,
-		Ipmi20ExtendedCapabilities: &ipmi20Ext,
-		Ipmi15Supported:            &ipmi15Supp,
-		Ipmi20Supported:            &ipmi20Supp,
-		PerMessageAuthDisabled:     &perMsg,
-		UserLevelAuthDisabled:      &userLvl,
-		AnonymousLoginEnabled:      &anon,
-		NullUsernameEnabled:        &nullUser,
-		NonNullUsernameEnabled:     &nonNull,
-		KgSet:                      &kg,
-		OemId:                      &oemID,
-		ChannelNumber:              &channel,
+	if caps.Bitmap1Parsed {
+		authNone := caps.AuthNone
+		authMD2 := caps.AuthMD2
+		authMD5 := caps.AuthMD5
+		authStraight := caps.AuthStraight
+		authOEM := caps.AuthOEM
+		ipmi20Ext := caps.IPMI20ExtendedCapabilities
+		out.None = &authNone
+		out.Md2 = &authMD2
+		out.Md5 = &authMD5
+		out.StraightPassword = &authStraight
+		out.Oem = &authOEM
+		out.Ipmi20ExtendedCapabilities = &ipmi20Ext
 	}
+
+	if caps.Bitmap2Parsed {
+		perMsg := caps.PerMessageAuthDisabled
+		userLvl := caps.UserLevelAuthDisabled
+		anon := caps.AnonymousLoginEnabled
+		nullUser := caps.NullUsernameEnabled
+		nonNull := caps.NonNullUsernameEnabled
+		kg := caps.KgSet
+		out.PerMessageAuthDisabled = &perMsg
+		out.UserLevelAuthDisabled = &userLvl
+		out.AnonymousLoginEnabled = &anon
+		out.NullUsernameEnabled = &nullUser
+		out.NonNullUsernameEnabled = &nonNull
+		out.KgSet = &kg
+	}
+
+	if caps.Bitmap3Parsed {
+		ipmi15Supp := caps.IPMI15Supported
+		ipmi20Supp := caps.IPMI20Supported
+		out.Ipmi15Supported = &ipmi15Supp
+		out.Ipmi20Supported = &ipmi20Supp
+	}
+
+	if caps.OEMIDParsed {
+		oemID := int(caps.OEMID)
+		out.OemId = &oemID
+	}
+
+	return out
 }

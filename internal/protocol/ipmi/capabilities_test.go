@@ -49,6 +49,9 @@ func TestParseAuthCapabilitiesFullIPMI20(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseAuthCapabilities() err = %v", err)
 	}
+	if !caps.Bitmap1Parsed || !caps.Bitmap2Parsed || !caps.Bitmap3Parsed || !caps.OEMIDParsed {
+		t.Fatalf("expected all Bitmap*Parsed=true on full IPMI 2.0 reply, got %+v", caps)
+	}
 	if !caps.AuthNone || !caps.AuthMD2 || !caps.AuthMD5 || !caps.AuthStraight {
 		t.Fatalf("auth bitmap1 mis-parsed: %+v", caps)
 	}
@@ -108,7 +111,9 @@ func TestParseAuthCapabilitiesRegressionByteOffset(t *testing.T) {
 func TestParseAuthCapabilitiesIPMI15Only(t *testing.T) {
 	// Truncate the response after Auth-Type-Support-1 — a v1.5-only
 	// BMC may legitimately stop there. The parser must still succeed
-	// with a partial struct (no IPMI 2.0 fields).
+	// with a partial struct (no IPMI 2.0 fields) and report
+	// Bitmap2Parsed=Bitmap3Parsed=OEMIDParsed=false so the plugin
+	// knows to omit those Fern fields instead of lying about them.
 	const truncateAfter = RMCPHeaderSize + IPMI15SessionHeaderSize + 9 // through bitmap1
 	resp := authCapsResponse(t, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, truncateAfter)
 	caps, err := ParseAuthCapabilities(resp)
@@ -118,11 +123,35 @@ func TestParseAuthCapabilitiesIPMI15Only(t *testing.T) {
 	if !caps.AuthMD2 || !caps.AuthMD5 || !caps.AuthStraight {
 		t.Fatalf("bitmap1 mis-parsed: %+v", caps)
 	}
+	if !caps.Bitmap1Parsed {
+		t.Fatalf("expected Bitmap1Parsed=true on bitmap1-present reply")
+	}
+	if caps.Bitmap2Parsed || caps.Bitmap3Parsed || caps.OEMIDParsed {
+		t.Fatalf("expected Bitmap2/3/OEMIDParsed=false on truncated reply, got %+v", caps)
+	}
 	if caps.IPMI15Supported || caps.IPMI20Supported {
 		t.Fatalf("expected IPMI15/20Supported=false on truncated reply, got %+v", caps)
 	}
 	if got, want := caps.Version(), "1.5"; got != want {
 		t.Fatalf("Version() = %q, want %q", got, want)
+	}
+}
+
+// TestParseAuthCapabilitiesBitmap1BoundsRegression locks down the
+// CVE-class bounds bug bugbot caught on the first PR push: with the
+// old `len(resp) < ipmbStart+8` check, a 22-byte response passed the
+// guard, then `resp[ipmbStart+8] = resp[22]` panicked (valid indices
+// are 0..21). The fix raises the guard to `< ipmbStart+9` and this
+// test asserts a 22-byte response now errors cleanly instead of
+// crashing the discovery worker.
+func TestParseAuthCapabilitiesBitmap1BoundsRegression(t *testing.T) {
+	resp := authCapsResponse(t, 0x00, 0x00, 0x00, 0, 0, 0, 0, 0)
+	// Truncate to exactly RMCPHeader (4) + sessionHeader (10) +
+	// IPMB-fixed-bytes (8) = 22 bytes — through the channel-number
+	// data byte but missing bitmap1 at offset 22.
+	resp = resp[:RMCPHeaderSize+IPMI15SessionHeaderSize+8]
+	if _, err := ParseAuthCapabilities(resp); err == nil {
+		t.Fatalf("expected truncation error on 22-byte response (would have panicked under the old check)")
 	}
 }
 

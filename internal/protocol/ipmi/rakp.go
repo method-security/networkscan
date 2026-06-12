@@ -136,12 +136,23 @@ func ParseRAKPMessage2(resp []byte) (RAKPMessage2, error) {
 	if !m.Success() {
 		return m, nil
 	}
-	if len(payload) < 40 {
-		return m, fmt.Errorf("%w: RAKP-2 success reply too short (%d bytes)", ErrTruncatedResponse, len(payload))
+	// The deep probe negotiates HMAC-SHA1 (cipher suite 3), so the
+	// success reply must carry a 20-byte key-exchange-authentication-
+	// code at offsets 40-59. A status-0x00 reply that's shorter is
+	// either a truncation or a misbehaving BMC; either way we mustn't
+	// propagate it as a "valid" disclosure (hashcat -m 7300 would
+	// reject the line, and our existence-oracle field would lie about
+	// whether the BMC actually disclosed crackable material).
+	if len(payload) < 40+HMACSHA1AuthCodeSize {
+		return m, fmt.Errorf("%w: RAKP-2 success reply needs >=%d bytes, got %d",
+			ErrTruncatedResponse, 40+HMACSHA1AuthCodeSize, len(payload))
 	}
 	copy(m.BMCNonce[:], payload[8:24])
 	copy(m.BMCGUID[:], payload[24:40])
-	m.KeyExchangeAuthCode = append([]byte(nil), payload[40:]...)
+	// Slice to HMACSHA1AuthCodeSize rather than copying to end-of-
+	// payload: BMCs that send trailing padding or junk after the
+	// auth code should not contaminate the crackable blob.
+	m.KeyExchangeAuthCode = append([]byte(nil), payload[40:40+HMACSHA1AuthCodeSize]...)
 	return m, nil
 }
 

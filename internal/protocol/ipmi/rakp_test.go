@@ -102,6 +102,26 @@ func TestParseRAKPMessage2Success(t *testing.T) {
 	}
 }
 
+// TestParseRAKPMessage2TruncatedHMAC asserts that a RAKP-2 reply with
+// status==0 but fewer than 60 bytes of payload (40 fixed + 20 HMAC-SHA1)
+// is rejected rather than propagated as a "valid" disclosure with a
+// short auth code. Without this guard the hashcat -m 7300 line we emit
+// would be unusable and the existence-oracle field would lie.
+func TestParseRAKPMessage2TruncatedHMAC(t *testing.T) {
+	resp := buildRAKP2(t, RMCPPlusStatusNoErrors)
+	// Trim the HMAC from 20 bytes down to 4. Payload length must be
+	// updated in the session header so ParseIPMI20Payload doesn't
+	// error first.
+	const payloadStart = RMCPHeaderSize + IPMI20SessionHeaderSize
+	const newPayloadLen = 44
+	binary.LittleEndian.PutUint16(resp[RMCPHeaderSize+10:RMCPHeaderSize+12], newPayloadLen)
+	resp = resp[:payloadStart+newPayloadLen]
+	_, err := ParseRAKPMessage2(resp)
+	if err == nil {
+		t.Fatalf("expected error on RAKP-2 with truncated HMAC, got nil")
+	}
+}
+
 func TestParseRAKPMessage2UnauthorizedName(t *testing.T) {
 	resp := buildRAKP2(t, RMCPPlusStatusUnauthorizedName)
 	// The error reply ends at the SID echo (8 bytes payload), per
