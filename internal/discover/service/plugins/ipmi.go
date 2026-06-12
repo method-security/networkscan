@@ -54,19 +54,29 @@ func (IPMIFingerprinter) DefaultPorts() []int { return []int{623} }
 // surface as omitted fields, not as a discovery failure, so a BMC
 // that times out on the deep probes still shows up as IPMI.
 func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	// Split the discovery timeout budget across the three probes so the
-	// plugin stays predictable even when a BMC is slow on RAKP. Probe A
-	// always-runs; cipher zero is one round-trip; RAKP loops once per
-	// guess so we hand it the remaining budget.
+	// Wall-clock guard for the whole pipeline. helpers.Dial honours
+	// context cancellation, so a single outer deadline of `timeout`
+	// seconds bounds the cumulative time across all three probes —
+	// without this, three sequential calls of `timeout/3` each could
+	// still triple-budget when integer division flooring forces us
+	// to floor each probe's per-call timeout to 1s (e.g. timeout=1).
+	hostCtx, cancel := helpers.ContextDuration(ctx, helpers.Timeout(timeout))
+	defer cancel()
+
+	// Per-probe UDP timeout. Floor at 1s because helpers.Dial treats
+	// timeout==0 as "set deadline = now" — instant failure. The outer
+	// hostCtx is what actually prevents three 1s probes from totalling
+	// 3 seconds; this value is just the upper bound on a single hung
+	// read.
 	perProbeTimeout := timeout / 3
 	if perProbeTimeout < 1 {
-		perProbeTimeout = timeout
+		perProbeTimeout = 1
 	}
 
 	addr := utils.FormatHostPort(ip.String(), port)
 
 	// Probe A: Get-Channel-Authentication-Capabilities (always-run).
-	caps, rawCapsResp, err := runAuthCapsProbe(ctx, addr, perProbeTimeout)
+	caps, rawCapsResp, err := runAuthCapsProbe(hostCtx, addr, perProbeTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +106,7 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	// run when the BMC advertised IPMI 2.0 support; running it against
 	// a v1.5-only BMC will just time out.
 	if caps.IPMI20Supported {
-		accepted, ok := runCipherZeroProbe(ctx, addr, perProbeTimeout)
+		accepted, ok := runCipherZeroProbe(hostCtx, addr, perProbeTimeout)
 		if ok {
 			metadata.CipherZeroAccepted = &accepted
 		}
@@ -105,7 +115,7 @@ func (IPMIFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	// Probe C: RAKP HMAC-SHA1 disclosure (CVE-2013-4786). Same gate as
 	// Probe B — RAKP only exists in IPMI 2.0.
 	if caps.IPMI20Supported {
-		probed, disclosures := runRAKPExistenceOracle(ctx, addr, perProbeTimeout, ipmiprotocol.DefaultUsernameGuesses)
+		probed, disclosures := runRAKPExistenceOracle(hostCtx, addr, perProbeTimeout, ipmiprotocol.DefaultUsernameGuesses)
 		if len(probed) > 0 {
 			metadata.ProbedUsernames = probed
 		}
@@ -260,7 +270,12 @@ func runSingleRAKP(ctx context.Context, addr string, timeout int, username strin
 	bmcNonceHex := hex.EncodeToString(rakp2.BMCNonce[:])
 	bmcSIDHex := fmt.Sprintf("%08x", parsedOpen.BMCSessionID)
 	consoleSIDHex := fmt.Sprintf("%08x", consoleSID)
-	privilegeLevel := int(ipmiprotocol.HashcatRoleByte)
+	// privilegeLevel reports the IPMI privilege we requested for the
+	// open session (Administrator == 0x04), NOT the RAKP-1 role byte
+	// (which is Administrator OR'd with name-only-lookup, 0x14).
+	// Downstream consumers reading IpmiRakpHashDisclosure.privilegeLevel
+	// expect the IPMI privilege level, not the RAKP wire byte.
+	privilegeLevel := int(ipmiprotocol.PrivilegeAdministrator)
 	hmacHex := hex.EncodeToString(rakp2.KeyExchangeAuthCode)
 
 	hashcatLine := ipmiprotocol.FormatHashcatLine(username,
