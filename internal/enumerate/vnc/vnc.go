@@ -74,9 +74,11 @@ func (l *LibraryEnumerateVNC) EnumerateTarget(ctx context.Context, target string
 	hasExplicitPort := (port != 0)
 
 	// Build list of ports to probe. With no explicit port, sweep the configured
-	// range — falling back through PortRange → default literal → defaultVNCPort
-	// only here (the per-port path no longer re-defaults, avoiding the duplicate
-	// fallback chain).
+	// range — falling back through PortRange → default literal only here (the
+	// per-port path no longer re-defaults, avoiding the duplicate fallback
+	// chain). A malformed `--vnc-port-range` string must NOT silently degrade
+	// to a single-port probe; surface the error and fall back to the full
+	// default range so the operator gets at least the documented coverage.
 	var ports []int
 	if hasExplicitPort {
 		ports = []int{port}
@@ -87,7 +89,15 @@ func (l *LibraryEnumerateVNC) EnumerateTarget(ctx context.Context, target string
 		}
 		ports = parsePortRange(portRange)
 		if len(ports) == 0 {
-			ports = []int{defaultVNCPort}
+			errors = append(errors, fmt.Sprintf(
+				"invalid --vnc-port-range %q (expected NNNN or NNNN-MMMM with 1-65535); falling back to %s",
+				portRange, defaultPortRangeStr))
+			ports = parsePortRange(defaultPortRangeStr)
+			if len(ports) == 0 {
+				// Should never happen — defaultPortRangeStr is constant — but
+				// keep a final-resort port so we never return zero ports.
+				ports = []int{defaultVNCPort}
+			}
 		}
 	}
 
