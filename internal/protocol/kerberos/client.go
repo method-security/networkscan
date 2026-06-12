@@ -24,8 +24,9 @@ type Target struct {
 
 // ClientManager handles Kerberos client configuration and creation
 type ClientManager struct {
-	Config *config.Config
-	Target *Target
+	Config        *config.Config
+	Target        *Target
+	etypeOverride []int32 // optional etype preference override
 }
 
 // NewClientManager creates a new Kerberos client manager
@@ -58,14 +59,25 @@ func (kcm *ClientManager) CreateConfiguration() *config.Config {
 	cfg.LibDefaults.TicketLifetime = ticketDuration
 
 	// Set up encryption preferences (match kerbtool behavior)
-	cfg.LibDefaults.DefaultTGSEnctypeIDs = []int32{etypeID.AES256_CTS_HMAC_SHA1_96, etypeID.AES128_CTS_HMAC_SHA1_96, etypeID.RC4_HMAC}
-	cfg.LibDefaults.DefaultTktEnctypeIDs = []int32{etypeID.AES256_CTS_HMAC_SHA1_96, etypeID.AES128_CTS_HMAC_SHA1_96, etypeID.RC4_HMAC}
+	defaultEtypes := []int32{etypeID.AES256_CTS_HMAC_SHA1_96, etypeID.AES128_CTS_HMAC_SHA1_96, etypeID.RC4_HMAC}
+	if len(kcm.etypeOverride) > 0 {
+		defaultEtypes = kcm.etypeOverride
+	}
+	cfg.LibDefaults.DefaultTGSEnctypeIDs = defaultEtypes
+	cfg.LibDefaults.DefaultTktEnctypeIDs = defaultEtypes
 
 	// Unset RenewableOK flag (match kerbtool behavior)
 	types.UnsetFlag(&cfg.LibDefaults.KDCDefaultOptions, flags.RenewableOK)
 
 	kcm.Config = cfg
 	return cfg
+}
+
+// WithEtypes sets the etype preference order for the next CreateConfiguration call.
+// Call before CreateConfiguration. Pass nil or empty to use defaults.
+func (kcm *ClientManager) WithEtypes(etypes []int32) *ClientManager {
+	kcm.etypeOverride = etypes
+	return kcm
 }
 
 // CreateClientFromConfig creates a Kerberos client from the provided config
