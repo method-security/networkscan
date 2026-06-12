@@ -150,9 +150,16 @@ func enumerateRDP(ctx context.Context, target string) *rdpfern.EnumerateRdpDetai
 
 // upgradeToTLS performs a TLS client handshake on an existing TCP connection
 // and returns the server certificate information.
+//
+// InsecureSkipVerify is intentional: this is an enumeration probe against
+// arbitrary RDP servers that routinely present self-signed, expired, or
+// hostname-mismatched certificates. Verifying the chain would prevent us
+// from collecting the very forensic evidence (cert subject/SAN/fingerprint)
+// the probe exists to capture. Mirrors the rationale in
+// internal/enumerate/pop3/helpers.go and internal/protocol/imap/protocol.go.
 func upgradeToTLS(conn net.Conn, serverName string) (*rdpfern.RdpTlsCertificate, error) {
 	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true, //nolint:gosec
+		InsecureSkipVerify: true, //nolint:gosec // see function doc — pre-auth probe, untrusted certs expected
 		ServerName:         serverName,
 	}
 	tlsConn := tls.Client(conn, tlsConfig)
