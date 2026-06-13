@@ -11,6 +11,7 @@ import (
 	// Generated
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	// Internal
+	dahuadhip "github.com/Method-Security/networkscan/internal/enumerate/dahuadhip"
 	ftp "github.com/Method-Security/networkscan/internal/enumerate/ftp"
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
 	ike "github.com/Method-Security/networkscan/internal/enumerate/ike"
@@ -187,6 +188,8 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &socks.LibraryEnumerateSocks{}}, nil
 	case enumeratefern.SupportedServiceTypeTr069:
 		return NetworkApplicationEngine{Library: &tr069.LibraryEnumerateTR069{}}, nil
+	case enumeratefern.SupportedServiceTypeDahuadhip:
+		return NetworkApplicationEngine{Library: &dahuadhip.LibraryEnumerateDahuaDhip{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}

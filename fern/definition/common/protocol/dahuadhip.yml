@@ -1,0 +1,32 @@
+types:
+  # Dahua DHIP (TCP/37777) pre-auth server fingerprint.  All fields are extracted
+  # from the response to a single read-only `global.login` JSON-RPC probe sent
+  # with empty credentials — the device refuses the login but discloses the
+  # encryption scheme + per-device realm + (on some firmware) error code that
+  # identifies the SDK version family.
+  DahuaDhipServerInfo:
+    properties:
+      # Encryption mode reported by the device — typical values are
+      # "Default" (newer firmware, salted hash), "OldDigest" (legacy MD5),
+      # "Basic" (no challenge — extremely old firmware), or empty when
+      # the device returned a non-JSON response.
+      encryptionMode: optional<string>
+      # Per-device authentication realm.  On 2017-era firmware this is the
+      # plaintext serial number; on 2019+ firmware it is a 32-char hex hash
+      # (SHA-derived from the serial).  Length-distinguished downstream.
+      authenticationRealm: optional<string>
+      # Whether the realm payload looks like a plaintext Dahua serial number
+      # (12-16 alphanumeric uppercase chars, not a 32-char hex hash).  Set
+      # true only when the format passes the length+charset bounds.
+      realmLooksLikePlainSerial: optional<boolean>
+      # JSON-RPC `id` echoed in the response — confirms DHIP wire-protocol
+      # framing even when the body is otherwise opaque.
+      jsonRpcId: optional<integer>
+      # JSON-RPC `session` echoed in the response — non-zero on some
+      # firmware that pre-allocates a session token before authentication.
+      jsonRpcSessionId: optional<integer>
+      # JSON-RPC error code returned for the empty-credential attempt.
+      # Common Dahua codes: 268632064 (auth failure, modern), 268894209
+      # (request invalid), 268894210 (account locked).  Surfaced for
+      # fingerprint clustering.
+      jsonRpcErrorCode: optional<integer>

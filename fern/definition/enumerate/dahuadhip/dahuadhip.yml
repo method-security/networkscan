@@ -1,0 +1,11 @@
+imports:
+  dahuadhipProtocol: ../../common/protocol/dahuadhip.yml
+
+types:
+  EnumerateDahuaDhipDetails:
+    properties:
+      target: string
+      portOpen: optional<boolean>
+      requiresAuth: optional<boolean>
+      serverInfo: optional<dahuadhipProtocol.DahuaDhipServerInfo>
+      rawResponse: optional<string>
