@@ -103,7 +103,11 @@ func looksLikeWinbox(resp []byte) bool {
 	}
 	// Some versions prefix with a short challenge/session byte before M2
 	if len(resp) > 4 {
-		return bytes.Contains(resp[:32], []byte{0x4d, 0x32})
+		end := len(resp)
+		if end > 32 {
+			end = 32
+		}
+		return bytes.Contains(resp[:end], []byte{0x4d, 0x32})
 	}
 	return false
 }
