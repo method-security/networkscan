@@ -76,7 +76,7 @@ func redisDetailsFromResponse(host string, ip net.IP, port int, resp []byte) *di
 		if mode := parseRedisInfoValue(text, "redis_mode"); mode != "" {
 			metadata["redis_mode"] = mode
 		}
-	case strings.HasPrefix(text, "-NOAUTH") || strings.Contains(lower, "authentication required"):
+	case strings.HasPrefix(text, "-NOAUTH"):
 		metadata["state"] = "auth_required"
 	case strings.HasPrefix(text, "-DENIED") && strings.Contains(lower, "redis is running in protected mode"):
 		metadata["state"] = "protected_mode"

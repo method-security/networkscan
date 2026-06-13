@@ -58,7 +58,7 @@ type Fingerprinter interface {
 //   - 44818: Unitronics UniStream before generic EtherNet/IP
 var customFingerprintModules = []Fingerprinter{
 	&localPlugins.SSHFingerprinter{},             // SSH (Secure Shell)
-	&localPlugins.EtcdFingerprinter{},            // etcd distributed key-value store
+	&localPlugins.EtcdFingerprinter{},            // etcd distributed key-value store; keep before generic gRPC
 	&localPlugins.RedisFingerprinter{},           // Redis key-value store
 	&localPlugins.MongoDBFingerprinter{},         // MongoDB driver manages its own connections
 	&localPlugins.CassandraFingerprinter{},       // Cassandra native protocol
@@ -87,6 +87,7 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.MemcachedFingerprinter{},       // MEMCACHED
 	&localPlugins.UnistreamFingerprinter{},       // Unitronics UniStream (more specific EtherNet/IP device match)
 	&localPlugins.EthernetIPFingerprinter{},      // Generic EtherNet/IP/CIP fallback for TCP/44818
+	&localPlugins.OracleFingerprinter{},          // Oracle TNS Listener
 	&localPlugins.SMTPFingerprinter{},            // SMTP (Simple Mail Transfer Protocol)
 	&localPlugins.JMXFingerprinter{},             // JMX over RMI; keep before generic Java RMI
 	&localPlugins.JavaRMIFingerprinter{},         // Java RMI Registry

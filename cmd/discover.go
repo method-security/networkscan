@@ -470,8 +470,23 @@ func (a *NetworkScan) InitDiscoverCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
+			ja4s, err := cmd.Flags().GetBool("ja4s")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			jarmFlag, err := cmd.Flags().GetBool("jarm")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+			ja4x, err := cmd.Flags().GetBool("ja4x")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
 			// Generate the config
-			config := getDiscoverTLSConfig(targets, timeout)
+			config := getDiscoverTLSConfig(targets, timeout, ja4s, jarmFlag, ja4x)
 
 			// Generate the report
 			report, err := discover.GetTLSInfo(cmd.Context(), config)
@@ -484,6 +499,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	discoverTLSCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to analyze TLS configuration")
 	discoverTLSCmd.Flags().Int("timeout", 30, "Timeout in seconds for each TLS handshake attempt")
+	discoverTLSCmd.Flags().Bool("ja4s", false, "Compute JA4S server-side TLS fingerprint")
+	discoverTLSCmd.Flags().Bool("jarm", false, "Compute JARM 10-probe TLS fingerprint")
+	discoverTLSCmd.Flags().Bool("ja4x", false, "Compute JA4X X.509 certificate fingerprint for each certificate")
 	// Mark Required Flags
 	_ = discoverTLSCmd.MarkFlagRequired("targets")
 
@@ -709,10 +727,19 @@ func normalizeCustomPluginThreads(threads int) int {
 }
 
 // getDiscoverTLSConfig creates a configuration for TLS scanning with the provided parameters.
-func getDiscoverTLSConfig(targets []string, timeout int) discoverfern.DiscoverTlsConfig {
+func getDiscoverTLSConfig(targets []string, timeout int, ja4s, jarmFlag, ja4x bool) discoverfern.DiscoverTlsConfig {
 	config := discoverfern.DiscoverTlsConfig{
 		Targets: targets,
 		Timeout: timeout,
+	}
+	if ja4s {
+		config.Ja4S = &ja4s
+	}
+	if jarmFlag {
+		config.Jarm = &jarmFlag
+	}
+	if ja4x {
+		config.Ja4X = &ja4x
 	}
 	return config
 }

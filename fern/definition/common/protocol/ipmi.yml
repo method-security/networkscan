@@ -1,7 +1,55 @@
 types:
-  # IPMI (Intelligent Platform Management Interface) Server Information
+  # IPMI Get-Channel-Authentication-Capabilities bitmap, parsed from
+  # Auth-Type-Support-1/2/3 of the IPMI 2.0 response (per IPMI 2.0 spec
+  # section 22.13). Each field corresponds to one bit; omitted fields
+  # mean we could not parse them (response was truncated).
+  IpmiAuthCapabilities:
+    properties:
+      # Auth-Type-Support-1 (channel auth-type bitmap)
+      none: optional<boolean>
+      md2: optional<boolean>
+      md5: optional<boolean>
+      straightPassword: optional<boolean>
+      oem: optional<boolean>
+      ipmi20ExtendedCapabilities: optional<boolean>
+      # Auth-Type-Support-3 (IPMI version flags)
+      ipmi15Supported: optional<boolean>
+      ipmi20Supported: optional<boolean>
+      # Auth-Type-Support-2 (user / per-message flags)
+      perMessageAuthDisabled: optional<boolean>
+      userLevelAuthDisabled: optional<boolean>
+      anonymousLoginEnabled: optional<boolean>
+      nullUsernameEnabled: optional<boolean>
+      nonNullUsernameEnabled: optional<boolean>
+      kgSet: optional<boolean>
+      oemId: optional<integer>
+      channelNumber: optional<integer>
+
+  # Result of a single RAKP-1/RAKP-2 round trip against the BMC with a
+  # guessed username. If the BMC accepted the RAKP-1 (status==0x00) and
+  # returned the HMAC-SHA1 key-exchange-authcode in RAKP-2, the username
+  # exists (CVE-2013-4786 existence oracle) and the captured blob is
+  # offline-crackable. Produced by `enumerate ipmi`, not by the discover
+  # plugin — RAKP is opt-in deep probing.
+  IpmiRakpHashDisclosure:
+    properties:
+      username: string
+      bmcGuid: optional<string>
+      consoleNonce: optional<string>
+      bmcNonce: optional<string>
+      bmcSessionId: optional<string>
+      consoleSessionId: optional<string>
+      privilegeLevel: optional<integer>
+      hmacSha1: string
+      hashcatLine: optional<string>
+
+  # IPMI (Intelligent Platform Management Interface) Server Information.
+  # The discover plugin populates this from the pre-auth Get-Channel-Auth-
+  # Capabilities banner only. Cipher Zero / RAKP probes are opt-in and
+  # live in the `enumerate ipmi` command — see EnumerateIpmiDetails for
+  # those fields.
   IpmiServerInfo:
     properties:
-      # Discovery fields
       version: optional<string>
       authType: optional<string>
+      authCapabilities: optional<IpmiAuthCapabilities>

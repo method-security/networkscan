@@ -15,6 +15,7 @@ import (
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
 	ike "github.com/Method-Security/networkscan/internal/enumerate/ike"
 	imap "github.com/Method-Security/networkscan/internal/enumerate/imap"
+	ipmi "github.com/Method-Security/networkscan/internal/enumerate/ipmi"
 	ldap "github.com/Method-Security/networkscan/internal/enumerate/ldap"
 	mongodb "github.com/Method-Security/networkscan/internal/enumerate/mongodb"
 	mssql "github.com/Method-Security/networkscan/internal/enumerate/mssql"
@@ -27,6 +28,7 @@ import (
 	snmp "github.com/Method-Security/networkscan/internal/enumerate/snmp"
 	socks "github.com/Method-Security/networkscan/internal/enumerate/socks"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
+	vnc "github.com/Method-Security/networkscan/internal/enumerate/vnc"
 
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -170,6 +172,8 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &snmp.LibraryEnumerateSNMP{}}, nil
 	case enumeratefern.SupportedServiceTypeImap:
 		return NetworkApplicationEngine{Library: &imap.LibraryEnumerateIMAP{}}, nil
+	case enumeratefern.SupportedServiceTypeIpmi:
+		return NetworkApplicationEngine{Library: &ipmi.LibraryEnumerateIPMI{}}, nil
 	case enumeratefern.SupportedServiceTypeMongodb:
 		return NetworkApplicationEngine{Library: &mongodb.LibraryEnumerateMongoDB{}}, nil
 	case enumeratefern.SupportedServiceTypeMssql:
@@ -184,6 +188,17 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &redis.LibraryEnumerateRedis{}}, nil
 	case enumeratefern.SupportedServiceTypeSocks:
 		return NetworkApplicationEngine{Library: &socks.LibraryEnumerateSocks{}}, nil
+	case enumeratefern.SupportedServiceTypeVnc:
+		lib := &vnc.LibraryEnumerateVNC{}
+		if config.VncConfig != nil {
+			if config.VncConfig.SkipScreenshot != nil {
+				lib.SkipScreenshot = *config.VncConfig.SkipScreenshot
+			}
+			if config.VncConfig.PortRange != nil {
+				lib.PortRange = *config.VncConfig.PortRange
+			}
+		}
+		return NetworkApplicationEngine{Library: lib}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}

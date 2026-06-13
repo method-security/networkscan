@@ -8,6 +8,7 @@ imports:
   ike: ./ike/ike.yml
   snmp: ./snmp/snmp.yml
   imap: ./imap/imap.yml
+  ipmi: ./ipmi/ipmi.yml
   mongodb: ./mongodb/mongodb.yml
   mssql: ./mssql/mssql.yml
   mysql: ./mysql/mysql.yml
@@ -15,6 +16,7 @@ imports:
   postgres: ./postgres/postgres.yml
   redis: ./redis/redis.yml
   socks: ./socks/socks.yml
+  vnc: ./vnc/vnc.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -28,6 +30,7 @@ types:
       - IKE
       - SNMP
       - IMAP
+      - IPMI
       - MONGODB
       - MSSQL
       - MYSQL
@@ -35,6 +38,7 @@ types:
       - POSTGRES
       - REDIS
       - SOCKS
+      - VNC
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -47,6 +51,7 @@ types:
       EnumerateIkeDetails: ike.EnumerateIkeDetails
       EnumerateSnmpDetails: snmp.EnumerateSnmpDetails
       EnumerateImapDetails: imap.EnumerateImapDetails
+      EnumerateIpmiDetails: ipmi.EnumerateIpmiDetails
       EnumerateMongodbDetails: mongodb.EnumerateMongodbDetails
       EnumerateMssqlDetails: mssql.EnumerateMssqlDetails
       EnumerateMysqlDetails: mysql.EnumerateMysqlDetails
@@ -54,6 +59,7 @@ types:
       EnumeratePostgresDetails: postgres.EnumeratePostgresDetails
       EnumerateRedisDetails: redis.EnumerateRedisDetails
       EnumerateSocksDetails: socks.EnumerateSocksDetails
+      EnumerateVncDetails: vnc.EnumerateVncDetails
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>
@@ -64,6 +70,7 @@ types:
       service: SupportedServiceType
       timeout: integer
       wordlist: optional<list<string>>
+      vncConfig: optional<vnc.VncEnumerateConfig>
   # Final report
   EnumerateServiceReport:
     properties:

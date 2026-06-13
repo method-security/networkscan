@@ -23,9 +23,7 @@ type MongoDBFingerprinter struct{}
 
 func (MongoDBFingerprinter) Name() string { return "mongodb" }
 
-func (MongoDBFingerprinter) DefaultPorts() []int {
-	return []int{27017, 27018, 27019, 37017}
-}
+func (MongoDBFingerprinter) DefaultPorts() []int { return []int{27017} }
 
 func (MongoDBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	// Create MongoDB connection string

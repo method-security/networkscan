@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
@@ -159,6 +160,90 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 		serverInfo.HashAlgorithms,
 		serverInfo.DhGroups,
 	)
+	// Build structured vendor ID payloads
+	if len(serverInfo.VendorIds) > 0 {
+		payloads := buildVendorIdPayloads(serverInfo.VendorIds)
+		fernPayloads := make([]*commonprotocolfern.IkeVendorIdPayload, 0, len(payloads))
+		for _, p := range payloads {
+			fp := &commonprotocolfern.IkeVendorIdPayload{
+				RawBytes:    p.RawBytes,
+				VendorClass: p.VendorClass,
+			}
+			fernPayloads = append(fernPayloads, fp)
+		}
+		serverInfo.VendorIdPayloads = fernPayloads
+	}
+	// Build grouped transform list from flat algorithm lists
+	{
+		var encStrs, hashStrs, dhStrs, authStrs []string
+		for _, e := range serverInfo.EncryptionAlgorithms {
+			encStrs = append(encStrs, ikeprotocol.EncryptionAlgorithmToString(e))
+		}
+		for _, h := range serverInfo.HashAlgorithms {
+			hashStrs = append(hashStrs, ikeprotocol.HashAlgorithmToString(h))
+		}
+		for _, d := range serverInfo.DhGroups {
+			dhStrs = append(dhStrs, ikeprotocol.DHGroupToString(d))
+		}
+		for _, a := range serverInfo.AuthenticationMethods {
+			authStrs = append(authStrs, ikeprotocol.AuthMethodToString(a))
+		}
+		groups := groupTransforms(encStrs, hashStrs, dhStrs, authStrs)
+		if len(groups) > 0 {
+			fernTransforms := make([]*commonprotocolfern.IkeTransform, 0, len(groups))
+			for _, g := range groups {
+				enc := g.Encryption
+				hash := g.Hash
+				dh := g.DHGroup
+				auth := g.AuthMethod
+				ft := &commonprotocolfern.IkeTransform{}
+				if enc != "" {
+					ft.Encryption = &enc
+				}
+				if hash != "" {
+					ft.Hash = &hash
+				}
+				if dh != "" {
+					ft.DhGroup = &dh
+				}
+				if auth != "" {
+					ft.AuthMethod = &auth
+				}
+				fernTransforms = append(fernTransforms, ft)
+			}
+			serverInfo.Transforms = fernTransforms
+		}
+	}
 	details.ServerInfo = &serverInfo
 	return &enumeratefern.EnumerateServiceDetails{EnumerateIkeDetails: &details}, errors
+}
+
+// EnumerateTargetWithBackoff extends EnumerateTarget with backoff timing probes.
+// backoffProbes=0 is equivalent to calling EnumerateTarget directly.
+func (l *LibraryEnumerateIKE) EnumerateTargetWithBackoff(ctx context.Context, target string, backoffProbes int) (*enumeratefern.EnumerateServiceDetails, []string) {
+	log := svc1log.FromContext(ctx)
+	result, errors := l.EnumerateTarget(ctx, target)
+	if backoffProbes <= 0 {
+		return result, errors
+	}
+	if result == nil || result.EnumerateIkeDetails == nil || result.EnumerateIkeDetails.ServerInfo == nil {
+		return result, errors
+	}
+	pattern := make([]int, 0, backoffProbes)
+	for i := 0; i < backoffProbes; i++ {
+		// Use a unique SPI per probe so peers treat each as a fresh exchange
+		// rather than a retransmit (which would be answered from cache).
+		probe := ikeprotocol.BuildIKEv2SAInitRequestForProbe(i)
+		start := time.Now()
+		_, probeErr := probeUDP(ctx, target, probe)
+		elapsed := int(time.Since(start).Milliseconds())
+		if probeErr != nil {
+			pattern = append(pattern, -1)
+			log.Info("backoff probe no-response", svc1log.SafeParam("target", target), svc1log.SafeParam("probe", i+1))
+		} else {
+			pattern = append(pattern, elapsed)
+		}
+	}
+	result.EnumerateIkeDetails.ServerInfo.BackoffPattern = pattern
+	return result, errors
 }

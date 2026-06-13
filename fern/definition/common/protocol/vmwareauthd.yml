@@ -1,0 +1,34 @@
+types:
+  # Slim cert shape — option (b) from investigation, to avoid touching
+  # discover/tls.yml and the shared enums. Captures enough for chain analysis.
+  VmwareAuthdCertificate:
+    properties:
+      subjectCommonName: optional<string>
+      issuerCommonName: optional<string>
+      subjectAlternativeNames: optional<list<string>>
+      serialNumber: optional<string>
+      notBefore: optional<datetime>
+      notAfter: optional<datetime>
+      sha256Fingerprint: optional<string>
+      signatureAlgorithm: optional<string>
+      publicKeyAlgorithm: optional<string>
+      pemEncoded: optional<string>
+
+  VmwareAuthdServerInfo:
+    properties:
+      banner: optional<string>
+      daemonVersion: optional<string>
+      esxiVersion: optional<string>
+      buildNumber: optional<string>
+      managementAgentBanner: optional<string>
+      sslRequired: optional<boolean>
+      sslRecommended: optional<boolean>
+      sslSupported: optional<boolean>
+      nfcsslSupported: optional<boolean>
+      vmxargsSupported: optional<boolean>
+      serverDaemonProtocol: optional<string>
+      mksDisplayProtocol: optional<string>
+      capabilities: optional<list<string>>
+      versionResponse: optional<string>
+      tlsUpgraded: optional<boolean>
+      tlsCertificates: optional<list<VmwareAuthdCertificate>>
