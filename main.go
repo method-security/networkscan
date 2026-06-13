@@ -2,7 +2,6 @@
 package main
 
 import (
-	"flag"
 	"os"
 
 	"github.com/Method-Security/networkscan/cmd"
@@ -15,8 +14,6 @@ var version = "none"
 // It sets up the root command and all subcommands (discover, enumerate, pentest)
 // before executing the root command.
 func main() {
-	flag.Parse()
-
 	networkscan := cmd.NewNetworkScan(version)
 	networkscan.InitRootCommand()
 	networkscan.InitDiscoverCommand()

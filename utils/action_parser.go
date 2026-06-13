@@ -312,8 +312,8 @@ var (
 	imapParserInstance     *IMAPActionParser
 	mssqlParserInstance    *MSSQLActionParser
 	mysqlParserInstance    *MySQLActionParser
-	postgresParserInstance *PostgresActionParser
 	etcdParserInstance     *EtcdActionParser
+	postgresParserInstance *PostgresActionParser
 )
 
 // GetSMBParser returns the singleton SMB action parser
