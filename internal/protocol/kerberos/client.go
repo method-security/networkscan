@@ -2,6 +2,7 @@ package kerberos
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -117,22 +118,26 @@ func (kcm *ClientManager) CreateClientFromConfig(pentestConfig *kerberosfern.Pen
 	return krb5Client, requestingUser, nil
 }
 
-// ParseTarget parses a target string into components
+// ParseTarget parses a target string into a Target. For IP addresses the domain
+// is left empty — callers must supply the realm via --domain when targeting IPs.
 func ParseTarget(targetStr string) (*Target, error) {
 	host, port := utils.ParseHostPort(targetStr, 88)
 
-	// Extract domain from hostname
-	domain := ""
+	// IP addresses have no meaningful domain component; return empty domain so
+	// the caller can fill it in from --domain without returning a spurious error.
+	if net.ParseIP(host) != nil {
+		return &Target{Host: host, Port: port, Domain: ""}, nil
+	}
+
+	// Extract domain from a FQDN (requires at least three labels, e.g. dc.corp.local).
 	hostParts := strings.Split(host, ".")
-	if len(hostParts) > 2 {
-		domain = strings.Join(hostParts[1:], ".")
-	} else {
-		return nil, fmt.Errorf("cannot extract domain from hostname: %s", host)
+	if len(hostParts) <= 2 {
+		return nil, fmt.Errorf("cannot extract domain from hostname %q: supply --domain explicitly", host)
 	}
 
 	return &Target{
 		Host:   host,
 		Port:   port,
-		Domain: domain,
+		Domain: strings.Join(hostParts[1:], "."),
 	}, nil
 }
