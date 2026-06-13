@@ -42,6 +42,7 @@ imports:
   unistreamProtocol: ../common/protocol/unistream.yml
   smtpProtocol: ../common/protocol/smtp.yml
   oracleProtocol: ../common/protocol/oracle.yml
+  vmwareauthdProtocol: ../common/protocol/vmwareauthd.yml
 
 types:
   # Generic metadata for fingerprintx and other sources
@@ -96,6 +97,7 @@ types:
       unistream: unistreamProtocol.UnistreamServerInfo
       smtp: smtpProtocol.SmtpServerInfo
       oracle: oracleProtocol.OracleServerInfo
+      vmwareauthd: vmwareauthdProtocol.VmwareAuthdServerInfo
 
   # Stealth service types
   StealthServiceType:
