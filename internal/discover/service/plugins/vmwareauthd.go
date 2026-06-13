@@ -53,9 +53,12 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	// bannerStoreCap bounds memory when a hostile peer floods continuation
 	// lines. bannerDrainCap limits the total reads; if a terminal is not
 	// seen within this many lines the peer is treated as non-authd.
+	// bannerTerminal always holds the actual terminal "220 " line regardless
+	// of the storeCap, so we never mis-identify a continuation as the banner.
 	const bannerStoreCap = 64
 	const bannerDrainCap = 128
 	var bannerLines []string
+	bannerTerminal := ""
 	for i := 0; i < bannerDrainCap; i++ {
 		line, err := reader.ReadString('\n')
 		if err != nil {
@@ -69,11 +72,16 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 			bannerLines = append(bannerLines, line)
 		}
 		if len(line) < 4 || line[3] == ' ' {
-			break // terminal line
+			bannerTerminal = line // record the terminal separately — always up-to-date
+			break
 		}
 		// line[3] == '-': continuation line, keep reading
 	}
-	banner := bannerLines[len(bannerLines)-1]
+	if bannerTerminal == "" {
+		// drainCap exhausted without a terminal "220 " line — hostile or non-authd peer.
+		return nil, fmt.Errorf("not VMware authd: banner continuation limit exceeded")
+	}
+	banner := bannerTerminal
 	if !strings.HasPrefix(banner, "220 VMware Authentication Daemon") {
 		return nil, fmt.Errorf("not VMware authd: %s", banner)
 	}
@@ -82,7 +90,16 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	// other fields may appear on 220- continuation lines, not only on the
 	// terminal "220 " line. info.Banner stores the terminal line (clean display);
 	// parseAuthdBanner receives the full multi-line text so no flags are missed.
+	// Always include bannerTerminal in fullBanner; it may not be in bannerLines
+	// when the drainCap was reached after the storeCap.
 	fullBanner := strings.Join(bannerLines, " ")
+	if len(bannerLines) == 0 || bannerLines[len(bannerLines)-1] != bannerTerminal {
+		// Terminal line wasn't stored (or bannerLines is empty) — append it.
+		if fullBanner != "" {
+			fullBanner += " "
+		}
+		fullBanner += bannerTerminal
+	}
 
 	info := &protocol.VmwareAuthdServerInfo{}
 	bannerCopy := banner
@@ -110,19 +127,26 @@ func (VMwareAuthdFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 		wireClean = capsWireClean
 	}
 
-	// VERSION exchange — single line response. Skipped if CAPS started but
-	// didn't terminate cleanly: the next ReadString would pick up a stale
-	// "200-…" continuation and clobber versionResponse / build / esxi fields.
+	// VERSION exchange — response may be multi-line (some authd builds emit
+	// SMTP-style "200-…" continuations). Use readMultiline200 like CAPS and
+	// SSL ack so the bufio buffer is always fully drained before the SSL
+	// upgrade read. wireClean is updated from the VERSION reply: a read error
+	// or drain-cap exhaust marks the wire as dirty, skipping the SSL step.
 	if wireClean {
 		_ = helpers.SetWriteDeadlineDuration(conn, dur)
 		if _, err := conn.Write([]byte("VERSION\r\n")); err == nil {
 			_ = helpers.SetReadDeadlineDuration(conn, dur)
-			if v, err := reader.ReadString('\n'); err == nil {
-				v = strings.TrimRight(v, "\r\n")
+			verLines, _, versionWireClean := readMultiline200(reader)
+			wireClean = versionWireClean
+			if len(verLines) > 0 {
+				v := strings.Join(verLines, " ")
 				info.VersionResponse = &v
 				// Some builds echo ESXi version / build in VERSION reply too.
 				parseVersionReply(v, info)
 			}
+		} else {
+			// Write failure: don't attempt further reads on this conn.
+			wireClean = false
 		}
 	}
 
