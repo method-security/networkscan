@@ -43,6 +43,10 @@ func getWordlistConfigPath(wordlistType pentestfern.WordlistType) (string, error
 		return "pentest/spray/service_passwords.txt", nil
 	case pentestfern.WordlistTypeServiceUsernames:
 		return "pentest/spray/service_usernames.txt", nil
+	case pentestfern.WordlistTypeOracleUsernames:
+		return "pentest/spray/oracle_usernames.txt", nil
+	case pentestfern.WordlistTypeOraclePasswords:
+		return "pentest/spray/oracle_passwords.txt", nil
 	case pentestfern.WordlistTypeCustom:
 		return "", nil
 	default:
