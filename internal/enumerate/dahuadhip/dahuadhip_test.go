@@ -265,5 +265,5 @@ func TestEnumerateTarget_AgainstMockListener(t *testing.T) {
 		t.Errorf("RawResponse not populated: %+v", d.RawResponse)
 	}
 	// Smoke-check that the union envelope still references our details.
-	_ = enumeratefern.EnumerateServiceDetails(*out)
+	var _ enumeratefern.EnumerateServiceDetails = *out
 }
