@@ -20,6 +20,7 @@ import (
 	mongodb "github.com/Method-Security/networkscan/internal/enumerate/mongodb"
 	mssql "github.com/Method-Security/networkscan/internal/enumerate/mssql"
 	mysql "github.com/Method-Security/networkscan/internal/enumerate/mysql"
+	openvpn "github.com/Method-Security/networkscan/internal/enumerate/openvpn"
 	pop3 "github.com/Method-Security/networkscan/internal/enumerate/pop3"
 	postgres "github.com/Method-Security/networkscan/internal/enumerate/postgres"
 	redis "github.com/Method-Security/networkscan/internal/enumerate/redis"
@@ -29,6 +30,7 @@ import (
 	socks "github.com/Method-Security/networkscan/internal/enumerate/socks"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
 	vnc "github.com/Method-Security/networkscan/internal/enumerate/vnc"
+	wireguard "github.com/Method-Security/networkscan/internal/enumerate/wireguard"
 
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -199,6 +201,14 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 			}
 		}
 		return NetworkApplicationEngine{Library: lib}, nil
+	case enumeratefern.SupportedServiceTypeOpenvpn:
+		lib := &openvpn.LibraryEnumerateOpenVPN{}
+		if config.OpenvpnConfig != nil && config.OpenvpnConfig.Transport != nil {
+			lib.Transport = *config.OpenvpnConfig.Transport
+		}
+		return NetworkApplicationEngine{Library: lib}, nil
+	case enumeratefern.SupportedServiceTypeWireguard:
+		return NetworkApplicationEngine{Library: &wireguard.LibraryEnumerateWireGuard{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}

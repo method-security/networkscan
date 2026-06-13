@@ -6,7 +6,9 @@ import (
 
 	// Generated
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	openvpnfern "github.com/Method-Security/networkscan/generated/go/enumerate/openvpn"
 	vncfern "github.com/Method-Security/networkscan/generated/go/enumerate/vnc"
+	wireguardfern "github.com/Method-Security/networkscan/generated/go/enumerate/wireguard"
 
 	// Internal
 	enumerate "github.com/Method-Security/networkscan/internal/enumerate"
@@ -71,6 +73,12 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				return
 			}
 
+			openvpnTransport, err := cmd.Flags().GetString("openvpn-transport")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
 			config := newEnumerateServiceConfig(EnumerateServiceCobraFlags{
 				Targets:           targets,
 				Service:           serviceEnum,
@@ -78,6 +86,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				Wordlist:          wordlist,
 				VncSkipScreenshot: vncSkipScreenshot,
 				VncPortRange:      vncPortRange,
+				OpenvpnTransport:  openvpnTransport,
 			})
 
 			// Generate the report
@@ -96,6 +105,9 @@ func (a *NetworkScan) InitEnumerateCommand() {
 	// VNC-specific flags
 	enumerateServiceCmd.Flags().Bool("vnc-skip-screenshot", false, "Skip framebuffer screenshot capture even when None auth is offered (VNC only)")
 	enumerateServiceCmd.Flags().String("vnc-port-range", "5900-5910", "Port range to sweep when no explicit port is given (VNC only, e.g. '5900-5910')")
+	// OpenVPN-specific flags
+	enumerateServiceCmd.Flags().String("openvpn-transport", "UDP", "Transport protocol to use for OpenVPN probe: UDP or TCP (OpenVPN only)")
+	// WireGuard has no extra flags beyond --targets and --timeout
 
 	// Mark Required Flags
 	_ = enumerateServiceCmd.MarkFlagRequired("targets")
@@ -119,6 +131,7 @@ type EnumerateServiceCobraFlags struct {
 	Wordlist          []string
 	VncSkipScreenshot bool
 	VncPortRange      string
+	OpenvpnTransport  string
 }
 
 // newEnumerateServiceConfig creates a new EnumerateServiceConfig from the flag struct.
@@ -139,6 +152,22 @@ func newEnumerateServiceConfig(flags EnumerateServiceCobraFlags) enumeratefern.E
 			vncCfg.PortRange = &flags.VncPortRange
 		}
 		config.VncConfig = vncCfg
+	}
+	// OpenVPN-specific config
+	if flags.Service == enumeratefern.SupportedServiceTypeOpenvpn {
+		ovpnCfg := &openvpnfern.OpenVpnEnumerateConfig{}
+		if flags.OpenvpnTransport != "" {
+			t, err := openvpnfern.NewOpenVpnTransportFromString(strings.ToUpper(flags.OpenvpnTransport))
+			if err == nil {
+				ovpnCfg.Transport = &t
+			}
+		}
+		config.OpenvpnConfig = ovpnCfg
+	}
+	// WireGuard-specific config (timeout only, sourced from top-level --timeout flag)
+	if flags.Service == enumeratefern.SupportedServiceTypeWireguard {
+		wgCfg := &wireguardfern.WireguardEnumerateConfig{}
+		config.WireguardConfig = wgCfg
 	}
 	return config
 }

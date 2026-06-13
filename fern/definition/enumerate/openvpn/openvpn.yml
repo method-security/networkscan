@@ -1,0 +1,44 @@
+types:
+  # ENUMs
+  OpenVpnTransport:
+    enum:
+      - UDP
+      - TCP
+
+  OpenVpnTlsAuthMode:
+    enum:
+      - TLS_AUTH
+      - TLS_CRYPT
+      - TLS_CRYPT_V2
+      - NONE
+
+  # Config — input parameters
+  OpenVpnEnumerateConfig:
+    properties:
+      transport: optional<OpenVpnTransport>
+      timeout: optional<integer>
+
+  # Result — wraps output data
+  OpenVpnEnumerateResult:
+    properties:
+      version: optional<string>
+      cipher: optional<string>
+      tlsProtocolVersion: optional<string>
+      tlsAuthMode: optional<OpenVpnTlsAuthMode>
+
+  # Details — per-target probe result
+  EnumerateOpenvpnDetails:
+    properties:
+      target: string
+      port: integer
+      transport: OpenVpnTransport
+      isOpenvpn: boolean
+      result: optional<OpenVpnEnumerateResult>
+      errors: optional<list<string>>
+
+  # Report — wraps config + result + errors
+  EnumerateOpenvpnReport:
+    properties:
+      config: OpenVpnEnumerateConfig
+      result: optional<list<EnumerateOpenvpnDetails>>
+      errors: optional<list<string>>

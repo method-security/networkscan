@@ -1,0 +1,26 @@
+types:
+  # Config — input parameters
+  WireguardEnumerateConfig:
+    properties:
+      timeout: optional<integer>
+
+  # Result — wraps output data
+  WireguardEnumerateResult:
+    properties:
+      isInferred: boolean
+      port: integer
+
+  # Details — per-target probe result
+  EnumerateWireguardDetails:
+    properties:
+      target: string
+      port: integer
+      isInferred: boolean
+      errors: optional<list<string>>
+
+  # Report — wraps config + result + errors
+  EnumerateWireguardReport:
+    properties:
+      config: WireguardEnumerateConfig
+      result: optional<list<EnumerateWireguardDetails>>
+      errors: optional<list<string>>

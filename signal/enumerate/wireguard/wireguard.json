@@ -1,0 +1,21 @@
+{
+  "config": {
+    "service": "WIREGUARD",
+    "targets": ["198.51.100.20:51820"],
+    "timeout": 30,
+    "wireguardConfig": {
+      "timeout": 5
+    }
+  },
+  "result": {
+    "details": [
+      {
+        "type": "EnumerateWireguardDetails",
+        "target": "198.51.100.20",
+        "port": 51820,
+        "isInferred": true
+      }
+    ]
+  },
+  "errors": []
+}

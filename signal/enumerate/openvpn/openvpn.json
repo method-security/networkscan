@@ -1,0 +1,28 @@
+{
+  "config": {
+    "service": "OPENVPN",
+    "targets": ["198.51.100.10:1194"],
+    "timeout": 30,
+    "openvpnConfig": {
+      "transport": "UDP"
+    }
+  },
+  "result": {
+    "details": [
+      {
+        "type": "EnumerateOpenvpnDetails",
+        "target": "198.51.100.10",
+        "port": 1194,
+        "transport": "UDP",
+        "isOpenvpn": true,
+        "result": {
+          "version": "OpenVPN 2.6.8",
+          "cipher": "AES-256-GCM",
+          "tlsProtocolVersion": "TLSv1.3",
+          "tlsAuthMode": "TLS_CRYPT"
+        }
+      }
+    ]
+  },
+  "errors": []
+}
