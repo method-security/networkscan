@@ -84,20 +84,32 @@ func FormatASRepHashcat(asrep messages.ASRep) string {
 // known kerberoast etype.
 //
 // Layouts (cross-checked against impacket GetUserSPNs.py and Rubeus):
-//   - RC4 (13100): $krb5tgs$23$*<user>$<realm>$<spn>*$<checksum[:16]>$<edata[16:]>
+//   - RC4 (13100): $krb5tgs$23$*<svcName>$<realm>$<spn>*$<checksum[:16]>$<edata[16:]>
 //     checksum is the FIRST 16 bytes (RFC 4757 layout).
-//   - AES128 (19600) / AES256 (19700): $krb5tgs$<etype>$<user>$<realm>$*<spn>*$<HMAC[-12:]>$<edata[:-12]>
+//   - AES128 (19600) / AES256 (19700): $krb5tgs$<etype>$<svcName>$<realm>$*<spn>*$<HMAC[-12:]>$<edata[:-12]>
 //     HMAC-SHA1-96 is the LAST 12 bytes (RFC 3962 layout). The asterisks
 //     wrap the SPN — both impacket and Rubeus emit this shape and hashcat
 //     parses it.
 //
+// The <svcName> field is the SPN extracted from the ticket's SName (the service
+// account identifier as presented to hashcat). For AES modes the name is part
+// of the key derivation salt, so it MUST identify the service account, not the
+// authenticating user. When the SAM account name is not independently known
+// (i.e. we obtained the TGS-REP without LDAP enumeration), embedding the SPN
+// itself is the correct fallback — this is the same behaviour as impacket
+// GetUserSPNs.py and Rubeus when no account mapping is available.
+//
 // The earlier "AES is one blob with no asterisks" layout that lived here
 // loaded into hashcat as garbage; AES kerberoasts looked successful in the
 // report but never cracked. Spotted by Bugbot round-8.
-func FormatTGSRepHashcat(rep messages.TGSRep, username string) string {
+func FormatTGSRepHashcat(rep messages.TGSRep) string {
 	cipher := rep.Ticket.EncPart.Cipher
 	etype := rep.Ticket.EncPart.EType
 	spn := strings.Join(rep.Ticket.SName.NameString, "/")
+	// Use the SPN as the service-account identifier. When the SAM account name
+	// is unknown (our typical case — no LDAP lookup performed), the SPN is the
+	// authoritative account handle. This matches impacket / Rubeus behaviour.
+	svcName := spn
 	switch etype {
 	case etypeRC4HMAC:
 		if len(cipher) < 16 {
@@ -105,7 +117,7 @@ func FormatTGSRepHashcat(rep messages.TGSRep, username string) string {
 		}
 		return fmt.Sprintf("$krb5tgs$%d$*%s$%s$%s*$%s$%s",
 			etype,
-			username,
+			svcName,
 			rep.Ticket.Realm,
 			spn,
 			hex.EncodeToString(cipher[:16]),
@@ -120,7 +132,7 @@ func FormatTGSRepHashcat(rep messages.TGSRep, username string) string {
 		edata := cipher[:len(cipher)-12]
 		return fmt.Sprintf("$krb5tgs$%d$%s$%s$*%s*$%s$%s",
 			etype,
-			username,
+			svcName,
 			rep.Ticket.Realm,
 			spn,
 			hex.EncodeToString(hmac),
