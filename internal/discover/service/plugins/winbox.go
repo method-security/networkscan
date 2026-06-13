@@ -13,7 +13,6 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
-	"github.com/Method-Security/networkscan/utils"
 )
 
 // WinboxFingerprinter detects MikroTik RouterOS Winbox service on TCP/8291.
@@ -29,10 +28,8 @@ func (WinboxFingerprinter) Name() string        { return "winbox" }
 func (WinboxFingerprinter) DefaultPorts() []int { return []int{8291} }
 
 func (WinboxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	addr := utils.FormatHostPort(ip.String(), port)
-
 	// /list request — get RouterOS version + identity
-	listResp, err := winboxListProbe(ctx, addr, timeout)
+	listResp, err := helpers.TCPExchange(ctx, ip, port, timeout, buildWinboxListRequest(), 4096)
 	if err != nil {
 		return nil, err
 	}
@@ -42,9 +39,9 @@ func (WinboxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 	routerosVersion, boardName, boardIdentity := parseWinboxList(listResp)
 
 	metadata := &protocol.WinboxServerInfo{
-		RouterosVersion: strPtrNonEmpty(routerosVersion),
-		BoardName:       strPtrNonEmpty(boardName),
-		BoardIdentity:   strPtrNonEmpty(boardIdentity),
+		RouterosVersion: stringPtr(routerosVersion),
+		BoardName:       stringPtr(boardName),
+		BoardIdentity:   stringPtr(boardIdentity),
 	}
 
 	return &discoverfern.ServiceDetails{
@@ -54,49 +51,9 @@ func (WinboxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeWinbox,
-		Version:   strPtrNonEmpty(routerosVersion),
+		Version:   stringPtr(routerosVersion),
 		Metadata:  &discoverfern.ServiceMetadata{Winbox: metadata},
 	}, nil
-}
-
-// winboxListProbe opens a fresh TCP connection, sends the Winbox /list handshake
-// message, and returns the raw response bytes.  The Winbox binary protocol
-// frames messages as one or more M2 boxes:
-//
-//	[M2][length:2LE][body...]
-//
-// Each body is a sequence of typed fields.  The /list request (type 0xff09)
-// causes RouterOS to reply with a list entry for every available entry point.
-// For our purposes we only care about fields in the very first reply chunk.
-func winboxListProbe(ctx context.Context, addr string, timeout int) ([]byte, error) {
-	conn, err := helpers.Dial(ctx, "tcp", addr, timeout)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = conn.Close() }()
-
-	// Winbox /list request (as used by Winbox 3.x client on connect)
-	// Message layout:
-	//   M2 sentinel       : 2 bytes  (0x4d32)
-	//   length            : 2 bytes  (little-endian, body only)
-	//   body[0x00 0x06]   : session header fields
-	//   type field        : 0xff09 01 02 00 (request /list, type 0x09, count 2)
-	listMsg := buildWinboxListRequest()
-
-	if _, err := conn.Write(listMsg); err != nil {
-		return nil, fmt.Errorf("winbox write: %w", err)
-	}
-
-	// Read up to 4 KiB — list response is typically < 512 bytes
-	buf := make([]byte, 4096)
-	n, err := conn.Read(buf)
-	if n > 0 {
-		return buf[:n], nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("winbox read: %w", err)
-	}
-	return buf[:n], nil
 }
 
 // buildWinboxListRequest returns the Winbox binary-protocol /list request frame.
@@ -270,12 +227,4 @@ func isPrintableASCII(s string) bool {
 		}
 	}
 	return true
-}
-
-// strPtrNonEmpty returns nil if s is empty, otherwise a pointer to s.
-func strPtrNonEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }
