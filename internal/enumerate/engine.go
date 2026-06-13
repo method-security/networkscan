@@ -20,6 +20,7 @@ import (
 	mongodb "github.com/Method-Security/networkscan/internal/enumerate/mongodb"
 	mssql "github.com/Method-Security/networkscan/internal/enumerate/mssql"
 	mysql "github.com/Method-Security/networkscan/internal/enumerate/mysql"
+	nebula "github.com/Method-Security/networkscan/internal/enumerate/nebula"
 	pop3 "github.com/Method-Security/networkscan/internal/enumerate/pop3"
 	postgres "github.com/Method-Security/networkscan/internal/enumerate/postgres"
 	rdp "github.com/Method-Security/networkscan/internal/enumerate/rdp"
@@ -202,6 +203,8 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 			}
 		}
 		return NetworkApplicationEngine{Library: lib}, nil
+	case enumeratefern.SupportedServiceTypeNebula:
+		return NetworkApplicationEngine{Library: &nebula.LibraryEnumerateNebula{}}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}

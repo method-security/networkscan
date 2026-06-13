@@ -18,6 +18,7 @@ imports:
   socks: ./socks/socks.yml
   rdp: ./rdp/rdp.yml
   vnc: ./vnc/vnc.yml
+  nebula: ./nebula/nebula.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -41,6 +42,7 @@ types:
       - SOCKS
       - RDP
       - VNC
+      - NEBULA
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -63,6 +65,7 @@ types:
       EnumerateSocksDetails: socks.EnumerateSocksDetails
       EnumerateRdpDetails: rdp.EnumerateRdpDetails
       EnumerateVncDetails: vnc.EnumerateVncDetails
+      EnumerateNebulaDetails: nebula.EnumerateNebulaDetails
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>
@@ -74,6 +77,7 @@ types:
       timeout: integer
       wordlist: optional<list<string>>
       vncConfig: optional<vnc.VncEnumerateConfig>
+      nebulaConfig: optional<nebula.NebulaEnumerateConfig>
   # Final report
   EnumerateServiceReport:
     properties:

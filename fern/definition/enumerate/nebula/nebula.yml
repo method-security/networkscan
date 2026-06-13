@@ -1,0 +1,16 @@
+imports:
+  nebulaProtocol: ../../common/protocol/nebula.yml
+
+types:
+  NebulaEnumerateConfig:
+    properties:
+      timeout: optional<integer>
+
+  EnumerateNebulaDetails:
+    properties:
+      target: string
+      port: integer
+      rawResponseHex: optional<string>
+      inferredPresent: boolean
+      parsedHeader: optional<nebulaProtocol.NebulaHeader>
+      error: optional<string>

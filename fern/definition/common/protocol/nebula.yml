@@ -1,0 +1,21 @@
+types:
+  # Nebula packet type ENUMs
+  NebulaPacketType:
+    enum:
+      - HANDSHAKE
+      - MESSAGE
+      - RECV_ERROR
+      - LIGHTHOUSE
+      - TEST
+      - CLOSE_TUNNEL
+
+  # Nebula header fields parsed from the 16-byte fixed header:
+  # version(4b) | type(4b) | subtype(8b) | reserved(16b) | remoteIndex(32b) | messageCounter(64b)
+  NebulaHeader:
+    properties:
+      version: integer
+      type: NebulaPacketType
+      subtype: integer
+      reserved: integer
+      remoteIndex: long
+      messageCounter: long
