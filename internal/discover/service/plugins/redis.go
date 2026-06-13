@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
@@ -18,7 +19,7 @@ type RedisFingerprinter struct{}
 
 func (RedisFingerprinter) Name() string { return "redis" }
 
-func (RedisFingerprinter) DefaultPorts() []int { return nil }
+func (RedisFingerprinter) DefaultPorts() []int { return []int{6379, 6380, 26379} }
 
 func (RedisFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	probes := [][]byte{
@@ -63,11 +64,12 @@ func redisDetailsFromResponse(host string, ip net.IP, port int, resp []byte) *di
 		"banner": strings.TrimSpace(truncateString(text, 1024)),
 	}
 	version := "Redis"
+	line, hasRESPLine := firstRESPLine(text)
 
 	switch {
-	case strings.HasPrefix(text, "+PONG"):
+	case hasRESPLine && line == "+PONG":
 		metadata["state"] = "pong"
-	case strings.Contains(lower, "redis_version:"):
+	case isRedisInfoResponse(text, lower):
 		metadata["state"] = "info"
 		if parsed := parseRedisInfoValue(text, "redis_version"); parsed != "" {
 			version = parsed
@@ -76,11 +78,11 @@ func redisDetailsFromResponse(host string, ip net.IP, port int, resp []byte) *di
 		if mode := parseRedisInfoValue(text, "redis_mode"); mode != "" {
 			metadata["redis_mode"] = mode
 		}
-	case strings.HasPrefix(text, "-NOAUTH"):
+	case hasRESPLine && strings.HasPrefix(line, "-NOAUTH"):
 		metadata["state"] = "auth_required"
-	case strings.HasPrefix(text, "-DENIED") && strings.Contains(lower, "redis is running in protected mode"):
+	case hasRESPLine && strings.HasPrefix(line, "-DENIED") && strings.Contains(strings.ToLower(line), "redis is running in protected mode"):
 		metadata["state"] = "protected_mode"
-	case strings.HasPrefix(text, "-ERR") && strings.Contains(lower, "redis"):
+	case hasRESPLine && strings.HasPrefix(line, "-ERR") && strings.Contains(strings.ToLower(line), "redis"):
 		metadata["state"] = "redis_error"
 	default:
 		return nil
@@ -96,6 +98,23 @@ func redisDetailsFromResponse(host string, ip net.IP, port int, resp []byte) *di
 		Protocol:  common.ProtocolTypeRedis,
 		Metadata:  &discoverfern.ServiceMetadata{Generic: &discoverfern.GenericServiceMetadata{Metadata: metadata}},
 	}
+}
+
+func firstRESPLine(text string) (string, bool) {
+	idx := strings.Index(text, "\r\n")
+	if idx < 0 {
+		return "", false
+	}
+	return text[:idx], true
+}
+
+func isRedisInfoResponse(text string, lower string) bool {
+	line, ok := firstRESPLine(text)
+	if !ok || !strings.HasPrefix(line, "$") || !strings.Contains(lower, "\r\nredis_version:") {
+		return false
+	}
+	_, err := strconv.Atoi(strings.TrimPrefix(line, "$"))
+	return err == nil
 }
 
 func parseRedisInfoValue(info string, key string) string {
