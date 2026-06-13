@@ -1,0 +1,38 @@
+types:
+  # Ubiquiti Discovery Protocol (UDP/10001) pre-auth fingerprint.  All fields
+  # are extracted from the TLV-encoded response to a single Discovery v1
+  # request packet — the response is unauthenticated and leaks identity
+  # information no operator intended to expose.
+  UbiquitiDiscoveryServerInfo:
+    properties:
+      # Discovery protocol version negotiated in the response header byte
+      # ('1' for v1 responses, '2' for v2 responses).  Stored as integer
+      # so downstream queries can sort numerically.
+      protocolVersion: optional<integer>
+      # MAC address of the responding device, extracted from a TLV with
+      # type 0x01 or 0x02.  The OUI prefix (first 6 hex chars) is a
+      # secondary IEEE-attribution signal — community OUI 00:1A:EF +
+      # several others map to Ubiquiti.
+      macAddress: optional<string>
+      # IP address the device reports for itself (may differ from the
+      # source IP of the response if the device is multihomed).
+      reportedIpAddress: optional<string>
+      # Device model string, extracted from TLV type 0x14.  Examples:
+      # 'NanoStation M5', 'UAP-AC-PRO', 'EdgeRouter X'.
+      deviceModel: optional<string>
+      # Firmware version string, extracted from TLV type 0x03 / 0x0c.
+      firmwareVersion: optional<string>
+      # Hostname configured on the device, extracted from TLV type 0x0b.
+      hostname: optional<string>
+      # Platform / board name, extracted from TLV type 0x0c on some
+      # firmware variants.
+      platform: optional<string>
+      # Essid the device is broadcasting (wireless AP devices only),
+      # extracted from TLV type 0x0d.
+      essid: optional<string>
+      # Uptime in seconds, extracted from TLV type 0x0a.
+      uptimeSeconds: optional<integer>
+      # Number of distinct TLV records observed in the response.
+      # Surfaced for fingerprint clustering — different Ubiquiti product
+      # lines emit characteristic record counts.
+      tlvRecordCount: optional<integer>

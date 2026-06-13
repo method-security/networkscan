@@ -1,0 +1,10 @@
+imports:
+  ubiquitiDiscoveryProtocol: ../../common/protocol/ubiquitidiscovery.yml
+
+types:
+  EnumerateUbiquitiDiscoveryDetails:
+    properties:
+      target: string
+      portOpen: optional<boolean>
+      serverInfo: optional<ubiquitiDiscoveryProtocol.UbiquitiDiscoveryServerInfo>
+      rawResponse: optional<string>

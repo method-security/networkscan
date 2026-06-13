@@ -16,6 +16,7 @@ imports:
   redis: ./redis/redis.yml
   socks: ./socks/socks.yml
   tr069: ./tr069/tr069.yml
+  ubiquitidiscovery: ./ubiquitidiscovery/ubiquitidiscovery.yml
 types:
   # ENUMs
   SupportedServiceType:
@@ -37,6 +38,7 @@ types:
       - REDIS
       - SOCKS
       - TR069
+      - UBIQUITIDISCOVERY
   # Report structs
   EnumerateServiceDetails:
     union:
@@ -57,6 +59,7 @@ types:
       EnumerateRedisDetails: redis.EnumerateRedisDetails
       EnumerateSocksDetails: socks.EnumerateSocksDetails
       EnumerateTr069Details: tr069.EnumerateTr069Details
+      EnumerateUbiquitiDiscoveryDetails: ubiquitidiscovery.EnumerateUbiquitiDiscoveryDetails
   EnumerateServiceResult:
     properties:
       details: optional<list<EnumerateServiceDetails>>
