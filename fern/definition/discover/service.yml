@@ -24,6 +24,7 @@ imports:
   pcworxProtocol: ../common/protocol/pcworx.yml
   opcuaProtocol: ../common/protocol/opcua.yml
   x11Protocol: ../common/protocol/x11.yml
+  winboxProtocol: ../common/protocol/winbox.yml
   xdmcpProtocol: ../common/protocol/xdmcp.yml
   pcomProtocol: ../common/protocol/pcom.yml
   iec104Protocol: ../common/protocol/iec104.yml
@@ -67,6 +68,7 @@ types:
       bgp: bgpProtocol.BgpServerInfo
       dcerpc: dcerpcProtocol.DcerpcServerInfo
       ipp: ippProtocol.IppServerInfo
+      winbox: winboxProtocol.WinboxServerInfo
       winrm: winrmProtocol.WinrmServerInfo
       kerberos: kerberosProtocol.KerberosServerInfo
       sip: sipProtocol.SipServerInfo
