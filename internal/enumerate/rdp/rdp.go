@@ -219,16 +219,20 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int) *
 	// server behavior per MS-RDPBCGR §2.2.1.2.2.
 	negotiated, failureCode, err := doRdpNegHandshake(conn, host, requestedProtocols, deadline)
 	if err != nil {
-		// If this is a HYBRID_REQUIRED failure, retry with HYBRID only
+		// If the server returned HYBRID_REQUIRED_BY_SERVER, retry asking for
+		// HYBRID alone. We do NOT yet attach the first attempt's failure code
+		// to serverInfo — the retry's outcome is authoritative. We only record
+		// the first-attempt failure code if the retry fails to connect (so the
+		// consumer can still see what we learned about the server's policy).
 		if failureCode == protocolfern.RdpNegotiationFailureHybridRequiredByServer {
-			serverInfo.NegotiationFailureCode = failureCode.Ptr()
-			// Re-dial for retry
+			firstAttemptFailure := failureCode
 			_ = conn.Close()
 			conn2, err2 := dialer.DialContext(ctx, "tcp", addr)
 			if err2 != nil {
 				errs = append(errs, fmt.Sprintf("rdp retry connect: %v", err2))
 				x224 := true
 				serverInfo.X224Reachable = &x224
+				serverInfo.NegotiationFailureCode = firstAttemptFailure.Ptr()
 				detail.ServerInfo = serverInfo
 				detail.Errors = errs
 				return detail
@@ -237,6 +241,9 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int) *
 			defer func() { _ = conn.Close() }()
 			if err := conn.SetDeadline(deadline); err != nil {
 				errs = append(errs, fmt.Sprintf("rdp retry set deadline: %v", err))
+				x224 := true
+				serverInfo.X224Reachable = &x224
+				serverInfo.NegotiationFailureCode = firstAttemptFailure.Ptr()
 				detail.ServerInfo = serverInfo
 				detail.Errors = errs
 				return detail
