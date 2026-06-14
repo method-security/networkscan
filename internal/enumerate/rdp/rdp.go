@@ -467,10 +467,22 @@ func buildX224CRPdu(host string, requestedProto uint32) []byte {
 	return append(tpkt, x224Body...)
 }
 
-// sanitizeCookieToken strips characters that would break the cookie header.
+// sanitizeCookieToken strips characters that would break the RDP mstshash
+// cookie header. The cookie occupies a single line terminated by CR LF in
+// the X.224 CR PDU user-data, so any embedded CR / LF would split the PDU
+// and corrupt the outbound write. We also strip colons / brackets (which
+// appear in IPv6 host strings) and the space and tab characters that would
+// confuse parsers on the wire.
 func sanitizeCookieToken(host string) string {
-	// Remove any colons (IPv6) and brackets from the host for cookie use.
-	token := strings.NewReplacer(":", "", "[", "", "]", "").Replace(host)
+	token := strings.NewReplacer(
+		":", "",
+		"[", "",
+		"]", "",
+		"\r", "",
+		"\n", "",
+		" ", "",
+		"\t", "",
+	).Replace(host)
 	if len(token) > 64 {
 		token = token[:64]
 	}
