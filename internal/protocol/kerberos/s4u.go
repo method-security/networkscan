@@ -106,25 +106,29 @@ func (s4u *S4UManager) PerformS4U2Self(ctx context.Context, requestingUser, user
 	return tgsRep.Ticket, nil
 }
 
-// PerformS4U2Proxy performs S4U2Proxy to get a service ticket for the target SPN
-func (s4u *S4UManager) PerformS4U2Proxy(ctx context.Context, requestingUser, userDomain, impersonateUser string, tgt, s4u2SelfTicket messages.Ticket, sessionKey types.EncryptionKey, spn string) error {
+// PerformS4U2Proxy performs S4U2Proxy to get a service ticket for the target SPN.
+// Returns the delegated service ticket (the SPN ticket, NOT the S4U2Self ticket)
+// so callers can serialize it into a ccache / ticketBase64 and report the
+// real SPN principal + encryption type instead of the impersonation token's
+// metadata.
+func (s4u *S4UManager) PerformS4U2Proxy(ctx context.Context, requestingUser, userDomain, impersonateUser string, tgt, s4u2SelfTicket messages.Ticket, sessionKey types.EncryptionKey, spn string) (messages.Ticket, error) {
 	log := svc1log.FromContext(ctx)
 
 	// Create authenticator
 	auth, err := types.NewAuthenticator(strings.ToUpper(userDomain), types.NewPrincipalName(nametype.KRB_NT_PRINCIPAL, requestingUser))
 	if err != nil {
-		return fmt.Errorf("failed to create authenticator: %v", err)
+		return messages.Ticket{}, fmt.Errorf("failed to create authenticator: %v", err)
 	}
 
 	// Create AP-REQ
 	apReq, err := messages.NewAPReq(tgt, sessionKey, auth)
 	if err != nil {
-		return fmt.Errorf("failed to create AP-REQ: %v", err)
+		return messages.Ticket{}, fmt.Errorf("failed to create AP-REQ: %v", err)
 	}
 
 	apReqBytes, err := apReq.Marshal()
 	if err != nil {
-		return fmt.Errorf("failed to marshal AP-REQ: %v", err)
+		return messages.Ticket{}, fmt.Errorf("failed to marshal AP-REQ: %v", err)
 	}
 
 	// Create TGS-REQ for S4U2Proxy
@@ -135,7 +139,7 @@ func (s4u *S4UManager) PerformS4U2Proxy(ctx context.Context, requestingUser, use
 		s4u.Config,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to create S4U TGS-REQ: %v", err)
+		return messages.Ticket{}, fmt.Errorf("failed to create S4U TGS-REQ: %v", err)
 	}
 
 	// Add PA-TGS-REQ
@@ -149,7 +153,7 @@ func (s4u *S4UManager) PerformS4U2Proxy(ctx context.Context, requestingUser, use
 	// Add PA-PAC-OPTIONS for resource-based constrained delegation
 	paPacOptBytes, err := types.GetPAPacOptionsAsnMarshalled([]int{3}) // resource-based-constrained-delegation
 	if err != nil {
-		return fmt.Errorf("failed to create PA-PAC-OPTIONS: %v", err)
+		return messages.Ticket{}, fmt.Errorf("failed to create PA-PAC-OPTIONS: %v", err)
 	}
 
 	tgsReq.PAData = append(tgsReq.PAData, types.PAData{
@@ -166,13 +170,13 @@ func (s4u *S4UManager) PerformS4U2Proxy(ctx context.Context, requestingUser, use
 	tgsReq.KDCReqFields.ReqBody.KDCOptions = opts
 
 	// Perform TGS exchange
-	_, _, err = s4u.Client.TGSExchange(tgsReq, tgt.Realm, tgt, sessionKey, 0)
+	_, tgsRep, err := s4u.Client.TGSExchange(tgsReq, tgt.Realm, tgt, sessionKey, 0)
 	if err != nil {
-		return fmt.Errorf("TGS exchange failed: %v", err)
+		return messages.Ticket{}, fmt.Errorf("TGS exchange failed: %v", err)
 	}
 
 	log.Debug("Successfully performed S4U2Proxy")
-	return nil
+	return tgsRep.Ticket, nil
 }
 
 // createPAForUserData creates PA-FOR-USER data for S4U2Self requests
