@@ -11,6 +11,7 @@ import (
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	ikefern "github.com/Method-Security/networkscan/generated/go/enumerate/ike"
 	ikeprotocol "github.com/Method-Security/networkscan/internal/protocol/ike"
+	utils "github.com/Method-Security/networkscan/utils"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
@@ -44,7 +45,11 @@ func (l *LibraryEnumerateIKE) EnumerateTarget(ctx context.Context, target string
 	// IKEv2 probe
 	ikev2Response, err := probeUDP(ctx, target, ikeprotocol.BuildIKEv2SAInitRequest())
 	if err != nil {
-		log.Warn("IKEv2 probe failed", svc1log.SafeParam("target", target), svc1log.SafeParam("error", err))
+		detail := utils.ClassifyNetError(err)
+		log.Warn("IKEv2 probe failed",
+			svc1log.SafeParam("target", target),
+			svc1log.SafeParam("category", string(detail.Category)),
+			svc1log.SafeParam("error", detail.Cause))
 	} else if len(ikev2Response) >= 28 && isPlausibleIKEPacket(ikev2Response) {
 		applyIKEv2ResponseToServerInfo(ikev2Response, &serverInfo)
 		if serverInfo.Ikev2Supported != nil {
