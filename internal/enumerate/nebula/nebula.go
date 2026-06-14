@@ -14,6 +14,7 @@ import (
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	nebulafern "github.com/Method-Security/networkscan/generated/go/enumerate/nebula"
 	nebulaprotocol "github.com/Method-Security/networkscan/internal/protocol/nebula"
+	utils "github.com/Method-Security/networkscan/utils"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
@@ -26,7 +27,11 @@ const (
 
 // LibraryEnumerateNebula implements the NetworkApplicationLibrary interface for
 // Nebula lighthouse detection.
-type LibraryEnumerateNebula struct{}
+type LibraryEnumerateNebula struct {
+	// DefaultTimeout overrides the built-in 5-second probe timeout when > 0.
+	// Set by the engine from NebulaEnumerateConfig.Timeout.
+	DefaultTimeout time.Duration
+}
 
 // EnumerateTarget probes a single target (host:port) for Nebula lighthouse presence.
 //
@@ -71,20 +76,37 @@ func (l *LibraryEnumerateNebula) EnumerateTarget(ctx context.Context, target str
 		return &enumeratefern.EnumerateServiceDetails{EnumerateNebulaDetails: details}, errors
 	}
 
-	// Derive deadline from context timeout.
+	// Derive probe timeout: start from DefaultTimeout (operator-configured) or
+	// the built-in 5-second floor, then clamp to the remaining context budget.
 	timeout := 5 * time.Second
-	if deadline, ok := ctx.Deadline(); ok {
-		if remaining := time.Until(deadline); remaining > 0 && remaining < timeout {
-			timeout = remaining
-		}
+	if l.DefaultTimeout > 0 {
+		timeout = l.DefaultTimeout
 	}
 
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	conn, err := net.DialTimeout("udp", addr, timeout)
-	if err != nil {
-		errMsg := fmt.Sprintf("dial %s: %v", addr, err)
+
+	if deadline, ok := ctx.Deadline(); ok {
+		if remaining := time.Until(deadline); remaining < timeout {
+			timeout = remaining
+		}
+	}
+	if timeout <= 0 {
+		errMsg := fmt.Sprintf("context deadline exceeded before probing %s", addr)
 		details.Error = &errMsg
 		errors = append(errors, errMsg)
+		return &enumeratefern.EnumerateServiceDetails{EnumerateNebulaDetails: details}, errors
+	}
+
+	conn, err := net.DialTimeout("udp", addr, timeout)
+	if err != nil {
+		netDetail := utils.ClassifyNetError(err)
+		errMsg := fmt.Sprintf("dial %s: %s", addr, netDetail.String())
+		details.Error = &errMsg
+		errors = append(errors, errMsg)
+		log.Warn("Nebula probe dial failed",
+			svc1log.SafeParam("target", addr),
+			svc1log.SafeParam("category", string(netDetail.Category)),
+			svc1log.SafeParam("error", netDetail.Cause))
 		return &enumeratefern.EnumerateServiceDetails{EnumerateNebulaDetails: details}, errors
 	}
 	defer func() { _ = conn.Close() }()
@@ -92,9 +114,14 @@ func (l *LibraryEnumerateNebula) EnumerateTarget(ctx context.Context, target str
 	_ = conn.SetDeadline(time.Now().Add(timeout))
 
 	if _, err := conn.Write(pkt); err != nil {
-		errMsg := fmt.Sprintf("write to %s: %v", addr, err)
+		netDetail := utils.ClassifyNetError(err)
+		errMsg := fmt.Sprintf("write to %s: %s", addr, netDetail.String())
 		details.Error = &errMsg
 		errors = append(errors, errMsg)
+		log.Warn("Nebula probe write failed",
+			svc1log.SafeParam("target", addr),
+			svc1log.SafeParam("category", string(netDetail.Category)),
+			svc1log.SafeParam("error", netDetail.Cause))
 		return &enumeratefern.EnumerateServiceDetails{EnumerateNebulaDetails: details}, errors
 	}
 
@@ -102,11 +129,14 @@ func (l *LibraryEnumerateNebula) EnumerateTarget(ctx context.Context, target str
 	n, err := conn.Read(buf)
 	if err != nil {
 		// Timeout / no response — not a Nebula lighthouse (or firewalled).
-		errMsg := fmt.Sprintf("read from %s: %v", addr, err)
+		netDetail := utils.ClassifyNetError(err)
+		errMsg := fmt.Sprintf("read from %s: %s", addr, netDetail.String())
 		details.Error = &errMsg
+		errors = append(errors, errMsg)
 		log.Info("Nebula probe no response",
 			svc1log.SafeParam("target", addr),
-			svc1log.SafeParam("error", err))
+			svc1log.SafeParam("category", string(netDetail.Category)),
+			svc1log.SafeParam("error", netDetail.Cause))
 		return &enumeratefern.EnumerateServiceDetails{EnumerateNebulaDetails: details}, errors
 	}
 

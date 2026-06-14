@@ -204,7 +204,11 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		}
 		return NetworkApplicationEngine{Library: lib}, nil
 	case enumeratefern.SupportedServiceTypeNebula:
-		return NetworkApplicationEngine{Library: &nebula.LibraryEnumerateNebula{}}, nil
+		lib := &nebula.LibraryEnumerateNebula{}
+		if config.NebulaConfig != nil && config.NebulaConfig.Timeout != nil {
+			lib.DefaultTimeout = time.Duration(*config.NebulaConfig.Timeout) * time.Second
+		}
+		return NetworkApplicationEngine{Library: lib}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}
