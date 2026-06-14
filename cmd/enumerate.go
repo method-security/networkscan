@@ -78,6 +78,15 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				a.OutputSignal.AddError(err)
 				return
 			}
+			// Validate --openvpn-transport up front so a typo doesn't silently fall
+			// back to UDP. The check runs for every service so missing the flag isn't
+			// flagged for non-OpenVPN services (the default value comes from cobra).
+			if serviceEnum == enumeratefern.SupportedServiceTypeOpenvpn {
+				if _, terr := openvpnfern.NewOpenVpnTransportFromString(strings.ToUpper(openvpnTransport)); terr != nil {
+					a.OutputSignal.AddError(fmt.Errorf("invalid --openvpn-transport %q (must be UDP or TCP): %w", openvpnTransport, terr))
+					return
+				}
+			}
 
 			config := newEnumerateServiceConfig(EnumerateServiceCobraFlags{
 				Targets:           targets,

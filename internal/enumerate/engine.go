@@ -203,12 +203,21 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: lib}, nil
 	case enumeratefern.SupportedServiceTypeOpenvpn:
 		lib := &openvpn.LibraryEnumerateOpenVPN{}
-		if config.OpenvpnConfig != nil && config.OpenvpnConfig.Transport != nil {
-			lib.Transport = *config.OpenvpnConfig.Transport
+		if config.OpenvpnConfig != nil {
+			if config.OpenvpnConfig.Transport != nil {
+				lib.Transport = *config.OpenvpnConfig.Transport
+			}
+			if config.OpenvpnConfig.Timeout != nil {
+				lib.TimeoutSeconds = *config.OpenvpnConfig.Timeout
+			}
 		}
 		return NetworkApplicationEngine{Library: lib}, nil
 	case enumeratefern.SupportedServiceTypeWireguard:
-		return NetworkApplicationEngine{Library: &wireguard.LibraryEnumerateWireGuard{}}, nil
+		lib := &wireguard.LibraryEnumerateWireGuard{}
+		if config.WireguardConfig != nil && config.WireguardConfig.Timeout != nil {
+			lib.TimeoutSeconds = *config.WireguardConfig.Timeout
+		}
+		return NetworkApplicationEngine{Library: lib}, nil
 	default:
 		return NetworkApplicationEngine{}, fmt.Errorf("unsupported network application: %v", config.Service)
 	}

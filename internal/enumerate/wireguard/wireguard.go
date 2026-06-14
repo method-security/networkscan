@@ -30,7 +30,16 @@ import (
 
 // LibraryEnumerateWireGuard implements NetworkApplicationLibrary for WireGuard
 // presence-inference enumeration.
-type LibraryEnumerateWireGuard struct{}
+//
+// TimeoutSeconds, when > 0, overrides the default 5-second per-target probe wait
+// (still further capped by the surrounding context deadline). It is sourced from
+// the Fern `WireguardEnumerateConfig.timeout` field via the engine.
+type LibraryEnumerateWireGuard struct {
+	TimeoutSeconds int
+}
+
+// defaultProbeTimeout is the per-target wait used when no override is configured.
+const defaultProbeTimeout = 5 * time.Second
 
 // EnumerateTarget sends a WireGuard Handshake Initiation probe to the target
 // and infers presence based on the absence of an ICMP port-unreachable response.
@@ -64,7 +73,10 @@ func (l *LibraryEnumerateWireGuard) EnumerateTarget(ctx context.Context, target 
 
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 
-	timeout := 5 * time.Second
+	timeout := defaultProbeTimeout
+	if l.TimeoutSeconds > 0 {
+		timeout = time.Duration(l.TimeoutSeconds) * time.Second
+	}
 	if deadline, ok := ctx.Deadline(); ok {
 		if remaining := time.Until(deadline); remaining < timeout {
 			timeout = remaining
@@ -109,11 +121,10 @@ func probeWireGuard(ctx context.Context, addr string, timeout time.Duration) (bo
 	}
 	defer func() { _ = conn.Close() }()
 
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = conn.SetDeadline(deadline)
-	} else {
-		_ = conn.SetDeadline(time.Now().Add(timeout))
-	}
+	// The caller has already capped `timeout` against the context deadline; use it
+	// directly so the WireGuard probe doesn't wait for the full `--timeout` value
+	// when the configured wireguardConfig.timeout (or the 5s default) is shorter.
+	_ = conn.SetDeadline(time.Now().Add(timeout))
 
 	if _, err := conn.Write(pkt); err != nil {
 		return false, fmt.Errorf("send failed: %w", err)
