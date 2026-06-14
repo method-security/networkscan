@@ -42,7 +42,7 @@ jobs:
       - name: Generate Fern Go Code
         run: |
           npm install -g fern-api
-          fern generate --group local
+          fern generate --group local --retry-rate-limited
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
 
@@ -95,7 +95,7 @@ jobs:
       - name: Generate Fern Go Code
         run: |
           npm install -g fern-api
-          fern generate --group local
+          fern generate --group local --retry-rate-limited
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
 
@@ -165,7 +165,7 @@ jobs:
       - name: Generate Fern Go Code
         run: |
           npm install -g fern-api
-          fern generate --group local
+          fern generate --group local --retry-rate-limited
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
 
@@ -242,7 +242,7 @@ jobs:
       - name: Generate Fern Go Code
         run: |
           npm install -g fern-api
-          fern generate --group local
+          fern generate --group local --retry-rate-limited
         env:
           FERN_TOKEN: ${{ secrets.FERN_TOKEN }}
 
