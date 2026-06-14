@@ -15,6 +15,7 @@ import (
 	postgresfern "github.com/Method-Security/networkscan/generated/go/pentest/postgres"
 	redisfern "github.com/Method-Security/networkscan/generated/go/pentest/redis"
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
+	snmpfern "github.com/Method-Security/networkscan/generated/go/pentest/snmp"
 	sshfern "github.com/Method-Security/networkscan/generated/go/pentest/ssh"
 	telnetfern "github.com/Method-Security/networkscan/generated/go/pentest/telnet"
 	winrmfern "github.com/Method-Security/networkscan/generated/go/pentest/winrm"
@@ -168,7 +169,7 @@ func (p *LDAPActionParser) ParseActions(actionStrings []string) ([]ldapfern.Pent
 }
 
 func (p *LDAPActionParser) GetValidActions() []string {
-	return []string{"PROBE", "AUTH", "DOMAINDUMP"}
+	return []string{"PROBE", "AUTH", "DOMAINDUMP", "SEARCH"}
 }
 
 func (p *LDAPActionParser) ContainsAction(actions []ldapfern.PentestLdapAction, target ldapfern.PentestLdapAction) bool {
@@ -314,6 +315,7 @@ var (
 	mysqlParserInstance    *MySQLActionParser
 	etcdParserInstance     *EtcdActionParser
 	postgresParserInstance *PostgresActionParser
+	snmpParserInstance     *SNMPActionParser
 )
 
 // GetSMBParser returns the singleton SMB action parser
@@ -452,7 +454,7 @@ func (p *RedisActionParser) ParseActions(actionStrings []string) ([]redisfern.Pe
 }
 
 func (p *RedisActionParser) GetValidActions() []string {
-	return []string{"AUTH"}
+	return []string{"AUTH", "QUERY"}
 }
 
 func (p *RedisActionParser) ContainsAction(actions []redisfern.PentestRedisAction, target redisfern.PentestRedisAction) bool {
@@ -498,7 +500,7 @@ func (p *MySQLActionParser) ParseActions(actionStrings []string) ([]mysqlfern.Pe
 }
 
 func (p *MySQLActionParser) GetValidActions() []string {
-	return []string{"PROBE", "AUTH"}
+	return []string{"PROBE", "AUTH", "QUERY"}
 }
 
 func (p *MySQLActionParser) ContainsAction(actions []mysqlfern.PentestMysqlAction, target mysqlfern.PentestMysqlAction) bool {
@@ -687,6 +689,52 @@ func (p *EtcdActionParser) GetValidActions() []string {
 }
 
 func (p *EtcdActionParser) ContainsAction(actions []etcdfern.PentestEtcdAction, target etcdfern.PentestEtcdAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
+// SNMPActionParser handles SNMP-specific action parsing
+type SNMPActionParser struct{}
+
+// GetSNMPParser returns the singleton SNMP action parser
+func GetSNMPParser() *SNMPActionParser {
+	if snmpParserInstance == nil {
+		snmpParserInstance = &SNMPActionParser{}
+	}
+	return snmpParserInstance
+}
+
+func (p *SNMPActionParser) ParseActions(actionStrings []string) ([]snmpfern.PentestSnmpAction, error) {
+	var actions []snmpfern.PentestSnmpAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			snmpAction, err := snmpfern.NewPentestSnmpActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid SNMP action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, snmpAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *SNMPActionParser) GetValidActions() []string {
+	return []string{"WRITE_TEST"}
+}
+
+func (p *SNMPActionParser) ContainsAction(actions []snmpfern.PentestSnmpAction, target snmpfern.PentestSnmpAction) bool {
 	for _, action := range actions {
 		if action == target {
 			return true
