@@ -105,6 +105,7 @@ types:
       - VNC
       - WEBLOGICT3
       - WHOIS
+      - WINBOX
       - WINRM
       - WSDISCOVERY
       - X11
