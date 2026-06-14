@@ -71,9 +71,12 @@ func (tm *TicketManager) RequestServiceTicket(ctx context.Context, requestingUse
 
 		log.Debug("Successfully performed S4U2Self")
 
-		// Step 3: Perform S4U2Proxy to get service ticket for target SPN
-		err = s4uManager.PerformS4U2Proxy(ctx, requestingUser, userDomain, impersonateUser, tgt, s4u2SelfTicket, sessionKey, spn)
-		if err != nil {
+		// Step 3: Perform S4U2Proxy to get service ticket for target SPN.
+		// The delegated ticket is retrieved internally by the gokrb5 client cache
+		// (used by tryGetServiceTicketFromClient below), so we discard the
+		// explicit return here — the existing service-ticket flow already
+		// reads it back from the client cache for ccache emission.
+		if _, err = s4uManager.PerformS4U2Proxy(ctx, requestingUser, userDomain, impersonateUser, tgt, s4u2SelfTicket, sessionKey, spn); err != nil {
 			return nil, fmt.Errorf("S4U2Proxy failed: %v", err)
 		}
 

@@ -2,6 +2,7 @@ package kerberos
 
 import (
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -24,8 +25,9 @@ type Target struct {
 
 // ClientManager handles Kerberos client configuration and creation
 type ClientManager struct {
-	Config *config.Config
-	Target *Target
+	Config        *config.Config
+	Target        *Target
+	etypeOverride []int32 // optional etype preference override
 }
 
 // NewClientManager creates a new Kerberos client manager
@@ -58,14 +60,25 @@ func (kcm *ClientManager) CreateConfiguration() *config.Config {
 	cfg.LibDefaults.TicketLifetime = ticketDuration
 
 	// Set up encryption preferences (match kerbtool behavior)
-	cfg.LibDefaults.DefaultTGSEnctypeIDs = []int32{etypeID.AES256_CTS_HMAC_SHA1_96, etypeID.AES128_CTS_HMAC_SHA1_96, etypeID.RC4_HMAC}
-	cfg.LibDefaults.DefaultTktEnctypeIDs = []int32{etypeID.AES256_CTS_HMAC_SHA1_96, etypeID.AES128_CTS_HMAC_SHA1_96, etypeID.RC4_HMAC}
+	defaultEtypes := []int32{etypeID.AES256_CTS_HMAC_SHA1_96, etypeID.AES128_CTS_HMAC_SHA1_96, etypeID.RC4_HMAC}
+	if len(kcm.etypeOverride) > 0 {
+		defaultEtypes = kcm.etypeOverride
+	}
+	cfg.LibDefaults.DefaultTGSEnctypeIDs = defaultEtypes
+	cfg.LibDefaults.DefaultTktEnctypeIDs = defaultEtypes
 
 	// Unset RenewableOK flag (match kerbtool behavior)
 	types.UnsetFlag(&cfg.LibDefaults.KDCDefaultOptions, flags.RenewableOK)
 
 	kcm.Config = cfg
 	return cfg
+}
+
+// WithEtypes sets the etype preference order for the next CreateConfiguration call.
+// Call before CreateConfiguration. Pass nil or empty to use defaults.
+func (kcm *ClientManager) WithEtypes(etypes []int32) *ClientManager {
+	kcm.etypeOverride = etypes
+	return kcm
 }
 
 // CreateClientFromConfig creates a Kerberos client from the provided config
@@ -105,22 +118,26 @@ func (kcm *ClientManager) CreateClientFromConfig(pentestConfig *kerberosfern.Pen
 	return krb5Client, requestingUser, nil
 }
 
-// ParseTarget parses a target string into components
+// ParseTarget parses a target string into a Target. For IP addresses the domain
+// is left empty — callers must supply the realm via --domain when targeting IPs.
 func ParseTarget(targetStr string) (*Target, error) {
 	host, port := utils.ParseHostPort(targetStr, 88)
 
-	// Extract domain from hostname
-	domain := ""
+	// IP addresses have no meaningful domain component; return empty domain so
+	// the caller can fill it in from --domain without returning a spurious error.
+	if net.ParseIP(host) != nil {
+		return &Target{Host: host, Port: port, Domain: ""}, nil
+	}
+
+	// Extract domain from a FQDN (requires at least three labels, e.g. dc.corp.local).
 	hostParts := strings.Split(host, ".")
-	if len(hostParts) > 2 {
-		domain = strings.Join(hostParts[1:], ".")
-	} else {
-		return nil, fmt.Errorf("cannot extract domain from hostname: %s", host)
+	if len(hostParts) <= 2 {
+		return nil, fmt.Errorf("cannot extract domain from hostname %q: supply --domain explicitly", host)
 	}
 
 	return &Target{
 		Host:   host,
 		Port:   port,
-		Domain: domain,
+		Domain: strings.Join(hostParts[1:], "."),
 	}, nil
 }

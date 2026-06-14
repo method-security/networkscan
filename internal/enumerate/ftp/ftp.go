@@ -9,6 +9,8 @@ import (
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	ftp "github.com/Method-Security/networkscan/generated/go/enumerate/ftp"
 
+	// Utils
+	utils "github.com/Method-Security/networkscan/utils"
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -57,8 +59,12 @@ func (f *LibraryEnumerateFTP) EnumerateTarget(ctx context.Context, target string
 	// Attempt to connect to the target
 	conn, err := attemptConnection(ctx, target)
 	if err != nil {
-		log.Error("Failed to connect to FTP target", svc1log.SafeParam("target", target), svc1log.SafeParam("error", err))
-		errors = append(errors, fmt.Sprintf("Failed to connect to %s: %v", target, err))
+		detail := utils.ClassifyNetError(err)
+		log.Error("Failed to connect to FTP target",
+			svc1log.SafeParam("target", target),
+			svc1log.SafeParam("category", string(detail.Category)),
+			svc1log.SafeParam("error", detail.Cause))
+		errors = append(errors, fmt.Sprintf("failed to connect to %s [%s]: %s", target, detail.Category, detail.Cause))
 		return &enumeratefern.EnumerateServiceDetails{EnumerateFtpDetails: &details}, errors
 	}
 
