@@ -223,7 +223,7 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int) *
 	// If server requires HYBRID specifically and rejects our multi-protocol
 	// request, retry with only HYBRID. This is documented as a known
 	// server behavior per MS-RDPBCGR §2.2.1.2.2.
-	negotiated, failureCode, err := doRdpNegHandshake(conn, host, requestedProtocols, deadline)
+	negotiated, rawSelected, failureCode, err := doRdpNegHandshake(conn, host, requestedProtocols, deadline)
 	if err != nil {
 		// If the server returned HYBRID_REQUIRED_BY_SERVER, retry asking for
 		// HYBRID alone. We do NOT yet attach the first attempt's failure code
@@ -257,7 +257,7 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int) *
 				detail.Errors = errs
 				return detail
 			}
-			negotiated, failureCode, err = doRdpNegHandshake(conn, host, protocolHybrid, deadline)
+			negotiated, rawSelected, failureCode, err = doRdpNegHandshake(conn, host, protocolHybrid, deadline)
 		}
 		if err != nil {
 			if failureCode != "" {
@@ -276,18 +276,33 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int) *
 
 	x224 := true
 	serverInfo.X224Reachable = &x224
-	proto := negotiated
-	serverInfo.NegotiatedSecurityProtocol = proto.Ptr()
+	// Only set the enum field when we have a known value — leaving it unset
+	// for unknown wire values is correct (per the EnumProperty no-UNKNOWN-sentinel
+	// convention). The TLS-upgrade decision below uses rawSelected, not the enum,
+	// so we still capture certs for unrecognized TLS-capable protocols.
+	if negotiated != "" {
+		proto := negotiated
+		serverInfo.NegotiatedSecurityProtocol = proto.Ptr()
+	} else if rawSelected != 0 {
+		errs = append(errs, fmt.Sprintf("rdp neg: unrecognized selectedProtocol 0x%08x (TLS still attempted)", rawSelected))
+	}
 
-	// Derive nlaRequired: HYBRID or HYBRID_EX both mandate CredSSP (NLA)
-	nlaRequired := (negotiated == protocolfern.RdpSecurityProtocolHybrid ||
-		negotiated == protocolfern.RdpSecurityProtocolHybridEx)
-	serverInfo.NlaRequired = &nlaRequired
+	// Derive nlaRequired: HYBRID or HYBRID_EX both mandate CredSSP (NLA).
+	// nlaRequired is only authoritative when we recognized the enum value;
+	// for unknown protocols we leave it unset (NetworkApplication property
+	// is optional<bool>).
+	if negotiated == protocolfern.RdpSecurityProtocolHybrid || negotiated == protocolfern.RdpSecurityProtocolHybridEx {
+		nlaRequired := true
+		serverInfo.NlaRequired = &nlaRequired
+	} else if negotiated != "" {
+		nlaRequired := false
+		serverInfo.NlaRequired = &nlaRequired
+	}
 
-	// For TLS-capable protocols, upgrade the connection and capture the cert.
-	// We skip the upgrade for STANDARD_RDP (no TLS). If failureCode is set
-	// but negotiated is still returned, we prioritize the negotiated value.
-	if negotiated != protocolfern.RdpSecurityProtocolStandardRdp {
+	// TLS-upgrade decision uses the raw wire value, not the enum. The only
+	// wire value that means "no TLS" is STANDARD_RDP == 0x0; anything else
+	// (known or unknown enum) is TLS-protected per the RDP spec.
+	if rawSelected != protocolRDP {
 		tlsVersion, cert, tlsErr := grabTLSInfo(conn, host, deadline)
 		if tlsErr != nil {
 			errs = append(errs, fmt.Sprintf("rdp tls upgrade: %v", tlsErr))
@@ -308,15 +323,23 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int) *
 }
 
 // doRdpNegHandshake sends an X.224 CR PDU with rdpNeg and reads the X.224 CC PDU.
-// Returns the negotiated RdpSecurityProtocol (on success) or a RdpNegotiationFailure code.
+// Returns:
+//   - the negotiated RdpSecurityProtocol enum (empty string when the wire value
+//     is unrecognized — caller still gets the raw value via rawSelected),
+//   - the raw selectedProtocol uint32 the server returned (so the caller can
+//     decide whether to TLS-upgrade even when the enum mapping is missing —
+//     anything except 0x0 (PROTOCOL_RDP / STANDARD_RDP) is TLS-capable),
+//   - the RdpNegotiationFailure code (when the server sent rdpNegFailure),
+//   - an error (when the wire exchange itself failed).
+//
 // Per MS-RDPBCGR §2.2.1.1 and §2.2.1.2.
-func doRdpNegHandshake(conn net.Conn, host string, requestedProto uint32, deadline time.Time) (protocolfern.RdpSecurityProtocol, protocolfern.RdpNegotiationFailure, error) {
+func doRdpNegHandshake(conn net.Conn, host string, requestedProto uint32, deadline time.Time) (protocolfern.RdpSecurityProtocol, uint32, protocolfern.RdpNegotiationFailure, error) {
 	crPDU := buildX224CRPdu(host, requestedProto)
 	if err := conn.SetWriteDeadline(deadline); err != nil {
-		return "", "", fmt.Errorf("set write deadline: %w", err)
+		return "", 0, "", fmt.Errorf("set write deadline: %w", err)
 	}
 	if _, err := conn.Write(crPDU); err != nil {
-		return "", "", fmt.Errorf("write CR PDU: %w", err)
+		return "", 0, "", fmt.Errorf("write CR PDU: %w", err)
 	}
 
 	// Read X.224 CC PDU. Minimum structure:
@@ -324,25 +347,25 @@ func doRdpNegHandshake(conn net.Conn, host string, requestedProto uint32, deadli
 	//   X.224 CC: 7 bytes minimum (length indicator, code 0xD0, dst-ref, src-ref, class)
 	//   rdpNeg: 8 bytes (type, flags, length uint16 LE, selectedProtocol/failureCode uint32 LE)
 	if err := conn.SetReadDeadline(deadline); err != nil {
-		return "", "", fmt.Errorf("set read deadline: %w", err)
+		return "", 0, "", fmt.Errorf("set read deadline: %w", err)
 	}
 
 	// Read TPKT header (4 bytes)
 	tpktHdr := make([]byte, 4)
 	if _, err := io.ReadFull(conn, tpktHdr); err != nil {
-		return "", "", fmt.Errorf("read TPKT header: %w", err)
+		return "", 0, "", fmt.Errorf("read TPKT header: %w", err)
 	}
 	if tpktHdr[0] != 0x03 {
-		return "", "", fmt.Errorf("unexpected TPKT version: 0x%02x (want 0x03)", tpktHdr[0])
+		return "", 0, "", fmt.Errorf("unexpected TPKT version: 0x%02x (want 0x03)", tpktHdr[0])
 	}
 	pktLen := int(binary.BigEndian.Uint16(tpktHdr[2:4]))
 	if pktLen < 11 {
-		return "", "", fmt.Errorf("TPKT length %d too short (need at least 11)", pktLen)
+		return "", 0, "", fmt.Errorf("TPKT length %d too short (need at least 11)", pktLen)
 	}
 	// Read the rest of the PDU (pktLen - 4 bytes already consumed)
 	rest := make([]byte, pktLen-4)
 	if _, err := io.ReadFull(conn, rest); err != nil {
-		return "", "", fmt.Errorf("read CC PDU body: %w", err)
+		return "", 0, "", fmt.Errorf("read CC PDU body: %w", err)
 	}
 
 	// X.224 CC PDU structure (bytes 0-6 of rest):
@@ -352,17 +375,18 @@ func doRdpNegHandshake(conn net.Conn, host string, requestedProto uint32, deadli
 	//   [4-5] src-ref
 	//   [6]  class/options
 	if len(rest) < 7 {
-		return "", "", fmt.Errorf("CC PDU too short (%d bytes after TPKT header)", len(rest))
+		return "", 0, "", fmt.Errorf("CC PDU too short (%d bytes after TPKT header)", len(rest))
 	}
 	if rest[1] != 0xD0 {
-		return "", "", fmt.Errorf("unexpected X.224 code: 0x%02x (want 0xD0 CC)", rest[1])
+		return "", 0, "", fmt.Errorf("unexpected X.224 code: 0x%02x (want 0xD0 CC)", rest[1])
 	}
 
 	// rdpNeg optional structure starts at offset 7 of rest (byte 11 overall)
 	// Structure: type(1) + flags(1) + length(2 LE) + data(4) = 8 bytes
 	if len(rest) < 15 {
 		// Server sent a bare CC with no rdpNeg — treat as STANDARD_RDP
-		return protocolfern.RdpSecurityProtocolStandardRdp, "", nil
+		// (raw selected = 0x0 == protocolRDP).
+		return protocolfern.RdpSecurityProtocolStandardRdp, protocolRDP, "", nil
 	}
 
 	negType := rest[7]
@@ -372,25 +396,29 @@ func doRdpNegHandshake(conn net.Conn, host string, requestedProto uint32, deadli
 
 	switch negType {
 	case rdpNegTypeResponse:
-		// rdpNegRsp: negData = selectedProtocol
+		// rdpNegRsp: negData = selectedProtocol. Return the raw value
+		// alongside the enum so the caller can decide on TLS upgrade even
+		// when we don't recognise the wire value as a known enum constant.
 		proto, ok := securityProtocolMap[negData]
 		if !ok {
-			// Wire value we don't recognise — return as STANDARD_RDP so
-			// caller can still attempt TLS upgrade if warranted.
-			return protocolfern.RdpSecurityProtocolStandardRdp, "", nil
+			// Unknown wire value — leave the enum empty so we don't
+			// misreport a TLS-capable protocol as STANDARD_RDP, but still
+			// return the raw value so the caller treats it as TLS-capable
+			// (any non-zero wire value is, by RDP spec, TLS-protected).
+			return "", negData, "", nil
 		}
-		return proto, "", nil
+		return proto, negData, "", nil
 
 	case rdpNegTypeFailure:
 		// rdpNegFailure: negData = failureCode
 		fc, ok := negFailureMap[negData]
 		if !ok {
-			return "", "", fmt.Errorf("rdpNegFailure: unknown failure code 0x%08x", negData)
+			return "", 0, "", fmt.Errorf("rdpNegFailure: unknown failure code 0x%08x", negData)
 		}
-		return "", fc, fmt.Errorf("rdpNegFailure: %s", fc)
+		return "", 0, fc, fmt.Errorf("rdpNegFailure: %s", fc)
 
 	default:
-		return "", "", fmt.Errorf("unknown rdpNeg type: 0x%02x", negType)
+		return "", 0, "", fmt.Errorf("unknown rdpNeg type: 0x%02x", negType)
 	}
 }
 
