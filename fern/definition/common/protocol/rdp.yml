@@ -1,0 +1,40 @@
+types:
+  RdpSecurityProtocol:
+    enum:
+      - STANDARD_RDP      # 0x00000000 - PROTOCOL_RDP
+      - SSL               # 0x00000001 - PROTOCOL_SSL
+      - HYBRID            # 0x00000002 - PROTOCOL_HYBRID (CredSSP/NLA)
+      - RDSTLS            # 0x00000004 - PROTOCOL_RDSTLS
+      - HYBRID_EX         # 0x00000008 - PROTOCOL_HYBRID_EX
+      - RDS_AAD_AUTH      # 0x00000010 - PROTOCOL_RDSAAD
+
+  # Per MS-RDPBCGR §2.2.1.2.2 — failure codes in rdpNegFailure PDU
+  RdpNegotiationFailure:
+    enum:
+      - SSL_REQUIRED_BY_SERVER             # 0x00000001
+      - SSL_NOT_ALLOWED_BY_SERVER          # 0x00000002
+      - SSL_CERT_NOT_ON_SERVER             # 0x00000003
+      - INCONSISTENT_FLAGS                 # 0x00000004
+      - HYBRID_REQUIRED_BY_SERVER          # 0x00000005
+      - SSL_WITH_USER_AUTH_REQUIRED_BY_SERVER  # 0x00000006
+
+  RdpServerCertificate:
+    properties:
+      subject: optional<string>
+      issuer: optional<string>
+      notBefore: optional<string>
+      notAfter: optional<string>
+      sha256Fingerprint: optional<string>
+      serialNumber: optional<string>
+      signatureAlgorithm: optional<string>
+
+  RdpServerInfo:
+    properties:
+      x224Reachable: optional<boolean>
+      negotiatedSecurityProtocol: optional<RdpSecurityProtocol>
+      supportedSecurityProtocols: optional<list<RdpSecurityProtocol>>
+      # Derived: true iff negotiated is HYBRID or HYBRID_EX (CredSSP/NLA)
+      nlaRequired: optional<boolean>
+      negotiationFailureCode: optional<RdpNegotiationFailure>
+      tlsVersion: optional<string>
+      serverCertificate: optional<RdpServerCertificate>

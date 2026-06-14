@@ -1,0 +1,20 @@
+imports:
+  rdpProtocol: ../../common/protocol/rdp.yml
+
+types:
+  RdpEnumerateConfig:
+    properties:
+      portRange: optional<string>
+
+  EnumerateRdpDetails:
+    properties:
+      target: string
+      port: integer
+      canConnect: optional<boolean>
+      serverInfo: optional<rdpProtocol.RdpServerInfo>
+      errors: optional<list<string>>
+
+  EnumerateRdpReport:
+    properties:
+      details: list<EnumerateRdpDetails>
+      errors: optional<list<string>>

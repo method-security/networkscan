@@ -1,0 +1,37 @@
+{
+  "config": {
+    "service": "RDP",
+    "targets": ["192.0.2.10:3389"],
+    "timeout": 30,
+    "rdpConfig": {
+      "portRange": "3389"
+    }
+  },
+  "result": {
+    "details": [
+      {
+        "type": "EnumerateRdpDetails",
+        "target": "192.0.2.10:3389",
+        "port": 3389,
+        "canConnect": true,
+        "serverInfo": {
+          "x224Reachable": true,
+          "negotiatedSecurityProtocol": "HYBRID",
+          "supportedSecurityProtocols": ["SSL", "HYBRID"],
+          "nlaRequired": true,
+          "tlsVersion": "TLS 1.2",
+          "serverCertificate": {
+            "subject": "CN=WIN-DC01.zamunda.local",
+            "issuer": "CN=WIN-DC01.zamunda.local",
+            "notBefore": "2024-12-01T00:00:00Z",
+            "notAfter": "2025-06-01T00:00:00Z",
+            "sha256Fingerprint": "AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89",
+            "serialNumber": "123456789012345678901234567890",
+            "signatureAlgorithm": "SHA256-RSA"
+          }
+        }
+      }
+    ]
+  },
+  "errors": []
+}

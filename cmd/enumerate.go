@@ -6,6 +6,7 @@ import (
 
 	// Generated
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	rdpfern "github.com/Method-Security/networkscan/generated/go/enumerate/rdp"
 	vncfern "github.com/Method-Security/networkscan/generated/go/enumerate/vnc"
 
 	// Internal
@@ -71,6 +72,12 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				return
 			}
 
+			rdpPortRange, err := cmd.Flags().GetString("rdp-port-range")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
 			config := newEnumerateServiceConfig(EnumerateServiceCobraFlags{
 				Targets:           targets,
 				Service:           serviceEnum,
@@ -78,6 +85,7 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				Wordlist:          wordlist,
 				VncSkipScreenshot: vncSkipScreenshot,
 				VncPortRange:      vncPortRange,
+				RdpPortRange:      rdpPortRange,
 			})
 
 			// Generate the report
@@ -90,12 +98,14 @@ func (a *NetworkScan) InitEnumerateCommand() {
 		},
 	}
 	enumerateServiceCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to enumerate")
-	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, ike, imap, ipmi, ldap, mongodb, mssql, mysql, pop3, postgres, redis, smb, smtp, snmp, socks, ssh, vnc)")
+	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, ike, imap, ipmi, ldap, mongodb, mssql, mysql, pop3, postgres, rdp, redis, smb, smtp, snmp, socks, ssh, vnc)")
 	enumerateServiceCmd.Flags().Int("timeout", 30, "Timeout in seconds for enumerating each target")
 	enumerateServiceCmd.Flags().StringSlice("wordlist", []string{}, "Custom username wordlist for user enumeration (SMTP VRFY/EXPN/RCPT TO)")
 	// VNC-specific flags
 	enumerateServiceCmd.Flags().Bool("vnc-skip-screenshot", false, "Skip framebuffer screenshot capture even when None auth is offered (VNC only)")
 	enumerateServiceCmd.Flags().String("vnc-port-range", "5900-5910", "Port range to sweep when no explicit port is given (VNC only, e.g. '5900-5910')")
+	// RDP-specific flags
+	enumerateServiceCmd.Flags().String("rdp-port-range", "3389", "Port range to sweep when no explicit port is given (RDP only, e.g. '3389' or '3389-3395')")
 
 	// Mark Required Flags
 	_ = enumerateServiceCmd.MarkFlagRequired("targets")
@@ -119,6 +129,7 @@ type EnumerateServiceCobraFlags struct {
 	Wordlist          []string
 	VncSkipScreenshot bool
 	VncPortRange      string
+	RdpPortRange      string
 }
 
 // newEnumerateServiceConfig creates a new EnumerateServiceConfig from the flag struct.
@@ -139,6 +150,14 @@ func newEnumerateServiceConfig(flags EnumerateServiceCobraFlags) enumeratefern.E
 			vncCfg.PortRange = &flags.VncPortRange
 		}
 		config.VncConfig = vncCfg
+	}
+	// RDP-specific config
+	if flags.Service == enumeratefern.SupportedServiceTypeRdp {
+		rdpCfg := &rdpfern.RdpEnumerateConfig{}
+		if flags.RdpPortRange != "" {
+			rdpCfg.PortRange = &flags.RdpPortRange
+		}
+		config.RdpConfig = rdpCfg
 	}
 	return config
 }

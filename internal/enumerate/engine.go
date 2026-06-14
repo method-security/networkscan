@@ -29,6 +29,7 @@ import (
 	socks "github.com/Method-Security/networkscan/internal/enumerate/socks"
 	ssh "github.com/Method-Security/networkscan/internal/enumerate/ssh"
 	vnc "github.com/Method-Security/networkscan/internal/enumerate/vnc"
+	rdp "github.com/Method-Security/networkscan/internal/enumerate/rdp"
 
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -196,6 +197,14 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 			}
 			if config.VncConfig.PortRange != nil {
 				lib.PortRange = *config.VncConfig.PortRange
+			}
+		}
+		return NetworkApplicationEngine{Library: lib}, nil
+	case enumeratefern.SupportedServiceTypeRdp:
+		lib := &rdp.LibraryEnumerateRDP{}
+		if config.RdpConfig != nil {
+			if config.RdpConfig.PortRange != nil {
+				lib.PortRange = *config.RdpConfig.PortRange
 			}
 		}
 		return NetworkApplicationEngine{Library: lib}, nil

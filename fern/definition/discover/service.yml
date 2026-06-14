@@ -44,6 +44,7 @@ imports:
   smtpProtocol: ../common/protocol/smtp.yml
   oracleProtocol: ../common/protocol/oracle.yml
   vmwareauthdProtocol: ../common/protocol/vmwareauthd.yml
+  rdpProtocol: ../common/protocol/rdp.yml
 
 types:
   # Generic metadata for fingerprintx and other sources
@@ -100,6 +101,7 @@ types:
       smtp: smtpProtocol.SmtpServerInfo
       oracle: oracleProtocol.OracleServerInfo
       vmwareauthd: vmwareauthdProtocol.VmwareAuthdServerInfo
+      rdp: rdpProtocol.RdpServerInfo
 
   # Stealth service types
   StealthServiceType:
