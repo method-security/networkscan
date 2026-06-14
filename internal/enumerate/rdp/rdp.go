@@ -135,23 +135,37 @@ func (l *LibraryEnumerateRDP) EnumerateTarget(ctx context.Context, target string
 				errors = append(errors, fmt.Sprintf("port %d: %s", p, e))
 			}
 		}
-		// Early exit on first port that completed the X.224 handshake
-		if detail.ServerInfo != nil && detail.ServerInfo.X224Reachable != nil && *detail.ServerInfo.X224Reachable {
+		// Early exit on first port that completed the X.224 handshake with a
+		// SUCCESSFUL negotiation — a NegotiatedSecurityProtocol value is set
+		// only when doRdpNegHandshake returned an rdpNegRsp with a known wire
+		// value. Failed negotiations (which still set X224Reachable=true) do
+		// NOT short-circuit the sweep — otherwise a misconfigured port that
+		// just rejects negotiation would hide a healthy listener on a later
+		// port in the range.
+		if detail.ServerInfo != nil && detail.ServerInfo.NegotiatedSecurityProtocol != nil {
 			break
 		}
 	}
 
-	// Return the best result: prefer ports that completed X.224 handshake
+	// Return the best result, in decreasing order of usefulness.
 	if len(allDetails) == 1 {
 		return &enumeratefern.EnumerateServiceDetails{EnumerateRdpDetails: allDetails[0]}, errors
 	}
-	// (1) Best: X.224 handshake completed
+	// (1) Best: a port returned a successful negotiation (NegotiatedSecurityProtocol set)
+	for _, d := range allDetails {
+		if d.ServerInfo != nil && d.ServerInfo.NegotiatedSecurityProtocol != nil {
+			return &enumeratefern.EnumerateServiceDetails{EnumerateRdpDetails: d}, errors
+		}
+	}
+	// (2) Next-best: X.224 reachable (server responded, even if negotiation
+	// failed — e.g. SSL_REQUIRED_BY_SERVER on a host configured with no TLS
+	// or unrecognized failure codes).
 	for _, d := range allDetails {
 		if d.ServerInfo != nil && d.ServerInfo.X224Reachable != nil && *d.ServerInfo.X224Reachable {
 			return &enumeratefern.EnumerateServiceDetails{EnumerateRdpDetails: d}, errors
 		}
 	}
-	// (2) TCP connected but handshake did not complete
+	// (3) TCP connected but X.224 handshake did not complete
 	for _, d := range allDetails {
 		if d.CanConnect != nil && *d.CanConnect {
 			return &enumeratefern.EnumerateServiceDetails{EnumerateRdpDetails: d}, errors
