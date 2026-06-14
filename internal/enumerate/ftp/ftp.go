@@ -11,7 +11,6 @@ import (
 
 	// Utils
 	utils "github.com/Method-Security/networkscan/utils"
-
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
