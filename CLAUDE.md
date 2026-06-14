@@ -162,3 +162,36 @@ The tool follows a modular architecture with clear separation of concerns:
 - Shared protocol libraries should be used across modules for consistency
 - Configuration through Fern definitions for type safety
 - **CRITICAL**: Always run `./godelw verify` after TODO completion before merging
+
+## CVE Detection — Two Execution Paths, One Report
+
+`pentest cve` runs **both** nuclei templates and custom Go detectors and merges them into the same `PentestCveReport`. This mirrors `discover service`, where fingerprintx and custom protocol plugins both feed the same `ServiceDetails` type. Downstream processors don't care which path produced an attempt — the report shape is identical.
+
+| Path | Lives in | Use when |
+|------|----------|----------|
+| Nuclei template | `utils/nuclei/templates/cve/<year>/...` | A working nuclei template exists or can be written. Default — easier to maintain. |
+| Custom Go detector | `internal/pentest/cve/detectors/cve_<year>_<id>.go` | Detection requires Go code that nuclei cannot express: stateful protocols, custom binary probes, multi-step handshakes, library-driven checks (SMB/Kerberos/etc.), or anything that needs internal helpers in `internal/protocol/`. |
+
+### Adding a custom CVE detector
+
+1. **Create the file** — `internal/pentest/cve/detectors/cve_<year>_<id>.go`, package `detectors`. Type name `CVE_<year>_<id>` (underscores). See `internal/pentest/cve/detectors/doc.go` for the skeleton.
+2. **Implement the `cve.Detector` interface** (defined in `internal/pentest/cve/detector.go`):
+   - `CVEID()` → canonical ID matching `^CVE-\d{4}-\d{4,}$` (the report builder regexes on this).
+   - `Year()` → 4-digit string; used by the `--years` CLI filter exactly like nuclei template years.
+   - `Protocol()` → uppercase token (`"SSH"`, `"FTP"`, `"HTTP"`, …) matching the `--protocol` filter; empty means "any protocol".
+   - `Detect(ctx, target, timeout)` → returns `*nuclei.NucleiAttemptInfo` with `TemplateId == CVEID()`. Return semantics:
+     - Vulnerable → attempt with `Finding.Finding = true` and populated `NucleiFindingInfo` (Name, Description, Severity, `Classification.Cves`).
+     - Probed-but-clean → attempt with `Finding.Finding = false`.
+     - Service didn't match → `(nil, nil)`.
+     - Fatal probe error → `(nil, err)` — surfaced as a warning, not an error.
+3. **Register it** — append a pointer to the type in `registeredDetectors` in `internal/pentest/cve/registry.go`.
+4. **Verify** — `./godelw verify`. No new Fern types are needed; the existing `nuclei.NucleiAttemptInfo` shape is what custom detectors produce.
+
+### Rules
+
+- **One detector per CVE.** Don't bundle multiple CVEs into one type; the year/protocol filters and the per-CVE TemplateId rely on the 1-to-1 mapping.
+- **Don't bypass filters.** Always declare a real `Year()` and `Protocol()`. If the detector legitimately works against any protocol, return `""` for `Protocol()` and document why in a one-line comment.
+- **Reuse existing protocol clients** from `internal/protocol/` and `internal/common/` before writing new probe code.
+- **Don't add CLI flags.** The custom path uses the existing `--targets / --protocol / --years / --timeout` flags. New knobs that don't fit those filters mean the check probably belongs somewhere other than `pentest cve`.
+- **No silent drift between paths.** If you change the `NucleiAttemptInfo` / `NucleiFindingInfo` Fern shape, both paths must keep producing it identically. Run a real `pentest cve` against a known target and inspect the JSON before opening a PR.
+- **`--template-paths` skips custom detectors.** When the operator passes `--template-paths`, the orchestrator runs only those nuclei templates and the custom detector registry is skipped entirely — matching how that flag turns off `--years` and `--protocol` for nuclei.
