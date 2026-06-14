@@ -13,8 +13,6 @@ import (
 	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
-const redisProbeTimeout = 2
-
 type RedisFingerprinter struct{}
 
 func (RedisFingerprinter) Name() string { return "redis" }
@@ -29,9 +27,8 @@ func (RedisFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host 
 	}
 
 	var lastErr error
-	probeTimeout := capRedisProbeTimeout(timeout)
 	for _, probe := range probes {
-		resp, err := helpers.TCPExchange(ctx, ip, port, probeTimeout, probe, 4096)
+		resp, err := helpers.TCPExchange(ctx, ip, port, timeout, probe, 4096)
 		if err != nil {
 			lastErr = err
 			continue
@@ -44,13 +41,6 @@ func (RedisFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host 
 		return nil, lastErr
 	}
 	return nil, fmt.Errorf("not Redis")
-}
-
-func capRedisProbeTimeout(timeout int) int {
-	if timeout < 0 || timeout > redisProbeTimeout {
-		return redisProbeTimeout
-	}
-	return timeout
 }
 
 func redisDetailsFromResponse(host string, ip net.IP, port int, resp []byte) *discoverfern.ServiceDetails {
