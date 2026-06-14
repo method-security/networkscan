@@ -223,7 +223,7 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int) *
 	// If server requires HYBRID specifically and rejects our multi-protocol
 	// request, retry with only HYBRID. This is documented as a known
 	// server behavior per MS-RDPBCGR §2.2.1.2.2.
-	negotiated, rawSelected, failureCode, err := doRdpNegHandshake(conn, host, requestedProtocols, deadline)
+	negotiated, rawSelected, failureCode, x224Reached, err := doRdpNegHandshake(conn, host, requestedProtocols, deadline)
 	if err != nil {
 		// If the server returned HYBRID_REQUIRED_BY_SERVER, retry asking for
 		// HYBRID alone. We do NOT yet attach the first attempt's failure code
@@ -257,16 +257,21 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int) *
 				detail.Errors = errs
 				return detail
 			}
-			negotiated, rawSelected, failureCode, err = doRdpNegHandshake(conn, host, protocolHybrid, deadline)
+			negotiated, rawSelected, failureCode, x224Reached, err = doRdpNegHandshake(conn, host, protocolHybrid, deadline)
 		}
 		if err != nil {
+			// Mapped failure code → record it. Unknown / pre-CC-parse errors
+			// → just record the error string. Either way, X224Reachable is
+			// set from the parser's signal (true iff we parsed a CC PDU header,
+			// regardless of whether the rdpNeg content was recognized).
 			if failureCode != "" {
 				fc := failureCode
 				serverInfo.NegotiationFailureCode = fc.Ptr()
+			}
+			errs = append(errs, fmt.Sprintf("rdp neg handshake: %v", err))
+			if x224Reached {
 				x224 := true
 				serverInfo.X224Reachable = &x224
-			} else {
-				errs = append(errs, fmt.Sprintf("rdp neg handshake: %v", err))
 			}
 			detail.ServerInfo = serverInfo
 			detail.Errors = errs
@@ -324,22 +329,26 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int) *
 
 // doRdpNegHandshake sends an X.224 CR PDU with rdpNeg and reads the X.224 CC PDU.
 // Returns:
-//   - the negotiated RdpSecurityProtocol enum (empty string when the wire value
-//     is unrecognized — caller still gets the raw value via rawSelected),
+//   - the negotiated RdpSecurityProtocol enum (empty when the wire value is
+//     unrecognized — caller still gets the raw value via rawSelected),
 //   - the raw selectedProtocol uint32 the server returned (so the caller can
 //     decide whether to TLS-upgrade even when the enum mapping is missing —
 //     anything except 0x0 (PROTOCOL_RDP / STANDARD_RDP) is TLS-capable),
-//   - the RdpNegotiationFailure code (when the server sent rdpNegFailure),
-//   - an error (when the wire exchange itself failed).
+//   - the RdpNegotiationFailure code (when the server sent a known rdpNegFailure),
+//   - x224Reached = true once we have parsed a well-formed X.224 CC PDU header,
+//     regardless of what the rdpNeg content was. Lets the caller record
+//     X224Reachable=true even when the rdpNeg payload itself is unrecognized,
+//   - an error (when the wire exchange itself failed or the negotiation result
+//     was a failure / unrecognized).
 //
 // Per MS-RDPBCGR §2.2.1.1 and §2.2.1.2.
-func doRdpNegHandshake(conn net.Conn, host string, requestedProto uint32, deadline time.Time) (protocolfern.RdpSecurityProtocol, uint32, protocolfern.RdpNegotiationFailure, error) {
+func doRdpNegHandshake(conn net.Conn, host string, requestedProto uint32, deadline time.Time) (protocolfern.RdpSecurityProtocol, uint32, protocolfern.RdpNegotiationFailure, bool, error) {
 	crPDU := buildX224CRPdu(host, requestedProto)
 	if err := conn.SetWriteDeadline(deadline); err != nil {
-		return "", 0, "", fmt.Errorf("set write deadline: %w", err)
+		return "", 0, "", false, fmt.Errorf("set write deadline: %w", err)
 	}
 	if _, err := conn.Write(crPDU); err != nil {
-		return "", 0, "", fmt.Errorf("write CR PDU: %w", err)
+		return "", 0, "", false, fmt.Errorf("write CR PDU: %w", err)
 	}
 
 	// Read X.224 CC PDU. Minimum structure:
@@ -347,25 +356,25 @@ func doRdpNegHandshake(conn net.Conn, host string, requestedProto uint32, deadli
 	//   X.224 CC: 7 bytes minimum (length indicator, code 0xD0, dst-ref, src-ref, class)
 	//   rdpNeg: 8 bytes (type, flags, length uint16 LE, selectedProtocol/failureCode uint32 LE)
 	if err := conn.SetReadDeadline(deadline); err != nil {
-		return "", 0, "", fmt.Errorf("set read deadline: %w", err)
+		return "", 0, "", false, fmt.Errorf("set read deadline: %w", err)
 	}
 
 	// Read TPKT header (4 bytes)
 	tpktHdr := make([]byte, 4)
 	if _, err := io.ReadFull(conn, tpktHdr); err != nil {
-		return "", 0, "", fmt.Errorf("read TPKT header: %w", err)
+		return "", 0, "", false, fmt.Errorf("read TPKT header: %w", err)
 	}
 	if tpktHdr[0] != 0x03 {
-		return "", 0, "", fmt.Errorf("unexpected TPKT version: 0x%02x (want 0x03)", tpktHdr[0])
+		return "", 0, "", false, fmt.Errorf("unexpected TPKT version: 0x%02x (want 0x03)", tpktHdr[0])
 	}
 	pktLen := int(binary.BigEndian.Uint16(tpktHdr[2:4]))
 	if pktLen < 11 {
-		return "", 0, "", fmt.Errorf("TPKT length %d too short (need at least 11)", pktLen)
+		return "", 0, "", false, fmt.Errorf("TPKT length %d too short (need at least 11)", pktLen)
 	}
 	// Read the rest of the PDU (pktLen - 4 bytes already consumed)
 	rest := make([]byte, pktLen-4)
 	if _, err := io.ReadFull(conn, rest); err != nil {
-		return "", 0, "", fmt.Errorf("read CC PDU body: %w", err)
+		return "", 0, "", false, fmt.Errorf("read CC PDU body: %w", err)
 	}
 
 	// X.224 CC PDU structure (bytes 0-6 of rest):
@@ -375,18 +384,23 @@ func doRdpNegHandshake(conn net.Conn, host string, requestedProto uint32, deadli
 	//   [4-5] src-ref
 	//   [6]  class/options
 	if len(rest) < 7 {
-		return "", 0, "", fmt.Errorf("CC PDU too short (%d bytes after TPKT header)", len(rest))
+		return "", 0, "", false, fmt.Errorf("CC PDU too short (%d bytes after TPKT header)", len(rest))
 	}
 	if rest[1] != 0xD0 {
-		return "", 0, "", fmt.Errorf("unexpected X.224 code: 0x%02x (want 0xD0 CC)", rest[1])
+		return "", 0, "", false, fmt.Errorf("unexpected X.224 code: 0x%02x (want 0xD0 CC)", rest[1])
 	}
+
+	// X.224 CC PDU header is well-formed — X.224 negotiation is now reachable
+	// from the caller's perspective. Any further failures (unknown rdpNeg
+	// content, unknown negotiation failure code) still preserve x224Reached=true.
+	const x224Reached = true
 
 	// rdpNeg optional structure starts at offset 7 of rest (byte 11 overall)
 	// Structure: type(1) + flags(1) + length(2 LE) + data(4) = 8 bytes
 	if len(rest) < 15 {
 		// Server sent a bare CC with no rdpNeg — treat as STANDARD_RDP
 		// (raw selected = 0x0 == protocolRDP).
-		return protocolfern.RdpSecurityProtocolStandardRdp, protocolRDP, "", nil
+		return protocolfern.RdpSecurityProtocolStandardRdp, protocolRDP, "", x224Reached, nil
 	}
 
 	negType := rest[7]
@@ -405,20 +419,25 @@ func doRdpNegHandshake(conn net.Conn, host string, requestedProto uint32, deadli
 			// misreport a TLS-capable protocol as STANDARD_RDP, but still
 			// return the raw value so the caller treats it as TLS-capable
 			// (any non-zero wire value is, by RDP spec, TLS-protected).
-			return "", negData, "", nil
+			return "", negData, "", x224Reached, nil
 		}
-		return proto, negData, "", nil
+		return proto, negData, "", x224Reached, nil
 
 	case rdpNegTypeFailure:
 		// rdpNegFailure: negData = failureCode
 		fc, ok := negFailureMap[negData]
 		if !ok {
-			return "", 0, "", fmt.Errorf("rdpNegFailure: unknown failure code 0x%08x", negData)
+			// Unknown failure code, but the server clearly responded with a
+			// structured rdpNegFailure — X.224 is reachable and the negotiation
+			// failed in a known way; we just don't have an enum mapping.
+			return "", 0, "", x224Reached, fmt.Errorf("rdpNegFailure: unknown failure code 0x%08x", negData)
 		}
-		return "", 0, fc, fmt.Errorf("rdpNegFailure: %s", fc)
+		return "", 0, fc, x224Reached, fmt.Errorf("rdpNegFailure: %s", fc)
 
 	default:
-		return "", 0, "", fmt.Errorf("unknown rdpNeg type: 0x%02x", negType)
+		// Unknown rdpNeg type. X.224 still reachable per the CC header parse,
+		// but we can't classify the rdpNeg payload.
+		return "", 0, "", x224Reached, fmt.Errorf("unknown rdpNeg type: 0x%02x", negType)
 	}
 }
 
