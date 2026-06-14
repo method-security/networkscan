@@ -59,7 +59,7 @@ type Fingerprinter interface {
 var customFingerprintModules = []Fingerprinter{
 	&localPlugins.SSHFingerprinter{},             // SSH (Secure Shell)
 	&localPlugins.EtcdFingerprinter{},            // etcd distributed key-value store; keep before generic gRPC
-	&localPlugins.GrpcFingerprinter{},            // gRPC can run on any port
+	&localPlugins.RedisFingerprinter{},           // Redis key-value store
 	&localPlugins.MongoDBFingerprinter{},         // MongoDB driver manages its own connections
 	&localPlugins.CassandraFingerprinter{},       // Cassandra native protocol
 	&localPlugins.BGPFingerprinter{},             // BGP protocol detection
@@ -91,6 +91,8 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.SMTPFingerprinter{},            // SMTP (Simple Mail Transfer Protocol)
 	&localPlugins.JMXFingerprinter{},             // JMX over RMI; keep before generic Java RMI
 	&localPlugins.JavaRMIFingerprinter{},         // Java RMI Registry
+	&localPlugins.AJP13Fingerprinter{},           // Apache JServ Protocol
+	&localPlugins.GrpcFingerprinter{},            // gRPC can run on any port
 	&localPlugins.WebLogicT3Fingerprinter{},      // WebLogic T3
 	&localPlugins.ZooKeeperFingerprinter{},       // ZooKeeper
 	&localPlugins.AMQPFingerprinter{},            // AMQP
