@@ -21,6 +21,7 @@ require (
 	github.com/oiweiwei/gokrb5.fork/v9 v9.0.4
 	github.com/palantir/pkg/datetime v1.2.0
 	github.com/palantir/witchcraft-go-logging v1.61.0
+	github.com/pkg/sftp v1.13.10
 	github.com/praetorian-inc/fingerprintx v1.1.15
 	github.com/projectdiscovery/goflags v0.1.74
 	github.com/projectdiscovery/naabu/v2 v2.3.3
@@ -35,6 +36,8 @@ require (
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.10
 )
+
+require github.com/kr/fs v0.1.0 // indirect
 
 require (
 	code.gitea.io/sdk/gitea v0.21.0 // indirect
