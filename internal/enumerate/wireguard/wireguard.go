@@ -25,6 +25,7 @@ import (
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	wireguardfern "github.com/Method-Security/networkscan/generated/go/enumerate/wireguard"
 	wireguardprotocol "github.com/Method-Security/networkscan/internal/protocol/wireguard"
+	utils "github.com/Method-Security/networkscan/utils"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
@@ -85,10 +86,12 @@ func (l *LibraryEnumerateWireGuard) EnumerateTarget(ctx context.Context, target 
 
 	isInferred, probeErr := probeWireGuard(ctx, addr, timeout)
 	if probeErr != nil {
+		netErr := utils.ClassifyNetError(probeErr)
 		log.Warn("WireGuard probe error",
 			svc1log.SafeParam("target", target),
-			svc1log.SafeParam("error", probeErr))
-		errors = append(errors, fmt.Sprintf("probe error: %v", probeErr))
+			svc1log.SafeParam("category", string(netErr.Category)),
+			svc1log.SafeParam("error", netErr.Cause))
+		errors = append(errors, fmt.Sprintf("probe error [%s]: %s", netErr.Category, netErr.Cause))
 	}
 
 	details.IsInferred = isInferred

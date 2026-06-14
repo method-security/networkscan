@@ -13,6 +13,7 @@ import (
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	openvpnfern "github.com/Method-Security/networkscan/generated/go/enumerate/openvpn"
 	openvpnprotocol "github.com/Method-Security/networkscan/internal/protocol/openvpn"
+	utils "github.com/Method-Security/networkscan/utils"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
@@ -102,11 +103,13 @@ func (l *LibraryEnumerateOpenVPN) EnumerateTarget(ctx context.Context, target st
 		isOpenvpn, result, err = probeUDP(ctx, addr, timeout)
 	}
 	if err != nil {
+		netErr := utils.ClassifyNetError(err)
 		log.Warn("OpenVPN probe failed",
 			svc1log.SafeParam("target", target),
 			svc1log.SafeParam("transport", string(transport)),
-			svc1log.SafeParam("error", err))
-		errors = append(errors, fmt.Sprintf("probe failed: %v", err))
+			svc1log.SafeParam("category", string(netErr.Category)),
+			svc1log.SafeParam("error", netErr.Cause))
+		errors = append(errors, fmt.Sprintf("probe failed [%s]: %s", netErr.Category, netErr.Cause))
 	}
 
 	details.IsOpenvpn = isOpenvpn
