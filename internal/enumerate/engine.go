@@ -22,6 +22,7 @@ import (
 	mysql "github.com/Method-Security/networkscan/internal/enumerate/mysql"
 	pop3 "github.com/Method-Security/networkscan/internal/enumerate/pop3"
 	postgres "github.com/Method-Security/networkscan/internal/enumerate/postgres"
+	rdp "github.com/Method-Security/networkscan/internal/enumerate/rdp"
 	redis "github.com/Method-Security/networkscan/internal/enumerate/redis"
 	smb "github.com/Method-Security/networkscan/internal/enumerate/smb"
 	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
@@ -188,6 +189,8 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 		return NetworkApplicationEngine{Library: &redis.LibraryEnumerateRedis{}}, nil
 	case enumeratefern.SupportedServiceTypeSocks:
 		return NetworkApplicationEngine{Library: &socks.LibraryEnumerateSocks{}}, nil
+	case enumeratefern.SupportedServiceTypeRdp:
+		return NetworkApplicationEngine{Library: &rdp.LibraryEnumerateRDP{}}, nil
 	case enumeratefern.SupportedServiceTypeVnc:
 		lib := &vnc.LibraryEnumerateVNC{}
 		if config.VncConfig != nil {

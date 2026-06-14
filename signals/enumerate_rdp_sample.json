@@ -1,0 +1,40 @@
+{
+  "config": {
+    "targets": ["10.0.1.10:3389", "10.0.1.11:3389"],
+    "service": "RDP",
+    "timeout": 10
+  },
+  "result": {
+    "details": [
+      {
+        "type": "EnumerateRdpDetails",
+        "target": "10.0.1.10:3389",
+        "success": true,
+        "supportedProtocols": ["PROTOCOL_HYBRID", "PROTOCOL_HYBRID_EX"],
+        "selectedProtocol": "PROTOCOL_HYBRID",
+        "nlaRequired": true,
+        "requestedProtocolFlags": 11,
+        "selectedProtocolFlags": 2,
+        "certificate": {
+          "subject": "CN=DC01.zamunda.lab",
+          "issuer": "CN=DC01.zamunda.lab",
+          "notBefore": "2024-01-15T00:00:00Z",
+          "notAfter": "2025-07-15T00:00:00Z",
+          "sans": ["DC01.zamunda.lab"],
+          "selfSigned": true
+        }
+      },
+      {
+        "type": "EnumerateRdpDetails",
+        "target": "10.0.1.11:3389",
+        "success": true,
+        "supportedProtocols": ["PROTOCOL_HYBRID"],
+        "requestedProtocolFlags": 11,
+        "selectedProtocolFlags": 0,
+        "nlaRequired": true,
+        "negFailureCode": "HYBRID_REQUIRED_BY_SERVER"
+      }
+    ]
+  },
+  "errors": []
+}
