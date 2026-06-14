@@ -200,16 +200,22 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int) *
 		detail.Errors = errs
 		return detail
 	}
+	// The defer captures `conn` by reference (closure), so any later
+	// reassignment of conn (e.g. the HYBRID retry path below) is honored —
+	// the defer always closes whatever conn points at when this function
+	// returns. We deliberately do NOT add a second defer when we re-dial.
 	defer func() { _ = conn.Close() }()
+
+	// TCP dial succeeded — record canConnect=true so reports distinguish a
+	// reachable host that failed mid-handshake from an entirely unreachable one.
+	canConnect := true
+	detail.CanConnect = &canConnect
 
 	if err := conn.SetDeadline(deadline); err != nil {
 		errs = append(errs, fmt.Sprintf("rdp set deadline: %v", err))
 		detail.Errors = errs
 		return detail
 	}
-
-	canConnect := true
-	detail.CanConnect = &canConnect
 
 	serverInfo := &protocolfern.RdpServerInfo{}
 
@@ -237,8 +243,11 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int) *
 				detail.Errors = errs
 				return detail
 			}
+			// The original defer captures `conn` by reference and will close
+			// whatever conn points at when probePort returns — assigning conn
+			// here is sufficient; do NOT add a second defer or conn2 gets
+			// closed twice on the return path.
 			conn = conn2
-			defer func() { _ = conn.Close() }()
 			if err := conn.SetDeadline(deadline); err != nil {
 				errs = append(errs, fmt.Sprintf("rdp retry set deadline: %v", err))
 				x224 := true
