@@ -16,6 +16,7 @@ imports:
   postgres: ./postgres/postgres.yml
   redis: ./redis/redis.yml
   socks: ./socks/socks.yml
+  rdp: ./rdp/rdp.yml
   vnc: ./vnc/vnc.yml
 types:
   # ENUMs
@@ -38,6 +39,7 @@ types:
       - POSTGRES
       - REDIS
       - SOCKS
+      - RDP
       - VNC
   # Report structs
   EnumerateServiceDetails:
@@ -59,6 +61,7 @@ types:
       EnumeratePostgresDetails: postgres.EnumeratePostgresDetails
       EnumerateRedisDetails: redis.EnumerateRedisDetails
       EnumerateSocksDetails: socks.EnumerateSocksDetails
+      EnumerateRdpDetails: rdp.EnumerateRdpDetails
       EnumerateVncDetails: vnc.EnumerateVncDetails
   EnumerateServiceResult:
     properties:
