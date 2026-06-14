@@ -1,0 +1,8 @@
+types:
+  # Winbox (MikroTik RouterOS management) Server Information
+  WinboxServerInfo:
+    properties:
+      # Discovery fields
+      routerosVersion: optional<string>   # e.g., "6.42.0"
+      boardName: optional<string>         # e.g., "RB951Ui-2HnD"
+      boardIdentity: optional<string>     # system identity (hostname-like)
