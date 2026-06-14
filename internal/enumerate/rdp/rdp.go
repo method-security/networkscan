@@ -23,6 +23,7 @@ import (
 	// Internal
 	rdpproto "github.com/Method-Security/networkscan/internal/protocol/rdp"
 	"github.com/Method-Security/networkscan/utils"
+
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -71,7 +72,7 @@ func enumerateRDP(ctx context.Context, target string) *rdpfern.EnumerateRdpDetai
 	dialer := &net.Dialer{}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		errMsg := fmt.Sprintf("TCP connection failed: %v", err)
+		errMsg := utils.ClassifyNetError(err).String()
 		result.ErrorMessage = &errMsg
 		return result
 	}
