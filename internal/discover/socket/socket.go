@@ -174,6 +174,7 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		svc1log.SafeParam("timeoutSeconds", config.ReadTimeout))
 
 	var d net.Dialer
+	dialStart := time.Now()
 	conn, err := d.DialContext(dialCtx, network, config.Target)
 	if err != nil {
 		log.Info("Socket dial failed",
@@ -190,7 +191,10 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		return report, nil
 	}
 	defer func() { _ = conn.Close() }()
-	log.Debug("Socket dial successful", svc1log.SafeParam("target", config.Target))
+	connectTimeMs := int(time.Since(dialStart).Milliseconds())
+	log.Debug("Socket dial successful",
+		svc1log.SafeParam("target", config.Target),
+		svc1log.SafeParam("connectTimeMs", connectTimeMs))
 
 	// Fix 1: Resolve the real IP from the established connection's remote address.
 	// host may be a hostname; conn.RemoteAddr() gives us the actual resolved IP.
@@ -218,6 +222,7 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 				Port:                 portInt,
 				Protocol:             config.Protocol,
 				ConnectionSuccessful: connTrue,
+				ConnectTimeMs:        &connectTimeMs,
 			}
 			return report, nil
 		}
@@ -230,6 +235,7 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 				Port:                 portInt,
 				Protocol:             config.Protocol,
 				ConnectionSuccessful: connTrue,
+				ConnectTimeMs:        &connectTimeMs,
 			}
 			return report, nil
 		}
@@ -247,6 +253,7 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 			Port:                 portInt,
 			Protocol:             config.Protocol,
 			ConnectionSuccessful: connTrue,
+			ConnectTimeMs:        &connectTimeMs,
 		}
 		return report, nil
 	}
@@ -293,6 +300,7 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		Port:                 portInt,
 		Protocol:             config.Protocol,
 		ConnectionSuccessful: connTrue,
+		ConnectTimeMs:        &connectTimeMs,
 	}
 
 	if byteCount > 0 {
