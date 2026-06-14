@@ -109,7 +109,7 @@ types:
       exitCode: optional<integer>
       timestamp: datetime
 
-  # File transfer result (for future use)
+  # File transfer result
   SshFileTransfer:
     properties:
       localPath: string
@@ -117,3 +117,6 @@ types:
       direction: string # "upload" or "download"
       success: boolean
       timestamp: datetime
+      sizeBytes: optional<long>     # File size in bytes; populated for both upload and download
+      content: optional<string>     # Base64-encoded file content on successful DOWNLOAD; nil for uploads or failures
+      message: optional<string>     # Error / status message; populated when success=false
