@@ -18,6 +18,7 @@ types:
       port: integer
       protocol: SocketTransportProtocol
       connectionSuccessful: boolean
+      connectTimeMs: optional<integer> # Time to establish the socket connection, in milliseconds
       responseData: optional<string>
       responseBytes: optional<integer>
       banner: optional<string>
