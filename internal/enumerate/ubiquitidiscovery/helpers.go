@@ -30,7 +30,7 @@ func parseDiscoveryResponse(data []byte) (version byte, records []discoveryRecor
 	}
 	version = data[0]
 	payloadLen := int(binary.BigEndian.Uint16(data[2:4]))
-	if 4+payloadLen > len(data) {
+	if payloadLen == 0 || 4+payloadLen > len(data) {
 		// Some firmware reports payloadLen=0 even with TLVs present — fall
 		// back to parsing the rest of the buffer.
 		payloadLen = len(data) - 4

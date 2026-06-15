@@ -67,8 +67,10 @@ func (l *LibraryEnumerateUbiquitiDiscovery) EnumerateTarget(ctx context.Context,
 
 	// Each variant gets half the budget so both can run end-to-end without
 	// the second variant starving when v1 takes the long way around.
+	// Only apply the 1-second floor when the total budget can support both
+	// variants at that minimum; otherwise use timeout/2 as-is.
 	perVariantTimeout := timeout / 2
-	if perVariantTimeout < time.Second {
+	if perVariantTimeout < time.Second && timeout >= 2*time.Second {
 		perVariantTimeout = time.Second
 	}
 
