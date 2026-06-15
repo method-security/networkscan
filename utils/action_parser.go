@@ -13,6 +13,7 @@ import (
 	mssqlfern "github.com/Method-Security/networkscan/generated/go/pentest/mssql"
 	mysqlfern "github.com/Method-Security/networkscan/generated/go/pentest/mysql"
 	postgresfern "github.com/Method-Security/networkscan/generated/go/pentest/postgres"
+	rdpfern "github.com/Method-Security/networkscan/generated/go/pentest/rdp"
 	redisfern "github.com/Method-Security/networkscan/generated/go/pentest/redis"
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	snmpfern "github.com/Method-Security/networkscan/generated/go/pentest/snmp"
@@ -316,6 +317,7 @@ var (
 	etcdParserInstance     *EtcdActionParser
 	postgresParserInstance *PostgresActionParser
 	snmpParserInstance     *SNMPActionParser
+	rdpParserInstance      *RDPActionParser
 )
 
 // GetSMBParser returns the singleton SMB action parser
@@ -735,6 +737,53 @@ func (p *SNMPActionParser) GetValidActions() []string {
 }
 
 func (p *SNMPActionParser) ContainsAction(actions []snmpfern.PentestSnmpAction, target snmpfern.PentestSnmpAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
+// RDPActionParser handles RDP-specific action parsing for the pentest service rdp command.
+// Valid actions: PROBE (unauth X.224 negotiation + cert extraction), AUTH (credentialed NLA auth).
+type RDPActionParser struct{}
+
+// GetRDPParser returns the singleton RDP action parser.
+func GetRDPParser() *RDPActionParser {
+	if rdpParserInstance == nil {
+		rdpParserInstance = &RDPActionParser{}
+	}
+	return rdpParserInstance
+}
+
+func (p *RDPActionParser) ParseActions(actionStrings []string) ([]rdpfern.PentestRdpAction, error) {
+	var actions []rdpfern.PentestRdpAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			rdpAction, err := rdpfern.NewPentestRdpActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid RDP action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, rdpAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *RDPActionParser) GetValidActions() []string {
+	return []string{"PROBE", "AUTH"}
+}
+
+func (p *RDPActionParser) ContainsAction(actions []rdpfern.PentestRdpAction, target rdpfern.PentestRdpAction) bool {
 	for _, action := range actions {
 		if action == target {
 			return true
