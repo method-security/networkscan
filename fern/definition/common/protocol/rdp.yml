@@ -1,0 +1,35 @@
+types:
+  # RDP (Remote Desktop Protocol) Server Information
+  #
+  # Field naming matches the ontology RdpApplication ObjectType so the
+  # downstream processor maps wire -> graph 1:1. Protocol strings use the
+  # MS-RDPBCGR §2.2.1.2.1 names (PROTOCOL_RDP, PROTOCOL_SSL, PROTOCOL_HYBRID,
+  # PROTOCOL_RDSTLS, PROTOCOL_HYBRID_EX, PROTOCOL_HYBRID_REC_LIMIT_REACHED).
+  # Failure codes use the §2.2.1.2.2 names (SSL_REQUIRED_BY_SERVER, etc.).
+  RdpServerInfo:
+    properties:
+      # Protocol negotiation results (selectedProtocol / supportedProtocols values
+      # use PROTOCOL_RDP, PROTOCOL_SSL, PROTOCOL_HYBRID, PROTOCOL_HYBRID_EX, etc.).
+      selectedProtocol: optional<string>
+      supportedProtocols: optional<list<string>>
+
+      # NLA classification — true when HYBRID/HYBRID_EX selected, or NEG_FAILURE
+      # is SSL_REQUIRED_BY_SERVER / HYBRID_REQUIRED_BY_SERVER.
+      nlaRequired: optional<boolean>
+
+      # Failure code string if server returned NEG_FAILURE (one of the
+      # SSL_REQUIRED_BY_SERVER / HYBRID_REQUIRED_BY_SERVER / etc. names).
+      negFailureCode: optional<string>
+
+      # TLS certificate metadata captured after the X.224 + TLS upgrade.
+      # certificateSubject is the full distinguished name (e.g.,
+      # "CN=DC01.contoso.local"). certificateSelfSigned is true when the
+      # cert's issuer DN equals its subject DN.
+      certificateSubject: optional<string>
+      certificateSelfSigned: optional<boolean>
+
+      # Ancillary signal-log fields — captured for debugging / future-proofing
+      # but not currently propagated to the RdpApplication graph node.
+      mstshashEcho: optional<boolean>     # Server echoed mstshash=probe cookie
+      tlsVersion: optional<string>        # Negotiated TLS version (e.g., "TLS 1.2")
+      tlsCipherSuite: optional<string>    # Negotiated cipher (Go canonical name)
