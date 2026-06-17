@@ -144,7 +144,7 @@ func buildOracleResult(host string, ip net.IP, port int, body string) *discoverf
 		Tls:       false,
 		Version:   &version,
 		Transport: common.TransportTypeTcp,
-		Protocol:  common.ProtocolTypeOracle,
+		Protocol:  common.ProtocolTypeOracledb,
 		Metadata:  &discoverfern.ServiceMetadata{Oracle: info},
 	}
 }
