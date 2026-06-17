@@ -3,6 +3,7 @@ types:
     enum:
       - ADB
       - AFP
+      - AJP13
       - AMQP
       - ARD
       - ATG
@@ -19,6 +20,7 @@ types:
       - DNP3
       - DUBBO
       - ECHO
+      - ETCD
       - ERLANGEPMD
       - ETHERNETIP
       - FGFM
@@ -112,7 +114,6 @@ types:
       - XDMCP
       - XMPP
       - ZOOKEEPER
-      - UNKNOWN
 
   TransportType:
     enum:

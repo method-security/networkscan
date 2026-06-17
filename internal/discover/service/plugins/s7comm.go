@@ -25,5 +25,5 @@ func (S7CommFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 	if len(resp) < 7 || resp[0] != 0x03 || resp[1] != 0x00 || resp[5] != 0xd0 {
 		return nil, fmt.Errorf("not S7comm")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "Siemens S7comm", "COTP/S7", map[string]string{"cotp": "connection-confirm"}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeS7Comm, "Siemens S7comm", "COTP/S7", map[string]string{"cotp": "connection-confirm"}), nil
 }

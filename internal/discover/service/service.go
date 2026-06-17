@@ -197,7 +197,6 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 		addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(port))
 		fingerprintTarget := plugins.Target{Address: addrPort, Host: host}
 		serviceFound := false
-		var fingerprintResult *plugins.Service
 
 		/* --- Phase 1: Run custom fingerprinters on default ports only ------- */
 		// Collect applicable fingerprinters for this port
@@ -251,13 +250,14 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 			}()
 
 			select {
+			// fingerprintx timed out or context cancelled - move to Phase 3.
 			case <-fxCtx.Done():
-				// fingerprintx timed out or context cancelled - move to Phase 3
 			case fxResult := <-resultChan:
 				if fxResult != nil && fxResult.Protocol != "" {
-					fingerprintResult = fxResult
-					results = append(results, fxToServiceDetails(fingerprintResult))
-					serviceFound = true
+					if details := fxToServiceDetails(fxResult); details != nil {
+						results = append(results, details)
+						serviceFound = true
+					}
 				}
 			case err := <-errChan:
 				// fingerprintx failed - continue to Phase 3
@@ -418,6 +418,16 @@ func noEarlierFingerprintersPending(completed []bool, bestIndex int) bool {
 
 // fxToServiceDetails converts fingerprintx result to ServiceDetails
 func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
+	protocolName := strings.ToUpper(result.Protocol)
+	// fingerprintx labels the Oracle TNS service "oracle"; our enum calls it ORACLEDB.
+	if protocolName == "ORACLE" {
+		protocolName = "ORACLEDB"
+	}
+	protocol, err := common.NewProtocolTypeFromString(protocolName)
+	if err != nil {
+		return nil
+	}
+
 	// Parse fingerprintx result into a map so we can enrich it
 	var meta map[string]interface{}
 	if len(result.Raw) > 0 {
@@ -460,17 +470,7 @@ func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 			}
 			return common.TransportTypeUnknown
 		}(),
-		Protocol: func() common.ProtocolType {
-			protocolName := strings.ToUpper(result.Protocol)
-			// fingerprintx labels the Oracle TNS service "oracle"; our enum calls it ORACLEDB.
-			if protocolName == "ORACLE" {
-				protocolName = "ORACLEDB"
-			}
-			if protocol, err := common.NewProtocolTypeFromString(protocolName); err == nil {
-				return protocol
-			}
-			return common.ProtocolTypeUnknown
-		}(),
+		Protocol: protocol,
 		Version:  &result.Version,
 		Metadata: &discoverfern.ServiceMetadata{Generic: &discoverfern.GenericServiceMetadata{Metadata: metadataMap}},
 	}

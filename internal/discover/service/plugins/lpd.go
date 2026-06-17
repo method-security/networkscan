@@ -27,5 +27,5 @@ func (LPDFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	if !strings.Contains(lower, "lpd") && !strings.Contains(lower, "printer") && !strings.Contains(lower, "queue") {
 		return nil, fmt.Errorf("not LPD")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "Line Printer Daemon", "LPD", map[string]string{"response": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeLpd, "Line Printer Daemon", "LPD", map[string]string{"response": helpers.FirstLine(text)}), nil
 }

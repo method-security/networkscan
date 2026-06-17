@@ -27,5 +27,5 @@ func (FingerFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 	if strings.Contains(lower, "http/") || (!strings.Contains(lower, "finger") && !strings.Contains(lower, "login") && !strings.Contains(lower, "no information")) {
 		return nil, fmt.Errorf("not Finger")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "Finger", "RFC1288", map[string]string{"response": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeFinger, "Finger", "RFC1288", map[string]string{"response": helpers.FirstLine(text)}), nil
 }

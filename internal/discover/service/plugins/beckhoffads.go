@@ -31,7 +31,7 @@ func (BeckhoffADSFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	if name != "" {
 		meta["device"] = name
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "Beckhoff ADS", "ADS", meta), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeBeckhoffads, "Beckhoff ADS", "ADS", meta), nil
 }
 
 func beckhoffADSReadDeviceInfoProbe(ip net.IP) []byte {

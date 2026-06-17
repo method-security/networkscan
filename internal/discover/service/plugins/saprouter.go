@@ -26,5 +26,5 @@ func (SAPRouterFingerprinter) Detect(ctx context.Context, ip net.IP, port int, h
 	if !strings.Contains(strings.ToLower(text), "saprouter") {
 		return nil, fmt.Errorf("not SAProuter")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "SAProuter", "SAP NI", map[string]string{"response": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeSaprouter, "SAProuter", "SAP NI", map[string]string{"response": helpers.FirstLine(text)}), nil
 }

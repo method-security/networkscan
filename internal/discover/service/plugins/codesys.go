@@ -49,5 +49,5 @@ func (CodesysFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 			meta["product"] = strings.TrimSpace(product)
 		}
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "CODESYS", "CODESYS V2", meta), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeCodesys, "CODESYS", "CODESYS V2", meta), nil
 }

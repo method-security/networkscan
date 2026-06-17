@@ -20,11 +20,11 @@ func (MELSECFingerprinter) DefaultPorts() []int { return []int{5000, 5001, 5006,
 func (MELSECFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	resp, err := helpers.TCPExchange(ctx, ip, port, timeout, melsec3EReadProbe(), 256)
 	if err == nil && validMELSEC3EResponse(resp) {
-		return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "MELSEC MC", "3E", map[string]string{"frame": "3e-binary"}), nil
+		return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeMelsec, "MELSEC MC", "3E", map[string]string{"frame": "3e-binary"}), nil
 	}
 	resp, asciiErr := helpers.TCPExchange(ctx, ip, port, timeout, []byte("500000FF03FF000018001004010000D*0000000001"), 256)
 	if asciiErr == nil && validMELSEC3EASCIIResponse(resp) {
-		return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "MELSEC MC", "3E", map[string]string{"frame": "3e-ascii"}), nil
+		return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeMelsec, "MELSEC MC", "3E", map[string]string{"frame": "3e-ascii"}), nil
 	}
 	if err != nil {
 		return nil, err

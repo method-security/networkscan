@@ -35,7 +35,7 @@ func (EthernetIPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, 
 	if product != "" {
 		meta["identity"] = product
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "EtherNet/IP", "CIP", meta), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeEthernetip, "EtherNet/IP", "CIP", meta), nil
 }
 
 func ethernetIPListIdentityRequest() []byte {

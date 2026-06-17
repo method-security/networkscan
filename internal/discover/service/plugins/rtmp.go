@@ -26,5 +26,5 @@ func (RTMPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	if len(resp) < 1537 || resp[0] != 0x03 {
 		return nil, fmt.Errorf("not RTMP")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "RTMP", "RTMP", map[string]string{"handshake": "s0s1"}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeRtmp, "RTMP", "RTMP", map[string]string{"handshake": "s0s1"}), nil
 }

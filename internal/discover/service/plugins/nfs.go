@@ -24,7 +24,7 @@ func (NFSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 			continue
 		}
 		if ok, status := validNFSRPCReply(resp); ok {
-			return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "NFS", fmt.Sprintf("NFSv%d", version), map[string]string{"rpc_status": status}), nil
+			return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeNfs, "NFS", fmt.Sprintf("NFSv%d", version), map[string]string{"rpc_status": status}), nil
 		}
 	}
 	return nil, fmt.Errorf("not NFS")

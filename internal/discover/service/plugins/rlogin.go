@@ -27,5 +27,5 @@ func (RloginFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 	if !strings.Contains(lower, "rlogin") && !strings.Contains(lower, "connection refused") && !strings.Contains(lower, "authenticated rlogin") {
 		return nil, fmt.Errorf("not rlogin")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "rlogin", "rlogin", map[string]string{"response": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeRlogin, "rlogin", "rlogin", map[string]string{"response": helpers.FirstLine(text)}), nil
 }

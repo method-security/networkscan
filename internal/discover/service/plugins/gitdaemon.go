@@ -27,5 +27,5 @@ func (GitDaemonFingerprinter) Detect(ctx context.Context, ip net.IP, port int, h
 	if !helpers.LooksLikeGitDaemon(resp) {
 		return nil, fmt.Errorf("not git-daemon")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "Git daemon", "git", map[string]string{"response": strings.TrimSpace(string(resp))}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeGitdaemon, "Git daemon", "git", map[string]string{"response": strings.TrimSpace(string(resp))}), nil
 }

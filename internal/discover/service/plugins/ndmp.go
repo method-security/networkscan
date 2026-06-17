@@ -26,7 +26,7 @@ func (NDMPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	if !looksLikeNDMP(resp) {
 		return nil, fmt.Errorf("not NDMP")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "NDMP", "NDMP", map[string]string{"response": "connect-open-reply"}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeNdmp, "NDMP", "NDMP", map[string]string{"response": "connect-open-reply"}), nil
 }
 
 func ndmpConnectOpenRequest() []byte {

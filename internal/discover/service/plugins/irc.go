@@ -26,5 +26,5 @@ func (IRCFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	if !helpers.LooksLikeIRC(text) {
 		return nil, fmt.Errorf("not IRC")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "IRC", "IRC", map[string]string{"banner": strings.TrimSpace(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeIrc, "IRC", "IRC", map[string]string{"banner": strings.TrimSpace(text)}), nil
 }

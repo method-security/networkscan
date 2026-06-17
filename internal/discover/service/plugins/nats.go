@@ -26,5 +26,5 @@ func (NATSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	if !strings.HasPrefix(text, "INFO ") || !strings.Contains(text, "server_id") {
 		return nil, fmt.Errorf("not NATS")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "NATS", "NATS", map[string]string{"banner": strings.TrimSpace(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeNats, "NATS", "NATS", map[string]string{"banner": strings.TrimSpace(text)}), nil
 }

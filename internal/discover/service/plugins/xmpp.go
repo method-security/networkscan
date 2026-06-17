@@ -27,5 +27,5 @@ func (XMPPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	if !strings.Contains(text, "<stream:stream") || !strings.Contains(text, "jabber:") {
 		return nil, fmt.Errorf("not XMPP")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "XMPP", "XMPP", map[string]string{"response": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeXmpp, "XMPP", "XMPP", map[string]string{"response": helpers.FirstLine(text)}), nil
 }

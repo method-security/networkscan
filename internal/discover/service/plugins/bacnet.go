@@ -25,5 +25,5 @@ func (BACnetFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 	if len(resp) < 8 || resp[0] != 0x81 || (resp[1] != 0x0a && resp[1] != 0x0b) || !bytes.Contains(resp[4:], []byte{0x10, 0x00}) {
 		return nil, fmt.Errorf("not BACnet/IP")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeUdp, "BACnet/IP", "BACnet/IP", map[string]string{"response": "i-am"}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeUdp, common.ProtocolTypeBacnet, "BACnet/IP", "BACnet/IP", map[string]string{"response": "i-am"}), nil
 }

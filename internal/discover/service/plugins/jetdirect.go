@@ -27,5 +27,5 @@ func (JetDirectFingerprinter) Detect(ctx context.Context, ip net.IP, port int, h
 	if !strings.Contains(text, "@PJL") && !strings.Contains(strings.ToUpper(text), "INFO ID") {
 		return nil, fmt.Errorf("not JetDirect/PJL")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "JetDirect/PJL", "PJL", map[string]string{"response": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeJetdirect, "JetDirect/PJL", "PJL", map[string]string{"response": helpers.FirstLine(text)}), nil
 }
