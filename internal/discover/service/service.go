@@ -461,7 +461,12 @@ func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 			return common.TransportTypeUnknown
 		}(),
 		Protocol: func() common.ProtocolType {
-			if protocol, err := common.NewProtocolTypeFromString(strings.ToUpper(result.Protocol)); err == nil {
+			protocolName := strings.ToUpper(result.Protocol)
+			// fingerprintx labels the Oracle TNS service "oracle"; our enum calls it ORACLEDB.
+			if protocolName == "ORACLE" {
+				protocolName = "ORACLEDB"
+			}
+			if protocol, err := common.NewProtocolTypeFromString(protocolName); err == nil {
 				return protocol
 			}
 			return common.ProtocolTypeUnknown

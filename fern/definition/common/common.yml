@@ -70,7 +70,7 @@ types:
       - NTP
       - OPCUA
       - OPENVPN
-      - ORACLE
+      - ORACLEDB
       - PCOM
       - PCWORX
       - POP3
