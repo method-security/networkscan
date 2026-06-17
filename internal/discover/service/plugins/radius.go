@@ -29,5 +29,5 @@ func (RADIUSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 	if len(resp) < 20 || resp[1] != 0x42 || (resp[0] != 2 && resp[0] != 3 && resp[0] != 11) || int(binary.BigEndian.Uint16(resp[2:4])) > len(resp) {
 		return nil, fmt.Errorf("not RADIUS")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeUdp, "RADIUS", fmt.Sprintf("code-%d", resp[0]), map[string]string{"identifier": "0x42"}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeUdp, common.ProtocolTypeRadius, "RADIUS", fmt.Sprintf("code-%d", resp[0]), map[string]string{"identifier": "0x42"}), nil
 }

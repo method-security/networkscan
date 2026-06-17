@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strings"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
@@ -60,10 +59,9 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 			server = "HTTP Server" // Default if no server header
 		}
 
-		// Use HTTPS protocol when TLS is detected, otherwise HTTP
-		protocolName := "HTTP"
+		protocol := common.ProtocolTypeHttp
 		if proto.isTLS {
-			protocolName = "HTTPS"
+			protocol = common.ProtocolTypeHttps
 		}
 
 		// Build generic metadata map
@@ -81,12 +79,7 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 			Tls:       proto.isTLS,
 			Version:   &server,
 			Transport: common.TransportTypeTcp,
-			Protocol: func() common.ProtocolType {
-				if protocol, err := common.NewProtocolTypeFromString(strings.ToUpper(protocolName)); err == nil {
-					return protocol
-				}
-				return common.ProtocolTypeUnknown
-			}(),
+			Protocol:  protocol,
 			Metadata: &discoverfern.ServiceMetadata{Generic: &discoverfern.GenericServiceMetadata{
 				Metadata: metadata,
 			}},

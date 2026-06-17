@@ -26,5 +26,5 @@ func (BeanstalkdFingerprinter) Detect(ctx context.Context, ip net.IP, port int, 
 	if !strings.HasPrefix(text, "OK ") || (!strings.Contains(text, "\npid:") && !strings.Contains(text, "\ncurrent-jobs-urgent:")) {
 		return nil, fmt.Errorf("not beanstalkd")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "beanstalkd", "beanstalkd", map[string]string{"response": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeBeanstalkd, "beanstalkd", "beanstalkd", map[string]string{"response": helpers.FirstLine(text)}), nil
 }

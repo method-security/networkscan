@@ -26,7 +26,7 @@ func (HPDataProtectorFingerprinter) Detect(ctx context.Context, ip net.IP, port 
 	if !looksLikeHPDataProtector(text) {
 		return nil, fmt.Errorf("not HP Data Protector")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "HP Data Protector", "OmniInet", map[string]string{"banner": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeHpdataprotector, "HP Data Protector", "OmniInet", map[string]string{"banner": helpers.FirstLine(text)}), nil
 }
 
 func looksLikeHPDataProtector(text string) bool {

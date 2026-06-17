@@ -11,7 +11,7 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
-func GenericResult(host string, ip net.IP, port int, transport common.TransportType, appProtocol string, version string, metadata map[string]string) *discoverfern.ServiceDetails {
+func GenericResult(host string, ip net.IP, port int, transport common.TransportType, protocol common.ProtocolType, appProtocol string, version string, metadata map[string]string) *discoverfern.ServiceDetails {
 	if metadata == nil {
 		metadata = make(map[string]string)
 	}
@@ -22,7 +22,7 @@ func GenericResult(host string, ip net.IP, port int, transport common.TransportT
 		Port:      port,
 		Tls:       false,
 		Transport: transport,
-		Protocol:  common.ProtocolTypeUnknown,
+		Protocol:  protocol,
 		Version:   &version,
 		Metadata:  &discoverfern.ServiceMetadata{Generic: &discoverfern.GenericServiceMetadata{Metadata: metadata}},
 	}

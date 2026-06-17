@@ -27,5 +27,5 @@ func (WSDiscoveryFingerprinter) Detect(ctx context.Context, ip net.IP, port int,
 	if !strings.Contains(text, "ProbeMatches") && !strings.Contains(text, "schemas.xmlsoap.org/ws/2005/04/discovery") {
 		return nil, fmt.Errorf("not WS-Discovery")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeUdp, "WS-Discovery", "WS-Discovery", map[string]string{"response": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeUdp, common.ProtocolTypeWsdiscovery, "WS-Discovery", "WS-Discovery", map[string]string{"response": helpers.FirstLine(text)}), nil
 }

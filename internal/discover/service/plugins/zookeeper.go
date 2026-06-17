@@ -24,5 +24,5 @@ func (ZooKeeperFingerprinter) Detect(ctx context.Context, ip net.IP, port int, h
 	if string(resp) != "imok" {
 		return nil, fmt.Errorf("not ZooKeeper")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "ZooKeeper", "ZooKeeper", map[string]string{"four_letter_word": "ruok"}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeZookeeper, "ZooKeeper", "ZooKeeper", map[string]string{"four_letter_word": "ruok"}), nil
 }

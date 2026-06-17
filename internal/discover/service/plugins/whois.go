@@ -27,5 +27,5 @@ func (WhoisFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host 
 	if strings.Contains(lower, "http/") || (!strings.Contains(lower, "whois") && !strings.Contains(lower, "domain") && !strings.Contains(lower, "registrar") && !strings.HasPrefix(strings.TrimSpace(text), "%")) {
 		return nil, fmt.Errorf("not WHOIS")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "WHOIS", "WHOIS", map[string]string{"response": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeWhois, "WHOIS", "WHOIS", map[string]string{"response": helpers.FirstLine(text)}), nil
 }

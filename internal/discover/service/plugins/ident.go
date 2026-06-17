@@ -26,5 +26,5 @@ func (IdentFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host 
 	if !strings.Contains(text, "1") || (!strings.Contains(text, " : ERROR : ") && !strings.Contains(text, " : USERID : ")) {
 		return nil, fmt.Errorf("not Ident")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "Ident", "RFC1413", map[string]string{"response": strings.TrimSpace(string(resp))}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeIdent, "Ident", "RFC1413", map[string]string{"response": strings.TrimSpace(string(resp))}), nil
 }

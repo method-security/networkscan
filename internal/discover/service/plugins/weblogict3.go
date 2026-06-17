@@ -28,5 +28,5 @@ func (WebLogicT3Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, 
 		return nil, fmt.Errorf("not WebLogic T3")
 	}
 	version := strings.TrimPrefix(strings.SplitN(text, "\n", 2)[0], "HELO:")
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "WebLogic T3", version, map[string]string{"banner": strings.TrimSpace(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeWeblogict3, "WebLogic T3", version, map[string]string{"banner": strings.TrimSpace(text)}), nil
 }

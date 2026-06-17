@@ -31,7 +31,7 @@ func (AJP13Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host 
 		return nil, fmt.Errorf("not AJP13")
 	}
 
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "AJP13", "Apache Jserv Protocol v1.3", map[string]string{
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeAjp13, "AJP13", "Apache Jserv Protocol v1.3", map[string]string{
 		"probe": "cping",
 		"state": "cpong",
 	}), nil

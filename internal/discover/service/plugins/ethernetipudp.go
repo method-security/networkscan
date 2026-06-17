@@ -34,5 +34,5 @@ func (EthernetIPUDPFingerprinter) Detect(ctx context.Context, ip net.IP, port in
 	if product != "" {
 		meta["identity"] = product
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeUdp, "EtherNet/IP", "CIP", meta), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeUdp, common.ProtocolTypeEthernetip, "EtherNet/IP", "CIP", meta), nil
 }

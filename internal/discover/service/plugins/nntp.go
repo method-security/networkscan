@@ -26,5 +26,5 @@ func (NNTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	if !(strings.HasPrefix(text, "200 ") || strings.HasPrefix(text, "201 ")) || !strings.Contains(strings.ToUpper(text), "NNTP") {
 		return nil, fmt.Errorf("not NNTP")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "NNTP", "NNTP", map[string]string{"banner": strings.TrimSpace(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeNntp, "NNTP", "NNTP", map[string]string{"banner": strings.TrimSpace(text)}), nil
 }

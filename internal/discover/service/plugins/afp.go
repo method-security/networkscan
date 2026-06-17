@@ -25,5 +25,5 @@ func (AFPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	if len(resp) < 16 || resp[0] != 0x01 || resp[1] != 0x03 || !bytes.Contains(resp, []byte("AFP")) {
 		return nil, fmt.Errorf("not AFP")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "AFP", "AFP/DSI", map[string]string{"command": "GetStatus"}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeAfp, "AFP", "AFP/DSI", map[string]string{"command": "GetStatus"}), nil
 }

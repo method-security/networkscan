@@ -27,5 +27,5 @@ func (PoppassdFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 	if !strings.HasPrefix(text, "200 ") || (!strings.Contains(lower, "poppassd") && !strings.Contains(lower, "who are you")) {
 		return nil, fmt.Errorf("not poppassd")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "poppassd", "poppassd", map[string]string{"banner": strings.TrimSpace(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypePoppassd, "poppassd", "poppassd", map[string]string{"banner": strings.TrimSpace(text)}), nil
 }

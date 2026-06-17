@@ -26,5 +26,5 @@ func (ErlangEPMDFingerprinter) Detect(ctx context.Context, ip net.IP, port int, 
 	if len(resp) < 4 || !strings.Contains(text, "name ") {
 		return nil, fmt.Errorf("not Erlang EPMD")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "Erlang EPMD", "EPMD", map[string]string{"names": strings.TrimSpace(text[4:])}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeErlangepmd, "Erlang EPMD", "EPMD", map[string]string{"names": strings.TrimSpace(text[4:])}), nil
 }

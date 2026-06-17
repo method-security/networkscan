@@ -24,10 +24,10 @@ func (AMQPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		return nil, err
 	}
 	if bytes.HasPrefix(resp, []byte("AMQP")) {
-		return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "AMQP", "AMQP", map[string]string{"response": "protocol-header"}), nil
+		return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeAmqp, "AMQP", "AMQP", map[string]string{"response": "protocol-header"}), nil
 	}
 	if looksLikeAMQPConnectionStart(resp) {
-		return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "AMQP", "0-9-1", map[string]string{"method": "connection.start"}), nil
+		return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeAmqp, "AMQP", "0-9-1", map[string]string{"method": "connection.start"}), nil
 	}
 	return nil, fmt.Errorf("not AMQP")
 }

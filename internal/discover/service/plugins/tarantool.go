@@ -26,5 +26,5 @@ func (TarantoolFingerprinter) Detect(ctx context.Context, ip net.IP, port int, h
 	if !strings.HasPrefix(text, "Tarantool ") || !strings.Contains(text, "(Binary)") {
 		return nil, fmt.Errorf("not Tarantool")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "Tarantool", helpers.FirstLine(text), map[string]string{"banner": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeTarantool, "Tarantool", helpers.FirstLine(text), map[string]string{"banner": helpers.FirstLine(text)}), nil
 }

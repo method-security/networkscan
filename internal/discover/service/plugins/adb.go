@@ -28,5 +28,5 @@ func (ADBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	if (cmd != "CNXN" && cmd != "AUTH") || !helpers.ValidADBPacket(resp) {
 		return nil, fmt.Errorf("not ADB")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "Android Debug Bridge", "ADB", map[string]string{"response_command": cmd}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeAdb, "Android Debug Bridge", "ADB", map[string]string{"response_command": cmd}), nil
 }

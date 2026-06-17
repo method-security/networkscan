@@ -28,7 +28,7 @@ func (JMXFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	if !bytes.Contains(bytes.ToLower(resp), []byte("jmxrmi")) {
 		return nil, fmt.Errorf("not JMX")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "JMX", "JMX RMI", map[string]string{"rmi_registry_binding": "jmxrmi"}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeJmx, "JMX", "JMX RMI", map[string]string{"rmi_registry_binding": "jmxrmi"}), nil
 }
 
 func jmxRegistryListCall() []byte {

@@ -25,7 +25,7 @@ func (DNP3Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	if !validDNP3Frame(resp) {
 		return nil, fmt.Errorf("not DNP3")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "DNP3", "DNP3", map[string]string{"response": "link-layer"}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeDnp3, "DNP3", "DNP3", map[string]string{"response": "link-layer"}), nil
 }
 
 func buildDNP3LinkStatusRequest() []byte {

@@ -25,5 +25,5 @@ func (GopherFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 	if !helpers.ValidGopherItem(text) {
 		return nil, fmt.Errorf("not Gopher")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "Gopher", "Gopher", map[string]string{"first_item": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeGopher, "Gopher", "Gopher", map[string]string{"first_item": helpers.FirstLine(text)}), nil
 }

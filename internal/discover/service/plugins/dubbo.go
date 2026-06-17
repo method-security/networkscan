@@ -27,5 +27,5 @@ func (DubboFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host 
 	if !strings.Contains(lower, "dubbo>") && !strings.Contains(lower, "dubbo") {
 		return nil, fmt.Errorf("not Dubbo")
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, "Apache Dubbo", "Dubbo", map[string]string{"response": helpers.FirstLine(text)}), nil
+	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeDubbo, "Apache Dubbo", "Dubbo", map[string]string{"response": helpers.FirstLine(text)}), nil
 }
