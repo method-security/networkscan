@@ -181,13 +181,13 @@ func mongoHTTPWarningExchange(ctx context.Context, ip net.IP, port int, timeout 
 }
 
 func boundedMongoProbeTimeout(timeout int) time.Duration {
-	limit := 3 * time.Second
+	fallback := 3 * time.Second
 	if !helpers.HasTimeout(timeout) {
-		return limit
+		return fallback
 	}
 	configured := helpers.Timeout(timeout)
-	if configured <= 0 || configured > limit {
-		return limit
+	if configured <= 0 {
+		return fallback
 	}
 	return configured
 }

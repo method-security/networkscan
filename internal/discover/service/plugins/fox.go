@@ -3,7 +3,6 @@ package plugins
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"net"
 	"strings"
@@ -107,45 +106,6 @@ func buildFOXHelloMessage() []byte {
 	return []byte("fox a 1 -1 fox hello\n{\nfox.version=s:1.0\nid=i:1\n};;\n")
 }
 
-// parseFOXPayload extracts key-value pairs from FOX message payload
-func parseFOXPayload(payload []byte) map[string]string {
-	result := make(map[string]string)
-
-	// FOX uses a simple TLV (Type-Length-Value) encoding
-	offset := 0
-	for offset+3 < len(payload) {
-		// Type (1 byte), Length (2 bytes), Value (variable)
-		tagType := payload[offset]
-		tagLen := binary.BigEndian.Uint16(payload[offset+1 : offset+3])
-		offset += 3
-
-		if offset+int(tagLen) > len(payload) {
-			break
-		}
-
-		value := payload[offset : offset+int(tagLen)]
-		offset += int(tagLen)
-
-		// Common FOX tags
-		switch tagType {
-		case 0x01: // Station Name
-			if isPrintableBytes(value) {
-				result["stationName"] = string(value)
-			}
-		case 0x02: // Host ID
-			if len(value) == 4 {
-				result["hostId"] = fmt.Sprintf("%08X", binary.BigEndian.Uint32(value))
-			}
-		case 0x03: // Host Address
-			if isPrintableBytes(value) {
-				result["hostAddress"] = string(value)
-			}
-		}
-	}
-
-	return result
-}
-
 func parseFOXTextPayload(text string) map[string]string {
 	result := make(map[string]string)
 	for _, line := range strings.Split(text, "\n") {
@@ -164,18 +124,4 @@ func parseFOXTextPayload(text string) map[string]string {
 		result[strings.TrimSpace(key)] = value
 	}
 	return result
-}
-
-// isPrintableBytes checks if byte slice contains mostly printable characters
-func isPrintableBytes(data []byte) bool {
-	if len(data) == 0 {
-		return false
-	}
-	printableCount := 0
-	for _, b := range data {
-		if b >= 32 && b <= 126 {
-			printableCount++
-		}
-	}
-	return printableCount > len(data)*2/3
 }
