@@ -3,9 +3,9 @@ package plugins
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
@@ -32,8 +32,8 @@ func (FoxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		return nil, err
 	}
 
-	// FOX protocol hello message
-	// FOX uses a binary protocol with message framing
+	// Niagara FOX is an ASCII framed protocol. This mirrors Nmap's
+	// high-confidence probe for TCP/1911 and TLS/4911.
 	foxHello := buildFOXHelloMessage()
 
 	// Send FOX hello
@@ -48,53 +48,37 @@ func (FoxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		return nil, err
 	}
 
-	// FOX message format:
-	// Magic (4 bytes: "fox\x00"), Version (1), Message Type (1), Length (2)
-	if n < 8 {
+	if n < 7 {
 		return nil, fmt.Errorf("response too short")
 	}
 
-	// Verify FOX magic header
-	if response[0] != 'f' || response[1] != 'o' || response[2] != 'x' {
+	text := string(response[:n])
+	if !strings.HasPrefix(text, "fox a 0") || !strings.Contains(text, "fox hello") {
 		return nil, fmt.Errorf("invalid FOX magic header")
 	}
 
-	// Parse FOX version
-	foxVersion := response[4]
-	versionStr := fmt.Sprintf("FOX v%d", foxVersion)
-
-	// Parse message type
-	messageType := response[5]
-
-	// Response to hello should be a hello response (type varies by version)
-	if messageType < 0x80 {
-		return nil, fmt.Errorf("not a FOX response message")
-	}
-
-	// Parse message length
-	messageLen := binary.BigEndian.Uint16(response[6:8])
-
-	// Extract station information from payload
 	var stationName, hostID, hostAddress *string
-	version := &versionStr
+	versionStr := "FOX"
+	stationInfo := parseFOXTextPayload(text)
 
-	if n >= 8+int(messageLen) && messageLen > 0 {
-		payload := response[8 : 8+messageLen]
-
-		// FOX hello response contains station info as key-value pairs
-		// Parse the payload for station name and other metadata
-		stationInfo := parseFOXPayload(payload)
-
-		if name, ok := stationInfo["stationName"]; ok {
-			stationName = &name
-		}
-		if id, ok := stationInfo["hostId"]; ok {
-			hostID = &id
-		}
-		if addr, ok := stationInfo["hostAddress"]; ok {
-			hostAddress = &addr
-		}
+	if foxVersion, ok := stationInfo["fox.version"]; ok && foxVersion != "" {
+		versionStr = "FOX " + foxVersion
 	}
+	if appVersion, ok := stationInfo["app.version"]; ok && appVersion != "" {
+		versionStr = appVersion
+	}
+	if name, ok := stationInfo["station.name"]; ok && name != "" {
+		stationName = &name
+	} else if name, ok := stationInfo["stationName"]; ok && name != "" {
+		stationName = &name
+	}
+	if id, ok := stationInfo["id"]; ok && id != "" {
+		hostID = &id
+	}
+	if addr, ok := stationInfo["hostAddress"]; ok && addr != "" {
+		hostAddress = &addr
+	}
+	version := &versionStr
 
 	metadata := &protocol.FoxServerInfo{
 		Version:     version,
@@ -119,78 +103,25 @@ func (FoxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 
 // buildFOXHelloMessage creates a FOX protocol hello message
 func buildFOXHelloMessage() []byte {
-	message := make([]byte, 12)
-
-	// FOX Magic
-	message[0] = 'f'
-	message[1] = 'o'
-	message[2] = 'x'
-	message[3] = 0x00
-
-	// Version (2 for FOX 2.0)
-	message[4] = 0x02
-
-	// Message Type: Hello (0x01)
-	message[5] = 0x01
-
-	// Length (4 bytes of minimal payload)
-	binary.BigEndian.PutUint16(message[6:8], 0x0004)
-
-	// Minimal payload: client capabilities
-	binary.BigEndian.PutUint32(message[8:12], 0x00000001)
-
-	return message
+	return []byte("fox a 1 -1 fox hello\n{\nfox.version=s:1.0\nid=i:1\n};;\n")
 }
 
-// parseFOXPayload extracts key-value pairs from FOX message payload
-func parseFOXPayload(payload []byte) map[string]string {
+func parseFOXTextPayload(text string) map[string]string {
 	result := make(map[string]string)
-
-	// FOX uses a simple TLV (Type-Length-Value) encoding
-	offset := 0
-	for offset+3 < len(payload) {
-		// Type (1 byte), Length (2 bytes), Value (variable)
-		tagType := payload[offset]
-		tagLen := binary.BigEndian.Uint16(payload[offset+1 : offset+3])
-		offset += 3
-
-		if offset+int(tagLen) > len(payload) {
-			break
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || line == "{" || line == "};;" || !strings.Contains(line, "=") {
+			continue
 		}
-
-		value := payload[offset : offset+int(tagLen)]
-		offset += int(tagLen)
-
-		// Common FOX tags
-		switch tagType {
-		case 0x01: // Station Name
-			if isPrintableBytes(value) {
-				result["stationName"] = string(value)
-			}
-		case 0x02: // Host ID
-			if len(value) == 4 {
-				result["hostId"] = fmt.Sprintf("%08X", binary.BigEndian.Uint32(value))
-			}
-		case 0x03: // Host Address
-			if isPrintableBytes(value) {
-				result["hostAddress"] = string(value)
-			}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
 		}
+		value = strings.TrimSpace(value)
+		if len(value) >= 2 && value[1] == ':' {
+			value = value[2:]
+		}
+		result[strings.TrimSpace(key)] = value
 	}
-
 	return result
-}
-
-// isPrintableBytes checks if byte slice contains mostly printable characters
-func isPrintableBytes(data []byte) bool {
-	if len(data) == 0 {
-		return false
-	}
-	printableCount := 0
-	for _, b := range data {
-		if b >= 32 && b <= 126 {
-			printableCount++
-		}
-	}
-	return printableCount > len(data)*2/3
 }

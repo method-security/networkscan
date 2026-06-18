@@ -418,12 +418,7 @@ func noEarlierFingerprintersPending(completed []bool, bestIndex int) bool {
 
 // fxToServiceDetails converts fingerprintx result to ServiceDetails
 func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
-	protocolName := strings.ToUpper(result.Protocol)
-	// fingerprintx labels the Oracle TNS service "oracle"; our enum calls it ORACLEDB.
-	if protocolName == "ORACLE" {
-		protocolName = "ORACLEDB"
-	}
-	protocol, err := common.NewProtocolTypeFromString(protocolName)
+	protocol, err := fxProtocolToProtocolType(result.Protocol)
 	if err != nil {
 		return nil
 	}
@@ -476,6 +471,25 @@ func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 	}
 
 	return serviceDetails
+}
+
+func fxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) {
+	normalized := strings.ToUpper(strings.TrimSpace(protocolName))
+	switch normalized {
+	case "ORACLE":
+		normalized = "ORACLEDB"
+	case "POSTGRES":
+		normalized = "POSTGRESQL"
+	case "NETBIOS-NS":
+		normalized = "NETBIOS"
+	case "KAFKANEW", "KAFKAOLD", "KAFKANEWTLS", "KAFKAOLDTLS":
+		normalized = "KAFKA"
+	case "MQTT3", "MQTT3TLS":
+		normalized = "MQTT3"
+	case "MQTT5", "MQTT5TLS":
+		normalized = "MQTT5"
+	}
+	return common.NewProtocolTypeFromString(normalized)
 }
 
 // runUDPServiceDiscovery scans common UDP ports on the target host and fingerprints discovered services.

@@ -28,6 +28,10 @@ func (WinboxFingerprinter) Name() string        { return "winbox" }
 func (WinboxFingerprinter) DefaultPorts() []int { return []int{8291} }
 
 func (WinboxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+	if result, err := detectWinboxWithNmapProbes(ctx, ip, port, host, timeout); err == nil {
+		return result, nil
+	}
+
 	// /list request — get RouterOS version + identity
 	listResp, err := helpers.TCPExchange(ctx, ip, port, timeout, buildWinboxListRequest(), 4096)
 	if err != nil {
@@ -54,6 +58,85 @@ func (WinboxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		Version:   stringPtr(routerosVersion),
 		Metadata:  &discoverfern.ServiceMetadata{Winbox: metadata},
 	}, nil
+}
+
+func detectWinboxWithNmapProbes(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+	probes := []struct {
+		name    string
+		version string
+		probe   []byte
+		match   func([]byte) bool
+	}{
+		{
+			name:    "modern",
+			version: "RouterOS >=6.43",
+			probe:   buildWinboxModernProbe(),
+			match:   looksLikeModernWinboxProbeResponse,
+		},
+		{
+			name:    "legacy",
+			version: "RouterOS <6.43",
+			probe:   buildWinboxLegacyProbe(),
+			match:   looksLikeLegacyWinboxProbeResponse,
+		},
+	}
+
+	for _, p := range probes {
+		resp, err := helpers.TCPExchange(ctx, ip, port, timeout, p.probe, 512)
+		if err != nil {
+			continue
+		}
+		if !p.match(resp) {
+			continue
+		}
+		metadata := &protocol.WinboxServerInfo{
+			RouterosVersion: stringPtr(p.version),
+		}
+		return &discoverfern.ServiceDetails{
+			Host:      host,
+			Ip:        ip.String(),
+			Port:      port,
+			Tls:       false,
+			Transport: common.TransportTypeTcp,
+			Protocol:  common.ProtocolTypeWinbox,
+			Version:   stringPtr(p.version),
+			Metadata:  &discoverfern.ServiceMetadata{Winbox: metadata},
+		}, nil
+	}
+	return nil, fmt.Errorf("not Winbox")
+}
+
+func buildWinboxModernProbe() []byte {
+	probe := make([]byte, 36)
+	probe[0] = 0x22
+	probe[1] = 0x06
+	return probe
+}
+
+func buildWinboxLegacyProbe() []byte {
+	probe := make([]byte, 250)
+	probe[0] = 0xf8
+	probe[1] = 0x05
+	return probe
+}
+
+func looksLikeModernWinboxProbeResponse(resp []byte) bool {
+	return len(resp) == 35 &&
+		resp[0] == 0x21 &&
+		resp[1] == 0x06 &&
+		(resp[34] == 0x00 || resp[34] == 0x01)
+}
+
+func looksLikeLegacyWinboxProbeResponse(resp []byte) bool {
+	if len(resp) != 250 || resp[0] != 0xf8 || resp[1] != 0x05 {
+		return false
+	}
+	for _, b := range resp[2:] {
+		if b != 0x00 {
+			return true
+		}
+	}
+	return false
 }
 
 // buildWinboxListRequest returns the Winbox binary-protocol /list request frame.

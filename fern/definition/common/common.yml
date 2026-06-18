@@ -61,6 +61,8 @@ types:
       - MODBUS
       - MONGODB
       - MQTT
+      - MQTT3
+      - MQTT5
       - MSMQ
       - MSSQL
       - MYSQL
