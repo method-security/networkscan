@@ -34,12 +34,14 @@ func (PcworxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 	}
 
 	// PCWORX identification request
-	// This is a minimal probe to identify a PCWORX device
-	// PCWORX uses a proprietary protocol over TCP port 1962
+	// This mirrors Nmap's high-confidence Phoenix Contact PCWorx probe for
+	// TCP/1962. A generic/short probe causes many real devices to stay silent.
 	identificationRequest := []byte{
-		0x01, 0x01, 0x00, 0x1a, // Header with length
-		0x00, 0x00, 0x00, 0x01, // Request type: identification
-		0x00, 0x00, 0x00, 0x00, // Sequence number
+		0x01, 0x01, 0x00, 0x1a,
+		0x00, 0x00, 0x00, 0x00,
+		0x78, 0x80, 0x00, 0x03,
+		0x00, 0x0c,
+		'I', 'B', 'E', 'T', 'H', '0', '1', 'N', '0', '_', 'M', 0x00,
 	}
 
 	// Send identification request
@@ -54,15 +56,11 @@ func (PcworxFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		return nil, err
 	}
 
-	// PCWORX responses typically start with specific header bytes
-	// Check for PCWORX protocol markers
-	if n < 4 {
+	if n < 20 {
 		return nil, fmt.Errorf("response too short")
 	}
 
-	// Parse response header to validate PCWORX protocol
-	// Real PCWORX devices respond with 0x81 0x01 (not 0x01 0x01)
-	if response[0] != 0x81 || response[1] != 0x01 {
+	if !looksLikePcworxResponse(response[:n]) {
 		return nil, fmt.Errorf("invalid PCWORX response header")
 	}
 
@@ -127,4 +125,28 @@ func isPrintable(s string) bool {
 		}
 	}
 	return printableCount > len(s)/2
+}
+
+func looksLikePcworxResponse(response []byte) bool {
+	if len(response) < 20 {
+		return false
+	}
+	return response[0] == 0x81 &&
+		response[1] == 0x01 &&
+		response[2] == 0x00 &&
+		response[3] == 0x14 &&
+		response[4] == 0x00 &&
+		response[5] == 0x00 &&
+		response[6] == 0x00 &&
+		response[7] == 0x01 &&
+		response[8] == 0x00 &&
+		response[9] == 0x00 &&
+		response[10] == 0x00 &&
+		response[11] == 0x00 &&
+		response[12] == 0x00 &&
+		response[13] == 0x02 &&
+		response[14] == 0x00 &&
+		response[15] == 0x00 &&
+		response[18] == 0x00 &&
+		response[19] == 0x00
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
@@ -20,6 +21,12 @@ func (PptpFingerprinter) Name() string { return "pptp" }
 func (PptpFingerprinter) DefaultPorts() []int { return []int{1723} }
 
 func (PptpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+	if response, err := readPPTPInitialControlMessage(ctx, ip, port, timeout); err == nil {
+		if result, err := buildPPTPResultFromResponse(host, ip, port, response); err == nil {
+			return result, nil
+		}
+	}
+
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 	conn, err := helpers.Dial(ctx, "tcp", addr, timeout)
 	if err != nil {
@@ -47,11 +54,13 @@ func (PptpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		return nil, err
 	}
 
-	// PPTP control message must be at least 16 bytes
-	if n < 16 {
-		return nil, fmt.Errorf("response too short: %d bytes", n)
-	}
+	return buildPPTPResultFromResponse(host, ip, port, response[:n])
+}
 
+func buildPPTPResultFromResponse(host string, ip net.IP, port int, response []byte) (*discoverfern.ServiceDetails, error) {
+	if len(response) < 16 {
+		return nil, fmt.Errorf("response too short: %d bytes", len(response))
+	}
 	// Parse PPTP header
 	length := binary.BigEndian.Uint16(response[0:2])
 	messageType := binary.BigEndian.Uint16(response[2:4])
@@ -69,7 +78,7 @@ func (PptpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 
 	// Verify control message type (2 = Start-Control-Connection-Reply)
-	if controlMessageType != 2 {
+	if controlMessageType != 2 && controlMessageType != 5 {
 		return nil, fmt.Errorf("unexpected PPTP control message type: %d", controlMessageType)
 	}
 
@@ -79,7 +88,7 @@ func (PptpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	var vendor *string
 
 	// Parse protocol version (bytes 12-13)
-	if length >= 16 && n >= 16 {
+	if length >= 16 && len(response) >= 16 {
 		protocolVersion := binary.BigEndian.Uint16(response[12:14])
 		major := protocolVersion >> 8
 		minor := protocolVersion & 0xFF
@@ -87,17 +96,11 @@ func (PptpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		version = &versionStr
 	}
 
-	// Parse result code (byte 10)
-	resultCode := response[10]
-	if resultCode != 1 {
-		return nil, fmt.Errorf("PPTP connection refused: result code %d", resultCode)
-	}
-
 	// Parse framing capabilities (bytes 16-19)
 	// Parse bearer capabilities (bytes 20-23)
 
 	// Parse firmware revision (bytes 24-25)
-	if n >= 26 {
+	if len(response) >= 26 {
 		firmwareRevision := binary.BigEndian.Uint16(response[24:26])
 		if firmwareRevision > 0 {
 			fwStr := fmt.Sprintf("0x%04X", firmwareRevision)
@@ -106,7 +109,7 @@ func (PptpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 
 	// Parse hostname (bytes 26-89, null-terminated string)
-	if n >= 90 {
+	if len(response) >= 90 {
 		hostnameBytes := response[26:90]
 		hostnameStr := extractNullTerminatedString(hostnameBytes)
 		if hostnameStr != "" {
@@ -115,7 +118,7 @@ func (PptpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 
 	// Parse vendor string (bytes 90-153, null-terminated string)
-	if n >= 154 {
+	if len(response) >= 154 {
 		vendorBytes := response[90:154]
 		vendorStr := extractNullTerminatedString(vendorBytes)
 		if vendorStr != "" {
@@ -141,6 +144,29 @@ func (PptpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 
 	return result, nil
+}
+
+func readPPTPInitialControlMessage(ctx context.Context, ip net.IP, port int, timeout int) ([]byte, error) {
+	conn, err := helpers.TCPConn(ctx, ip, port, timeout)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = conn.Close() }()
+
+	readTimeout := 1500 * time.Millisecond
+	if helpers.HasTimeout(timeout) && helpers.Timeout(timeout) > 0 && helpers.Timeout(timeout) < readTimeout {
+		readTimeout = helpers.Timeout(timeout)
+	}
+	if err := helpers.SetReadDeadlineDuration(conn, readTimeout); err != nil {
+		return nil, err
+	}
+
+	buf := make([]byte, 512)
+	n, err := conn.Read(buf)
+	if n > 0 {
+		return buf[:n], nil
+	}
+	return nil, err
 }
 
 // buildPPTPStartControlRequest creates a PPTP Start-Control-Connection-Request
