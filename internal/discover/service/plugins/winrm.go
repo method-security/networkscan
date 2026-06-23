@@ -2,8 +2,10 @@
 package plugins
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net"
@@ -74,9 +76,7 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	// Check for WinRM Server header first - this is a strong indicator even with 404
 	serverHeader := resp.Header.Get("Server")
-	hasWinRMServer := serverHeader == "Microsoft-HTTPAPI/2.0"
 
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
@@ -84,27 +84,13 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 		return nil, err
 	}
 
-	bodyStr := string(body)
+	metadata, hasWSManResponse := parseWinRMBody(body)
 
-	// Check for WinRM/WS-Management indicators in body
-	hasWinRMBodyIndicator := strings.Contains(bodyStr, "wsman") ||
-		strings.Contains(bodyStr, "IdentifyResponse") ||
-		strings.Contains(bodyStr, "ProductVendor") ||
-		strings.Contains(bodyStr, "ProductVersion") ||
-		strings.Contains(bodyStr, "ProtocolVersion")
-
-	// WinRM detection logic:
-	// 1. If we have WinRM server header, accept any status code (including 404)
-	// 2. If status is success (< 400) and body has WinRM indicators, accept it
-	// 3. Otherwise, not WinRM
-	if !hasWinRMServer {
-		// No WinRM server header, so check if it's a success response with WinRM body
-		if resp.StatusCode >= 400 {
-			return nil, nil // Error status and no WinRM header
-		}
-		if !hasWinRMBodyIndicator {
-			return nil, nil // Success but no WinRM body indicators
-		}
+	// Microsoft-HTTPAPI/2.0 is emitted by HTTP.sys for many Microsoft services,
+	// so the Server header alone is not enough to identify WinRM. Require a
+	// WS-Man SOAP response from the Identify probe, including WS-Man faults.
+	if !hasWSManResponse {
+		return nil, nil
 	}
 
 	statusCode := fmt.Sprintf("%d", resp.StatusCode)
@@ -114,43 +100,13 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 		server = &serverHeader
 	}
 
-	var productVersion *string
-	if strings.Contains(bodyStr, "ProductVersion") {
-		start := strings.Index(bodyStr, "<wsmid:ProductVersion>")
-		if start != -1 {
-			start += len("<wsmid:ProductVersion>")
-			end := strings.Index(bodyStr[start:], "</wsmid:ProductVersion>")
-			if end != -1 {
-				pv := bodyStr[start : start+end]
-				productVersion = &pv
-			}
-		}
-	}
-
-	var protocolVersion *string
-	if strings.Contains(bodyStr, "ProtocolVersion") {
-		start := strings.Index(bodyStr, "<wsmid:ProtocolVersion>")
-		if start != -1 {
-			start += len("<wsmid:ProtocolVersion>")
-			end := strings.Index(bodyStr[start:], "</wsmid:ProtocolVersion>")
-			if end != -1 {
-				pv := bodyStr[start : start+end]
-				protocolVersion = &pv
-			}
-		}
-	}
-
-	metadata := &protocol.WinrmServerInfo{
-		Server:          server,
-		StatusCode:      &statusCode,
-		Scheme:          &scheme,
-		ProductVersion:  productVersion,
-		ProtocolVersion: protocolVersion,
-	}
+	metadata.Server = server
+	metadata.StatusCode = &statusCode
+	metadata.Scheme = &scheme
 
 	version := server
-	if version == nil && productVersion != nil {
-		version = productVersion
+	if version == nil && metadata.ProductVersion != nil {
+		version = metadata.ProductVersion
 	}
 
 	result := &discoverfern.ServiceDetails{
@@ -165,4 +121,68 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 	}
 
 	return result, nil
+}
+
+func parseWinRMBody(body []byte) (*protocol.WinrmServerInfo, bool) {
+	info := &protocol.WinrmServerInfo{}
+	hasIndicator := false
+	decoder := xml.NewDecoder(bytes.NewReader(body))
+
+	var captureName string
+	var captureValue strings.Builder
+
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			return info, hasIndicator
+		}
+
+		switch typed := token.(type) {
+		case xml.StartElement:
+			if !isWSManNamespace(typed.Name.Space) {
+				continue
+			}
+
+			localName := strings.ToLower(typed.Name.Local)
+			switch localName {
+			case "identifyresponse", "productvendor", "productversion", "protocolversion", "wsmanfault":
+				hasIndicator = true
+			}
+
+			switch localName {
+			case "productversion", "protocolversion":
+				captureName = localName
+				captureValue.Reset()
+			}
+		case xml.CharData:
+			if captureName != "" {
+				captureValue.Write([]byte(typed))
+			}
+		case xml.EndElement:
+			if captureName == "" || strings.ToLower(typed.Name.Local) != captureName {
+				continue
+			}
+
+			value := strings.TrimSpace(captureValue.String())
+			if value != "" {
+				switch captureName {
+				case "productversion":
+					info.ProductVersion = winRMStringPtr(value)
+				case "protocolversion":
+					info.ProtocolVersion = winRMStringPtr(value)
+				}
+			}
+
+			captureName = ""
+			captureValue.Reset()
+		}
+	}
+}
+
+func isWSManNamespace(namespace string) bool {
+	return strings.Contains(strings.ToLower(namespace), "/wsman/")
+}
+
+func winRMStringPtr(value string) *string {
+	return &value
 }
