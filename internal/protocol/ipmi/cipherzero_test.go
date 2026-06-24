@@ -43,9 +43,11 @@ func TestBuildCipherZeroOpenSessionRequest(t *testing.T) {
 }
 
 // buildOpenSessionResponse synthesizes a full Open Session Response
-// (36-byte payload) with the supplied status and managed-system
-// session ID.
-func buildOpenSessionResponse(t *testing.T, status byte, bmcSID uint32) []byte {
+// (36-byte payload) with the supplied status, managed-system session
+// ID, and negotiated algorithms (auth at payload[16], integrity at
+// payload[24], confidentiality at payload[32]). Cipher Zero requires
+// all three to be 0x00 (NONE).
+func buildOpenSessionResponse(t *testing.T, status byte, bmcSID uint32, authAlg, integrityAlg, confAlg byte) []byte {
 	t.Helper()
 	payload := make([]byte, 36)
 	payload[0] = 0x55   // tag echo
@@ -53,9 +55,13 @@ func buildOpenSessionResponse(t *testing.T, status byte, bmcSID uint32) []byte {
 	payload[2] = 0x04   // privilege granted
 	binary.LittleEndian.PutUint32(payload[4:8], 0xA1A2A3A4)
 	binary.LittleEndian.PutUint32(payload[8:12], bmcSID)
-	// Three nested-payload echoes — we only validate the alg ID bytes.
-	payload[12], payload[16], payload[20] = 0x00, 0x00, 0x01
-	payload[24], payload[28], payload[32] = 0x00, 0x00, 0x02
+	// Three nested-payload echoes (type byte + reserved + length + alg byte).
+	payload[12] = openSessionPayloadTypeAuthentication
+	payload[16] = authAlg
+	payload[20] = openSessionPayloadTypeIntegrity
+	payload[24] = integrityAlg
+	payload[28] = openSessionPayloadTypeConfidentiality
+	payload[32] = confAlg
 	rmcp := BuildRMCPHeader()
 	sess := BuildIPMI20SessionHeader(PayloadTypeOpenSessionResponse, 0, 0, uint16(len(payload)))
 	out := append(append(append([]byte{}, rmcp...), sess...), payload...)
@@ -63,7 +69,9 @@ func buildOpenSessionResponse(t *testing.T, status byte, bmcSID uint32) []byte {
 }
 
 func TestParseOpenSessionResponseAccepted(t *testing.T) {
-	resp := buildOpenSessionResponse(t, RMCPPlusStatusNoErrors, 0xDEADBEEF)
+	// All three algorithms negotiated as NONE — the real Cipher Zero accept path.
+	resp := buildOpenSessionResponse(t, RMCPPlusStatusNoErrors, 0xDEADBEEF,
+		AuthAlgorithmRAKPNone, IntegrityAlgorithmNone, ConfidentialityAlgorithmNone)
 	parsed, err := ParseOpenSessionResponse(resp)
 	if err != nil {
 		t.Fatalf("ParseOpenSessionResponse() err = %v", err)
@@ -79,8 +87,25 @@ func TestParseOpenSessionResponseAccepted(t *testing.T) {
 	}
 }
 
+// TestParseOpenSessionResponseStatusOKButAlgsNotNone covers the false-positive
+// scenario: a BMC returns status = 0 but quietly substitutes HMAC-SHA1 / AES-CBC
+// for the requested NONE suite. The probe must NOT report a Cipher Zero finding.
+func TestParseOpenSessionResponseStatusOKButAlgsNotNone(t *testing.T) {
+	resp := buildOpenSessionResponse(t, RMCPPlusStatusNoErrors, 0xDEADBEEF,
+		AuthAlgorithmRAKPHMACSHA1, IntegrityAlgorithmHMACSHA196, ConfidentialityAlgorithmAESCBC128)
+	parsed, err := ParseOpenSessionResponse(resp)
+	if err != nil {
+		t.Fatalf("ParseOpenSessionResponse() err = %v", err)
+	}
+	if parsed.Accepted() {
+		t.Fatalf("expected Accepted()=false: status was OK but negotiated algs were not NONE (auth=0x%02x integrity=0x%02x conf=0x%02x)",
+			parsed.NegotiatedAuthAlg, parsed.NegotiatedIntegrityAlg, parsed.NegotiatedConfAlg)
+	}
+}
+
 func TestParseOpenSessionResponseRejected(t *testing.T) {
-	resp := buildOpenSessionResponse(t, RMCPPlusStatusInvalidAuthAlgorithm, 0)
+	resp := buildOpenSessionResponse(t, RMCPPlusStatusInvalidAuthAlgorithm, 0,
+		AuthAlgorithmRAKPNone, IntegrityAlgorithmNone, ConfidentialityAlgorithmNone)
 	parsed, err := ParseOpenSessionResponse(resp)
 	if err != nil {
 		t.Fatalf("ParseOpenSessionResponse() err = %v", err)

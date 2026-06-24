@@ -101,9 +101,17 @@ type OpenSessionResponse struct {
 	NegotiatedConfAlg      byte
 }
 
-// Accepted reports whether the BMC returned a "no errors" status. This
-// is the headline finding for the cipher-zero probe.
-func (r OpenSessionResponse) Accepted() bool { return r.StatusCode == RMCPPlusStatusNoErrors }
+// Accepted reports whether the BMC returned a "no errors" status AND
+// actually negotiated the NONE algorithms requested by the probe. A
+// misbehaving BMC can return status = 0 while quietly substituting
+// HMAC-SHA1 / AES-CBC for the requested NONE suite — status alone is
+// not a Cipher Zero finding.
+func (r OpenSessionResponse) Accepted() bool {
+	return r.StatusCode == RMCPPlusStatusNoErrors &&
+		r.NegotiatedAuthAlg == AuthAlgorithmRAKPNone &&
+		r.NegotiatedIntegrityAlg == IntegrityAlgorithmNone &&
+		r.NegotiatedConfAlg == ConfidentialityAlgorithmNone
+}
 
 // ParseOpenSessionResponse reads the payload returned by the BMC for
 // an Open Session Request. A truncated response is treated as

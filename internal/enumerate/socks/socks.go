@@ -42,7 +42,13 @@ func (s *LibraryEnumerateSocks) EnumerateTarget(ctx context.Context, target stri
 
 	port := 0
 	if _, err := fmt.Sscanf(portStr, "%d", &port); err != nil {
-		port = 1080
+		errMsg := fmt.Sprintf("invalid port %q in target %q: %v", portStr, target, err)
+		detail := &socksfern.EnumerateSocksDetails{
+			Target: host,
+			Port:   0,
+			Error:  &errMsg,
+		}
+		return &enumeratefern.EnumerateServiceDetails{EnumerateSocksDetails: detail}, []string{errMsg}
 	}
 
 	detail := &socksfern.EnumerateSocksDetails{
