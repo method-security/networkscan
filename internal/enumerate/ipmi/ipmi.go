@@ -219,7 +219,7 @@ func runCipherZeroProbe(ctx context.Context, ip net.IP, port int, timeout int) (
 	if err != nil {
 		return false, false
 	}
-	return openResp.Accepted(), true
+	return openResp.IsCipherZeroAccepted(), true
 }
 
 // runRAKPExistenceOracle performs Probe C. Returns the list of
