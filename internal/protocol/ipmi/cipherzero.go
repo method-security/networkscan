@@ -101,12 +101,20 @@ type OpenSessionResponse struct {
 	NegotiatedConfAlg      byte
 }
 
-// Accepted reports whether the BMC returned a "no errors" status AND
-// actually negotiated the NONE algorithms requested by the probe. A
-// misbehaving BMC can return status = 0 while quietly substituting
-// HMAC-SHA1 / AES-CBC for the requested NONE suite — status alone is
-// not a Cipher Zero finding.
-func (r OpenSessionResponse) Accepted() bool {
+// Accepted reports whether the BMC returned a "no errors" status. This
+// only confirms the session-open request was accepted at the protocol
+// level; it does NOT mean the BMC honored the requested cipher suite.
+// Use IsCipherZeroAccepted() at the cipher-zero probe site to confirm
+// the BMC actually negotiated the NONE algorithms.
+func (r OpenSessionResponse) Accepted() bool { return r.StatusCode == RMCPPlusStatusNoErrors }
+
+// IsCipherZeroAccepted reports whether the BMC accepted the session AND
+// actually negotiated the NONE algorithms (auth = 0x00, integrity = 0x00,
+// confidentiality = 0x00). A misbehaving BMC can return StatusCode = 0
+// while quietly substituting HMAC-SHA1 / AES-CBC — status alone is not a
+// Cipher Zero finding. RAKP-existence-oracle callers should keep using
+// Accepted() since they intentionally negotiate the HMAC-SHA1 suite.
+func (r OpenSessionResponse) IsCipherZeroAccepted() bool {
 	return r.StatusCode == RMCPPlusStatusNoErrors &&
 		r.NegotiatedAuthAlg == AuthAlgorithmRAKPNone &&
 		r.NegotiatedIntegrityAlg == IntegrityAlgorithmNone &&

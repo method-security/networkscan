@@ -79,6 +79,9 @@ func TestParseOpenSessionResponseAccepted(t *testing.T) {
 	if !parsed.Accepted() {
 		t.Fatalf("expected Accepted()=true")
 	}
+	if !parsed.IsCipherZeroAccepted() {
+		t.Fatalf("expected IsCipherZeroAccepted()=true when all algs are NONE")
+	}
 	if parsed.BMCSessionID != 0xDEADBEEF {
 		t.Fatalf("BMCSessionID = 0x%08x, want 0xDEADBEEF", parsed.BMCSessionID)
 	}
@@ -87,18 +90,23 @@ func TestParseOpenSessionResponseAccepted(t *testing.T) {
 	}
 }
 
-// TestParseOpenSessionResponseStatusOKButAlgsNotNone covers the false-positive
+// TestIsCipherZeroAcceptedStatusOKButAlgsNotNone covers the false-positive
 // scenario: a BMC returns status = 0 but quietly substitutes HMAC-SHA1 / AES-CBC
-// for the requested NONE suite. The probe must NOT report a Cipher Zero finding.
-func TestParseOpenSessionResponseStatusOKButAlgsNotNone(t *testing.T) {
+// for the requested NONE suite. The Cipher-Zero predicate must NOT report a
+// finding, but Accepted() should still return true (the session itself opened),
+// so the RAKP existence-oracle path keeps working.
+func TestIsCipherZeroAcceptedStatusOKButAlgsNotNone(t *testing.T) {
 	resp := buildOpenSessionResponse(t, RMCPPlusStatusNoErrors, 0xDEADBEEF,
 		AuthAlgorithmRAKPHMACSHA1, IntegrityAlgorithmHMACSHA196, ConfidentialityAlgorithmAESCBC128)
 	parsed, err := ParseOpenSessionResponse(resp)
 	if err != nil {
 		t.Fatalf("ParseOpenSessionResponse() err = %v", err)
 	}
-	if parsed.Accepted() {
-		t.Fatalf("expected Accepted()=false: status was OK but negotiated algs were not NONE (auth=0x%02x integrity=0x%02x conf=0x%02x)",
+	if !parsed.Accepted() {
+		t.Fatalf("expected Accepted()=true on status-OK session-open (RAKP oracle depends on this)")
+	}
+	if parsed.IsCipherZeroAccepted() {
+		t.Fatalf("expected IsCipherZeroAccepted()=false: status was OK but negotiated algs were not NONE (auth=0x%02x integrity=0x%02x conf=0x%02x)",
 			parsed.NegotiatedAuthAlg, parsed.NegotiatedIntegrityAlg, parsed.NegotiatedConfAlg)
 	}
 }
