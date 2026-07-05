@@ -40,6 +40,8 @@ func DialContext(ctx context.Context, network, address string, opts ...Option) (
 	for _, opt := range opts {
 		opt(&options)
 	}
+	dialCtx, cancel := contextWithDialOptions(ctx, options)
+	defer cancel()
 
 	dialer := &net.Dialer{
 		Timeout:  options.Timeout,
@@ -48,7 +50,7 @@ func DialContext(ctx context.Context, network, address string, opts ...Option) (
 
 	proxyConfig := config.ProxyConfigFromContext(ctx)
 	if proxyConfig.SocksProxy == "" || !isTCPNetwork(network) {
-		return dialer.DialContext(ctx, network, address)
+		return dialer.DialContext(dialCtx, network, address)
 	}
 
 	proxyURL, err := url.Parse(proxyConfig.SocksProxy)
@@ -67,7 +69,26 @@ func DialContext(ctx context.Context, network, address string, opts ...Option) (
 	if !ok {
 		return nil, fmt.Errorf("SOCKS proxy dialer does not support context-aware dialing")
 	}
-	return contextDialer.DialContext(ctx, network, address)
+	return contextDialer.DialContext(dialCtx, network, address)
+}
+
+func contextWithDialOptions(ctx context.Context, options Options) (context.Context, context.CancelFunc) {
+	deadline, hasDeadline := ctx.Deadline()
+	if options.Timeout > 0 {
+		timeoutDeadline := time.Now().Add(options.Timeout)
+		if !hasDeadline || timeoutDeadline.Before(deadline) {
+			deadline = timeoutDeadline
+			hasDeadline = true
+		}
+	}
+	if !options.Deadline.IsZero() && (!hasDeadline || options.Deadline.Before(deadline)) {
+		deadline = options.Deadline
+		hasDeadline = true
+	}
+	if !hasDeadline {
+		return ctx, func() {}
+	}
+	return context.WithDeadline(ctx, deadline)
 }
 
 func isTCPNetwork(network string) bool {
