@@ -68,7 +68,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	} else {
 		log.Debug("Plain TCP connection failed, trying TLS", svc1log.SafeParam("error", err))
 		// If TCP fails, try TLS
-		conn, err = tryTLSConnection(target, hostname)
+		conn, err = tryTLSConnection(ctx, target, hostname)
 		if err != nil {
 			canConnect := false
 			detail.CanConnect = &canConnect

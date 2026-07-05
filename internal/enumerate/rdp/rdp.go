@@ -21,6 +21,7 @@ import (
 	rdpfern "github.com/Method-Security/networkscan/generated/go/enumerate/rdp"
 
 	// Internal
+	"github.com/Method-Security/networkscan/internal/netdial"
 	rdpproto "github.com/Method-Security/networkscan/internal/protocol/rdp"
 	"github.com/Method-Security/networkscan/utils"
 
@@ -69,8 +70,7 @@ func enumerateRDP(ctx context.Context, target string) *rdpfern.EnumerateRdpDetai
 		}
 	}
 
-	dialer := &net.Dialer{}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	conn, err := netdial.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		errMsg := utils.ClassifyNetError(err).String()
 		result.ErrorMessage = &errMsg

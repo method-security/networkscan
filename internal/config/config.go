@@ -4,6 +4,7 @@ package config
 // RootFlags defines the global flags that are available to all commands in the CLI.
 // These flags control the verbosity and output behavior of the application.
 type RootFlags struct {
-	Quiet   bool // When true, suppresses all output except errors
-	Verbose bool // When true, enables detailed debug logging
+	Quiet      bool   // When true, suppresses all output except errors
+	Verbose    bool   // When true, enables detailed debug logging
+	SocksProxy string // SOCKS5 proxy URL for TCP connections
 }

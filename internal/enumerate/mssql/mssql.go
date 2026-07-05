@@ -15,6 +15,7 @@ import (
 
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	mssqlfern "github.com/Method-Security/networkscan/generated/go/enumerate/mssql"
+	"github.com/Method-Security/networkscan/internal/netdial"
 	"github.com/Method-Security/networkscan/utils"
 	mssqldriver "github.com/microsoft/go-mssqldb"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -125,8 +126,7 @@ func probePrelogin(ctx context.Context, host string, port int) (*mssqlfern.Mssql
 	dialCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	d := net.Dialer{}
-	conn, err := d.DialContext(dialCtx, "tcp", addr)
+	conn, err := netdial.DialContext(dialCtx, "tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("dial: %w", err)
 	}

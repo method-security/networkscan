@@ -8,6 +8,7 @@ import (
 
 	// Generated
 	socksfern "github.com/Method-Security/networkscan/generated/go/enumerate/socks"
+	"github.com/Method-Security/networkscan/internal/netdial"
 )
 
 // stepBudget caps how long an individual SOCKS protocol step (greeting,
@@ -31,10 +32,7 @@ func setStepDeadline(ctx context.Context, conn net.Conn) {
 // dialWithTimeout opens a TCP connection to target, respecting the context deadline
 // but also using an explicit dial timeout as a floor.
 func dialWithTimeout(ctx context.Context, target string, seconds int) (net.Conn, error) {
-	d := net.Dialer{
-		Timeout: time.Duration(seconds) * time.Second,
-	}
-	return d.DialContext(ctx, "tcp", target)
+	return netdial.DialContext(ctx, "tcp", target, netdial.WithTimeout(time.Duration(seconds)*time.Second))
 }
 
 // detectImplementationHint applies heuristics to guess the SOCKS server implementation.

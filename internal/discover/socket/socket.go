@@ -16,6 +16,8 @@ import (
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/netdial"
+
 	// Logging
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -173,9 +175,8 @@ func RunSocketSend(ctx context.Context, config discoverfern.DiscoverSocketConfig
 		svc1log.SafeParam("target", config.Target),
 		svc1log.SafeParam("timeoutSeconds", config.ReadTimeout))
 
-	var d net.Dialer
 	dialStart := time.Now()
-	conn, err := d.DialContext(dialCtx, network, config.Target)
+	conn, err := netdial.DialContext(dialCtx, network, config.Target)
 	if err != nil {
 		log.Info("Socket dial failed",
 			svc1log.SafeParam("target", config.Target),

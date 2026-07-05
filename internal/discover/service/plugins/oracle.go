@@ -15,6 +15,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/netdial"
 )
 
 // OracleFingerprinter detects Oracle TNS listeners via raw TCP probe.
@@ -32,8 +33,7 @@ func (OracleFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		timeoutDur = 5 * time.Second
 	}
 
-	dialer := &net.Dialer{Timeout: timeoutDur}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	conn, err := netdial.DialContext(ctx, "tcp", addr, netdial.WithTimeout(timeoutDur))
 	if err != nil {
 		return nil, nil
 	}

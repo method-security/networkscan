@@ -21,7 +21,9 @@ import (
 	vncfern "github.com/Method-Security/networkscan/generated/go/enumerate/vnc"
 
 	// Internal
+	"github.com/Method-Security/networkscan/internal/netdial"
 	"github.com/Method-Security/networkscan/utils"
+
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -185,8 +187,7 @@ func probePort(ctx context.Context, log svc1log.Logger, host string, port int, s
 		deadline = dl
 	}
 
-	dialer := net.Dialer{}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	conn, err := netdial.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		canConnect := false
 		detail.CanConnect = &canConnect

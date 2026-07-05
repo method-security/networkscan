@@ -9,11 +9,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"time"
 
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	mysqlfern "github.com/Method-Security/networkscan/generated/go/enumerate/mysql"
+	"github.com/Method-Security/networkscan/internal/netdial"
 	"github.com/Method-Security/networkscan/utils"
 	mysqldriver "github.com/go-sql-driver/mysql"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -142,8 +142,7 @@ func (m *LibraryEnumerateMySQL) EnumerateTarget(ctx context.Context, target stri
 // Returns (canConnect, version, banner, tlsSupported, error).
 // tlsSupported is nil when capability flags could not be parsed from the greeting.
 func probeHandshake(ctx context.Context, addr string, timeout time.Duration) (bool, string, string, *bool, error) {
-	dialer := &net.Dialer{Timeout: timeout}
-	conn, err := dialer.DialContext(ctx, "tcp", addr)
+	conn, err := netdial.DialContext(ctx, "tcp", addr, netdial.WithTimeout(timeout))
 	if err != nil {
 		return false, "", "", nil, fmt.Errorf("dial failed: %w", err)
 	}
