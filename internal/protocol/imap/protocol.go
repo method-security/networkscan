@@ -17,6 +17,7 @@ import (
 	"time"
 
 	imapfern "github.com/Method-Security/networkscan/generated/go/pentest/imap"
+	"github.com/Method-Security/networkscan/internal/netdial"
 )
 
 // implicitTLSPeekTimeout caps how long we wait for an IMAP server to deliver
@@ -80,7 +81,7 @@ func TryTCPConnection(ctx context.Context, host string, port int) (net.Conn, str
 		dialTimeout = time.Second
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	conn, err := net.DialTimeout("tcp", addr, dialTimeout)
+	conn, err := netdial.DialContext(ctx, "tcp", addr, netdial.WithTimeout(dialTimeout))
 	if err != nil {
 		return nil, "", err
 	}
@@ -134,9 +135,13 @@ func TryTLSConnection(ctx context.Context, host string, port int) (*tls.Conn, st
 		InsecureSkipVerify: true, //nolint:gosec // see function doc — pentest probe, untrusted certs expected
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	dialer := &net.Dialer{Timeout: dialTimeout}
-	tlsConn, err := tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
+	conn, err := netdial.DialContext(ctx, "tcp", addr, netdial.WithTimeout(dialTimeout))
 	if err != nil {
+		return nil, "", err
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_ = conn.Close()
 		return nil, "", err
 	}
 	_ = tlsConn.SetReadDeadline(deadline)

@@ -18,9 +18,24 @@ import (
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/netdial"
+
 	// External
 	jarm "github.com/hdm/jarm-go"
 )
+
+func dialTLS(ctx context.Context, target string, tlsConfig *tls.Config, timeout time.Duration) (*tls.Conn, error) {
+	conn, err := netdial.DialContext(ctx, "tcp", target, netdial.WithTimeout(timeout))
+	if err != nil {
+		return nil, err
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return tlsConn, nil
+}
 
 // isIPAddress checks if a given host string is an IP address (IPv4 or IPv6)
 func isIPAddress(host string) bool {
@@ -130,11 +145,11 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	var negotiatedCipherSuite discoverfern.CipherSuite
 	var certificates []*discoverfern.Certificate
 
-	defaultConn, err := tls.DialWithDialer(dialer, "tcp", targetAddress, &tls.Config{
+	defaultConn, err := dialTLS(ctx, targetAddress, &tls.Config{
 		ServerName:         serverName,
 		InsecureSkipVerify: true,
 		MinVersion:         tls.VersionTLS10, //nolint:gosec
-	})
+	}, time.Duration(config.Timeout)*time.Second)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("Failed to establish TLS connection: %v", err))
 		return nil, errors
@@ -238,7 +253,7 @@ func probeTLSVersion(ctx context.Context, targetAddress, serverName string, vers
 			MaxVersion:         version,
 		}
 
-		conn, err := tls.DialWithDialer(dialer, "tcp", targetAddress, tlsConfig)
+		conn, err := dialTLS(ctx, targetAddress, tlsConfig, time.Duration(config.Timeout)*time.Second)
 		if err != nil {
 			return supportedCipherSuites
 		}
@@ -268,7 +283,7 @@ func probeTLSVersion(ctx context.Context, targetAddress, serverName string, vers
 			CipherSuites:       []uint16{cipherID},
 		}
 
-		conn, err := tls.DialWithDialer(dialer, "tcp", targetAddress, tlsConfig)
+		conn, err := dialTLS(ctx, targetAddress, tlsConfig, time.Duration(config.Timeout)*time.Second)
 		if err != nil {
 			continue
 		}
@@ -739,8 +754,7 @@ func sendJARMProbe(ctx context.Context, target string, payload []byte, timeout t
 	if ctxDL, ok := ctx.Deadline(); ok && ctxDL.Before(deadline) {
 		deadline = ctxDL
 	}
-	dialer := net.Dialer{Deadline: deadline}
-	conn, err := dialer.DialContext(ctx, "tcp", target)
+	conn, err := netdial.DialContext(ctx, "tcp", target, netdial.WithDeadline(deadline))
 	if err != nil {
 		return nil
 	}
@@ -828,8 +842,7 @@ func computeJA4S(ctx context.Context, target, serverName string, timeout time.Du
 	if ctxDL, ok := ctx.Deadline(); ok && ctxDL.Before(deadline) {
 		deadline = ctxDL
 	}
-	dialer := net.Dialer{Deadline: deadline}
-	conn, err := dialer.DialContext(ctx, "tcp", target)
+	conn, err := netdial.DialContext(ctx, "tcp", target, netdial.WithDeadline(deadline))
 	if err != nil {
 		return ""
 	}

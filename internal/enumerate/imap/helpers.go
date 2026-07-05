@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Method-Security/networkscan/internal/netdial"
 )
 
 // deadlineFromContext returns the absolute deadline from ctx. If the context
@@ -80,7 +82,7 @@ func tryTCPConnection(host string, port int, ctx context.Context) (net.Conn, str
 		dialTimeout = time.Second
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	conn, err := net.DialTimeout("tcp", addr, dialTimeout)
+	conn, err := netdial.DialContext(ctx, "tcp", addr, netdial.WithTimeout(dialTimeout))
 	if err != nil {
 		return nil, "", err
 	}
@@ -138,9 +140,13 @@ func tryTLSConnection(host string, port int, ctx context.Context) (*tls.Conn, st
 		InsecureSkipVerify: true, //nolint:gosec
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	dialer := &net.Dialer{Timeout: dialTimeout}
-	tlsConn, err := tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
+	conn, err := netdial.DialContext(ctx, "tcp", addr, netdial.WithTimeout(dialTimeout))
 	if err != nil {
+		return nil, "", err
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_ = conn.Close()
 		return nil, "", err
 	}
 	_ = tlsConn.SetReadDeadline(deadline)

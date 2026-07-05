@@ -14,6 +14,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
+	"github.com/Method-Security/networkscan/internal/netdial"
 	"github.com/jfjallid/gokrb5/v8/config"
 	"github.com/jfjallid/gokrb5/v8/iana/nametype"
 	"github.com/jfjallid/gokrb5/v8/messages"
@@ -37,8 +38,7 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 	timeoutDuration := helpers.Timeout(timeout)
 
 	// Try plaintext connection first
-	var d net.Dialer
-	conn, err := d.DialContext(timeoutCtx, "tcp", addr)
+	conn, err := netdial.DialContext(timeoutCtx, "tcp", addr, netdial.WithTimeout(timeoutDuration))
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 	if err != nil || !result {
 		// Try with TLS if plaintext failed
 		_ = conn.Close()
-		conn, err = d.DialContext(timeoutCtx, "tcp", addr)
+		conn, err = netdial.DialContext(timeoutCtx, "tcp", addr, netdial.WithTimeout(timeoutDuration))
 		if err != nil {
 			return nil, err
 		}

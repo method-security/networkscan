@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Method-Security/networkscan/internal/netdial"
 	"github.com/oiweiwei/go-smb2.fork"
 	"github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -77,7 +78,7 @@ func (o *OutputFileFetcher) GetOutput(ctx context.Context, writer io.Writer) err
 	// Create TCP connection to SMB server
 	// Use net.JoinHostPort to properly handle IPv6 addresses with brackets
 	address := net.JoinHostPort(o.Host, "445")
-	conn, err := net.Dial("tcp", address)
+	conn, err := netdial.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return fmt.Errorf("connect to SMB server: %w", err)
 	}

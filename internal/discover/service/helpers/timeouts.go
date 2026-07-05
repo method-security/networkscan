@@ -6,6 +6,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/Method-Security/networkscan/internal/netdial"
 )
 
 func Timeout(timeout int) time.Duration {
@@ -51,11 +53,11 @@ func UDPConn(ctx context.Context, ip net.IP, port int, timeout int) (net.Conn, e
 }
 
 func Dial(ctx context.Context, network, address string, timeout int) (net.Conn, error) {
-	dialer := net.Dialer{}
+	opts := []netdial.Option{}
 	if HasTimeout(timeout) {
-		dialer.Timeout = Timeout(timeout)
+		opts = append(opts, netdial.WithTimeout(Timeout(timeout)))
 	}
-	conn, err := dialer.DialContext(ctx, network, address)
+	conn, err := netdial.DialContext(ctx, network, address, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -68,11 +70,11 @@ func Dial(ctx context.Context, network, address string, timeout int) (net.Conn, 
 }
 
 func DialDuration(ctx context.Context, network, address string, timeout time.Duration) (net.Conn, error) {
-	dialer := net.Dialer{}
+	opts := []netdial.Option{}
 	if timeout > 0 {
-		dialer.Timeout = timeout
+		opts = append(opts, netdial.WithTimeout(timeout))
 	}
-	conn, err := dialer.DialContext(ctx, network, address)
+	conn, err := netdial.DialContext(ctx, network, address, opts...)
 	if err != nil {
 		return nil, err
 	}

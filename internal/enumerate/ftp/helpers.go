@@ -10,6 +10,8 @@ import (
 
 	// Generated
 	ftp "github.com/Method-Security/networkscan/generated/go/enumerate/ftp"
+	"github.com/Method-Security/networkscan/internal/netdial"
+
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -19,14 +21,13 @@ func attemptConnection(ctx context.Context, target string) (net.Conn, error) {
 	// Initialize
 	log := svc1log.FromContext(ctx)
 
-	dialer := net.Dialer{}
-	conn, err := dialer.DialContext(ctx, "tcp", target)
+	conn, err := netdial.DialContext(ctx, "tcp", target)
 	if err != nil {
 		log.Error("Initial connection failed", svc1log.SafeParam("error", err.Error()))
 		// Retry once if it was a broken pipe error
 		if strings.Contains(err.Error(), "broken pipe") {
 			log.Info("Retrying connection due to broken pipe", svc1log.SafeParam("target", target))
-			conn, err = dialer.DialContext(ctx, "tcp", target)
+			conn, err = netdial.DialContext(ctx, "tcp", target)
 		}
 	}
 	return conn, err
