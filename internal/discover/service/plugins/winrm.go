@@ -85,11 +85,13 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 	}
 
 	metadata, hasWSManResponse := parseWinRMBody(body)
+	hasWSManAuthChallenge := hasWinRMAuthChallenge(resp) && hasWinRMPostOnlyEndpoint(ctx, client, scheme, ip, port)
 
 	// Microsoft-HTTPAPI/2.0 is emitted by HTTP.sys for many Microsoft services,
 	// so the Server header alone is not enough to identify WinRM. Require a
-	// WS-Man SOAP response from the Identify probe, including WS-Man faults.
-	if !hasWSManResponse {
+	// WS-Man SOAP response or the standard unauthenticated WinRM pattern:
+	// GET /wsman is method-rejected and POST /wsman returns an auth challenge.
+	if !hasWSManResponse && !hasWSManAuthChallenge {
 		return nil, nil
 	}
 
@@ -103,6 +105,9 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 	metadata.Server = server
 	metadata.StatusCode = &statusCode
 	metadata.Scheme = &scheme
+	if authSchemes := winRMAuthSchemes(resp.Header); len(authSchemes) > 0 {
+		metadata.AuthSchemes = authSchemes
+	}
 
 	version := server
 	if version == nil && metadata.ProductVersion != nil {
@@ -181,6 +186,73 @@ func parseWinRMBody(body []byte) (*protocol.WinrmServerInfo, bool) {
 
 func isWSManNamespace(namespace string) bool {
 	return strings.Contains(strings.ToLower(namespace), "/wsman/")
+}
+
+func hasWinRMAuthChallenge(resp *http.Response) bool {
+	if resp.StatusCode != http.StatusUnauthorized || !strings.EqualFold(resp.Header.Get("Server"), "Microsoft-HTTPAPI/2.0") {
+		return false
+	}
+
+	for _, challenge := range resp.Header.Values("WWW-Authenticate") {
+		lowerChallenge := strings.ToLower(challenge)
+		if strings.HasPrefix(lowerChallenge, "negotiate") ||
+			strings.HasPrefix(lowerChallenge, "kerberos") ||
+			strings.HasPrefix(lowerChallenge, "credssp") ||
+			strings.Contains(lowerChallenge, `basic realm="wsman"`) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasWinRMPostOnlyEndpoint(ctx context.Context, client *http.Client, scheme string, ip net.IP, port int) bool {
+	url := fmt.Sprintf("%s://%s/wsman", scheme, net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		return false
+	}
+
+	for _, allowedMethod := range strings.Split(resp.Header.Get("Allow"), ",") {
+		if strings.EqualFold(strings.TrimSpace(allowedMethod), http.MethodPost) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func winRMAuthSchemes(header http.Header) []string {
+	var schemes []string
+	seen := make(map[string]struct{})
+
+	for _, challenge := range header.Values("WWW-Authenticate") {
+		fields := strings.Fields(challenge)
+		if len(fields) == 0 {
+			continue
+		}
+
+		scheme := fields[0]
+		if _, ok := seen[strings.ToLower(scheme)]; ok {
+			continue
+		}
+
+		seen[strings.ToLower(scheme)] = struct{}{}
+		schemes = append(schemes, scheme)
+	}
+
+	return schemes
 }
 
 func winRMStringPtr(value string) *string {
