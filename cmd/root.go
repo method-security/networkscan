@@ -70,7 +70,9 @@ func (a *NetworkScan) InitRootCommand() {
 				outputFilePointer = nil
 			}
 			a.OutputConfig = writer.NewOutputConfig(outputFilePointer, format)
-			cmd.SetContext(svc1log.WithLogger(cmd.Context(), config.InitializeLogging(cmd, &a.RootFlags)))
+			ctx := svc1log.WithLogger(cmd.Context(), config.InitializeLogging(cmd, &a.RootFlags))
+			ctx = config.SetProxyConfig(ctx, a.RootFlags.SocksProxy)
+			cmd.SetContext(ctx)
 			return nil
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, _ []string) error {
@@ -91,6 +93,7 @@ func (a *NetworkScan) InitRootCommand() {
 	a.RootCmd.PersistentFlags().BoolVarP(&a.RootFlags.Verbose, "verbose", "v", false, "Verbose output")
 	a.RootCmd.PersistentFlags().StringVarP(&outputFile, "output-file", "f", "", "Path to output file. If blank, will output to STDOUT")
 	a.RootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "signal", "Output format (signal, json, yaml). Default value is signal")
+	a.RootCmd.PersistentFlags().StringVar(&a.RootFlags.SocksProxy, "socks-proxy", "", "SOCKS5 proxy URL for TCP connections (e.g., socks5://127.0.0.1:1080)")
 
 	versionCmd := &cobra.Command{
 		Use:   "version",

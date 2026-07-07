@@ -12,23 +12,31 @@ import (
 	// Generated
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	smtp "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
+	"github.com/Method-Security/networkscan/internal/netdial"
 
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
 func tryTCPConnection(ctx context.Context, target string) (net.Conn, error) {
-	dialer := net.Dialer{}
-	return dialer.DialContext(ctx, "tcp", target)
+	return netdial.DialContext(ctx, "tcp", target)
 }
 
-func tryTLSConnection(target string, hostname string) (net.Conn, error) {
-	dialer := net.Dialer{}
+func tryTLSConnection(ctx context.Context, target string, hostname string) (net.Conn, error) {
 	tlsConfig := &tls.Config{
 		ServerName:         hostname,
 		InsecureSkipVerify: true,
 	}
-	return tls.DialWithDialer(&dialer, "tcp", target, tlsConfig)
+	conn, err := netdial.DialContext(ctx, "tcp", target)
+	if err != nil {
+		return nil, err
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return tlsConn, nil
 }
 
 func parseAuthMethods(methods []string) []protocol.SmtpAuthCommand {

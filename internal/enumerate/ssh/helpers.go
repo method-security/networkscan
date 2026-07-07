@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 	"unicode"
 
 	// External
+	"github.com/Method-Security/networkscan/internal/netdial"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	ssh "golang.org/x/crypto/ssh"
 )
@@ -114,7 +116,21 @@ func passwordAuthSupported(ctx context.Context, target string) (*bool, error) {
 	}
 
 	log.Debug("Attempting to connect to %s", svc1log.SafeParam("target", target))
-	client, err := ssh.Dial("tcp", target, config)
+	conn, err := netdial.DialContext(ctx, "tcp", target, netdial.WithTimeout(config.Timeout))
+	if err == nil && config.Timeout > 0 {
+		_ = conn.SetDeadline(time.Now().Add(config.Timeout))
+	}
+	var client *ssh.Client
+	if err == nil {
+		clientConn, chans, reqs, clientErr := ssh.NewClientConn(conn, target, config)
+		if clientErr != nil {
+			_ = conn.Close()
+			err = clientErr
+		} else {
+			_ = conn.SetDeadline(time.Time{})
+			client = ssh.NewClient(clientConn, chans, reqs)
+		}
+	}
 	if err != nil {
 		if strings.Contains(err.Error(), "no supported methods remain") && strings.Contains(err.Error(), "password") {
 			log.Error("Password support but username/password not correct for %s", svc1log.SafeParam("error", err.Error()))

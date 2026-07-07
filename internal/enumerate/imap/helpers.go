@@ -10,13 +10,11 @@ import (
 	"io"
 	"net"
 	"net/textproto"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	// Generated
-	imapfern "github.com/Method-Security/networkscan/generated/go/enumerate/imap"
+	"github.com/Method-Security/networkscan/internal/netdial"
 )
 
 // deadlineFromContext returns the absolute deadline from ctx. If the context
@@ -84,7 +82,7 @@ func tryTCPConnection(host string, port int, ctx context.Context) (net.Conn, str
 		dialTimeout = time.Second
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	conn, err := net.DialTimeout("tcp", addr, dialTimeout)
+	conn, err := netdial.DialContext(ctx, "tcp", addr, netdial.WithTimeout(dialTimeout))
 	if err != nil {
 		return nil, "", err
 	}
@@ -142,9 +140,13 @@ func tryTLSConnection(host string, port int, ctx context.Context) (*tls.Conn, st
 		InsecureSkipVerify: true, //nolint:gosec
 	}
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
-	dialer := &net.Dialer{Timeout: dialTimeout}
-	tlsConn, err := tls.DialWithDialer(dialer, "tcp", addr, tlsConfig)
+	conn, err := netdial.DialContext(ctx, "tcp", addr, netdial.WithTimeout(dialTimeout))
 	if err != nil {
+		return nil, "", err
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_ = conn.Close()
 		return nil, "", err
 	}
 	_ = tlsConn.SetReadDeadline(deadline)
@@ -287,226 +289,6 @@ func parseCapabilities(line string) []string {
 	return nil
 }
 
-// parseFolders parses a slice of LIST response lines into ImapFolder objects.
-// LIST response format: * LIST (\HasNoChildren) "/" "INBOX"
-func parseFolders(lines []string) []*imapfern.ImapFolder {
-	var folders []*imapfern.ImapFolder
-	listRe := regexp.MustCompile(`^\* LIST \(([^)]*)\) ("(?:[^"\\]|\\.)*"|NIL) (.+)$`)
-	for _, line := range lines {
-		if !strings.HasPrefix(line, "* LIST ") {
-			continue
-		}
-		matches := listRe.FindStringSubmatch(line)
-		if matches == nil {
-			continue
-		}
-		attrStr := matches[1]
-		delimiter := matches[2]
-		nameStr := matches[3]
-
-		// Clean up delimiter
-		delimiter = strings.Trim(delimiter, `"`)
-		if delimiter == "NIL" {
-			delimiter = ""
-		}
-
-		// Clean up folder name (may be quoted)
-		nameStr = strings.TrimSpace(nameStr)
-		nameStr = strings.Trim(nameStr, `"`)
-
-		var attrs []string
-		if attrStr != "" {
-			for _, a := range strings.Split(attrStr, " ") {
-				a = strings.TrimSpace(a)
-				if a != "" {
-					attrs = append(attrs, a)
-				}
-			}
-		}
-
-		folder := &imapfern.ImapFolder{
-			Name: nameStr,
-		}
-		if delimiter != "" {
-			folder.Delimiter = &delimiter
-		}
-		if len(attrs) > 0 {
-			folder.Attributes = attrs
-		}
-		folders = append(folders, folder)
-	}
-	return folders
-}
-
-// parseFolderStatus parses a single STATUS response line into an ImapFolderStatus.
-// STATUS response format: * STATUS INBOX (MESSAGES 1234 RECENT 0 UNSEEN 42 UIDNEXT 5678 UIDVALIDITY 1234567890)
-func parseFolderStatus(line string) *imapfern.ImapFolderStatus {
-	if !strings.HasPrefix(line, "* STATUS ") {
-		return nil
-	}
-	// Extract folder name and items
-	rest := line[len("* STATUS "):]
-	// Find opening paren
-	parenIdx := strings.Index(rest, "(")
-	if parenIdx < 0 {
-		return nil
-	}
-	folderName := strings.TrimSpace(rest[:parenIdx])
-	folderName = strings.Trim(folderName, `"`)
-
-	inner := rest[parenIdx+1:]
-	closeIdx := strings.Index(inner, ")")
-	if closeIdx >= 0 {
-		inner = inner[:closeIdx]
-	}
-
-	status := &imapfern.ImapFolderStatus{FolderName: folderName}
-	fields := strings.Fields(inner)
-	for i := 0; i+1 < len(fields); i += 2 {
-		key := strings.ToUpper(fields[i])
-		val, err := strconv.Atoi(fields[i+1])
-		if err != nil {
-			continue
-		}
-		switch key {
-		case "MESSAGES":
-			status.Messages = &val
-		case "RECENT":
-			status.Recent = &val
-		case "UNSEEN":
-			status.Unseen = &val
-		case "UIDNEXT":
-			status.UidNext = &val
-		case "UIDVALIDITY":
-			status.UidValidity = &val
-		}
-	}
-	return status
-}
-
-// parseExamineResponse parses the untagged responses from an EXAMINE command into
-// an ImapSelectedFolderResult. Handles EXISTS, RECENT, OK [UNSEEN], OK [UIDNEXT],
-// OK [UIDVALIDITY], and OK [PERMANENTFLAGS].
-func parseExamineResponse(folderName string, lines []string) *imapfern.ImapSelectedFolderResult {
-	result := &imapfern.ImapSelectedFolderResult{FolderName: folderName}
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "* ") {
-			rest := line[2:]
-			fields := strings.Fields(rest)
-			if len(fields) >= 2 {
-				switch strings.ToUpper(fields[1]) {
-				case "EXISTS":
-					if n, err := strconv.Atoi(fields[0]); err == nil {
-						result.Exists = &n
-					}
-				case "RECENT":
-					if n, err := strconv.Atoi(fields[0]); err == nil {
-						result.Recent = &n
-					}
-				}
-			}
-		}
-		// Parse bracketed OK annotations
-		if strings.Contains(line, "OK [") {
-			bracketStart := strings.Index(line, "[")
-			bracketEnd := strings.Index(line, "]")
-			if bracketStart >= 0 && bracketEnd > bracketStart {
-				bracketed := line[bracketStart+1 : bracketEnd]
-				parts := strings.SplitN(bracketed, " ", 2)
-				switch strings.ToUpper(parts[0]) {
-				case "UNSEEN":
-					if len(parts) > 1 {
-						if n, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
-							result.FirstUnseen = &n
-						}
-					}
-				case "UIDNEXT":
-					if len(parts) > 1 {
-						if n, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
-							result.UidNext = &n
-						}
-					}
-				case "UIDVALIDITY":
-					if len(parts) > 1 {
-						if n, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
-							result.UidValidity = &n
-						}
-					}
-				case "PERMANENTFLAGS":
-					if len(parts) > 1 {
-						flagStr := strings.Trim(parts[1], "()")
-						var flags []string
-						for _, f := range strings.Fields(flagStr) {
-							f = strings.TrimSpace(f)
-							if f != "" {
-								flags = append(flags, f)
-							}
-						}
-						result.PermanentFlags = flags
-					}
-				}
-			}
-		}
-	}
-	return result
-}
-
-// parseMessageHeaders parses UID FETCH response lines into ImapMessage objects.
-// Each message block is delimited by "* N FETCH (" ... ")" lines.
-func parseMessageHeaders(lines []string, maxMessages int) []*imapfern.ImapMessage {
-	var messages []*imapfern.ImapMessage
-	var currentMsg *imapfern.ImapMessage
-	inHeader := false
-	uidRe := regexp.MustCompile(`UID (\d+)`)
-
-	for _, line := range lines {
-		if strings.HasPrefix(line, "* ") && strings.Contains(line, " FETCH ") {
-			// Reset per-message UID so that a missing UID on this FETCH does
-			// not silently inherit the previous message's UID. If parsing
-			// fails we emit a zero UID rather than mis-attribute headers.
-			uid := 0
-			if uidMatch := uidRe.FindStringSubmatch(line); uidMatch != nil {
-				if u, err := strconv.Atoi(uidMatch[1]); err == nil {
-					uid = u
-				}
-			}
-			currentMsg = &imapfern.ImapMessage{Uid: uid}
-			inHeader = true
-			continue
-		}
-		if inHeader && currentMsg != nil {
-			if line == ")" || strings.HasPrefix(line, ")") {
-				messages = append(messages, currentMsg)
-				currentMsg = nil
-				inHeader = false
-				if maxMessages > 0 && len(messages) >= maxMessages {
-					break
-				}
-				continue
-			}
-			// Parse header fields
-			if idx := strings.Index(line, ": "); idx >= 0 {
-				key := strings.ToLower(strings.TrimSpace(line[:idx]))
-				val := strings.TrimSpace(line[idx+2:])
-				switch key {
-				case "from":
-					currentMsg.From = &val
-				case "to":
-					currentMsg.To = &val
-				case "subject":
-					currentMsg.Subject = &val
-				case "date":
-					currentMsg.Date = &val
-				case "message-id":
-					currentMsg.MessageId = &val
-				}
-			}
-		}
-	}
-	return messages
-}
-
 // extractTLSInfo extracts the certificate subject CN and the cipher suite name
 // from an established TLS connection.
 func extractTLSInfo(tlsConn *tls.Conn) (subject string, cipher string) {
@@ -525,21 +307,4 @@ func certSubject(cert *x509.Certificate) string {
 		return "CN=" + cert.Subject.CommonName
 	}
 	return cert.Subject.String()
-}
-
-// stripCRLF removes carriage-return and line-feed characters from s, preventing
-// CRLF injection in IMAP command lines sent via textproto.PrintfLine.
-func stripCRLF(s string) string {
-	return strings.NewReplacer("\r", "", "\n", "").Replace(s)
-}
-
-// imapQuoteString wraps s in an IMAP double-quoted string literal, escaping
-// backslash and double-quote per RFC 3501 §4.3. This allows usernames and
-// passwords that contain spaces, parentheses, or other special characters.
-// CR and LF are stripped first to prevent CRLF injection.
-func imapQuoteString(s string) string {
-	s = stripCRLF(s)
-	s = strings.ReplaceAll(s, "\\", "\\\\")
-	s = strings.ReplaceAll(s, "\"", "\\\"")
-	return `"` + s + `"`
 }

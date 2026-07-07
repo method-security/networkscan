@@ -18,9 +18,24 @@ import (
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/netdial"
+
 	// External
 	jarm "github.com/hdm/jarm-go"
 )
+
+func dialTLS(ctx context.Context, target string, tlsConfig *tls.Config, timeout time.Duration) (*tls.Conn, error) {
+	conn, err := netdial.DialContext(ctx, "tcp", target, netdial.WithTimeout(timeout))
+	if err != nil {
+		return nil, err
+	}
+	tlsConn := tls.Client(conn, tlsConfig)
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return tlsConn, nil
+}
 
 // isIPAddress checks if a given host string is an IP address (IPv4 or IPv6)
 func isIPAddress(host string) bool {
@@ -119,9 +134,7 @@ func tlsVersionToString(version uint16) discoverfern.TlsVersion {
 // It returns a TlsConfiguration with all supported versions, cipher suites, and security properties.
 func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string, config discoverfern.DiscoverTlsConfig) (*discoverfern.TlsConfiguration, []string) {
 	errors := []string{}
-	dialer := &net.Dialer{
-		Timeout: time.Duration(config.Timeout) * time.Second,
-	}
+	tlsTimeout := time.Duration(config.Timeout) * time.Second
 
 	// Establish a connection with InsecureSkipVerify to always collect TLS data.
 	// We use MinVersion=TLS 1.0 so we can connect to legacy servers.
@@ -130,11 +143,11 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	var negotiatedCipherSuite discoverfern.CipherSuite
 	var certificates []*discoverfern.Certificate
 
-	defaultConn, err := tls.DialWithDialer(dialer, "tcp", targetAddress, &tls.Config{
+	defaultConn, err := dialTLS(ctx, targetAddress, &tls.Config{
 		ServerName:         serverName,
 		InsecureSkipVerify: true,
 		MinVersion:         tls.VersionTLS10, //nolint:gosec
-	})
+	}, tlsTimeout)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("Failed to establish TLS connection: %v", err))
 		return nil, errors
@@ -147,12 +160,12 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	certificates = extractCertificates(defaultState.PeerCertificates, computeJA4X)
 	_ = defaultConn.Close()
 
-	compressionEnabled := probeCompression(targetAddress, serverName, dialer)
-	secureRenegotiation := probeSecureRenegotiation(targetAddress, serverName, dialer)
+	compressionEnabled := probeCompression(ctx, targetAddress, serverName, tlsTimeout)
+	secureRenegotiation := probeSecureRenegotiation(ctx, targetAddress, serverName, tlsTimeout)
 
 	// Probe SSL versions using raw socket handshake (Go's crypto/tls doesn't support these)
-	ssl2Supported := probeSSLv2(targetAddress, dialer)
-	ssl3Supported := probeSSLv3(targetAddress, dialer)
+	ssl2Supported := probeSSLv2(ctx, targetAddress, tlsTimeout)
+	ssl3Supported := probeSSLv3(ctx, targetAddress, tlsTimeout)
 
 	versionSupport := []*discoverfern.TlsVersionSupport{
 		{Version: discoverfern.TlsVersionSsl20, Supported: ssl2Supported},
@@ -169,7 +182,7 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 
 	for _, version := range versionsToTest {
 		fernVersion := tlsVersionToString(version)
-		cipherSuites := probeTLSVersion(ctx, targetAddress, serverName, version, config, dialer)
+		cipherSuites := probeTLSVersion(ctx, targetAddress, serverName, version, config)
 
 		if len(cipherSuites) > 0 {
 			versionSupport = append(versionSupport, &discoverfern.TlsVersionSupport{
@@ -189,8 +202,6 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 	var supportedCurves []string
 	// Note: Go's crypto/tls doesn't expose the server's supported curves directly
 	// We can only see what was negotiated
-
-	tlsTimeout := time.Duration(config.Timeout) * time.Second
 
 	var ja4sFingerprint *string
 	if config.Ja4S != nil && *config.Ja4S {
@@ -221,7 +232,7 @@ func scanTLSConfiguration(ctx context.Context, targetAddress, serverName string,
 
 // probeTLSVersion probes a specific TLS version and returns all supported cipher suites for that version.
 // This function probes each cipher suite individually to build a comprehensive list of what's supported.
-func probeTLSVersion(ctx context.Context, targetAddress, serverName string, version uint16, config discoverfern.DiscoverTlsConfig, dialer *net.Dialer) []discoverfern.CipherSuite {
+func probeTLSVersion(ctx context.Context, targetAddress, serverName string, version uint16, config discoverfern.DiscoverTlsConfig) []discoverfern.CipherSuite {
 	supportedCipherSuites := []discoverfern.CipherSuite{}
 	seenCiphers := make(map[uint16]bool)
 
@@ -238,7 +249,7 @@ func probeTLSVersion(ctx context.Context, targetAddress, serverName string, vers
 			MaxVersion:         version,
 		}
 
-		conn, err := tls.DialWithDialer(dialer, "tcp", targetAddress, tlsConfig)
+		conn, err := dialTLS(ctx, targetAddress, tlsConfig, time.Duration(config.Timeout)*time.Second)
 		if err != nil {
 			return supportedCipherSuites
 		}
@@ -268,7 +279,7 @@ func probeTLSVersion(ctx context.Context, targetAddress, serverName string, vers
 			CipherSuites:       []uint16{cipherID},
 		}
 
-		conn, err := tls.DialWithDialer(dialer, "tcp", targetAddress, tlsConfig)
+		conn, err := dialTLS(ctx, targetAddress, tlsConfig, time.Duration(config.Timeout)*time.Second)
 		if err != nil {
 			continue
 		}
@@ -369,8 +380,8 @@ func extractCertificates(x509Certs []*x509.Certificate, withJA4X bool) []*discov
 
 // probeSSLv2 checks if the server supports SSLv2 by sending a raw SSLv2 ClientHello.
 // Since Go's crypto/tls doesn't support SSLv2, we use raw socket programming.
-func probeSSLv2(targetAddress string, dialer *net.Dialer) bool {
-	conn, err := dialer.Dial("tcp", targetAddress)
+func probeSSLv2(ctx context.Context, targetAddress string, timeout time.Duration) bool {
+	conn, err := netdial.DialContext(ctx, "tcp", targetAddress, netdial.WithTimeout(timeout))
 	if err != nil {
 		return false
 	}
@@ -430,8 +441,8 @@ func probeSSLv2(targetAddress string, dialer *net.Dialer) bool {
 
 // probeSSLv3 checks if the server supports SSLv3 by sending a raw SSLv3 ClientHello.
 // Since Go's crypto/tls doesn't support SSLv3, we use raw socket programming.
-func probeSSLv3(targetAddress string, dialer *net.Dialer) bool {
-	conn, err := dialer.Dial("tcp", targetAddress)
+func probeSSLv3(ctx context.Context, targetAddress string, timeout time.Duration) bool {
+	conn, err := netdial.DialContext(ctx, "tcp", targetAddress, netdial.WithTimeout(timeout))
 	if err != nil {
 		return false
 	}
@@ -515,8 +526,8 @@ func probeSSLv3(targetAddress string, dialer *net.Dialer) bool {
 // probeCompression checks if the server supports TLS compression by sending a ClientHello
 // that offers DEFLATE compression (method 1) alongside null compression (method 0).
 // If the server selects a non-null compression method, compression is enabled.
-func probeCompression(targetAddress, serverName string, dialer *net.Dialer) bool {
-	conn, err := dialer.Dial("tcp", targetAddress)
+func probeCompression(ctx context.Context, targetAddress, serverName string, timeout time.Duration) bool {
+	conn, err := netdial.DialContext(ctx, "tcp", targetAddress, netdial.WithTimeout(timeout))
 	if err != nil {
 		return false
 	}
@@ -570,8 +581,8 @@ func probeCompression(targetAddress, serverName string, dialer *net.Dialer) bool
 // probeSecureRenegotiation checks if the server supports RFC 5746 secure renegotiation
 // by sending a ClientHello with the renegotiation_info extension (0xff01) and checking
 // if the ServerHello includes the same extension in its response.
-func probeSecureRenegotiation(targetAddress, serverName string, dialer *net.Dialer) bool {
-	conn, err := dialer.Dial("tcp", targetAddress)
+func probeSecureRenegotiation(ctx context.Context, targetAddress, serverName string, timeout time.Duration) bool {
+	conn, err := netdial.DialContext(ctx, "tcp", targetAddress, netdial.WithTimeout(timeout))
 	if err != nil {
 		return false
 	}
@@ -739,8 +750,7 @@ func sendJARMProbe(ctx context.Context, target string, payload []byte, timeout t
 	if ctxDL, ok := ctx.Deadline(); ok && ctxDL.Before(deadline) {
 		deadline = ctxDL
 	}
-	dialer := net.Dialer{Deadline: deadline}
-	conn, err := dialer.DialContext(ctx, "tcp", target)
+	conn, err := netdial.DialContext(ctx, "tcp", target, netdial.WithDeadline(deadline))
 	if err != nil {
 		return nil
 	}
@@ -828,8 +838,7 @@ func computeJA4S(ctx context.Context, target, serverName string, timeout time.Du
 	if ctxDL, ok := ctx.Deadline(); ok && ctxDL.Before(deadline) {
 		deadline = ctxDL
 	}
-	dialer := net.Dialer{Deadline: deadline}
-	conn, err := dialer.DialContext(ctx, "tcp", target)
+	conn, err := netdial.DialContext(ctx, "tcp", target, netdial.WithDeadline(deadline))
 	if err != nil {
 		return ""
 	}

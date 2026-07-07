@@ -2,11 +2,11 @@ package ssh
 
 import (
 	"context"
-	"net"
 
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	ssh "github.com/Method-Security/networkscan/generated/go/enumerate/ssh"
+	"github.com/Method-Security/networkscan/internal/netdial"
 )
 
 // LibraryEnumerateSSH implements NetworkApplicationLibrary for SSH enumeration.
@@ -40,8 +40,7 @@ func (s *LibraryEnumerateSSH) EnumerateTarget(ctx context.Context, target string
 	errors := []string{}
 
 	// Create dialer with context
-	dialer := net.Dialer{}
-	conn, err := dialer.DialContext(ctx, "tcp", target)
+	conn, err := netdial.DialContext(ctx, "tcp", target)
 	if err != nil {
 		errors = append(errors, err.Error())
 		return &enumeratefern.EnumerateServiceDetails{EnumerateSshDetails: &details}, errors

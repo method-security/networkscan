@@ -8,12 +8,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"net"
 	"strings"
 	"time"
 
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	postgresfern "github.com/Method-Security/networkscan/generated/go/enumerate/postgres"
+	"github.com/Method-Security/networkscan/internal/netdial"
 	"github.com/Method-Security/networkscan/utils"
 	_ "github.com/lib/pq"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
@@ -191,8 +191,7 @@ func (p *LibraryEnumeratePostgres) EnumerateTarget(ctx context.Context, target s
 //
 // ctx is used for the dial so that the probe respects context cancellation.
 func probeSSL(ctx context.Context, addr string, timeout time.Duration) (sslSupported *bool, dialFailed bool, err error) {
-	dialer := &net.Dialer{Timeout: timeout}
-	conn, connErr := dialer.DialContext(ctx, "tcp", addr)
+	conn, connErr := netdial.DialContext(ctx, "tcp", addr, netdial.WithTimeout(timeout))
 	if connErr != nil {
 		return nil, true, fmt.Errorf("TCP dial failed: %w", connErr)
 	}
@@ -240,8 +239,7 @@ func probeSSL(ctx context.Context, addr string, timeout time.Duration) (sslSuppo
 // server responses to extract version, encoding, timezone, auth method, and SSL-required status.
 // ctx is used for the dial so that the probe respects context cancellation.
 func probeStartup(ctx context.Context, addr string, timeout time.Duration) (serverVersion, serverEncoding string, integerDatetimes *bool, timeZone, authMethod string, sslRequired *bool, err error) {
-	dialer := &net.Dialer{Timeout: timeout}
-	conn, dialErr := dialer.DialContext(ctx, "tcp", addr)
+	conn, dialErr := netdial.DialContext(ctx, "tcp", addr, netdial.WithTimeout(timeout))
 	if dialErr != nil {
 		err = fmt.Errorf("TCP dial failed: %w", dialErr)
 		return
