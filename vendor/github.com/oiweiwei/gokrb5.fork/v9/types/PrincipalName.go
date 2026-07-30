@@ -40,7 +40,7 @@ func (pn PrincipalName) Equal(n PrincipalName) bool {
 	}
 	//https://tools.ietf.org/html/rfc4120#section-6.2 - the name type is not significant when checking for equivalence
 	for i, s := range pn.NameString {
-		if n.NameString[i] != s {
+		if !strings.EqualFold(n.NameString[i], s) {
 			return false
 		}
 	}
@@ -49,7 +49,7 @@ func (pn PrincipalName) Equal(n PrincipalName) bool {
 
 func (pn PrincipalName) EqualHostName(n PrincipalName) bool {
 	return len(pn.NameString) >= 2 && len(n.NameString) >= 2 &&
-		pn.NameString[len(pn.NameString)-1] == n.NameString[len(n.NameString)-1]
+		strings.EqualFold(pn.NameString[len(pn.NameString)-1], n.NameString[len(n.NameString)-1])
 }
 
 // PrincipalNameString returns the PrincipalName in string form.
