@@ -10,6 +10,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/oiweiwei/go-msrpc/dcerpc/errors"
 	"github.com/oiweiwei/go-msrpc/midl/uuid"
 	"github.com/oiweiwei/go-msrpc/smb2"
 	"github.com/oiweiwei/go-msrpc/ssp/gssapi"
@@ -24,11 +25,15 @@ type BufferedConn struct {
 	cur, total []byte
 }
 
-func (conn *BufferedConn) Resized(sz int) *BufferedConn {
-	if sz > len(conn.total) {
-		conn.total = make([]byte, sz)
+func resizeBuffer(buf []byte, sz int) []byte {
+	if sz > len(buf) {
+		return make([]byte, sz)
 	}
-	conn.cur, conn.total = nil, conn.total[:sz]
+	return buf[:sz]
+}
+
+func (conn *BufferedConn) Resized(sz int) *BufferedConn {
+	conn.cur, conn.total = nil, resizeBuffer(conn.total, sz)
 	return conn
 }
 
@@ -519,4 +524,8 @@ func (c *conn) closeTransport(ctx context.Context, tr *transport) error {
 	}
 
 	return fmt.Errorf("transport not found")
+}
+
+func (c *conn) Error(ctx context.Context, value any) error {
+	return errors.New(ctx, value)
 }

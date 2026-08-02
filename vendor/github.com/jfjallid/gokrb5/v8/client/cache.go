@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +12,21 @@ import (
 	"github.com/jfjallid/gokrb5/v8/messages"
 	"github.com/jfjallid/gokrb5/v8/types"
 )
+
+// cacheKey canonicalises an SPN for use as a cache map key. Active Directory /
+// Entra canonicalise the host portion of a service principal to the case stored
+// in the directory, so a ticket requested as "cifs/SRV01.example.com" comes
+// back (and is stored) as "cifs/srv01.example.com". Keying on a lower-cased
+// form makes a subsequent lookup with any casing hit the same entry instead of
+// triggering a redundant KDC round-trip. The CacheEntry preserves the original
+// (KDC-canonical) SPN in its SPN field; only the map key is folded.
+//
+// NOTE: the key carries no realm. Two realms holding the same service/host SPN
+// would collide here; this is a pre-existing limitation unchanged by the case
+// folding. See unmitigated_risks.md.
+func cacheKey(spn string) string {
+	return strings.ToLower(spn)
+}
 
 // Cache for service tickets held by the client.
 type Cache struct {
@@ -41,7 +57,7 @@ func NewCache() *Cache {
 func (c *Cache) getEntry(spn string) (CacheEntry, bool) {
 	c.mux.RLock()
 	defer c.mux.RUnlock()
-	e, ok := (*c).Entries[spn]
+	e, ok := (*c).Entries[cacheKey(spn)]
 	return e, ok
 }
 
@@ -80,7 +96,7 @@ func (c *Cache) addEntry(tkt messages.Ticket, authTime, startTime, endTime, rene
 	spn := tkt.SName.PrincipalNameString()
 	c.mux.Lock()
 	defer c.mux.Unlock()
-	(*c).Entries[spn] = CacheEntry{
+	(*c).Entries[cacheKey(spn)] = CacheEntry{
 		SPN:        spn,
 		Ticket:     tkt,
 		AuthTime:   authTime,
@@ -90,7 +106,7 @@ func (c *Cache) addEntry(tkt messages.Ticket, authTime, startTime, endTime, rene
 		SessionKey: sessionKey,
 		Flags:      flags,
 	}
-	return c.Entries[spn]
+	return c.Entries[cacheKey(spn)]
 }
 
 // clear deletes all the cache entries
@@ -106,7 +122,7 @@ func (c *Cache) clear() {
 func (c *Cache) RemoveEntry(spn string) {
 	c.mux.Lock()
 	defer c.mux.Unlock()
-	delete(c.Entries, spn)
+	delete(c.Entries, cacheKey(spn))
 }
 
 // GetCachedTicket returns a ticket from the cache for the SPN.
@@ -124,6 +140,7 @@ func (cl *Client) GetCachedTicket(spn string) (messages.Ticket, types.Encryption
 			}
 			return e.Ticket, e.SessionKey, true
 		}
+		log.Debugf("cached ticket does not match validity time. Now: %s cache starttime: %s, endtime: %s, renewtill: %s\n", time.Now().UTC(), e.StartTime, e.EndTime, e.RenewTill)
 	}
 	var tkt messages.Ticket
 	var key types.EncryptionKey

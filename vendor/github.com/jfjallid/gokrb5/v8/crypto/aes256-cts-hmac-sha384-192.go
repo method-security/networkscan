@@ -30,12 +30,16 @@ func (e Aes256CtsHmacSha384192) GetHashID() int32 {
 
 // GetKeyByteSize returns the number of bytes for key of this etype.
 func (e Aes256CtsHmacSha384192) GetKeyByteSize() int {
-	return 192 / 8
+	return 256 / 8
 }
 
 // GetKeySeedBitLength returns the number of bits for the seed for key generation.
+// For aes256-cts-hmac-sha384-192 the Kc and Ki keys derived in RFC 8009 §5 are
+// 192 bits while the protocol/base key is 256 bits; this returns the smaller
+// value used as the default derived-key length, with rfc8009.DeriveKey overriding
+// to 256 bits for the Ke and StringToKey "kerberos" labels.
 func (e Aes256CtsHmacSha384192) GetKeySeedBitLength() int {
-	return e.GetKeyByteSize() * 8
+	return 192
 }
 
 // GetHashFunc returns the hash function for this etype.

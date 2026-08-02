@@ -102,6 +102,7 @@ func (kcm *ClientManager) CreateClientFromConfig(pentestConfig *kerberosfern.Pen
 	}
 
 	var krb5Client *client.Client
+	var err error
 
 	// Check if NTLM hash is provided
 	if pentestConfig.NtlmHash != nil && *pentestConfig.NtlmHash != "" {
@@ -110,9 +111,12 @@ func (kcm *ClientManager) CreateClientFromConfig(pentestConfig *kerberosfern.Pen
 		if hashErr != nil {
 			return nil, "", fmt.Errorf("invalid NTLM hash: %v", hashErr)
 		}
-		krb5Client = client.NewWithHash(requestingUser, strings.ToUpper(kcm.Target.Domain), hashBytes, kcm.Config, settings...)
+		krb5Client, err = client.NewWithHash(requestingUser, strings.ToUpper(kcm.Target.Domain), hashBytes, kcm.Config, settings...)
 	} else {
-		krb5Client = client.NewWithPassword(requestingUser, strings.ToUpper(kcm.Target.Domain), password, kcm.Config, settings...)
+		krb5Client, err = client.NewWithPassword(requestingUser, strings.ToUpper(kcm.Target.Domain), password, kcm.Config, settings...)
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to create Kerberos client: %v", err)
 	}
 
 	return krb5Client, requestingUser, nil

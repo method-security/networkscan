@@ -39,8 +39,8 @@ git.mills.io/prologic/smtpd
 # github.com/42wim/httpsig v1.2.2
 ## explicit; go 1.18
 github.com/42wim/httpsig
-# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.0
-## explicit; go 1.23.0
+# github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1
+## explicit; go 1.25.0
 github.com/Azure/azure-sdk-for-go/sdk/azcore
 github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/internal/resource
 github.com/Azure/azure-sdk-for-go/sdk/azcore/arm/policy
@@ -61,12 +61,12 @@ github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime
 github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming
 github.com/Azure/azure-sdk-for-go/sdk/azcore/to
 github.com/Azure/azure-sdk-for-go/sdk/azcore/tracing
-# github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.10.1
+# github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1
 ## explicit; go 1.23.0
 github.com/Azure/azure-sdk-for-go/sdk/azidentity
 github.com/Azure/azure-sdk-for-go/sdk/azidentity/internal
-# github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.1
-## explicit; go 1.23.0
+# github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0
+## explicit; go 1.24.0
 github.com/Azure/azure-sdk-for-go/sdk/internal/diag
 github.com/Azure/azure-sdk-for-go/sdk/internal/errorinfo
 github.com/Azure/azure-sdk-for-go/sdk/internal/exported
@@ -93,7 +93,7 @@ github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service
 ## explicit; go 1.24
 github.com/Azure/go-ntlmssp
 github.com/Azure/go-ntlmssp/internal/md4
-# github.com/AzureAD/microsoft-authentication-library-for-go v1.4.2
+# github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0
 ## explicit; go 1.18
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/cache
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/confidential
@@ -147,7 +147,7 @@ github.com/FalconOpsLLC/goexec/pkg/goexec/wmi
 # github.com/Masterminds/semver/v3 v3.5.0
 ## explicit; go 1.21
 github.com/Masterminds/semver/v3
-# github.com/Method-Security/pkg v0.1.0
+# github.com/Method-Security/pkg v0.1.1
 ## explicit; go 1.26.0
 github.com/Method-Security/pkg/signal
 github.com/Method-Security/pkg/writer
@@ -198,6 +198,12 @@ github.com/Mzack9999/goimpacket/pkg/third_party/smb2/internal/utf16le
 github.com/Mzack9999/goimpacket/pkg/transport
 github.com/Mzack9999/goimpacket/pkg/utf16le
 github.com/Mzack9999/goimpacket/pkg/wmiexec
+# github.com/Mzack9999/gopacket v0.0.0-20260327212258-d211b432c22b
+## explicit; go 1.24.0
+github.com/Mzack9999/gopacket
+github.com/Mzack9999/gopacket/layers
+github.com/Mzack9999/gopacket/pcap
+github.com/Mzack9999/gopacket/rawsend
 # github.com/ProtonMail/go-crypto v1.1.6
 ## explicit; go 1.17
 github.com/ProtonMail/go-crypto/bitcurves
@@ -222,8 +228,8 @@ github.com/ProtonMail/go-crypto/openpgp/packet
 github.com/ProtonMail/go-crypto/openpgp/s2k
 github.com/ProtonMail/go-crypto/openpgp/x25519
 github.com/ProtonMail/go-crypto/openpgp/x448
-# github.com/PuerkitoBio/goquery v1.11.0
-## explicit; go 1.24.0
+# github.com/PuerkitoBio/goquery v1.12.0
+## explicit; go 1.25.0
 github.com/PuerkitoBio/goquery
 # github.com/RedTeamPentesting/adauth v0.5.4-0.20260511073005-3d18e8a5a687
 ## explicit; go 1.24.1
@@ -236,6 +242,10 @@ github.com/RedTeamPentesting/adauth/x509ext
 # github.com/STARRY-S/zip v0.2.3
 ## explicit; go 1.23
 github.com/STARRY-S/zip
+# github.com/Ullaakut/nmap/v3 v3.0.6
+## explicit; go 1.20
+github.com/Ullaakut/nmap/v3
+github.com/Ullaakut/nmap/v3/pkg/osfamilies
 # github.com/VividCortex/ewma v1.2.0
 ## explicit; go 1.12
 github.com/VividCortex/ewma
@@ -657,15 +667,9 @@ github.com/containerd/errdefs/pkg/internal/cause
 ## explicit; go 1.18
 github.com/cyphar/filepath-securejoin
 github.com/cyphar/filepath-securejoin/internal/consts
-# github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
-## explicit
-github.com/davecgh/go-spew/spew
 # github.com/davidmz/go-pageant v1.0.2
 ## explicit; go 1.16
 github.com/davidmz/go-pageant
-# github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
-## explicit
-github.com/dgryski/go-rendezvous
 # github.com/dimchansky/utfbom v1.1.1
 ## explicit
 github.com/dimchansky/utfbom
@@ -730,8 +734,8 @@ github.com/emirpasic/gods/utils
 github.com/ericlagergren/decimal
 github.com/ericlagergren/decimal/internal/arith
 github.com/ericlagergren/decimal/internal/c
-# github.com/fatih/color v1.18.0
-## explicit; go 1.17
+# github.com/fatih/color v1.19.0
+## explicit; go 1.25.0
 github.com/fatih/color
 # github.com/fatih/structs v1.1.0
 ## explicit
@@ -781,7 +785,7 @@ github.com/gin-gonic/gin/binding
 github.com/gin-gonic/gin/internal/bytesconv
 github.com/gin-gonic/gin/internal/json
 github.com/gin-gonic/gin/render
-# github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667
+# github.com/go-asn1-ber/asn1-ber v1.5.8
 ## explicit; go 1.13
 github.com/go-asn1-ber/asn1-ber
 # github.com/go-fed/httpsig v1.1.0
@@ -850,8 +854,8 @@ github.com/go-git/go-git/v5/utils/merkletrie/internal/frame
 github.com/go-git/go-git/v5/utils/merkletrie/noder
 github.com/go-git/go-git/v5/utils/sync
 github.com/go-git/go-git/v5/utils/trace
-# github.com/go-ldap/ldap/v3 v3.4.12
-## explicit; go 1.23.0
+# github.com/go-ldap/ldap/v3 v3.4.14
+## explicit; go 1.25.0
 github.com/go-ldap/ldap/v3
 # github.com/go-logr/logr v1.4.3
 ## explicit; go 1.18
@@ -948,8 +952,8 @@ github.com/gofrs/uuid
 # github.com/golang-jwt/jwt/v4 v4.5.2
 ## explicit; go 1.16
 github.com/golang-jwt/jwt/v4
-# github.com/golang-jwt/jwt/v5 v5.2.2
-## explicit; go 1.18
+# github.com/golang-jwt/jwt/v5 v5.3.1
+## explicit; go 1.21
 github.com/golang-jwt/jwt/v5
 # github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9
 ## explicit
@@ -985,11 +989,6 @@ github.com/google/shlex
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
-# github.com/gopacket/gopacket v1.4.0
-## explicit; go 1.23.0
-github.com/gopacket/gopacket
-github.com/gopacket/gopacket/layers
-github.com/gopacket/gopacket/pcap
 # github.com/gorilla/css v1.0.1
 ## explicit; go 1.20
 github.com/gorilla/css/scanner
@@ -999,8 +998,8 @@ github.com/gosimple/slug
 # github.com/gosimple/unidecode v1.0.1
 ## explicit; go 1.16
 github.com/gosimple/unidecode
-# github.com/gosnmp/gosnmp v1.42.1
-## explicit; go 1.22.0
+# github.com/gosnmp/gosnmp v1.44.0
+## explicit; go 1.24.0
 github.com/gosnmp/gosnmp
 # github.com/h2non/filetype v1.1.3
 ## explicit; go 1.13
@@ -1125,8 +1124,12 @@ github.com/jcmturner/gokrb5/v8/types
 ## explicit; go 1.13
 github.com/jcmturner/rpc/v2/mstypes
 github.com/jcmturner/rpc/v2/ndr
-# github.com/jfjallid/go-smb v0.6.6
-## explicit; go 1.24
+# github.com/jfjallid/go-smb v0.11.0
+## explicit; go 1.24.0
+github.com/jfjallid/go-smb/dcerpc
+github.com/jfjallid/go-smb/dcerpc/msrrp
+github.com/jfjallid/go-smb/dcerpc/mssrvs
+github.com/jfjallid/go-smb/dcerpc/smbtransport
 github.com/jfjallid/go-smb/gss
 github.com/jfjallid/go-smb/krb5ssp
 github.com/jfjallid/go-smb/msdtyp
@@ -1134,16 +1137,13 @@ github.com/jfjallid/go-smb/ntlmssp
 github.com/jfjallid/go-smb/smb
 github.com/jfjallid/go-smb/smb/crypto/ccm
 github.com/jfjallid/go-smb/smb/crypto/cmac
-github.com/jfjallid/go-smb/smb/dcerpc
-github.com/jfjallid/go-smb/smb/dcerpc/msrrp
-github.com/jfjallid/go-smb/smb/dcerpc/mssrvs
 github.com/jfjallid/go-smb/smb/encoder
 github.com/jfjallid/go-smb/spnego
 # github.com/jfjallid/gofork v1.7.6
 ## explicit; go 1.7
 github.com/jfjallid/gofork/encoding/asn1
 github.com/jfjallid/gofork/x/crypto/pbkdf2
-# github.com/jfjallid/gokrb5/v8 v8.5.1
+# github.com/jfjallid/gokrb5/v8 v8.6.3
 ## explicit; go 1.24
 github.com/jfjallid/gokrb5/v8/asn1tools
 github.com/jfjallid/gokrb5/v8/client
@@ -1176,14 +1176,50 @@ github.com/jfjallid/gokrb5/v8/keytab
 github.com/jfjallid/gokrb5/v8/krberror
 github.com/jfjallid/gokrb5/v8/messages
 github.com/jfjallid/gokrb5/v8/pac
+github.com/jfjallid/gokrb5/v8/pkinit
 github.com/jfjallid/gokrb5/v8/types
-# github.com/jfjallid/golog v0.3.4
+# github.com/jfjallid/gokrb5/v9 v9.1.0
+## explicit; go 1.24
+github.com/jfjallid/gokrb5/v9/asn1tools
+github.com/jfjallid/gokrb5/v9/client
+github.com/jfjallid/gokrb5/v9/config
+github.com/jfjallid/gokrb5/v9/credentials
+github.com/jfjallid/gokrb5/v9/crypto
+github.com/jfjallid/gokrb5/v9/crypto/common
+github.com/jfjallid/gokrb5/v9/crypto/etype
+github.com/jfjallid/gokrb5/v9/crypto/rfc3961
+github.com/jfjallid/gokrb5/v9/crypto/rfc3962
+github.com/jfjallid/gokrb5/v9/crypto/rfc4757
+github.com/jfjallid/gokrb5/v9/crypto/rfc8009
+github.com/jfjallid/gokrb5/v9/iana
+github.com/jfjallid/gokrb5/v9/iana/addrtype
+github.com/jfjallid/gokrb5/v9/iana/adtype
+github.com/jfjallid/gokrb5/v9/iana/asnAppTag
+github.com/jfjallid/gokrb5/v9/iana/chksumtype
+github.com/jfjallid/gokrb5/v9/iana/errorcode
+github.com/jfjallid/gokrb5/v9/iana/etypeID
+github.com/jfjallid/gokrb5/v9/iana/flags
+github.com/jfjallid/gokrb5/v9/iana/keyusage
+github.com/jfjallid/gokrb5/v9/iana/msgtype
+github.com/jfjallid/gokrb5/v9/iana/nametype
+github.com/jfjallid/gokrb5/v9/iana/patype
+github.com/jfjallid/gokrb5/v9/imported/aescts/v2
+github.com/jfjallid/gokrb5/v9/imported/dnsutils/v2
+github.com/jfjallid/gokrb5/v9/imported/go-uuid
+github.com/jfjallid/gokrb5/v9/kadmin
+github.com/jfjallid/gokrb5/v9/keytab
+github.com/jfjallid/gokrb5/v9/krberror
+github.com/jfjallid/gokrb5/v9/messages
+github.com/jfjallid/gokrb5/v9/pac
+github.com/jfjallid/gokrb5/v9/pkinit
+github.com/jfjallid/gokrb5/v9/types
+# github.com/jfjallid/golog v0.4.0
 ## explicit; go 1.17
 github.com/jfjallid/golog
-# github.com/jfjallid/mstypes v0.0.1
+# github.com/jfjallid/mstypes v0.0.2
 ## explicit; go 1.24
 github.com/jfjallid/mstypes
-# github.com/jfjallid/ndr v0.0.1
+# github.com/jfjallid/ndr v0.1.1
 ## explicit; go 1.24
 github.com/jfjallid/ndr
 # github.com/jinzhu/inflection v1.0.0
@@ -1255,14 +1291,17 @@ github.com/leodido/go-urn/scim/schema
 # github.com/leslie-qiwa/flat v0.0.0-20230424180412-f9d1cf014baa
 ## explicit; go 1.16
 github.com/leslie-qiwa/flat
-# github.com/lib/pq v1.11.2
+# github.com/lib/pq v1.12.3
 ## explicit; go 1.21
 github.com/lib/pq
 github.com/lib/pq/internal/pgpass
+github.com/lib/pq/internal/pgservice
 github.com/lib/pq/internal/pqsql
+github.com/lib/pq/internal/pqtime
 github.com/lib/pq/internal/pqutil
 github.com/lib/pq/internal/proto
 github.com/lib/pq/oid
+github.com/lib/pq/pqerror
 github.com/lib/pq/scram
 # github.com/libdns/libdns v1.1.1
 ## explicit; go 1.18
@@ -1294,11 +1333,11 @@ github.com/mailru/easyjson/jwriter
 # github.com/masterzen/simplexml v0.0.0-20190410153822-31eea3082786
 ## explicit
 github.com/masterzen/simplexml/dom
-# github.com/masterzen/winrm v0.0.0-20250927112105-5f8e6c707321
+# github.com/masterzen/winrm v0.0.0-20260407182533-5570be7f80cf
 ## explicit; go 1.21
 github.com/masterzen/winrm
 github.com/masterzen/winrm/soap
-# github.com/mattn/go-colorable v0.1.14
+# github.com/mattn/go-colorable v0.1.15
 ## explicit; go 1.18
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.22
@@ -1335,8 +1374,8 @@ github.com/mholt/archives
 ## explicit; go 1.19
 github.com/microcosm-cc/bluemonday
 github.com/microcosm-cc/bluemonday/css
-# github.com/microsoft/go-mssqldb v1.9.2
-## explicit; go 1.23.0
+# github.com/microsoft/go-mssqldb v1.10.0
+## explicit; go 1.25.7
 github.com/microsoft/go-mssqldb
 github.com/microsoft/go-mssqldb/aecmk
 github.com/microsoft/go-mssqldb/integratedauth
@@ -1351,8 +1390,8 @@ github.com/microsoft/go-mssqldb/internal/github.com/swisscom/mssql-always-encryp
 github.com/microsoft/go-mssqldb/internal/github.com/swisscom/mssql-always-encrypted/pkg/utils
 github.com/microsoft/go-mssqldb/internal/querytext
 github.com/microsoft/go-mssqldb/msdsn
-# github.com/miekg/dns v1.1.68
-## explicit; go 1.23.0
+# github.com/miekg/dns v1.1.72
+## explicit; go 1.24.0
 github.com/miekg/dns
 # github.com/mikelolasagasti/xz v1.0.1
 ## explicit; go 1.15
@@ -1428,7 +1467,7 @@ github.com/oasdiff/yaml
 # github.com/oasdiff/yaml3 v0.0.0-20250309153720-d2182401db90
 ## explicit; go 1.22.5
 github.com/oasdiff/yaml3
-# github.com/oiweiwei/go-msrpc v1.2.12
+# github.com/oiweiwei/go-msrpc v1.2.18
 ## explicit; go 1.24.1
 github.com/oiweiwei/go-msrpc/dcerpc
 github.com/oiweiwei/go-msrpc/dcerpc/errors
@@ -1481,7 +1520,7 @@ github.com/oiweiwei/go-msrpc/ssp/ntlm/internal
 github.com/oiweiwei/go-msrpc/ssp/spnego
 github.com/oiweiwei/go-msrpc/text/encoding/oem
 github.com/oiweiwei/go-msrpc/text/encoding/utf16le
-# github.com/oiweiwei/go-smb2.fork v1.0.0
+# github.com/oiweiwei/go-smb2.fork v1.0.2
 ## explicit; go 1.21.5
 github.com/oiweiwei/go-smb2.fork
 github.com/oiweiwei/go-smb2.fork/internal/crypto/ccm
@@ -1556,35 +1595,35 @@ github.com/openrdap/rdap/sandbox
 # github.com/palantir/pkg v1.1.0
 ## explicit; go 1.19
 github.com/palantir/pkg
-# github.com/palantir/pkg/bytesbuffers v1.2.0
-## explicit; go 1.19
+# github.com/palantir/pkg/bytesbuffers v1.3.0
+## explicit; go 1.25.0
 github.com/palantir/pkg/bytesbuffers
-# github.com/palantir/pkg/datetime v1.2.0
-## explicit; go 1.24.0
+# github.com/palantir/pkg/datetime v1.4.0
+## explicit; go 1.25.0
 github.com/palantir/pkg/datetime
-# github.com/palantir/pkg/safejson v1.1.0
-## explicit; go 1.19
+# github.com/palantir/pkg/safejson v1.2.0
+## explicit; go 1.25.0
 github.com/palantir/pkg/safejson
-# github.com/palantir/pkg/safelong v1.2.0
-## explicit; go 1.24.0
+# github.com/palantir/pkg/safelong v1.3.0
+## explicit; go 1.25.0
 github.com/palantir/pkg/safelong
-# github.com/palantir/pkg/safeyaml v1.1.0
-## explicit; go 1.19
+# github.com/palantir/pkg/safeyaml v1.2.0
+## explicit; go 1.25.0
 github.com/palantir/pkg/safeyaml
-# github.com/palantir/pkg/transform v1.1.0
-## explicit; go 1.19
+# github.com/palantir/pkg/transform v1.2.0
+## explicit; go 1.25.0
 github.com/palantir/pkg/transform
-# github.com/palantir/pkg/uuid v1.2.0
-## explicit; go 1.19
+# github.com/palantir/pkg/uuid v1.3.0
+## explicit; go 1.25.0
 github.com/palantir/pkg/uuid
 github.com/palantir/pkg/uuid/internal/uuid
-# github.com/palantir/witchcraft-go-error v1.41.0
-## explicit; go 1.24.0
+# github.com/palantir/witchcraft-go-error v1.46.0
+## explicit; go 1.26.0
 github.com/palantir/witchcraft-go-error
 github.com/palantir/witchcraft-go-error/internal/errors
-# github.com/palantir/witchcraft-go-logging v1.61.0
-## explicit; go 1.24.0
-github.com/palantir/witchcraft-go-logging/conjure/witchcraft/api/logging
+# github.com/palantir/witchcraft-go-logging v1.70.0
+## explicit; go 1.26.0
+github.com/palantir/witchcraft-go-logging/conjure/witchcraft-logging-api/witchcraft/api/logging
 github.com/palantir/witchcraft-go-logging/internal/gopath
 github.com/palantir/witchcraft-go-logging/wlog
 github.com/palantir/witchcraft-go-logging/wlog-tmpl
@@ -1592,11 +1631,11 @@ github.com/palantir/witchcraft-go-logging/wlog-tmpl/logentryformatter
 github.com/palantir/witchcraft-go-logging/wlog-tmpl/logs
 github.com/palantir/witchcraft-go-logging/wlog/internal
 github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log
-# github.com/palantir/witchcraft-go-params v1.38.0
-## explicit; go 1.24.0
+# github.com/palantir/witchcraft-go-params v1.42.0
+## explicit; go 1.26.0
 github.com/palantir/witchcraft-go-params
-# github.com/palantir/witchcraft-go-tracing v1.40.0
-## explicit; go 1.24.0
+# github.com/palantir/witchcraft-go-tracing v1.44.0
+## explicit; go 1.26.0
 github.com/palantir/witchcraft-go-tracing/wtracing
 # github.com/pelletier/go-toml/v2 v2.0.8
 ## explicit; go 1.16
@@ -1626,19 +1665,16 @@ github.com/pkg/browser
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
-# github.com/pkg/sftp v1.13.10
-## explicit; go 1.23.0
+# github.com/pkg/sftp v1.13.11
+## explicit; go 1.25.0
 github.com/pkg/sftp
 github.com/pkg/sftp/internal/encoding/ssh/filexfer
 github.com/pkg/sftp/internal/encoding/ssh/filexfer/openssh
-# github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
-## explicit
-github.com/pmezard/go-difflib/difflib
 # github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55
 ## explicit; go 1.14
 github.com/power-devops/perfstat
-# github.com/praetorian-inc/fingerprintx v1.1.15
-## explicit; go 1.21
+# github.com/praetorian-inc/fingerprintx v1.1.19
+## explicit; go 1.22
 github.com/praetorian-inc/fingerprintx/pkg/plugins
 github.com/praetorian-inc/fingerprintx/pkg/plugins/pluginutils
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/dhcp
@@ -1649,12 +1685,14 @@ github.com/praetorian-inc/fingerprintx/pkg/plugins/services/http
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/imap
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/ipmi
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/ipsec
+github.com/praetorian-inc/fingerprintx/pkg/plugins/services/javarmi
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/jdwp
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/kafka/kafkaNew
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/kafka/kafkaOld
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/ldap
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/linuxrpc
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/modbus
+github.com/praetorian-inc/fingerprintx/pkg/plugins/services/mongodb
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/mqtt/mqtt3
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/mqtt/mqtt5
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/mssql
@@ -1672,6 +1710,7 @@ github.com/praetorian-inc/fingerprintx/pkg/plugins/services/rtsp
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/smb
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/smtp
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/snmp
+github.com/praetorian-inc/fingerprintx/pkg/plugins/services/snpp
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/ssh
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/stun
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/telnet
@@ -1691,8 +1730,8 @@ github.com/projectdiscovery/cdncheck
 # github.com/projectdiscovery/clistats v0.1.4
 ## explicit; go 1.24.0
 github.com/projectdiscovery/clistats
-# github.com/projectdiscovery/dnsx v1.2.2
-## explicit; go 1.21
+# github.com/projectdiscovery/dnsx v1.2.3
+## explicit; go 1.24.0
 github.com/projectdiscovery/dnsx/libs/dnsx
 # github.com/projectdiscovery/dsl v0.8.20
 ## explicit; go 1.25.0
@@ -1727,8 +1766,8 @@ github.com/projectdiscovery/go-smb2/internal/ntlm
 github.com/projectdiscovery/go-smb2/internal/smb2
 github.com/projectdiscovery/go-smb2/internal/spnego
 github.com/projectdiscovery/go-smb2/internal/utf16le
-# github.com/projectdiscovery/goflags v0.1.74
-## explicit; go 1.21
+# github.com/projectdiscovery/goflags v0.1.75
+## explicit; go 1.25.0
 github.com/projectdiscovery/goflags
 # github.com/projectdiscovery/goja v0.0.0-20260618133720-acb73e419534
 ## explicit; go 1.25
@@ -1799,10 +1838,11 @@ github.com/projectdiscovery/mapcidr/asn
 ## explicit; go 1.17
 github.com/projectdiscovery/n3iwf/pkg/ike/message
 github.com/projectdiscovery/n3iwf/pkg/logger
-# github.com/projectdiscovery/naabu/v2 v2.3.3
-## explicit; go 1.21
+# github.com/projectdiscovery/naabu/v2 v2.6.1
+## explicit; go 1.24.0
 github.com/projectdiscovery/naabu/v2/pkg/israce
 github.com/projectdiscovery/naabu/v2/pkg/port
+github.com/projectdiscovery/naabu/v2/pkg/prediction
 github.com/projectdiscovery/naabu/v2/pkg/privileges
 github.com/projectdiscovery/naabu/v2/pkg/protocol
 github.com/projectdiscovery/naabu/v2/pkg/result
@@ -1810,6 +1850,7 @@ github.com/projectdiscovery/naabu/v2/pkg/result/confidence
 github.com/projectdiscovery/naabu/v2/pkg/routing
 github.com/projectdiscovery/naabu/v2/pkg/runner
 github.com/projectdiscovery/naabu/v2/pkg/scan
+github.com/projectdiscovery/naabu/v2/pkg/utils/limits
 # github.com/projectdiscovery/networkpolicy v0.1.41
 ## explicit; go 1.24.0
 github.com/projectdiscovery/networkpolicy
@@ -2105,6 +2146,7 @@ github.com/projectdiscovery/utils/maps
 github.com/projectdiscovery/utils/memguardian
 github.com/projectdiscovery/utils/memoize
 github.com/projectdiscovery/utils/memoize/simpleflight
+github.com/projectdiscovery/utils/net
 github.com/projectdiscovery/utils/os
 github.com/projectdiscovery/utils/parsers/burp/xml
 github.com/projectdiscovery/utils/permission
@@ -2119,6 +2161,7 @@ github.com/projectdiscovery/utils/reader
 github.com/projectdiscovery/utils/reader/rawmode
 github.com/projectdiscovery/utils/slice
 github.com/projectdiscovery/utils/strings
+github.com/projectdiscovery/utils/structs
 github.com/projectdiscovery/utils/sync
 github.com/projectdiscovery/utils/sync/semaphore
 github.com/projectdiscovery/utils/sync/sizedpool
@@ -2136,17 +2179,23 @@ github.com/projectdiscovery/yamldoc-go/encoder
 # github.com/rbetts/go-ntlm v0.0.0-20130522135510-f22198915663
 ## explicit
 github.com/rbetts/go-ntlm/ntlm/messages
-# github.com/redis/go-redis/v9 v9.11.0
-## explicit; go 1.18
+# github.com/redis/go-redis/v9 v9.21.0
+## explicit; go 1.24
 github.com/redis/go-redis/v9
 github.com/redis/go-redis/v9/auth
 github.com/redis/go-redis/v9/internal
+github.com/redis/go-redis/v9/internal/auth/streaming
 github.com/redis/go-redis/v9/internal/hashtag
 github.com/redis/go-redis/v9/internal/hscan
+github.com/redis/go-redis/v9/internal/interfaces
+github.com/redis/go-redis/v9/internal/maintnotifications/logs
+github.com/redis/go-redis/v9/internal/otel
 github.com/redis/go-redis/v9/internal/pool
 github.com/redis/go-redis/v9/internal/proto
-github.com/redis/go-redis/v9/internal/rand
+github.com/redis/go-redis/v9/internal/routing
 github.com/redis/go-redis/v9/internal/util
+github.com/redis/go-redis/v9/maintnotifications
+github.com/redis/go-redis/v9/push
 # github.com/refraction-networking/utls v1.8.2
 ## explicit; go 1.24
 github.com/refraction-networking/utls
@@ -2170,8 +2219,8 @@ github.com/rivo/uniseg
 # github.com/rs/xid v1.6.0
 ## explicit; go 1.16
 github.com/rs/xid
-# github.com/rs/zerolog v1.34.0
-## explicit; go 1.15
+# github.com/rs/zerolog v1.35.1
+## explicit; go 1.23
 github.com/rs/zerolog
 github.com/rs/zerolog/internal/cbor
 github.com/rs/zerolog/internal/json
@@ -2201,6 +2250,9 @@ github.com/shirou/gopsutil/v4/internal/common
 github.com/shirou/gopsutil/v4/mem
 github.com/shirou/gopsutil/v4/net
 github.com/shirou/gopsutil/v4/process
+# github.com/shopspring/decimal v1.4.0
+## explicit; go 1.10
+github.com/shopspring/decimal
 # github.com/shurcooL/graphql v0.0.0-20230722043721-ed46e5a46466
 ## explicit; go 1.19
 github.com/shurcooL/graphql
@@ -2239,17 +2291,12 @@ github.com/spf13/afero/mem
 ## explicit; go 1.21.0
 github.com/spf13/cast
 github.com/spf13/cast/internal
-# github.com/spf13/cobra v1.10.1
+# github.com/spf13/cobra v1.10.2
 ## explicit; go 1.15
 github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.10
 ## explicit; go 1.12
 github.com/spf13/pflag
-# github.com/stretchr/testify v1.11.1
-## explicit; go 1.17
-github.com/stretchr/testify/assert
-github.com/stretchr/testify/assert/yaml
-github.com/stretchr/testify/require
 # github.com/syndtr/goleveldb v1.0.0
 ## explicit
 github.com/syndtr/goleveldb/leveldb
@@ -2563,10 +2610,13 @@ go.opentelemetry.io/otel/trace
 go.opentelemetry.io/otel/trace/embedded
 go.opentelemetry.io/otel/trace/internal/telemetry
 go.opentelemetry.io/otel/trace/noop
+# go.uber.org/atomic v1.11.0
+## explicit; go 1.18
+go.uber.org/atomic
 # go.uber.org/multierr v1.11.0
 ## explicit; go 1.19
 go.uber.org/multierr
-# go.uber.org/zap v1.27.0
+# go.uber.org/zap v1.28.0
 ## explicit; go 1.19
 go.uber.org/zap
 go.uber.org/zap/buffer
@@ -2659,6 +2709,7 @@ golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
+golang.org/x/net/route
 golang.org/x/net/trace
 # golang.org/x/oauth2 v0.36.0
 ## explicit; go 1.25.0

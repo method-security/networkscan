@@ -419,6 +419,31 @@ func (pac *PACType) ProcessPACInfoBuffers(key types.EncryptionKey, l *log.Logger
 	return nil
 }
 
+// ProcessCredentialsInfo decrypts the PAC_CREDENTIAL_INFO buffer using the provided AS reply key.
+// This is used for UnPAC-the-hash: extracting NT hashes from PKINIT U2U tickets.
+// The asReplyKey is the DH-derived key from PKINIT, NOT the TGT session key.
+// Returns nil if no credentials buffer is present in the PAC.
+func (pac *PACType) ProcessCredentialsInfo(asReplyKey types.EncryptionKey) error {
+	for _, buf := range pac.Buffers {
+		if buf.ULType != infoTypeCredentials {
+			continue
+		}
+		if pac.CredentialsInfo != nil {
+			// Must ignore subsequent buffers of this type
+			continue
+		}
+		p := make([]byte, buf.CBBufferSize)
+		copy(p, pac.Data[int(buf.Offset):int(buf.Offset)+int(buf.CBBufferSize)])
+		var k CredentialsInfo
+		err := k.Unmarshal(p, asReplyKey)
+		if err != nil {
+			return fmt.Errorf("error processing CredentialsInfo: %v", err)
+		}
+		pac.CredentialsInfo = &k
+	}
+	return nil
+}
+
 func (pac *PACType) verify(key types.EncryptionKey) (bool, error) {
 	if pac.KerbValidationInfo == nil {
 		return false, errors.New("PAC Info Buffers does not contain a KerbValidationInfo")

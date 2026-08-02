@@ -72,7 +72,7 @@ func (c *CredentialsInfo) DecryptEncPart(k types.EncryptionKey) error {
 // CredentialData implements https://msdn.microsoft.com/en-us/library/cc237952.aspx
 type CredentialData struct {
 	CredentialCount uint32
-	Credentials     []SECPKGSupplementalCred // Size is the value of CredentialCount
+	Credentials     []SECPKGSupplementalCred `ndr:"conformant"` // Size is the value of CredentialCount
 }
 
 // Unmarshal converts the bytes provided into a CredentialData type.
