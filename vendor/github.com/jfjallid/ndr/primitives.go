@@ -78,7 +78,7 @@ func (dec *Decoder) readChar() (rune, error) {
 
 // readUint8 reads bytes representing a 8bit unsigned integer.
 func (dec *Decoder) readUint8() (uint8, error) {
-	b, err := dec.r.ReadByte()
+	b, err := dec.readByte()
 	if err != nil {
 		return uint8(0), err
 	}
@@ -116,7 +116,6 @@ func (dec *Decoder) readUint64() (uint64, error) {
 }
 
 func (dec *Decoder) readInt8() (int8, error) {
-	dec.ensureAlignment(SizeUint8)
 	b, err := dec.readBytes(SizeUint8)
 	if err != nil {
 		return 0, err
@@ -204,8 +203,7 @@ func (dec *Decoder) readFloat64() (f float64, err error) {
 // stream. Where necessary, an alignment gap, consisting of octets of unspecified value, precedes the representation
 // of a primitive. The gap is of the smallest size sufficient to align the primitive.
 func (dec *Decoder) ensureAlignment(n int) {
-	p := dec.size - dec.r.Buffered()
-	if s := p % n; s != 0 {
-		dec.r.Discard(n - s)
+	if s := dec.pos % n; s != 0 {
+		dec.discard(n - s)
 	}
 }

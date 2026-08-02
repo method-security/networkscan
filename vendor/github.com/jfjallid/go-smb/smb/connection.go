@@ -66,6 +66,7 @@ type Connection struct {
 	capabilities              uint32
 	cipherId                  uint16
 	signingId                 uint16 // For windows 11 and windows server 2022 and later
+	offeredDialects           []uint16
 	wdone                     chan struct{}
 	rdone                     chan struct{}
 	write                     chan []byte
@@ -88,6 +89,19 @@ func (c *Connection) disableSession() {
 	atomic.StoreInt32(&c._useSession, 0)
 }
 
+// MarkAuthenticated promotes a manually-driven SessionSetup to authenticated
+// state on this Connection. Intended for relay flows that drive
+// SendSessionSetup{1,2}WithToken/Blob themselves: after a successful upstream
+// SessionSetup2 the connection holds the negotiated SessionID, but the
+// in-process flags (isAuthenticated, authUsername, useSession) are unset
+// because the relay drove the exchange directly. Calling this finishes the
+// promotion so subsequent TreeConnect / OpenFile calls work normally.
+func (c *Connection) MarkAuthenticated(authUsername string) {
+	c.authUsername = authUsername
+	c.isAuthenticated = true
+	c.enableSession()
+}
+
 // Update the Initiator used for authentication.
 // Calling this function when already logged in will kill the existing session.
 func (c *Connection) SetInitiator(initiator gss.Mechanism) error {
@@ -99,15 +113,15 @@ func (c *Connection) SetInitiator(initiator gss.Mechanism) error {
 }
 
 /*Retrieve packets from the write channel and put them to the wire.*/
-func (conn *Connection) runSender() {
+func (c *Connection) runSender() {
 	for {
 		select {
-		case <-conn.wdone:
+		case <-c.wdone:
 			return
-		case pkt := <-conn.write:
-			_, err := conn.conn.Write(pkt)
+		case pkt := <-c.write:
+			_, err := c.conn.Write(pkt)
 
-			conn.werr <- err
+			c.werr <- err
 		}
 	}
 }
@@ -130,7 +144,6 @@ func readPacket(conn net.Conn) (packet []byte, err error) {
 	packet = make([]byte, size)
 	l, err := io.ReadFull(conn, packet)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	if uint32(l) != size {
@@ -149,13 +162,31 @@ packet down the recv channel.
 func (c *Connection) runReceiver() {
 	var err error
 	var encrypted bool
+	defer func() {
+		// A malformed packet from a malicious or buggy server could drive a
+		// parser into a panic (e.g. an out-of-range slice). Recover here so a
+		// single bad packet cannot crash the whole client process, and tear
+		// the connection down cleanly so callers blocked on a response are
+		// released rather than hanging forever.
+		if r := recover(); r != nil {
+			log.Errorf("runReceiver: recovered from panic: %v\n", r)
+			perr := fmt.Errorf("runReceiver panic: %v", r)
+			c.m.Lock()
+			c.outstandingRequests.shutdown(perr)
+			c.err = perr
+			c.m.Unlock()
+			close(c.wdone)
+		}
+	}()
 	for {
 		data, err := readPacket(c.conn)
 		if err != nil {
 			// Error is handled at the end of the method.
 			break
 		}
-		if len(data) == 0 {
+		// A frame must carry at least the 4-byte protocol id; anything
+		// shorter (including an empty keep-alive) cannot be a valid SMB PDU.
+		if len(data) < 4 {
 			continue
 		}
 
@@ -176,6 +207,10 @@ func (c *Connection) runReceiver() {
 		if hasSession {
 			switch string(protID) {
 			case ProtocolTransformHdr:
+				if len(data) < 52 {
+					log.Errorln("Skip: Packet too short to contain a transform header")
+					continue
+				}
 				tHdr := NewTransformHeader()
 				if err = encoder.Unmarshal(data[:52], &tHdr); err != nil {
 					log.Errorln("Skip: Failed to decode transform header of packet")
@@ -201,6 +236,10 @@ func (c *Connection) runReceiver() {
 
 				fallthrough
 			case ProtocolSmb2:
+				if len(data) < 64 {
+					log.Errorln("Skip: Packet too short to contain an SMB2 header")
+					continue
+				}
 				if err = encoder.Unmarshal(data[:64], &h); err != nil {
 					log.Errorln("Skip: Failed to decode header of packet")
 					continue
@@ -226,16 +265,14 @@ func (c *Connection) runReceiver() {
 				// last packet and the signing flag is not set
 				if h.Status != StatusPending {
 					if (h.Flags & SMB2_FLAGS_SIGNED) != SMB2_FLAGS_SIGNED {
-						err = fmt.Errorf("Skip: Signing is required but PDU is not signed")
+						err = fmt.Errorf("signing is required but PDU is not signed; closing connection")
 						log.Errorln(err)
-						// Perhaps crash here instead of continuing to wait for a proper package?
-						continue
+						break
 					} else {
 						if !c.verify(data) {
-							err = fmt.Errorf("Skip: Signing is required and invalid signature found")
+							err = fmt.Errorf("signing is required and invalid signature found; closing connection")
 							log.Errorln(err)
-							// Perhaps crash here instead of continuing to wait for a proper package?
-							continue
+							break
 						}
 					}
 				}
@@ -248,8 +285,12 @@ func (c *Connection) runReceiver() {
 				// So we don't care about unmarshalling the packet into a SMBv1 header and only pop MessageID 0
 				// from outstandingRequests
 			} else {
+				if len(data) < 64 {
+					log.Errorln("Skip: Packet too short to contain an SMB2 header")
+					continue
+				}
 				if err = encoder.Unmarshal(data[:64], &h); err != nil {
-					fmt.Println("Skip: Failed to decode header of packet")
+					log.Errorln("Skip: Failed to decode header of packet")
 					continue
 				}
 				// Check structure size
@@ -262,7 +303,7 @@ func (c *Connection) runReceiver() {
 
 		rr, ok := c.outstandingRequests.pop(h.MessageID)
 		if !ok {
-			fmt.Printf("Message Id (%d) not found in outstanding packets!\n", h.MessageID)
+			log.Errorf("Message Id (%d) not found in outstanding packets!\n", h.MessageID)
 			continue
 		}
 		if h.Status == StatusPending {
@@ -333,7 +374,6 @@ func (r *outstandingRequests) shutdown(err error) {
 func NewConnection(opt Options) (c *Connection, err error) {
 
 	if err := validateOptions(opt); err != nil {
-		log.Errorln(err)
 		return nil, err
 	}
 	c = &Connection{
@@ -364,7 +404,6 @@ func NewConnection(opt Options) (c *Connection, err error) {
 		defer cancel()
 		c.conn, err = opt.ProxyDialer.(proxy.ContextDialer).DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", opt.Host, opt.Port))
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
 	} else {
@@ -374,14 +413,15 @@ func NewConnection(opt Options) (c *Connection, err error) {
 		}
 	}
 
-	// SMB Dialects other than 3.x requires clientGuid to be zero
-	if !opt.ForceSMB2 {
-		_, err = rand.Read(c.Session.clientGuid)
-		if err != nil {
-			log.Debugln(err)
-			return
-		}
-	} else {
+	// ClientGuid MUST be a generated GUID for SMB 2.1+ (MS-SMB2 §2.2.3). The
+	// SMB1 multi-protocol NegotiateReq does not carry a ClientGuid field, so
+	// randomizing unconditionally is safe for all paths.
+	if _, err = rand.Read(c.Session.clientGuid); err != nil {
+		log.Debugln(err)
+		return
+	}
+	if opt.ForceSMB2 {
+		// ForceSMB2 advertises only [2.1]; encryption requires 3.x.
 		c.Session.options.DisableEncryption = true
 	}
 
@@ -389,19 +429,17 @@ func NewConnection(opt Options) (c *Connection, err error) {
 	go c.runSender()
 	go c.runReceiver()
 
-	log.Debugln("Negotiating protocol")
+	log.Traceln("Negotiating protocol")
 	err = c.NegotiateProtocol()
 	if err != nil {
 		return
 	}
 	// Determine if signing is required but client wants to disable it
 	if opt.DisableSigning && c.isSigningRequired.Load() && (!c.supportsEncryption) {
-		err = fmt.Errorf("Signing is required and cannot be disabled")
-		log.Errorln(err)
+		err = fmt.Errorf("signing is required and cannot be disabled")
 		return
 	} else if opt.DisableSigning && opt.DisableEncryption && (c.dialect == DialectSmb_3_1_1) {
-		err = fmt.Errorf("Signing or Encryption is required when using SMB 3.1.1")
-		log.Errorln(err)
+		err = fmt.Errorf("signing or encryption is required when using SMB 3.1.1")
 		return
 	}
 	if !opt.ManualLogin {
@@ -447,7 +485,17 @@ func (c *Connection) makeRequestResponse(buf []byte) (rr *requestResponse, err e
 	if !smb1 {
 		h.MessageID = messageID
 		creditCharge = h.CreditCharge
-		c.messageID += uint64(h.CreditCharge)
+		// MS-SMB2 §3.2.4.1.5: MessageIDs must monotonically increase across
+		// the connection. CreditCharge=0 is valid for SMB2 Negotiate (dialect
+		// not yet known so multi-credit can't apply), but it still consumes
+		// one sequence slot — otherwise the next request reuses this ID,
+		// which strict servers (Windows) treat as a protocol violation and
+		// answer with TCP RST.
+		bump := uint64(h.CreditCharge)
+		if bump == 0 {
+			bump = 1
+		}
+		c.messageID += bump
 	} else {
 		// Assumed to be the SMB1 Negotiate Request
 		creditCharge = 1
@@ -469,7 +517,6 @@ func (c *Connection) makeRequestResponse(buf []byte) (rr *requestResponse, err e
 			if c.Session.sessionFlags&SessionFlagEncryptData != 0 {
 				buf, err = c.encrypt(buf)
 				if err != nil {
-					log.Errorln(err)
 					return
 				}
 			} else if !c.Session.isSigningDisabled || (c.dialect == DialectSmb_3_1_1) {
@@ -479,7 +526,6 @@ func (c *Connection) makeRequestResponse(buf []byte) (rr *requestResponse, err e
 					if c.signer != nil {
 						buf, err = c.sign(buf)
 						if err != nil {
-							log.Errorln(err)
 							return
 						}
 					}
@@ -499,7 +545,15 @@ func (c *Connection) makeRequestResponse(buf []byte) (rr *requestResponse, err e
 	return
 }
 
-func (c *Connection) sendrecv(req interface{}) (buf []byte, err error) {
+func (c *Connection) sendrecv(req any) (buf []byte, err error) {
+	// Debug breadcrumb at the layer seam: every smb session operation
+	// passes through here, so a single hook shows where errors originate
+	// without duplicate Error logging at each call site.
+	defer func() {
+		if err != nil {
+			log.Debugln(err)
+		}
+	}()
 	rr, err := c.send(req)
 	if err != nil {
 		return
@@ -507,7 +561,74 @@ func (c *Connection) sendrecv(req interface{}) (buf []byte, err error) {
 	return c.recv(rr)
 }
 
-func (c *Connection) send(req interface{}) (rr *requestResponse, err error) {
+// SendRawPDU forwards an opaque SMB2 PDU (header + body) on this Connection
+// and blocks for the reply. The MessageID in the header is rewritten to this
+// Connection's next outbound id; signing / encryption are applied per the
+// connection's negotiated state. Intended for relay / passthrough use cases
+// (e.g. the SMB SOCKS proxy in relay/) where a PDU produced for one
+// connection must be forwarded over another. The caller owns translation of
+// any TreeID/FileID fields embedded in the body before/after this call.
+//
+// pdu must begin with the 4-byte SMB2 protocol id (0xfe S M B); a private
+// copy is made so the caller's buffer is left untouched.
+func (c *Connection) SendRawPDU(pdu []byte) ([]byte, error) {
+	if len(pdu) < 64 || string(pdu[0:4]) != ProtocolSmb2 {
+		return nil, fmt.Errorf("SendRawPDU: not an SMB2 PDU")
+	}
+	buf := make([]byte, len(pdu))
+	copy(buf, pdu)
+	rr, err := c.sendRawBytes(buf)
+	if err != nil {
+		return nil, err
+	}
+	return c.recv(rr)
+}
+
+// sendRawBytes is the bytes-only twin of send: it skips the encoder.Marshal
+// step (caller has already produced the wire bytes) and lets
+// makeRequestResponse stamp the MessageID / signature / encryption in place.
+func (c *Connection) sendRawBytes(buf []byte) (*requestResponse, error) {
+	c.m.Lock()
+	defer c.m.Unlock()
+	if c.err != nil {
+		return nil, c.err
+	}
+	select {
+	case <-c.wdone:
+		return nil, nil
+	default:
+	}
+
+	rr, err := c.makeRequestResponse(buf)
+	if err != nil {
+		return nil, err
+	}
+
+	b := new(bytes.Buffer)
+	if err = binary.Write(b, binary.BigEndian, uint32(len(rr.pkt))); err != nil {
+		return nil, err
+	}
+
+	select {
+	case c.write <- append(b.Bytes(), rr.pkt...):
+		select {
+		case err = <-c.werr:
+			if err != nil {
+				c.outstandingRequests.pop(rr.msgId)
+				return nil, err
+			}
+		case <-c.wdone:
+			c.outstandingRequests.pop(rr.msgId)
+			return nil, nil
+		}
+	case <-c.wdone:
+		c.outstandingRequests.pop(rr.msgId)
+		return nil, nil
+	}
+	return rr, nil
+}
+
+func (c *Connection) send(req any) (rr *requestResponse, err error) {
 
 	c.m.Lock()
 	defer c.m.Unlock()
@@ -562,7 +683,7 @@ func (c *Connection) send(req interface{}) (rr *requestResponse, err error) {
 
 func (c *Connection) recv(rr *requestResponse) (buf []byte, err error) {
 	if rr == nil {
-		return nil, fmt.Errorf("Remote connection has closed")
+		return nil, fmt.Errorf("remote connection has closed")
 	}
 	select {
 	case <-c.rdone:
@@ -573,7 +694,7 @@ func (c *Connection) recv(rr *requestResponse) (buf []byte, err error) {
 		}
 		if len(buf) == 0 {
 			// Most likely received a TCP Reset
-			return nil, fmt.Errorf("Remote connection has closed!")
+			return nil, fmt.Errorf("remote connection has closed")
 		}
 		return buf, nil
 	}

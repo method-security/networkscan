@@ -64,6 +64,29 @@ func (c *Config) GetKDCs(realm string, tcp bool) (int, map[int]string, error) {
 	}
 	count = len(ks)
 
+	// Alias fallback: a caller may name a realm by a form (NetBIOS short
+	// name, lower-cased DNS form, …) that does not match the entry in
+	// c.Realms verbatim. Walk the equivalents from the alias table and
+	// retry with case-insensitive comparison. This is only entered after
+	// the strict pass fails, so existing configs keep their behaviour.
+	if count == 0 && c.RealmAliases != nil {
+		for _, eq := range c.RealmAliases.Equivalents(realm) {
+			if strings.EqualFold(eq, realm) {
+				continue
+			}
+			for _, r := range c.Realms {
+				if !strings.EqualFold(r.Realm, eq) {
+					continue
+				}
+				ks = r.KDC
+			}
+			if len(ks) > 0 {
+				break
+			}
+		}
+		count = len(ks)
+	}
+
 	if count > 0 {
 		// Order the kdcs randomly for preference.
 		kdcs = randServOrder(ks)

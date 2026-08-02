@@ -8,7 +8,6 @@ import (
 	"unicode/utf16"
 
 	dcerpc "github.com/oiweiwei/go-msrpc/dcerpc"
-	errors "github.com/oiweiwei/go-msrpc/dcerpc/errors"
 	uuid "github.com/oiweiwei/go-msrpc/midl/uuid"
 	dcetypes "github.com/oiweiwei/go-msrpc/msrpc/dcetypes"
 	dtyp "github.com/oiweiwei/go-msrpc/msrpc/dtyp"
@@ -23,7 +22,6 @@ var (
 	_ = ndr.ZeroString
 	_ = (*uuid.UUID)(nil)
 	_ = (*dcerpc.SyntaxID)(nil)
-	_ = (*errors.Error)(nil)
 	_ = hex.DecodeString
 	_ = dcetypes.GoPackage
 	_ = dtyp.GoPackage
@@ -3093,6 +3091,136 @@ func (o *UserProperty_PropertyValue_RawCredential) UnmarshalNDR(ctx context.Cont
 	return nil
 }
 
+// UserPropertiesList structure represents USER_PROPERTIES_LIST RPC structure.
+type UserPropertiesList struct {
+	PropertyCount  uint16          `idl:"name:PropertyCount" json:"property_count"`
+	UserProperties []*UserProperty `idl:"name:UserProperties;size_is:(PropertyCount)" json:"user_properties"`
+}
+
+func (o *UserPropertiesList) xxx_PreparePayload(ctx context.Context) error {
+	if err := ndr.BeforePreparePayload(ctx, o); err != nil {
+		return err
+	}
+	if o.UserProperties != nil && o.PropertyCount == 0 {
+		o.PropertyCount = uint16(len(o.UserProperties))
+	}
+	if err := ndr.AfterPreparePayload(ctx, o); err != nil {
+		return err
+	}
+	return nil
+}
+func (o *UserPropertiesList) MarshalNDR(ctx context.Context, w ndr.Writer) error {
+	if err := o.xxx_PreparePayload(ctx); err != nil {
+		return err
+	}
+	if err := w.WriteAlign(7); err != nil {
+		return err
+	}
+	if err := w.WriteData(o.PropertyCount); err != nil {
+		return err
+	}
+	if o.UserProperties != nil || o.PropertyCount > 0 {
+		_ptr_UserProperties := ndr.MarshalNDRFunc(func(ctx context.Context, w ndr.Writer) error {
+			dimSize1 := uint64(o.PropertyCount)
+			if err := w.WriteSize(dimSize1); err != nil {
+				return err
+			}
+			sizeInfo := []uint64{
+				dimSize1,
+			}
+			for i1 := range o.UserProperties {
+				i1 := i1
+				if uint64(i1) >= sizeInfo[0] {
+					break
+				}
+				if o.UserProperties[i1] != nil {
+					_ptr_UserProperties := ndr.MarshalNDRFunc(func(ctx context.Context, w ndr.Writer) error {
+						if o.UserProperties[i1] != nil {
+							if err := o.UserProperties[i1].MarshalNDR(ctx, w); err != nil {
+								return err
+							}
+						} else {
+							if err := (&UserProperty{}).MarshalNDR(ctx, w); err != nil {
+								return err
+							}
+						}
+						return nil
+					})
+					if err := w.WritePointer(&o.UserProperties[i1], _ptr_UserProperties); err != nil {
+						return err
+					}
+				} else {
+					if err := w.WritePointer(nil); err != nil {
+						return err
+					}
+				}
+			}
+			for i1 := len(o.UserProperties); uint64(i1) < sizeInfo[0]; i1++ {
+				if err := w.WritePointer(nil); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err := w.WritePointer(&o.UserProperties, _ptr_UserProperties); err != nil {
+			return err
+		}
+	} else {
+		if err := w.WritePointer(nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (o *UserPropertiesList) UnmarshalNDR(ctx context.Context, w ndr.Reader) error {
+	if err := w.ReadAlign(7); err != nil {
+		return err
+	}
+	if err := w.ReadData(&o.PropertyCount); err != nil {
+		return err
+	}
+	_ptr_UserProperties := ndr.UnmarshalNDRFunc(func(ctx context.Context, w ndr.Reader) error {
+		sizeInfo := []uint64{
+			0,
+		}
+		for sz1 := range sizeInfo {
+			if err := w.ReadSize(&sizeInfo[sz1]); err != nil {
+				return err
+			}
+		}
+		// XXX: for opaque unmarshaling
+		if o.PropertyCount > 0 && sizeInfo[0] == 0 {
+			sizeInfo[0] = uint64(o.PropertyCount)
+		}
+		if sizeInfo[0] > uint64(w.Len()) /* sanity-check */ {
+			return fmt.Errorf("buffer overflow for size %d of array o.UserProperties", sizeInfo[0])
+		}
+		o.UserProperties = make([]*UserProperty, sizeInfo[0])
+		for i1 := range o.UserProperties {
+			i1 := i1
+			_ptr_UserProperties := ndr.UnmarshalNDRFunc(func(ctx context.Context, w ndr.Reader) error {
+				if o.UserProperties[i1] == nil {
+					o.UserProperties[i1] = &UserProperty{}
+				}
+				if err := o.UserProperties[i1].UnmarshalNDR(ctx, w); err != nil {
+					return err
+				}
+				return nil
+			})
+			_s_UserProperties := func(ptr interface{}) { o.UserProperties[i1] = *ptr.(**UserProperty) }
+			if err := w.ReadPointer(&o.UserProperties[i1], _s_UserProperties, _ptr_UserProperties); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	_s_UserProperties := func(ptr interface{}) { o.UserProperties = *ptr.(*[]*UserProperty) }
+	if err := w.ReadPointer(&o.UserProperties, _s_UserProperties, _ptr_UserProperties); err != nil {
+		return err
+	}
+	return nil
+}
+
 // UserProperties structure represents USER_PROPERTIES RPC structure.
 //
 // The USER_PROPERTIES structure defines the format of the supplementalCredentials attribute.
@@ -3144,13 +3272,14 @@ type UserProperties struct {
 	// field. When there are zero USER_PROPERTY elements in the UserProperties field, this
 	// field MUST be omitted; the resultant USER_PROPERTIES structure has a constant size
 	// of 0x6F bytes.
-	PropertyCount     uint16 `idl:"name:PropertyCount" json:"property_count"`
-	UserPropertiesRaw []byte `idl:"name:UserPropertiesRaw;size_is:((Length-100))" json:"user_properties_raw"`
-	// UserProperties (variable): An array of PropertyCount USER_PROPERTY elements.
-	UserProperties []*UserProperty `idl:"name:UserProperties;size_is:(PropertyCount)" json:"user_properties"`
+	PropertyCount      uint16              `idl:"name:PropertyCount" json:"property_count"`
+	UserPropertiesRaw  []byte              `idl:"name:UserPropertiesRaw;size_is:((Length-98))" json:"user_properties_raw"`
+	UserPropertiesList *UserPropertiesList `idl:"name:UserPropertiesList" json:"user_properties_list"`
 	// Reserved5 (1 byte): This value SHOULD<23> be set to zero and MUST be ignored by the
 	// recipient.
 	_ uint8 `idl:"name:Reserved5"`
+	// UserProperties (variable): An array of PropertyCount USER_PROPERTY elements.
+	UserProperties []*UserProperty `idl:"name:UserProperties;size_is:(PropertyCount)" json:"user_properties"`
 }
 
 func (o *UserProperties) xxx_PreparePayload(ctx context.Context) error {
@@ -3158,10 +3287,13 @@ func (o *UserProperties) xxx_PreparePayload(ctx context.Context) error {
 		return err
 	}
 	if o.UserPropertiesRaw != nil && o.Length == 0 {
-		o.Length = uint32((len(o.UserPropertiesRaw) + 100))
+		o.Length = uint32((len(o.UserPropertiesRaw) + 98))
 	}
-	if o.Length < 100 {
-		o.Length = 100
+	if o.Length < 98 {
+		o.Length = 98
+	}
+	if o.UserProperties != nil && o.PropertyCount == 0 {
+		o.PropertyCount = uint16(len(o.UserProperties))
 	}
 	if err := ndr.AfterPreparePayload(ctx, o); err != nil {
 		return err
@@ -3210,13 +3342,10 @@ func (o *UserProperties) MarshalNDR(ctx context.Context, w ndr.Writer) error {
 			return err
 		}
 	}
-	if err := w.WriteData(o.PropertyCount); err != nil {
-		return err
-	}
-	if o.UserPropertiesRaw != nil || (o.Length-100) > 0 {
+	if o.UserPropertiesRaw != nil || (o.Length-98) > 0 {
 		_ptr_UserPropertiesRaw := ndr.MarshalNDRFunc(func(ctx context.Context, w ndr.Writer) error {
-			dimSize1 := uint64((o.Length - 100))
-			if o.Length < 100 {
+			dimSize1 := uint64((o.Length - 98))
+			if o.Length < 98 {
 				dimSize1 = uint64(0)
 			}
 			if err := w.WriteSize(dimSize1); err != nil {
@@ -3253,12 +3382,12 @@ func (o *UserProperties) MarshalNDR(ctx context.Context, w ndr.Writer) error {
 	if err := w.WriteData(uint8(0)); err != nil {
 		return err
 	}
-	if err := w.WriteTrailingGap(9); err != nil {
-		return err
-	}
 	return nil
 }
 func (o *UserProperties) UnmarshalNDR(ctx context.Context, w ndr.Reader) error {
+	if w.Len() < 111 /* min-is check */ {
+		return nil
+	}
 	if err := w.ReadAlign(9); err != nil {
 		return err
 	}
@@ -3296,9 +3425,6 @@ func (o *UserProperties) UnmarshalNDR(ctx context.Context, w ndr.Reader) error {
 			return err
 		}
 	}
-	if err := w.ReadData(&o.PropertyCount); err != nil {
-		return err
-	}
 	_ptr_UserPropertiesRaw := ndr.UnmarshalNDRFunc(func(ctx context.Context, w ndr.Reader) error {
 		sizeInfo := []uint64{
 			0,
@@ -3309,8 +3435,8 @@ func (o *UserProperties) UnmarshalNDR(ctx context.Context, w ndr.Reader) error {
 			}
 		}
 		// XXX: for opaque unmarshaling
-		if o.Length > 100 && sizeInfo[0] == 0 {
-			sizeInfo[0] = uint64((o.Length - 100))
+		if o.Length > 98 && sizeInfo[0] == 0 {
+			sizeInfo[0] = uint64((o.Length - 98))
 		}
 		if sizeInfo[0] > uint64(w.Len()) /* sanity-check */ {
 			return fmt.Errorf("buffer overflow for size %d of array o.UserPropertiesRaw", sizeInfo[0])
@@ -3322,43 +3448,31 @@ func (o *UserProperties) UnmarshalNDR(ctx context.Context, w ndr.Reader) error {
 				return err
 			}
 		}
-		_layout_UserProperties := ndr.UnmarshalNDRFunc(func(ctx context.Context, w ndr.Reader) error {
-			sizeInfo := []uint64{
-				0,
-			}
-			for sz1 := range sizeInfo {
-				if err := w.ReadSize(&sizeInfo[sz1]); err != nil {
-					return err
-				}
-			}
-			// XXX: for opaque unmarshaling
-			if o.PropertyCount > 0 && sizeInfo[0] == 0 {
-				sizeInfo[0] = uint64(o.PropertyCount)
-			}
-			if sizeInfo[0] > uint64(w.Len()) /* sanity-check */ {
-				return fmt.Errorf("buffer overflow for size %d of array o.UserProperties", sizeInfo[0])
-			}
-			o.UserProperties = make([]*UserProperty, sizeInfo[0])
-			for i1 := range o.UserProperties {
-				i1 := i1
-				_ptr_UserProperties := ndr.UnmarshalNDRFunc(func(ctx context.Context, w ndr.Reader) error {
-					if o.UserProperties[i1] == nil {
-						o.UserProperties[i1] = &UserProperty{}
+		_layout_UserPropertiesList := ndr.UnmarshalNDRFunc(func(ctx context.Context, w ndr.Reader) error {
+			_ptr_UserPropertiesList := ndr.UnmarshalNDRFunc(func(ctx context.Context, w ndr.Reader) error {
+				_ptr_UserPropertiesList := ndr.UnmarshalNDRFunc(func(ctx context.Context, w ndr.Reader) error {
+					if o.UserPropertiesList == nil {
+						o.UserPropertiesList = &UserPropertiesList{}
 					}
-					if err := o.UserProperties[i1].UnmarshalNDR(ctx, w); err != nil {
+					if err := o.UserPropertiesList.UnmarshalNDR(ctx, w); err != nil {
 						return err
 					}
 					return nil
 				})
-				_s_UserProperties := func(ptr interface{}) { o.UserProperties[i1] = *ptr.(**UserProperty) }
-				if err := w.ReadPointer(&o.UserProperties[i1], _s_UserProperties, _ptr_UserProperties); err != nil {
+				_s_UserPropertiesList := func(ptr interface{}) { o.UserPropertiesList = *ptr.(**UserPropertiesList) }
+				if err := w.ReadPointer(&o.UserPropertiesList, _s_UserPropertiesList, _ptr_UserPropertiesList); err != nil {
 					return err
 				}
+				return nil
+			})
+			_s_UserPropertiesList := func(ptr interface{}) { o.UserPropertiesList = *ptr.(**UserPropertiesList) }
+			if err := w.ReadPointer(&o.UserPropertiesList, _s_UserPropertiesList, _ptr_UserPropertiesList); err != nil {
+				return err
 			}
 			return nil
 		})
 		if len(o.UserPropertiesRaw) > 0 {
-			if err := w.WithBytes(o.UserPropertiesRaw).Unmarshal(ctx, _layout_UserProperties); err != nil {
+			if err := w.WithBytes(o.UserPropertiesRaw).Unmarshal(ctx, _layout_UserPropertiesList); err != nil {
 				return err
 			}
 		}
@@ -3371,9 +3485,6 @@ func (o *UserProperties) UnmarshalNDR(ctx context.Context, w ndr.Reader) error {
 	// reserved Reserved5
 	var _Reserved5 uint8
 	if err := w.ReadData(&_Reserved5); err != nil {
-		return err
-	}
-	if err := w.ReadTrailingGap(9); err != nil {
 		return err
 	}
 	return nil
@@ -14629,7 +14740,7 @@ func (o *xxx_DefaultSamrClient) Connect(ctx context.Context, in *ConnectRequest,
 	out := &ConnectResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14642,7 +14753,7 @@ func (o *xxx_DefaultSamrClient) CloseHandle(ctx context.Context, in *CloseHandle
 	out := &CloseHandleResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14655,7 +14766,7 @@ func (o *xxx_DefaultSamrClient) SetSecurityObject(ctx context.Context, in *SetSe
 	out := &SetSecurityObjectResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14668,7 +14779,7 @@ func (o *xxx_DefaultSamrClient) QuerySecurityObject(ctx context.Context, in *Que
 	out := &QuerySecurityObjectResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14681,7 +14792,7 @@ func (o *xxx_DefaultSamrClient) LookupDomainInSAMServer(ctx context.Context, in 
 	out := &LookupDomainInSAMServerResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14694,7 +14805,7 @@ func (o *xxx_DefaultSamrClient) EnumerateDomainsInSAMServer(ctx context.Context,
 	out := &EnumerateDomainsInSAMServerResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14707,7 +14818,7 @@ func (o *xxx_DefaultSamrClient) OpenDomain(ctx context.Context, in *OpenDomainRe
 	out := &OpenDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14720,7 +14831,7 @@ func (o *xxx_DefaultSamrClient) QueryInformationDomain(ctx context.Context, in *
 	out := &QueryInformationDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14733,7 +14844,7 @@ func (o *xxx_DefaultSamrClient) SetInformationDomain(ctx context.Context, in *Se
 	out := &SetInformationDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14746,7 +14857,7 @@ func (o *xxx_DefaultSamrClient) CreateGroupInDomain(ctx context.Context, in *Cre
 	out := &CreateGroupInDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14759,7 +14870,7 @@ func (o *xxx_DefaultSamrClient) EnumerateGroupsInDomain(ctx context.Context, in 
 	out := &EnumerateGroupsInDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14772,7 +14883,7 @@ func (o *xxx_DefaultSamrClient) CreateUserInDomain(ctx context.Context, in *Crea
 	out := &CreateUserInDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14785,7 +14896,7 @@ func (o *xxx_DefaultSamrClient) EnumerateUsersInDomain(ctx context.Context, in *
 	out := &EnumerateUsersInDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14798,7 +14909,7 @@ func (o *xxx_DefaultSamrClient) CreateAliasInDomain(ctx context.Context, in *Cre
 	out := &CreateAliasInDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14811,7 +14922,7 @@ func (o *xxx_DefaultSamrClient) EnumerateAliasesInDomain(ctx context.Context, in
 	out := &EnumerateAliasesInDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14824,7 +14935,7 @@ func (o *xxx_DefaultSamrClient) GetAliasMembership(ctx context.Context, in *GetA
 	out := &GetAliasMembershipResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14837,7 +14948,7 @@ func (o *xxx_DefaultSamrClient) LookupNamesInDomain(ctx context.Context, in *Loo
 	out := &LookupNamesInDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14850,7 +14961,7 @@ func (o *xxx_DefaultSamrClient) LookupIDsInDomain(ctx context.Context, in *Looku
 	out := &LookupIDsInDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14863,7 +14974,7 @@ func (o *xxx_DefaultSamrClient) OpenGroup(ctx context.Context, in *OpenGroupRequ
 	out := &OpenGroupResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14876,7 +14987,7 @@ func (o *xxx_DefaultSamrClient) QueryInformationGroup(ctx context.Context, in *Q
 	out := &QueryInformationGroupResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14889,7 +15000,7 @@ func (o *xxx_DefaultSamrClient) SetInformationGroup(ctx context.Context, in *Set
 	out := &SetInformationGroupResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14902,7 +15013,7 @@ func (o *xxx_DefaultSamrClient) AddMemberToGroup(ctx context.Context, in *AddMem
 	out := &AddMemberToGroupResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14915,7 +15026,7 @@ func (o *xxx_DefaultSamrClient) DeleteGroup(ctx context.Context, in *DeleteGroup
 	out := &DeleteGroupResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14928,7 +15039,7 @@ func (o *xxx_DefaultSamrClient) RemoveMemberFromGroup(ctx context.Context, in *R
 	out := &RemoveMemberFromGroupResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14941,7 +15052,7 @@ func (o *xxx_DefaultSamrClient) GetMembersInGroup(ctx context.Context, in *GetMe
 	out := &GetMembersInGroupResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14954,7 +15065,7 @@ func (o *xxx_DefaultSamrClient) SetMemberAttributesOfGroup(ctx context.Context, 
 	out := &SetMemberAttributesOfGroupResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14967,7 +15078,7 @@ func (o *xxx_DefaultSamrClient) OpenAlias(ctx context.Context, in *OpenAliasRequ
 	out := &OpenAliasResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14980,7 +15091,7 @@ func (o *xxx_DefaultSamrClient) QueryInformationAlias(ctx context.Context, in *Q
 	out := &QueryInformationAliasResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -14993,7 +15104,7 @@ func (o *xxx_DefaultSamrClient) SetInformationAlias(ctx context.Context, in *Set
 	out := &SetInformationAliasResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15006,7 +15117,7 @@ func (o *xxx_DefaultSamrClient) DeleteAlias(ctx context.Context, in *DeleteAlias
 	out := &DeleteAliasResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15019,7 +15130,7 @@ func (o *xxx_DefaultSamrClient) AddMemberToAlias(ctx context.Context, in *AddMem
 	out := &AddMemberToAliasResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15032,7 +15143,7 @@ func (o *xxx_DefaultSamrClient) RemoveMemberFromAlias(ctx context.Context, in *R
 	out := &RemoveMemberFromAliasResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15045,7 +15156,7 @@ func (o *xxx_DefaultSamrClient) GetMembersInAlias(ctx context.Context, in *GetMe
 	out := &GetMembersInAliasResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15058,7 +15169,7 @@ func (o *xxx_DefaultSamrClient) OpenUser(ctx context.Context, in *OpenUserReques
 	out := &OpenUserResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15071,7 +15182,7 @@ func (o *xxx_DefaultSamrClient) DeleteUser(ctx context.Context, in *DeleteUserRe
 	out := &DeleteUserResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15084,7 +15195,7 @@ func (o *xxx_DefaultSamrClient) QueryInformationUser(ctx context.Context, in *Qu
 	out := &QueryInformationUserResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15097,7 +15208,7 @@ func (o *xxx_DefaultSamrClient) SetInformationUser(ctx context.Context, in *SetI
 	out := &SetInformationUserResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15110,7 +15221,7 @@ func (o *xxx_DefaultSamrClient) ChangePasswordUser(ctx context.Context, in *Chan
 	out := &ChangePasswordUserResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15123,7 +15234,7 @@ func (o *xxx_DefaultSamrClient) GetGroupsForUser(ctx context.Context, in *GetGro
 	out := &GetGroupsForUserResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15136,7 +15247,7 @@ func (o *xxx_DefaultSamrClient) QueryDisplayInformation(ctx context.Context, in 
 	out := &QueryDisplayInformationResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15149,7 +15260,7 @@ func (o *xxx_DefaultSamrClient) GetDisplayEnumerationIndex(ctx context.Context, 
 	out := &GetDisplayEnumerationIndexResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15162,7 +15273,7 @@ func (o *xxx_DefaultSamrClient) GetUserDomainPasswordInformation(ctx context.Con
 	out := &GetUserDomainPasswordInformationResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15175,7 +15286,7 @@ func (o *xxx_DefaultSamrClient) RemoveMemberFromForeignDomain(ctx context.Contex
 	out := &RemoveMemberFromForeignDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15188,7 +15299,7 @@ func (o *xxx_DefaultSamrClient) QueryInformationDomain2(ctx context.Context, in 
 	out := &QueryInformationDomain2Response{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15201,7 +15312,7 @@ func (o *xxx_DefaultSamrClient) QueryInformationUser2(ctx context.Context, in *Q
 	out := &QueryInformationUser2Response{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15214,7 +15325,7 @@ func (o *xxx_DefaultSamrClient) QueryDisplayInformation2(ctx context.Context, in
 	out := &QueryDisplayInformation2Response{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15227,7 +15338,7 @@ func (o *xxx_DefaultSamrClient) GetDisplayEnumerationIndex2(ctx context.Context,
 	out := &GetDisplayEnumerationIndex2Response{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15240,7 +15351,7 @@ func (o *xxx_DefaultSamrClient) CreateUser2InDomain(ctx context.Context, in *Cre
 	out := &CreateUser2InDomainResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15253,7 +15364,7 @@ func (o *xxx_DefaultSamrClient) QueryDisplayInformation3(ctx context.Context, in
 	out := &QueryDisplayInformation3Response{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15266,7 +15377,7 @@ func (o *xxx_DefaultSamrClient) AddMultipleMembersToAlias(ctx context.Context, i
 	out := &AddMultipleMembersToAliasResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15279,7 +15390,7 @@ func (o *xxx_DefaultSamrClient) RemoveMultipleMembersFromAlias(ctx context.Conte
 	out := &RemoveMultipleMembersFromAliasResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15292,7 +15403,7 @@ func (o *xxx_DefaultSamrClient) OEMChangePasswordUser2(ctx context.Context, in *
 	out := &OEMChangePasswordUser2Response{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15305,7 +15416,7 @@ func (o *xxx_DefaultSamrClient) UnicodeChangePasswordUser2(ctx context.Context, 
 	out := &UnicodeChangePasswordUser2Response{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15318,7 +15429,7 @@ func (o *xxx_DefaultSamrClient) GetDomainPasswordInformation(ctx context.Context
 	out := &GetDomainPasswordInformationResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15331,7 +15442,7 @@ func (o *xxx_DefaultSamrClient) Connect2(ctx context.Context, in *Connect2Reques
 	out := &Connect2Response{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15344,7 +15455,7 @@ func (o *xxx_DefaultSamrClient) SetInformationUser2(ctx context.Context, in *Set
 	out := &SetInformationUser2Response{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15357,7 +15468,7 @@ func (o *xxx_DefaultSamrClient) Connect4(ctx context.Context, in *Connect4Reques
 	out := &Connect4Response{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15370,7 +15481,7 @@ func (o *xxx_DefaultSamrClient) Connect5(ctx context.Context, in *Connect5Reques
 	out := &Connect5Response{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15383,7 +15494,7 @@ func (o *xxx_DefaultSamrClient) RIDToSID(ctx context.Context, in *RIDToSIDReques
 	out := &RIDToSIDResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15396,7 +15507,7 @@ func (o *xxx_DefaultSamrClient) SetDSRMPassword(ctx context.Context, in *SetDSRM
 	out := &SetDSRMPasswordResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }
@@ -15409,7 +15520,7 @@ func (o *xxx_DefaultSamrClient) ValidatePassword(ctx context.Context, in *Valida
 	out := &ValidatePasswordResponse{}
 	out.xxx_FromOp(ctx, op)
 	if op.Return != int32(0) {
-		return out, fmt.Errorf("%s: %w", op.OpName(), errors.New(ctx, op.Return))
+		return out, fmt.Errorf("%s: %w", op.OpName(), o.cc.Error(ctx, op.Return))
 	}
 	return out, nil
 }

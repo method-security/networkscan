@@ -80,11 +80,7 @@ func StringToKeyIter(secret, salt string, iterations int, e etype.EType) ([]byte
 
 // StringToPBKDF2 generates an encryption key from a pass phrase and salt string using the PBKDF2 function from PKCS #5 v2.0
 func StringToPBKDF2(secret, salt string, iterations int, e etype.EType) []byte {
-	kl := e.GetKeyByteSize()
-	if e.GetETypeID() == etypeID.AES256_CTS_HMAC_SHA384_192 {
-		kl = 32
-	}
-	return pbkdf2.Key([]byte(secret), []byte(salt), iterations, kl, e.GetHashFunc())
+	return pbkdf2.Key([]byte(secret), []byte(salt), iterations, e.GetKeyByteSize(), e.GetHashFunc())
 }
 
 // KDF_HMAC_SHA2 key derivation: https://tools.ietf.org/html/rfc8009#section-3

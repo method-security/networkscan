@@ -1,13 +1,15 @@
 package gss
 
 import (
+	"fmt"
+
 	"github.com/jfjallid/gofork/encoding/asn1"
 
 	"github.com/jfjallid/go-smb/smb/encoder"
 	"github.com/jfjallid/golog"
 )
 
-var log = golog.Get("github.com/jfjallid/go-smb/gss")
+var log = golog.Get("github.com/jfjallid/go-smb/gss").SetDisplayName("gss")
 var SpnegoOid = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 5, 5, 2})
 var MsKerberosOid = asn1.ObjectIdentifier([]int{1, 2, 840, 48018, 1, 2, 2})
 var KerberosSSPMechTypeOid = asn1.ObjectIdentifier([]int{1, 2, 840, 113554, 1, 2, 2})
@@ -42,12 +44,13 @@ const (
 // https://www.gnu.org/software/gss/reference/gss-api.html#GSS-C-DELEG-FLAG:CAPS
 const (
 	GssContextFlagDeleg    = 1
-	GssContextFlagMutual   = 1
+	GssContextFlagMutual   = 2
 	GssContextFlagReplay   = 4
 	GssContextFlagSequence = 8
 	GssContextFlagConf     = 16
 	GssContextFlagInteg    = 32
 	GssContextFlagAnon     = 64
+	GssContextFlagDCEStyle = 0x1000 // DCE-RPC style 3-leg authentication
 )
 
 // RFC4178
@@ -85,7 +88,7 @@ type NegTokenResp struct {
 // gsswrapped used to force ASN1 encoding to include explicit sequence tags
 // Type does not fulfill the BinaryMarshallable interfce and is used only as a
 // helper to marshal a NegTokenResp
-type gsswrapped struct{ G interface{} }
+type gsswrapped struct{ G any }
 
 func NewNegTokenInit(types []asn1.ObjectIdentifier, token []byte) ([]byte, error) {
 	req := NegTokenInit{
@@ -108,8 +111,7 @@ func NewNegTokenResp() (NegTokenResp, error) {
 func (n *NegTokenInit) MarshalBinary(meta *encoder.Metadata) ([]byte, error) {
 	buf, err := asn1.Marshal(*n)
 	if err != nil {
-		log.Criticalln(err)
-		return nil, err
+		return nil, fmt.Errorf("marshal NegTokenInit: %w", err)
 	}
 
 	// When marshalling struct, asn1 uses 30 (sequence) tag by default.
@@ -142,8 +144,7 @@ func (r *NegTokenResp) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error
 	}
 	data := NegTokenResp{}
 	if _, err := asn1.UnmarshalWithParams(buf, &data, "explicit,tag:1"); err != nil {
-		log.Criticalln(err)
-		return err
+		return fmt.Errorf("unmarshal NegTokenResp: %w", err)
 	}
 	*r = data
 	return nil

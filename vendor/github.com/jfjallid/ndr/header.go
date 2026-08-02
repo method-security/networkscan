@@ -71,15 +71,6 @@ func (dec *Decoder) readCommonHeader() error {
 }
 
 func (dec *Decoder) readCommonHeaderV1() error {
-	//// Version
-	//vb, err := dec.r.ReadByte()
-	//if err != nil {
-	//	return Malformed{EText: "could not read first byte of common header for version"}
-	//}
-	//dec.ch.Version = uint8(vb)
-	//if dec.ch.Version != protocolVersion {
-	//	return Malformed{EText: fmt.Sprintf("byte stream does not indicate a RPC Type serialization of version %v but instead: %v", protocolVersion, dec.ch.Version)}
-	//}
 	// Read Endianness & Character Encoding
 	eb, err := dec.r.ReadByte()
 	if err != nil {
@@ -89,10 +80,9 @@ func (dec *Decoder) readCommonHeaderV1() error {
 	if endian != 0 && endian != 1 {
 		return Malformed{EText: "common header does not indicate a valid endianness"}
 	}
-	//dec.ch.CharacterEncoding = uint8(vb & 0xF)
-	dec.ch.CharacterEncoding = uint8(dec.ch.Version & 0xF)
-	if dec.ch.CharacterEncoding != 0 && dec.ch.CharacterEncoding != 1 {
-		return Malformed{EText: "common header does not indicate a valid character encoding"}
+	dec.ch.CharacterEncoding = uint8(eb & 0xF)
+	if dec.ch.CharacterEncoding != ascii {
+		return Malformed{EText: fmt.Sprintf("unsupported character encoding %d; only ASCII is supported", dec.ch.CharacterEncoding)}
 	}
 	switch endian {
 	case littleEndian:
@@ -217,11 +207,24 @@ func (dec *Decoder) readPrivateHeaderV2() error {
 }
 
 func (enc *Encoder) writeCommonHeader(w *bytes.Buffer) (err error) {
-	//Common header
-	binary.Write(w, binary.LittleEndian, uint8(1))
-	binary.Write(w, binary.LittleEndian, uint8(0x10))
-	binary.Write(w, binary.LittleEndian, uint16(0x0008))
-	binary.Write(w, binary.LittleEndian, uint32(0xCCCCCCCC))
+	// Common header (8 bytes):
+	//   [0] version = 1
+	//   [1] high nibble = endianness (0=Big, 1=Little), low nibble = char enc (0=ASCII)
+	//   [2-3] header length = 8 (in the indicated endianness)
+	//   [4-7] filler 0xCCCCCCCC
+	if enc.ch.CharacterEncoding != ascii {
+		return Malformed{EText: fmt.Sprintf("unsupported character encoding %d; only ASCII is supported", enc.ch.CharacterEncoding)}
+	}
+	var endiannessByte uint8
+	if enc.ch.Endianness == binary.BigEndian {
+		endiannessByte = 0x00 // big-endian + ASCII
+	} else {
+		endiannessByte = 0x10 // little-endian + ASCII
+	}
+	binary.Write(w, enc.ch.Endianness, uint8(1))
+	binary.Write(w, enc.ch.Endianness, endiannessByte)
+	binary.Write(w, enc.ch.Endianness, commonHeaderBytes)
+	binary.Write(w, enc.ch.Endianness, uint32(0xCCCCCCCC))
 	return
 }
 
@@ -230,9 +233,9 @@ func (enc *Encoder) writePrivateHeader(w *bytes.Buffer) (err error) {
 	bufLen := uint32(enc.w.Len())
 	bufferSize := ((bufLen + 7) / 8) * 8
 	padd := bufferSize - bufLen
-	binary.Write(enc.w, binary.LittleEndian, make([]byte, padd))
+	binary.Write(enc.w, enc.ch.Endianness, make([]byte, padd))
 
-	binary.Write(w, binary.LittleEndian, bufferSize)
-	binary.Write(w, binary.LittleEndian, uint32(0x00000000))
+	binary.Write(w, enc.ch.Endianness, bufferSize)
+	binary.Write(w, enc.ch.Endianness, uint32(0x00000000))
 	return
 }

@@ -146,7 +146,7 @@ func getHostDiscover(ctx context.Context, target string, scantype discoverfern.H
 		result = append(result, hd)
 	}
 
-	defer hostdiscover.Close()
+	defer func() { _ = hostdiscover.Close() }()
 
 	// Restore original gologger writer
 	gologger.DefaultLogger.SetWriter(originalWriter)

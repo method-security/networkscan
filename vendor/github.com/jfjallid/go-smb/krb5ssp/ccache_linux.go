@@ -22,15 +22,16 @@
 package krb5ssp
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
-	"github.com/jfjallid/gokrb5/v8/client"
-	"github.com/jfjallid/gokrb5/v8/config"
-	"github.com/jfjallid/gokrb5/v8/credentials"
+	"github.com/jfjallid/gokrb5/v9/client"
+	"github.com/jfjallid/gokrb5/v9/config"
+	"github.com/jfjallid/gokrb5/v9/credentials"
 )
 
-func getClientFromCachedTicket(cfg *config.Config, username, domain, spn string, settings ...func(*client.Settings)) (c *client.Client, err error) {
+func getClientFromCachedTicket(cfg *config.Config, username, domain, spn string, spnAliases map[string][]string, settings ...func(*client.Settings)) (c *client.Client, fallbackSPN string, err error) {
 	cacheFile := os.Getenv("KRB5CCNAME")
 	if cacheFile != "" {
 		var cache *credentials.CCache
@@ -38,19 +39,20 @@ func getClientFromCachedTicket(cfg *config.Config, username, domain, spn string,
 		fileinfo, err2 := os.Stat(cacheFile)
 		err = err2
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
+		log.Debugf("Found ccache file: %s\n", cacheFile)
 		mode := fileinfo.Mode()
 		if mode.IsRegular() {
 			// Try loading TGT and TGS from ccache
 			cache, err = credentials.LoadCCache(cacheFile)
 			if err != nil {
-				log.Errorln(err)
 				return
 			}
 			cacheDomain := cache.GetClientRealm()
-			if domain != "" && !strings.EqualFold(cacheDomain, domain) {
+			// Might be that ccache domain is fqdn but user provides netbios domain name.
+			netbiosDomain := strings.Split(cacheDomain, ".")[0]
+			if domain != "" && (!strings.EqualFold(cacheDomain, domain) && !strings.EqualFold(netbiosDomain, domain)) {
 				log.Infof("Kerberos cache only contains credentials for the %s domain, but not for %s as requested\n", cacheDomain, domain)
 				return
 			}
@@ -59,13 +61,37 @@ func getClientFromCachedTicket(cfg *config.Config, username, domain, spn string,
 				log.Infof("Kerberos cache only contains credentials for the %s username, but not for %s as requested\n", cacheUser, username)
 				return
 			}
-			c, err = client.NewFromCCache(cache, strings.Split(spn, "/"), cfg, settings...)
-			if err != nil {
-				log.Errorln(err)
+			spnParts := strings.Split(spn, "/")
+			// Build ordered candidate list: primary SPN first, then configured aliases.
+			targets := [][]string{spnParts}
+			if len(spnParts) >= 2 {
+				aliases := spnAliases
+				if aliases == nil {
+					aliases = defaultSPNAliases
+				}
+				service := strings.ToLower(spnParts[0])
+				// Construct alternative SPNs to look for in the ccache
+				for _, altService := range aliases[service] {
+					altParts := append([]string{altService}, spnParts[1:]...)
+					targets = append(targets, altParts)
+				}
+			}
+			var matched []string
+			c, matched, err = client.NewFromCCacheWithFallbacks(cache, targets, cfg, settings...)
+			if matched != nil && !strings.EqualFold(matched[0], spnParts[0]) {
+				fallbackSPN = strings.Join(matched, "/")
+				log.Debugf("Requested SPN %q not cached; using %q instead", spn, fallbackSPN)
+			}
+			if c == nil {
+				if err != nil {
+					err = fmt.Errorf("looking for cached ticket for SPN %q: %w", spn, err)
+				}
 				return
 			}
+			log.Debugln("Created client from ccache")
 		} else if mode.IsDir() {
-			log.Errorln("KRB5CCNAME points to a directory and not a file which is not supported")
+			// Not a failure: the caller falls back to other credential sources.
+			log.Warningln("KRB5CCNAME points to a directory and not a file which is not supported")
 			return
 		}
 		// Check if we created a client or not.

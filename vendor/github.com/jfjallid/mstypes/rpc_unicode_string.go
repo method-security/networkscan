@@ -4,7 +4,7 @@ package mstypes
 type RPCUnicodeString struct {
 	Length        uint16 // The length, in bytes, of the string pointed to by the Buffer member, not including the terminating null character if any. The length MUST be a multiple of 2. The length SHOULD equal the entire size of the Buffer, in which case there is no terminating null character. Any method that accesses this structure MUST use the Length specified instead of relying on the presence or absence of a null character.
 	MaximumLength uint16 // The maximum size, in bytes, of the string pointed to by Buffer. The size MUST be a multiple of 2. If not, the size MUST be decremented by 1 prior to use. This value MUST not be less than Length.
-	Value         string `ndr:"pointer,conformant,varying,skipnull"` // skipnull tag is a workaround for the NDR encoder/decoder
+	Value         string `ndr:"fullpointer,conformant,varying,skipnull,maxcount:MaximumLength"` // skipnull tag is a workaround for the NDR encoder/decoder
 }
 
 // String returns the RPCUnicodeString string value
@@ -13,5 +13,14 @@ func (r *RPCUnicodeString) String() string {
 }
 
 type PRPCUnicodeString struct {
-	Data *RPCUnicodeString `ndr:"pointer"`
+	Data *RPCUnicodeString `ndr:"fullpointer"`
+}
+
+func NewRPCUnicodeString(str string, reserveNull bool) (s *RPCUnicodeString) {
+	l := uint16(2 * len(str))
+	s = &RPCUnicodeString{Length: l, MaximumLength: l, Value: str}
+	if reserveNull {
+		s.MaximumLength += 2
+	}
+	return
 }

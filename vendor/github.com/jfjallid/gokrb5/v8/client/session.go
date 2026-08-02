@@ -9,16 +9,32 @@ import (
 	"time"
 
 	"github.com/jfjallid/gofork/encoding/asn1"
+	"github.com/jfjallid/gokrb5/v8/config"
 	"github.com/jfjallid/gokrb5/v8/iana/nametype"
 	"github.com/jfjallid/gokrb5/v8/krberror"
 	"github.com/jfjallid/gokrb5/v8/messages"
 	"github.com/jfjallid/gokrb5/v8/types"
 )
 
-// sessions hold TGTs and are keyed on the realm name
+// sessions hold TGTs and are keyed on the canonical form of the realm name
+// (see config.CanonicalRealm). The aliases table is consulted when computing
+// the key so that a session stored under e.g. "CORP.EXAMPLE.COM" is findable
+// by a lookup for the NetBIOS short form "CORP" once the equivalence has
+// been recorded.
 type sessions struct {
 	Entries map[string]*session
+	aliases *config.RealmAliases // shared with the parent Client; may be nil for sessions constructed outside a Client
 	mux     sync.RWMutex
+}
+
+// realmKey returns the map key for a realm name, going through the alias
+// table when one is available. The session's own `realm` field still holds
+// the wire-form realm string — only the map key is normalized.
+func (s *sessions) realmKey(realm string) string {
+	if s.aliases != nil {
+		return s.aliases.Resolve(realm)
+	}
+	return config.CanonicalRealm(realm)
 }
 
 // destroy erases all sessions
@@ -33,10 +49,11 @@ func (s *sessions) destroy() {
 
 // update replaces a session with the one provided or adds it as a new one
 func (s *sessions) update(sess *session) {
+	key := s.realmKey(sess.realm)
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	// if a session already exists for this, cancel its auto renew.
-	if i, ok := s.Entries[sess.realm]; ok {
+	if i, ok := s.Entries[key]; ok {
 		if i != sess {
 			// Session in the sessions cache is not the same as one provided.
 			// Cancel the one in the cache and add this one.
@@ -45,19 +62,20 @@ func (s *sessions) update(sess *session) {
 			if i.cancel != nil {
 				i.cancel <- true
 			}
-			s.Entries[sess.realm] = sess
+			s.Entries[key] = sess
 			return
 		}
 	}
 	// No session for this realm was found so just add it
-	s.Entries[sess.realm] = sess
+	s.Entries[key] = sess
 }
 
 // get returns the session for the realm specified
 func (s *sessions) get(realm string) (*session, bool) {
+	key := s.realmKey(realm)
 	s.mux.RLock()
 	defer s.mux.RUnlock()
-	sess, ok := s.Entries[realm]
+	sess, ok := s.Entries[key]
 	return sess, ok
 }
 
@@ -107,7 +125,7 @@ func (cl *Client) addSession(tgt messages.Ticket, dep messages.EncKDCRepPart) {
 	cl.sessions.update(s)
 	cl.enableAutoSessionRenewal(s)
 	cl.Log("TGT session added for %s (EndTime: %v)", realm, dep.EndTime)
-
+	log.Debugf("TGT session added for %s (EndTime: %v)\n", realm, dep.EndTime)
 }
 
 // update overwrites the session details with those from the TGT and decrypted encPart

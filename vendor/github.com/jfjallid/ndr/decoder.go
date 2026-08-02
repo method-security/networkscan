@@ -15,20 +15,27 @@ const (
 	TagConformant      = "conformant"
 	TagVarying         = "varying"
 	TagPointer         = "pointer"
-	TagTopLevelPointer = "toppointer"
+	TagTopLevel        = "toplevel"
 	TagFullPointer     = "fullpointer"
 	TagPipe            = "pipe"
 	TagSkipNull        = "skipnull"
+	TagMaxCount        = "maxcount"
+	// TagNotNullPtr forces an embedded pointer field to emit a non-NULL
+	// referent ID even when the underlying value is the zero value of its
+	// type. Useful for [in,out] string buffer parameters where the client
+	// pre-allocates space (Length=0, MaximumLength=N) but must still send a
+	// non-NULL Buffer pointer so the server has somewhere to write into.
+	TagNotNullPtr = "notnullptr"
 )
 
 // Decoder unmarshals NDR byte stream data into a Go struct representation
 type Decoder struct {
 	r             *bufio.Reader // source of the data
-	size          int           // initial size of bytes in buffer
+	pos           int           // bytes consumed from the alignment-relevant stream (reset after any header prefix)
 	ch            CommonHeader  // NDR common header
 	ph            PrivateHeader // NDR private header
 	conformantMax []uint32      // conformant max values that were moved to the beginning of the structure
-	s             interface{}   // pointer to the structure being populated
+	s             any           // pointer to the structure being populated
 	current       []string      // keeps track of the current field being populated
 	includeHeader bool
 }
@@ -43,8 +50,6 @@ type deferedPtr struct {
 func NewDecoder(r io.Reader, includeHeader bool) *Decoder {
 	dec := new(Decoder)
 	dec.r = bufio.NewReader(r)
-	dec.r.Peek(int(commonHeaderBytes)) // For some reason an operation is needed on the buffer to initialise it so Buffered() != 0
-	dec.size = dec.r.Buffered()
 	dec.includeHeader = includeHeader
 	return dec
 }
@@ -69,6 +74,10 @@ func (dec *Decoder) Decode(s interface{}) error {
 	if dec.ch.Endianness == nil {
 		dec.ch.Endianness = binary.LittleEndian
 	}
+	// The serialized top-level type starts its own alignment from offset 0,
+	// regardless of any preceding header bytes. Reset the counter so
+	// ensureAlignment operates on the data body.
+	dec.pos = 0
 
 	return dec.process(s, reflect.StructTag(""))
 }
@@ -126,6 +135,10 @@ func (dec *Decoder) conformantScan(s interface{}, tag reflect.StructTag) error {
 	ndrTag := parseTags(tag)
 	if ndrTag.HasValue(TagPointer) {
 		return nil
+	} else if ndrTag.HasValue(TagTopLevel) {
+		return nil
+	} else if ndrTag.HasValue(TagFullPointer) {
+		return nil
 	}
 	v := getReflectValue(s)
 
@@ -167,17 +180,17 @@ func (dec *Decoder) conformantScan(s interface{}, tag reflect.StructTag) error {
 func (dec *Decoder) isPointer(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) (bool, error) {
 	// Pointer so defer filling the referent
 	ndrTag := parseTags(tag)
-	if ndrTag.HasValue(TagPointer) {
+	if ndrTag.HasValue(TagPointer) || ndrTag.HasValue(TagFullPointer) {
 		p, err := dec.readUint32()
 		if err != nil {
 			return true, fmt.Errorf("could not read pointer: %v", err)
 		}
 		ndrTag.delete(TagPointer)
+		ndrTag.delete(TagFullPointer)
 		if p != 0 {
 			// if pointer is not zero add to the deferred items at end of stream
 			*def = append(*def, deferedPtr{v, ndrTag.StructTag(), p})
 		}
-		//fmt.Printf("Found ptr: 0x%08x\n", p)
 		return true, nil
 	}
 	return false, nil
@@ -209,8 +222,8 @@ func (dec *Decoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 
 	//TODO Is this correct?
 	ndrTag := parseTags(tag)
-	if ndrTag.HasValue(TagTopLevelPointer) {
-		ndrTag.delete(TagTopLevelPointer)
+	if ndrTag.HasValue(TagTopLevel) {
+		ndrTag.delete(TagTopLevel)
 		if ndrTag.HasValue(TagFullPointer) {
 			ndrTag.delete(TagFullPointer)
 			//fmt.Printf("reading top-level ptr for field: %v\n", v.Type().Name())
@@ -258,19 +271,26 @@ func (dec *Decoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 	// Populate the value from the byte stream
 	switch v.Kind() {
 	case reflect.Struct:
-		//fmt.Println("examining struct")
+		// NDR spec: struct alignment is the largest alignment of all its fields.
+		// Consume padding so the struct starts at a correctly-aligned offset.
+		if align := structAlignment(v.Type()); align > 1 {
+			dec.ensureAlignment(align)
+		}
 		dec.current = append(dec.current, v.Type().Name()) //Track the current field being filled
 		// in case struct is a union, track this and the selected union field for efficiency
 		var unionTag reflect.Value
 		var unionField string // field to fill if struct is a union
+		// Deferred pointer referents are appended to localDef (owned by the
+		// caller — typically process()). This ensures that when an array of
+		// structs is decoded, all element bodies (with inline refIDs) are
+		// read first, and ALL referents are read after the entire array —
+		// matching the NDR wire format verified in Wireshark.
 		// Go through each field in the struct and recursively fill
 		for i := 0; i < v.NumField(); i++ {
 			fieldName := v.Type().Field(i).Name
 			dec.current = append(dec.current, fieldName) //Track the current field being filled
-			//fmt.Fprintf(os.Stderr, "DEBUG Decoding: %s\n", strings.Join(dec.current, "/"))
 			structTag := v.Type().Field(i).Tag
 			ndrTag := parseTags(structTag)
-			//fmt.Printf("Handling field: %s\n", fieldName)
 			if v.Field(i).Kind() == reflect.Pointer && v.Field(i).IsNil() {
 				// Handle when struct pointer is nil
 				v.Field(i).Set(reflect.New(v.Field(i).Type().Elem()))
@@ -294,6 +314,13 @@ func (dec *Decoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 					dec.current = dec.current[:len(dec.current)-1] //This field has been skipped so remove it from the current field tracker
 					continue
 				}
+				// Selected arm of a union: align to max of all arms' alignment
+				// (C706 §14.3.9/10), not just the active arm's own alignment.
+				if ndrTag.HasValue(TagUnionField) && fieldName == unionField {
+					if a := maxArmAlignment(v.Type()); a > 1 {
+						dec.ensureAlignment(a)
+					}
+				}
 			}
 
 			// Check if field is a pointer
@@ -315,7 +342,6 @@ func (dec *Decoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 					}
 				}
 			} else {
-				//fmt.Printf("filling struct member: %s\n", fieldName)
 				err := dec.fill(v.Field(i), structTag, localDef)
 				if err != nil {
 					return fmt.Errorf("could not fill struct field(%s): %v", strings.Join(dec.current, "/"), err)
@@ -468,11 +494,29 @@ func (dec *Decoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 
 // readBytes returns a number of bytes from the NDR byte stream.
 func (dec *Decoder) readBytes(n int) ([]byte, error) {
-	//TODO make this take an int64 as input to allow for larger values on all systems?
-	b := make([]byte, n, n)
-	m, err := dec.r.Read(b)
-	if err != nil || m != n {
+	b := make([]byte, n)
+	if _, err := io.ReadFull(dec.r, b); err != nil {
 		return b, fmt.Errorf("error reading bytes from stream: %v", err)
 	}
+	dec.pos += n
 	return b, nil
+}
+
+// readByte reads a single byte from the stream and advances the position
+// counter used for alignment. Header-parsing paths, which run before the
+// alignment-relevant stream begins, call dec.r.ReadByte() directly.
+func (dec *Decoder) readByte() (byte, error) {
+	b, err := dec.r.ReadByte()
+	if err != nil {
+		return 0, err
+	}
+	dec.pos++
+	return b, nil
+}
+
+// discard skips n bytes and advances the position counter.
+func (dec *Decoder) discard(n int) error {
+	m, err := dec.r.Discard(n)
+	dec.pos += m
+	return err
 }
