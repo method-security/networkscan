@@ -551,10 +551,14 @@ func (c *CCache) GetClientCredentials() *Credentials {
 	}
 }
 
-// Contains tests if the cache contains a credential for the provided server PrincipalName
+// Contains tests if the cache contains a credential for the provided server
+// PrincipalName. Matching is case-insensitive (EqualFold): Active Directory /
+// Entra canonicalise the host portion of an SPN, so a ccache produced by the
+// KDC (or kinit/Rubeus/impacket) commonly holds "cifs/srv01.example.com" while
+// a caller asks for "cifs/SRV01.example.com". A byte-exact match would miss.
 func (c *CCache) Contains(p types.PrincipalName) bool {
 	for _, cred := range c.Credentials {
-		if cred.Server.PrincipalName.Equal(p) {
+		if cred.Server.PrincipalName.EqualFold(p) {
 			return true
 		}
 	}
@@ -562,11 +566,12 @@ func (c *CCache) Contains(p types.PrincipalName) bool {
 }
 
 // GetEntry returns a specific credential for the PrincipalName provided.
+// Matching is case-insensitive; see Contains for the rationale.
 func (c *CCache) GetEntry(p types.PrincipalName) (*Credential, bool) {
 	cred := new(Credential)
 	var found bool
 	for i := range c.Credentials {
-		if c.Credentials[i].Server.PrincipalName.Equal(p) {
+		if c.Credentials[i].Server.PrincipalName.EqualFold(p) {
 			cred = c.Credentials[i]
 			found = true
 			break

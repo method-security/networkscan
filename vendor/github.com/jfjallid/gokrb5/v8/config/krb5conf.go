@@ -25,6 +25,13 @@ type Config struct {
 	LibDefaults LibDefaults
 	Realms      []Realm
 	DomainRealm DomainRealm
+	// RealmAliases holds equivalences declared in the [realm_aliases] section
+	// of krb5.conf. Each Client constructed against this Config seeds its own
+	// private alias table from this one, so runtime additions made by one
+	// client do not leak across to siblings sharing the Config. Mutating
+	// this table after a Client has been constructed will not be observed by
+	// that client.
+	RealmAliases *RealmAliases
 	//CaPaths
 	//AppDefaults
 	//Plugins
@@ -37,8 +44,9 @@ const WeakETypeList = "des-cbc-crc des-cbc-md4 des-cbc-md5 des-cbc-raw des3-cbc-
 func New() *Config {
 	d := make(DomainRealm)
 	return &Config{
-		LibDefaults: newLibDefaults(),
-		DomainRealm: d,
+		LibDefaults:  newLibDefaults(),
+		DomainRealm:  d,
+		RealmAliases: NewRealmAliases(),
 	}
 }
 
@@ -53,10 +61,10 @@ type LibDefaults struct {
 	DefaultClientKeytabName string //default /usr/local/var/krb5/user/%{euid}/client.keytab
 	DefaultKeytabName       string //default /etc/krb5.keytab
 	DefaultRealm            string
-	DefaultTGSEnctypes      []string //default aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 des3-cbc-sha1 arcfour-hmac-md5 camellia256-cts-cmac camellia128-cts-cmac des-cbc-crc des-cbc-md5 des-cbc-md4
-	DefaultTktEnctypes      []string //default aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 des3-cbc-sha1 arcfour-hmac-md5 camellia256-cts-cmac camellia128-cts-cmac des-cbc-crc des-cbc-md5 des-cbc-md4
-	DefaultTGSEnctypeIDs    []int32  //default aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 des3-cbc-sha1 arcfour-hmac-md5 camellia256-cts-cmac camellia128-cts-cmac des-cbc-crc des-cbc-md5 des-cbc-md4
-	DefaultTktEnctypeIDs    []int32  //default aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 des3-cbc-sha1 arcfour-hmac-md5 camellia256-cts-cmac camellia128-cts-cmac des-cbc-crc des-cbc-md5 des-cbc-md4
+	DefaultTGSEnctypes      []string //default aes256-cts-hmac-sha384-192 aes128-cts-hmac-sha256-128 aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 des3-cbc-sha1 arcfour-hmac-md5 camellia256-cts-cmac camellia128-cts-cmac des-cbc-crc des-cbc-md5 des-cbc-md4
+	DefaultTktEnctypes      []string //default aes256-cts-hmac-sha384-192 aes128-cts-hmac-sha256-128 aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 des3-cbc-sha1 arcfour-hmac-md5 camellia256-cts-cmac camellia128-cts-cmac des-cbc-crc des-cbc-md5 des-cbc-md4
+	DefaultTGSEnctypeIDs    []int32  //default aes256-cts-hmac-sha384-192 aes128-cts-hmac-sha256-128 aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 des3-cbc-sha1 arcfour-hmac-md5 camellia256-cts-cmac camellia128-cts-cmac des-cbc-crc des-cbc-md5 des-cbc-md4
+	DefaultTktEnctypeIDs    []int32  //default aes256-cts-hmac-sha384-192 aes128-cts-hmac-sha256-128 aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 des3-cbc-sha1 arcfour-hmac-md5 camellia256-cts-cmac camellia128-cts-cmac des-cbc-crc des-cbc-md5 des-cbc-md4
 	DNSCanonicalizeHostname bool     //default true
 	DNSLookupKDC            bool     //default false
 	DNSLookupRealm          bool
@@ -69,7 +77,7 @@ type LibDefaults struct {
 	KDCTimeSync             int            //default 1
 	//kdc_req_checksum_type int //unlikely to implement as for very old KDCs
 	NoAddresses         bool     //default true
-	PermittedEnctypes   []string //default aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 des3-cbc-sha1 arcfour-hmac-md5 camellia256-cts-cmac camellia128-cts-cmac des-cbc-crc des-cbc-md5 des-cbc-md4
+	PermittedEnctypes   []string //default aes256-cts-hmac-sha384-192 aes128-cts-hmac-sha256-128 aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96 des3-cbc-sha1 arcfour-hmac-md5 camellia256-cts-cmac camellia128-cts-cmac des-cbc-crc des-cbc-md5 des-cbc-md4
 	PermittedEnctypeIDs []int32
 	//plugin_base_dir string //not supporting plugins
 	PreferredPreauthTypes []int         //default “17, 16, 15, 14”, which forces libkrb5 to attempt to use PKINIT if it is supported
@@ -100,14 +108,14 @@ func newLibDefaults() LibDefaults {
 		Clockskew:               time.Duration(300) * time.Second,
 		DefaultClientKeytabName: fmt.Sprintf("/usr/local/var/krb5/user/%s/client.keytab", uid),
 		DefaultKeytabName:       "/etc/krb5.keytab",
-		DefaultTGSEnctypes:      []string{"aes256-cts-hmac-sha1-96", "aes128-cts-hmac-sha1-96", "des3-cbc-sha1", "arcfour-hmac-md5", "camellia256-cts-cmac", "camellia128-cts-cmac", "des-cbc-crc", "des-cbc-md5", "des-cbc-md4"},
-		DefaultTktEnctypes:      []string{"aes256-cts-hmac-sha1-96", "aes128-cts-hmac-sha1-96", "des3-cbc-sha1", "arcfour-hmac-md5", "camellia256-cts-cmac", "camellia128-cts-cmac", "des-cbc-crc", "des-cbc-md5", "des-cbc-md4"},
+		DefaultTGSEnctypes:      []string{"aes256-cts-hmac-sha384-192", "aes128-cts-hmac-sha256-128", "aes256-cts-hmac-sha1-96", "aes128-cts-hmac-sha1-96", "des3-cbc-sha1", "arcfour-hmac-md5", "camellia256-cts-cmac", "camellia128-cts-cmac", "des-cbc-crc", "des-cbc-md5", "des-cbc-md4"},
+		DefaultTktEnctypes:      []string{"aes256-cts-hmac-sha384-192", "aes128-cts-hmac-sha256-128", "aes256-cts-hmac-sha1-96", "aes128-cts-hmac-sha1-96", "des3-cbc-sha1", "arcfour-hmac-md5", "camellia256-cts-cmac", "camellia128-cts-cmac", "des-cbc-crc", "des-cbc-md5", "des-cbc-md4"},
 		DNSCanonicalizeHostname: true,
 		K5LoginDirectory:        hdir,
 		KDCDefaultOptions:       opts,
 		KDCTimeSync:             1,
 		NoAddresses:             true,
-		PermittedEnctypes:       []string{"aes256-cts-hmac-sha1-96", "aes128-cts-hmac-sha1-96", "des3-cbc-sha1", "arcfour-hmac-md5", "camellia256-cts-cmac", "camellia128-cts-cmac", "des-cbc-crc", "des-cbc-md5", "des-cbc-md4"},
+		PermittedEnctypes:       []string{"aes256-cts-hmac-sha384-192", "aes128-cts-hmac-sha256-128", "aes256-cts-hmac-sha1-96", "aes128-cts-hmac-sha1-96", "des3-cbc-sha1", "arcfour-hmac-md5", "camellia256-cts-cmac", "camellia128-cts-cmac", "des-cbc-crc", "des-cbc-md5", "des-cbc-md4"},
 		RDNS:                    true,
 		RealmTryDomains:         -1,
 		SafeChecksumType:        8,
@@ -564,6 +572,11 @@ func NewFromScanner(scanner *bufio.Scanner) (*Config, error) {
 			sectionLineNum = append(sectionLineNum, len(lines))
 			continue
 		}
+		if matched, _ := regexp.MatchString(`^\s*\[realm_aliases\]\s*`, scanner.Text()); matched {
+			sections[len(lines)] = "realm_aliases"
+			sectionLineNum = append(sectionLineNum, len(lines))
+			continue
+		}
 		if matched, _ := regexp.MatchString(`^\s*\[.*\]\s*`, scanner.Text()); matched {
 			sections[len(lines)] = "unknown_section"
 			sectionLineNum = append(sectionLineNum, len(lines))
@@ -601,6 +614,14 @@ func NewFromScanner(scanner *bufio.Scanner) (*Config, error) {
 			if err != nil {
 				if _, ok := err.(UnsupportedDirective); !ok {
 					return nil, fmt.Errorf("error processing domaain_realm section: %v", err)
+				}
+				e = err
+			}
+		case "realm_aliases":
+			err := c.RealmAliases.parseLines(lines[start:end])
+			if err != nil {
+				if _, ok := err.(UnsupportedDirective); !ok {
+					return nil, fmt.Errorf("error processing realm_aliases section: %v", err)
 				}
 				e = err
 			}

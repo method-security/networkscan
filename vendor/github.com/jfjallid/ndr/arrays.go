@@ -1,12 +1,86 @@
 package ndr
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
 )
+
+// typeAlignment returns the NDR alignment requirement for a Go type.
+// Per NDR spec, primitives align to their size; structs align to the max
+// alignment of their fields; arrays/strings/pointers align to 4 (uint32
+// metadata). For structs with unionTag fields, union alignment rules apply
+// (max of tag and all arms).
+func typeAlignment(t reflect.Type) int {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Bool, reflect.Uint8, reflect.Int8:
+		return 1
+	case reflect.Uint16, reflect.Int16:
+		return 2
+	case reflect.Uint32, reflect.Int32, reflect.Float32:
+		return 4
+	case reflect.Uint64, reflect.Int64, reflect.Float64:
+		return 8
+	case reflect.String:
+		return 4 // strings start with uint32 metadata
+	case reflect.Slice, reflect.Array:
+		// arrays have uint32 metadata (offset/count); element type may need higher alignment
+		elemAlign := typeAlignment(t.Elem())
+		if elemAlign < 4 {
+			return 4
+		}
+		return elemAlign
+	case reflect.Struct:
+		return structAlignment(t)
+	default:
+		return 1
+	}
+}
+
+// structAlignment returns the NDR alignment of a struct type, which is the
+// largest alignment of any of its fields. For a non-encapsulated union
+// struct the alignment is the discriminator's alignment alone (per C706
+// §14.3.9); arm alignment is internal to the union body and does not pad
+// the union externally.
+//
+// Invariant: for encapsulated unions this function relies on every union arm
+// being a regular struct field (with a `unionField` tag). The "max of all
+// fields" walk then naturally yields max(discriminator, all arms) as C706
+// §14.3.9 requires. If arms ever become non-field-backed (e.g., synthesized
+// from a method), encapsulated-union external alignment must be computed
+// explicitly here.
+func structAlignment(t reflect.Type) int {
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return 1
+	}
+	if a := nonEncapUnionDiscAlignment(t); a > 0 {
+		return a
+	}
+	maxAlign := 1
+	for i := 0; i < t.NumField(); i++ {
+		ft := t.Field(i).Type
+		// Fields tagged as pointers have alignment 4 (referent ID), not the
+		// alignment of the pointed-to type (which is deferred).
+		ndrTag := parseTags(t.Field(i).Tag)
+		var a int
+		if ndrTag.HasValue(TagPointer) || ndrTag.HasValue(TagFullPointer) {
+			a = 4
+		} else {
+			a = typeAlignment(ft)
+		}
+		if a > maxAlign {
+			maxAlign = a
+		}
+	}
+	return maxAlign
+}
 
 // intFromTag returns an int that is a value in a struct tag key/value pair
 func intFromTag(tag reflect.StructTag, key string) (int, error) {
@@ -337,6 +411,9 @@ func (dec *Decoder) fillConformantVaryingArray(v reflect.Value, tag reflect.Stru
 }
 
 // fillUniDimensionalConformantVaryingArray fills the uni-dimensional slice value.
+// Per C706 §14.3.7.2: the wire carries `actual_count` (s) elements placed at
+// positions [offset, offset+actual_count). The first `offset` slots are
+// zero-valued placeholders, matching the varying-only sibling.
 func (dec *Decoder) fillUniDimensionalConformantVaryingArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
 	m := dec.precedingMax()
 	o, err := dec.readUint32()
@@ -347,14 +424,11 @@ func (dec *Decoder) fillUniDimensionalConformantVaryingArray(v reflect.Value, ta
 	if err != nil {
 		return fmt.Errorf("could not establish actual count of uni-dimensional conformant varying array: %v", err)
 	}
-	//fmt.Printf("Max count is: %d, actual: %d, offset: %d\n", m, s, o)
 	if m < o+s {
-		fmt.Printf("Max count is: %d, actual: %d, offset: %d\n", m, s, o)
 		return errors.New("max count is less than the offset plus actual count")
 	}
-	//fmt.Printf("Preparing to read string of length: %d\n", s)
 	t := v.Type()
-	n := int(s)
+	n := int(s + o)
 	a := reflect.MakeSlice(t, n, n)
 	for i := int(o); i < n; i++ {
 		err := dec.fill(a.Index(i), tag, def)
@@ -370,13 +444,16 @@ func (dec *Decoder) fillUniDimensionalConformantVaryingArray(v reflect.Value, ta
 // The number of dimensions must be specified. This must be less than or equal to the dimensions in the slice for this
 // method not to panic.
 func (dec *Decoder) fillMultiDimensionalConformantVaryingArray(v reflect.Value, t reflect.Type, d int, tag reflect.StructTag, def *[]deferedPtr) error {
-	// Read the offset and actual count of each dimensions from the ndr stream
-	m := make([]int, d, d)
+	// Read the offset and actual count of each dimensions from the ndr stream.
+	// Per C706 §14.3.7.2, max_count >= actual_count + offset; transmitted
+	// elements occupy indices [offset, offset+actual_count). Slice size matches
+	// the transmitted range (actual+offset), like the uni-dim sibling.
+	m := make([]int, d)
 	for i := range m {
 		m[i] = int(dec.precedingMax())
 	}
-	o := make([]int, d, d)
-	l := make([]int, d, d)
+	o := make([]int, d)
+	l := make([]int, d)
 	for i := range l {
 		off, err := dec.readUint32()
 		if err != nil {
@@ -388,25 +465,25 @@ func (dec *Decoder) fillMultiDimensionalConformantVaryingArray(v reflect.Value, 
 			return fmt.Errorf("could not read actual count of dimension %d: %v", i+1, err)
 		}
 		if m[i] < int(s)+int(off) {
-			m[i] = int(s) + int(off)
+			return fmt.Errorf("max count %d is less than offset %d plus actual count %d for dimension %d", m[i], off, s, i+1)
 		}
-		l[i] = int(s)
+		l[i] = int(s) + int(off)
 	}
 	// Initialise size of slices
 	//   Initialise the size of the 1st dimension
 	ty := v.Type()
-	v.Set(reflect.MakeSlice(ty, m[0], m[0]))
+	v.Set(reflect.MakeSlice(ty, l[0], l[0]))
 	// Initialise the size of the other dimensions recursively
-	makeSubSlices(v, m[1:])
+	makeSubSlices(v, l[1:])
 
 	// Get all permutations of the indexes and go through each and fill
-	ps := multiDimensionalIndexPermutations(m)
+	ps := multiDimensionalIndexPermutations(l)
 	for _, p := range ps {
 		// Get current multi-dimensional index to fill
 		a := v
-		var os bool // should this permutation be skipped due to the offset of any of the dimensions or max is higher than the actual count being passed
+		var os bool // should this permutation be skipped due to the offset of any of the dimensions
 		for i, j := range p {
-			if j < o[i] || j >= l[i] {
+			if j < o[i] {
 				os = true
 				break
 			}
@@ -439,22 +516,20 @@ func (enc *Encoder) writeFixedArray(v reflect.Value, tag reflect.StructTag, def 
 		}
 		return nil
 	}
-	return fmt.Errorf("Haven't implemented writing of multi-dimensional fixed arrays yet")
-
 	// Fixed array is multidimensional
-	//ps := multiDimensionalIndexPermutations(l[:len(l)-1])
-	//for _, p := range ps {
-	//	// Get current multi-dimensional index to fill
-	//	a := v
-	//	for _, i := range p {
-	//		a = a.Index(i)
-	//	}
-	//	// fill with the last dimension array
-	//	err := dec.fillUniDimensionalFixedArray(a, tag, def)
-	//	if err != nil {
-	//		return fmt.Errorf("could not fill dimension %v of multi-dimensional fixed array: %v", p, err)
-	//	}
-	//}
+	ps := multiDimensionalIndexPermutations(l[:len(l)-1])
+	for _, p := range ps {
+		// Get current multi-dimensional index to write
+		a := v
+		for _, i := range p {
+			a = a.Index(i)
+		}
+		// write the last dimension array
+		err := enc.writeUniDimensionalFixedArray(a, tag, def)
+		if err != nil {
+			return fmt.Errorf("could not write dimension %v of multi-dimensional fixed array: %v", p, err)
+		}
+	}
 	return nil
 }
 
@@ -471,11 +546,10 @@ func (enc *Encoder) writeUniDimensionalFixedArray(v reflect.Value, tag reflect.S
 func (enc *Encoder) writeConformantArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
 	d, _ := sliceDimensions(v.Type())
 	if d > 1 {
-		return fmt.Errorf("Haven't implemented writing of multi-dimensional conformant arrays yet")
-		//err := enc.fillMultiDimensionalConformantArray(v, d, tag, def)
-		//if err != nil {
-		//	return err
-		//}
+		err := enc.writeMultiDimensionalConformantArray(v, d, tag, def)
+		if err != nil {
+			return err
+		}
 	} else {
 		err := enc.writeUniDimensionalFixedArray(v, tag, def)
 		if err != nil {
@@ -485,15 +559,33 @@ func (enc *Encoder) writeConformantArray(v reflect.Value, tag reflect.StructTag,
 	return nil
 }
 
+func (enc *Encoder) writeMultiDimensionalConformantArray(v reflect.Value, d int, tag reflect.StructTag, def *[]deferedPtr) error {
+	// Max values were already written by process()/conformantScan(). Get dimensions from the value.
+	l, _ := parseDimensions(v)
+
+	// Get all permutations of the indexes and write each element
+	ps := multiDimensionalIndexPermutations(l)
+	for _, p := range ps {
+		a := v
+		for _, i := range p {
+			a = a.Index(i)
+		}
+		err := enc.fill(a, tag, def)
+		if err != nil {
+			return fmt.Errorf("could not write index %v of multi-dimensional conformant array: %v", p, err)
+		}
+	}
+	return nil
+}
+
 // fillVaryingArray establishes if the varying array is uni or multi dimensional and then fills the slice.
 func (enc *Encoder) writeVaryingArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
 	d, _ := sliceDimensions(v.Type())
 	if d > 1 {
-		//err := dec.fillMultiDimensionalVaryingArray(v, t, d, tag, def)
-		//if err != nil {
-		//	return err
-		//}
-		return fmt.Errorf("Haven't implemented writing of multi-dimensional varying arrays yet")
+		err := enc.writeMultiDimensionalVaryingArray(v, d, tag, def)
+		if err != nil {
+			return err
+		}
 	} else {
 		err := enc.writeUniDimensionalVaryingArray(v, tag, def)
 		if err != nil {
@@ -503,14 +595,44 @@ func (enc *Encoder) writeVaryingArray(v reflect.Value, tag reflect.StructTag, de
 	return nil
 }
 
-// fillUniDimensionalVaryingArray fills the uni-dimensional slice value.
+func (enc *Encoder) writeMultiDimensionalVaryingArray(v reflect.Value, d int, tag reflect.StructTag, def *[]deferedPtr) error {
+	// Write offset and actual count for each dimension
+	l, _ := parseDimensions(v)
+	for i := 0; i < d; i++ {
+		// offset is always 0
+		err := enc.writeUint32(uint32(0))
+		if err != nil {
+			return fmt.Errorf("could not write offset of dimension %d: %v", i+1, err)
+		}
+		err = enc.writeUint32(uint32(l[i]))
+		if err != nil {
+			return fmt.Errorf("could not write actual count of dimension %d: %v", i+1, err)
+		}
+	}
+
+	// Get all permutations of the indexes and write each element
+	ps := multiDimensionalIndexPermutations(l[:len(l)-1])
+	for _, p := range ps {
+		a := v
+		for _, i := range p {
+			a = a.Index(i)
+		}
+		err := enc.writeUniDimensionalFixedArray(a, tag, def)
+		if err != nil {
+			return fmt.Errorf("could not write dimension %v of multi-dimensional varying array: %v", p, err)
+		}
+	}
+	return nil
+}
+
+// writeUniDimensionalVaryingArray writes the uni-dimensional slice value.
 func (enc *Encoder) writeUniDimensionalVaryingArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
 	// Use an offset of 0
-	err := binary.Write(enc.w, enc.ch.Endianness, uint32(0))
+	err := enc.writeUint32(uint32(0))
 	if err != nil {
 		return fmt.Errorf("could not write offset of uni-dimensional varying array: %v", err)
 	}
-	err = binary.Write(enc.w, enc.ch.Endianness, uint32(v.Len()))
+	err = enc.writeUint32(uint32(v.Len()))
 	if err != nil {
 		return fmt.Errorf("could not write actual count of uni-dimensional varying array: %v", err)
 	}
@@ -524,11 +646,10 @@ func (enc *Encoder) writeUniDimensionalVaryingArray(v reflect.Value, tag reflect
 func (enc *Encoder) writeConformantVaryingArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
 	d, _ := sliceDimensions(v.Type())
 	if d > 1 {
-		//err := enc.writeMultiDimensionalConformantVaryingArray(v, t, d, tag, def)
-		//if err != nil {
-		//	return err
-		//}
-		return fmt.Errorf("Haven't implemented writing of multi-dimensional conformant varying arrays yet")
+		err := enc.writeMultiDimensionalConformantVaryingArray(v, d, tag, def)
+		if err != nil {
+			return err
+		}
 	} else {
 		err := enc.writeUniDimensionalVaryingArray(v, tag, def)
 		if err != nil {
@@ -538,29 +659,34 @@ func (enc *Encoder) writeConformantVaryingArray(v reflect.Value, tag reflect.Str
 	return nil
 }
 
-// writeUniDimensionalConformantVaryingArray writes the uni-dimensional slice value.
-//func (enc *Encoder) writeUniDimensionalConformantVaryingArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
-//	o, err := enc.readUint32()
-//	if err != nil {
-//		return fmt.Errorf("could not read offset of uni-dimensional conformant varying array: %v", err)
-//	}
-//	s, err := enc.readUint32()
-//	if err != nil {
-//		return fmt.Errorf("could not establish actual count of uni-dimensional conformant varying array: %v", err)
-//	}
-//	if m < o+s {
-//		return errors.New("max count is less than the offset plus actual count")
-//	}
-//	t := v.Type()
-//	n := int(s)
-//	a := reflect.MakeSlice(t, n, n)
-//	for i := int(o); i < n; i++ {
-//		err := enc.write(a.Index(i), tag, def)
-//		if err != nil {
-//			return fmt.Errorf("could not write index %d of uni-dimensional conformant varying array: %v", i, err)
-//		}
-//	}
-//	v.Set(a)
-//	return nil
-//}
+func (enc *Encoder) writeMultiDimensionalConformantVaryingArray(v reflect.Value, d int, tag reflect.StructTag, def *[]deferedPtr) error {
+	// Max values were already written by process()/conformantScan(). Get dimensions from the value.
+	l, _ := parseDimensions(v)
 
+	// Write offset and actual count for each dimension
+	for i := 0; i < d; i++ {
+		// offset is always 0
+		err := enc.writeUint32(uint32(0))
+		if err != nil {
+			return fmt.Errorf("could not write offset of dimension %d: %v", i+1, err)
+		}
+		err = enc.writeUint32(uint32(l[i]))
+		if err != nil {
+			return fmt.Errorf("could not write actual count of dimension %d: %v", i+1, err)
+		}
+	}
+
+	// Get all permutations of the indexes and write each element
+	ps := multiDimensionalIndexPermutations(l[:len(l)-1])
+	for _, p := range ps {
+		a := v
+		for _, i := range p {
+			a = a.Index(i)
+		}
+		err := enc.writeUniDimensionalFixedArray(a, tag, def)
+		if err != nil {
+			return fmt.Errorf("could not write dimension %v of multi-dimensional conformant varying array: %v", p, err)
+		}
+	}
+	return nil
+}

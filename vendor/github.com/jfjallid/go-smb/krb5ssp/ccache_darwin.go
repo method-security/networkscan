@@ -24,10 +24,10 @@ package krb5ssp
 
 import (
 	"fmt"
-	"github.com/jfjallid/gokrb5/v8/client"
-	"github.com/jfjallid/gokrb5/v8/config"
+	"github.com/jfjallid/gokrb5/v9/client"
+	"github.com/jfjallid/gokrb5/v9/config"
 )
 
-func getClientFromCachedTicket(cfg *config.Config, username, domain, spn string, settings ...func(*client.Settings)) (c *client.Client, err error) {
-	return nil, fmt.Errorf("CCACHE files not implemented on Darwin")
+func getClientFromCachedTicket(cfg *config.Config, username, domain, spn string, spnAliases map[string][]string, settings ...func(*client.Settings)) (c *client.Client, fallbackSPN string, err error) {
+	return nil, "", fmt.Errorf("CCACHE files not implemented on Darwin")
 }

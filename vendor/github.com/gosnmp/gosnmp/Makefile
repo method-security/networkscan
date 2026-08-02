@@ -1,6 +1,8 @@
+all: test lint
+
 .PHONY: test
 test:
-	go test *.go
+	go test ./...
 
 .PHONY: lint
 lint: check_license

@@ -13,8 +13,8 @@ import (
 
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	"github.com/Method-Security/networkscan/internal/common/ntlm"
+	"github.com/jfjallid/go-smb/dcerpc/msrrp"
 	gosmb "github.com/jfjallid/go-smb/smb"
-	"github.com/jfjallid/go-smb/smb/dcerpc/msrrp"
 	"github.com/jfjallid/go-smb/smb/encoder"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"golang.org/x/crypto/md4"

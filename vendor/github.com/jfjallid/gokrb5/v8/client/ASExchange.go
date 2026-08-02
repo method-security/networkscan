@@ -1,6 +1,8 @@
 package client
 
 import (
+	"time"
+
 	"github.com/jfjallid/gokrb5/v8/crypto"
 	"github.com/jfjallid/gokrb5/v8/crypto/etype"
 	"github.com/jfjallid/gokrb5/v8/iana/errorcode"
@@ -8,11 +10,16 @@ import (
 	"github.com/jfjallid/gokrb5/v8/iana/patype"
 	"github.com/jfjallid/gokrb5/v8/krberror"
 	"github.com/jfjallid/gokrb5/v8/messages"
+	"github.com/jfjallid/gokrb5/v8/pkinit"
 	"github.com/jfjallid/gokrb5/v8/types"
 )
 
 // ASExchange performs an AS exchange for the client to retrieve a TGT.
 func (cl *Client) ASExchange(realm string, ASReq messages.ASReq, referral int) (messages.ASRep, error) {
+	return cl.ASExchangeExt(realm, ASReq, referral, true)
+}
+
+func (cl *Client) ASExchangeExt(realm string, ASReq messages.ASReq, referral int, verify bool) (messages.ASRep, error) {
 	var err error
 	if ok, err := cl.IsConfigured(); !ok {
 		return messages.ASRep{}, krberror.Errorf(err, krberror.ConfigError, "AS Exchange cannot be performed")
@@ -70,10 +77,81 @@ func (cl *Client) ASExchange(realm string, ASReq messages.ASReq, referral int) (
 	if err != nil {
 		return messages.ASRep{}, krberror.Errorf(err, krberror.EncodingError, "AS Exchange Error: failed to process the AS_REP")
 	}
-	if ok, err := ASRep.Verify(cl.Config, cl.Credentials, ASReq); !ok {
-		return messages.ASRep{}, krberror.Errorf(err, krberror.KRBMsgError, "AS Exchange Error: AS_REP is not valid or client password/keytab incorrect")
+
+	// PKINIT: process PA-PK-AS-REP to derive the session key and decrypt EncPart
+	if cl.pkInitClient != nil {
+		err = cl.processASRepPKINIT(&ASRep, ASReq)
+		if err != nil {
+			return messages.ASRep{}, krberror.Errorf(err, krberror.KRBMsgError, "PKINIT AS Exchange Error: %v", err)
+		}
+		cl.pkInitClient = nil // Clean up
+		return ASRep, nil
+	}
+
+	if verify {
+		if ok, err := ASRep.Verify(cl.Config, cl.Credentials, ASReq); !ok {
+			return messages.ASRep{}, krberror.Errorf(err, krberror.KRBMsgError, "AS Exchange Error: AS_REP is not valid or client password/keytab incorrect")
+		}
 	}
 	return ASRep, nil
+}
+
+// processASRepPKINIT handles PKINIT-specific AS-REP processing.
+// It finds the PA-PK-AS-REP, derives the session key from DH, decrypts and verifies the response.
+func (cl *Client) processASRepPKINIT(asRep *messages.ASRep, asReq messages.ASReq) error {
+	pkClient, ok := cl.pkInitClient.(*pkinit.PKINITClient)
+	if !ok {
+		return krberror.NewErrorf(krberror.KRBMsgError, "PKINIT client state is invalid")
+	}
+
+	// Find PA-PK-AS-REP in the AS-REP PA data
+	var paPKASRep types.PAData
+	var found bool
+	for _, pa := range asRep.PAData {
+		if pa.PADataType == patype.PA_PK_AS_REP {
+			paPKASRep = pa
+			found = true
+			break
+		}
+	}
+	if !found {
+		return krberror.NewErrorf(krberror.KRBMsgError, "PA-PK-AS-REP not found in AS-REP PA data")
+	}
+
+	// Derive the session key from the DH exchange
+	key, err := pkClient.ProcessPAPKASRep(paPKASRep, asRep.EncPart.EType)
+	if err != nil {
+		return krberror.Errorf(err, krberror.KRBMsgError, "error processing PA-PK-AS-REP")
+	}
+
+	// Store the DH-derived key (AS reply key) for PAC credential decryption (UnPAC-the-hash)
+	cl.pkInitDerivedKey = &key
+
+	// Decrypt the EncPart using the DH-derived key
+	b, err := crypto.DecryptEncPart(asRep.EncPart, key, keyusage.AS_REP_ENCPART)
+	if err != nil {
+		return krberror.Errorf(err, krberror.DecryptingError, "error decrypting AS_REP EncPart with PKINIT-derived key")
+	}
+
+	var denc messages.EncKDCRepPart
+	err = denc.Unmarshal(b)
+	if err != nil {
+		return krberror.Errorf(err, krberror.EncodingError, "error unmarshaling decrypted EncPart of AS_REP")
+	}
+	asRep.DecryptedEncPart = denc
+
+	// Basic verification (subset of what ASRep.Verify does, without credential-based decryption)
+	if !asRep.CName.Equal(asReq.ReqBody.CName) {
+		return krberror.NewErrorf(krberror.KRBMsgError, "CName in response does not match request")
+	}
+	if asRep.CRealm != asReq.ReqBody.Realm {
+		return krberror.NewErrorf(krberror.KRBMsgError, "CRealm in response does not match request")
+	}
+	if asRep.DecryptedEncPart.Nonce != asReq.ReqBody.Nonce {
+		return krberror.NewErrorf(krberror.KRBMsgError, "nonce in response does not match request, possible replay")
+	}
+
+	return nil
 }
 
 // setPAData adds pre-authentication data to the AS_REQ.
@@ -90,6 +168,40 @@ func setPAData(cl *Client, krberr *messages.KRBError, ASReq *messages.ASReq) err
 		}
 		ASReq.PAData = append(ASReq.PAData, types.PAData{PADataType: patype.PA_PAC_REQUEST, PADataValue: paPacb})
 	}
+
+	// PKINIT pre-authentication: build PA-PK-AS-REQ
+	if cl.Credentials.HasPFX() {
+		pkClient, err := pkinit.NewPKINITClient(cl.Credentials.PFXData(), cl.Credentials.PFXPass())
+		if err != nil {
+			return krberror.Errorf(err, krberror.KRBMsgError, "error initializing PKINIT client")
+		}
+		cl.pkInitClient = pkClient
+
+		// Marshal the request body for paChecksum
+		reqBodyBytes, err := ASReq.ReqBody.Marshal()
+		if err != nil {
+			return krberror.Errorf(err, krberror.EncodingError, "error marshaling AS_REQ body for PKINIT paChecksum")
+		}
+
+		t := time.Now().UTC()
+		cusec := int((t.UnixNano() / int64(time.Microsecond)) - (t.Unix() * 1e6))
+
+		paPKASReq, err := pkClient.BuildPAPKASReq(reqBodyBytes, ASReq.ReqBody.Nonce, cusec, t)
+		if err != nil {
+			return krberror.Errorf(err, krberror.KRBMsgError, "error building PA-PK-AS-REQ")
+		}
+
+		// Remove any existing PA-PK-AS-REQ entries
+		for i, pa := range ASReq.PAData {
+			if pa.PADataType == patype.PA_PK_AS_REQ {
+				ASReq.PAData[i] = ASReq.PAData[len(ASReq.PAData)-1]
+				ASReq.PAData = ASReq.PAData[:len(ASReq.PAData)-1]
+			}
+		}
+		ASReq.PAData = append(ASReq.PAData, paPKASReq)
+		return nil // Skip encrypted timestamp pre-auth
+	}
+
 	if cl.settings.AssumePreAuthentication() {
 		// Identify the etype to use to encrypt the PA Data
 		var et etype.EType

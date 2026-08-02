@@ -61,11 +61,11 @@ type SMB1NegotiateReq struct {
 	Dialects  []SMB1Dialect
 }
 
-func (self *SMB1NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, error) {
-	log.Debugln("In MarshalBinary for SMB1NegotiateReq")
+func (s *SMB1NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, error) {
+	log.Traceln("In MarshalBinary for SMB1NegotiateReq")
 	buf := make([]byte, 0, 46)
 	w := bytes.NewBuffer(buf)
-	hBuf, err := encoder.Marshal(self.Header)
+	hBuf, err := encoder.Marshal(s.Header)
 	if err != nil {
 		log.Debugln(err)
 		return nil, err
@@ -74,10 +74,10 @@ func (self *SMB1NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, err
 	w.Write(hBuf)
 
 	// WordCount
-	w.WriteByte(self.WordCount)
+	w.WriteByte(s.WordCount)
 
 	dialectsBuffer := make([]byte, 0, 11)
-	for _, item := range self.Dialects {
+	for _, item := range s.Dialects {
 		dialectsBuffer = append(dialectsBuffer, 0x2)
 		dialectsBuffer = append(dialectsBuffer, []byte(item.DialectString)...)
 	}
@@ -90,8 +90,8 @@ func (self *SMB1NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, err
 	return w.Bytes(), nil
 }
 
-func (self *SMB1NegotiateReq) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error {
-	return fmt.Errorf("NOT IMPLEMENTED UnmarshalBinary for SMB1NegotiateReq")
+func (s *SMB1NegotiateReq) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error {
+	return fmt.Errorf("not implemented: UnmarshalBinary for SMB1NegotiateReq")
 }
 
 func (s *Session) NewSMB1NegotiateReq() (req SMB1NegotiateReq, err error) {
@@ -104,13 +104,19 @@ func (s *Session) NewSMB1NegotiateReq() (req SMB1NegotiateReq, err error) {
 		TID:              0xffff,
 	}
 
-	// Dialects ordered in increasing preference
+	// Dialects ordered in increasing preference. "SMB 2.002" lets a
+	// 2.0.2-only server (no wildcard support) downgrade us directly to
+	// SMB 2.0.2 without an SMB2 follow-up.
 	dialects := []SMB1Dialect{
-		SMB1Dialect{
+		{
+			BufferFormat:  0x2,
+			DialectString: string("SMB 2.002\x00"),
+		},
+		{
 			BufferFormat:  0x2,
 			DialectString: string("SMB 2.100\x00"),
 		},
-		SMB1Dialect{
+		{
 			BufferFormat:  0x2,
 			DialectString: string("SMB 2.???\x00"),
 		},

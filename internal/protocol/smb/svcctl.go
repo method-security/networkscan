@@ -7,9 +7,10 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"github.com/jfjallid/go-smb/dcerpc"
+	"github.com/jfjallid/go-smb/dcerpc/msrrp"
+	"github.com/jfjallid/go-smb/dcerpc/smbtransport"
 	gosmb "github.com/jfjallid/go-smb/smb"
-	"github.com/jfjallid/go-smb/smb/dcerpc"
-	"github.com/jfjallid/go-smb/smb/dcerpc/msrrp"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
@@ -65,7 +66,12 @@ func EnsureRemoteRegistryStarted(ctx context.Context, session *gosmb.Connection)
 	}
 	defer func() { _ = f.CloseFile() }()
 
-	bind, err := dcerpc.Bind(f, svcctlUUID, svcctlMajor, svcctlMinor, msrrp.NDRUuid)
+	transport, err := smbtransport.NewSMBTransport(f)
+	if err != nil {
+		return false, fmt.Errorf("failed to create SMB transport for SVCCTL: %v", err)
+	}
+
+	bind, err := dcerpc.Bind(transport, svcctlUUID, svcctlMajor, svcctlMinor, msrrp.NDRUuid)
 	if err != nil {
 		return false, fmt.Errorf("failed to bind to SVCCTL: %v", err)
 	}
@@ -146,7 +152,7 @@ func svcctlOpenSCManager(bind *dcerpc.ServiceBind) ([]byte, error) {
 	// dwDesiredAccess
 	req = appendUint32(req, scManagerConnect)
 
-	resp, err := bind.MakeIoCtlRequest(opOpenSCManagerW, req)
+	resp, err := bind.MakeRequest(opOpenSCManagerW, req)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +182,7 @@ func svcctlOpenService(bind *dcerpc.ServiceBind, scHandle []byte, serviceName st
 	req = appendNDRUnicode(req, serviceName)
 	req = appendUint32(req, svcQueryStatus|svcQueryConfig|svcChangeConfig|svcStart|svcStop)
 
-	resp, err := bind.MakeIoCtlRequest(opOpenServiceW, req)
+	resp, err := bind.MakeRequest(opOpenServiceW, req)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +202,7 @@ func svcctlOpenService(bind *dcerpc.ServiceBind, scHandle []byte, serviceName st
 }
 
 func svcctlQueryStatus(bind *dcerpc.ServiceBind, svcHandle []byte) (uint32, error) {
-	resp, err := bind.MakeIoCtlRequest(opQueryServiceStatus, svcHandle)
+	resp, err := bind.MakeRequest(opQueryServiceStatus, svcHandle)
 	if err != nil {
 		return 0, err
 	}
@@ -223,7 +229,7 @@ func svcctlStartService(bind *dcerpc.ServiceBind, svcHandle []byte) error {
 	req = appendUint32(req, 0) // argc
 	req = appendUint32(req, 0) // argv = NULL
 
-	resp, err := bind.MakeIoCtlRequest(opStartServiceW, req)
+	resp, err := bind.MakeRequest(opStartServiceW, req)
 	if err != nil {
 		return err
 	}
@@ -260,7 +266,7 @@ func svcctlChangeStartType(bind *dcerpc.ServiceBind, svcHandle []byte, startType
 	req = appendUint32(req, 0)           // dwPwSize = 0
 	req = appendUint32(req, 0)           // lpDisplayName = NULL
 
-	resp, err := bind.MakeIoCtlRequest(opChangeServiceConfigW, req)
+	resp, err := bind.MakeRequest(opChangeServiceConfigW, req)
 	if err != nil {
 		return err
 	}
@@ -282,7 +288,7 @@ func isServiceDisabledError(err error) bool {
 }
 
 func svcctlCloseHandle(bind *dcerpc.ServiceBind, handle []byte) {
-	_, _ = bind.MakeIoCtlRequest(opCloseServiceHandle, handle)
+	_, _ = bind.MakeRequest(opCloseServiceHandle, handle)
 }
 
 // --- NDR encoding helpers ---
