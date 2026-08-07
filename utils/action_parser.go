@@ -410,7 +410,7 @@ func (p *FTPActionParser) ParseActions(actionStrings []string) ([]ftpfern.Pentes
 }
 
 func (p *FTPActionParser) GetValidActions() []string {
-	return []string{"AUTHENTICATE", "LIST", "WRITE_TEST", "DOWNLOAD", "UPLOAD"}
+	return []string{"AUTH", "LIST", "WRITE_TEST", "DOWNLOAD", "UPLOAD"}
 }
 
 func (p *FTPActionParser) ContainsAction(actions []ftpfern.PentestFtpAction, target ftpfern.PentestFtpAction) bool {
@@ -733,7 +733,7 @@ func (p *SNMPActionParser) ParseActions(actionStrings []string) ([]snmpfern.Pent
 }
 
 func (p *SNMPActionParser) GetValidActions() []string {
-	return []string{"WRITE_TEST", "AUTHENTICATE", "READ"}
+	return []string{"WRITE_TEST", "AUTH", "READ"}
 }
 
 func (p *SNMPActionParser) ContainsAction(actions []snmpfern.PentestSnmpAction, target snmpfern.PentestSnmpAction) bool {
