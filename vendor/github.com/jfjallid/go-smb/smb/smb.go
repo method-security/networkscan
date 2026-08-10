@@ -23,15 +23,11 @@
 package smb
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"math"
 	"slices"
-	"strconv"
-	"strings"
 
 	"github.com/jfjallid/golog"
 
@@ -40,7 +36,7 @@ import (
 	"github.com/jfjallid/go-smb/spnego"
 )
 
-var log = golog.Get("github.com/jfjallid/go-smb/smb")
+var log = golog.Get("github.com/jfjallid/go-smb/smb").SetDisplayName("smb")
 
 const ProtocolSmb = "\xFFSMB"
 const ProtocolSmb2 = "\xFESMB"
@@ -82,6 +78,7 @@ const (
 	StatusDirectoryNotEmpty          uint32 = 0xc0000101
 	StatusNotADirectory              uint32 = 0xc0000103
 	StatusCannotDelete               uint32 = 0xc0000121
+	StatusFileClosed                 uint32 = 0xc0000128
 	FsctlStatusPipeBroken            uint32 = 0xc000014b // The pipe operation has failed because the other end of the pipe has been closed
 	StatusUserSessionDeleted         uint32 = 0xc0000203
 	StatusPasswordMustChange         uint32 = 0xc0000224
@@ -116,6 +113,7 @@ var StatusMap = map[uint32]error{
 	StatusBadNetworkName:             fmt.Errorf("Bad network name"),
 	StatusDirectoryNotEmpty:          fmt.Errorf("Directory is not empty"),
 	StatusNotADirectory:              fmt.Errorf("Not a directory!"),
+	StatusFileClosed:                 fmt.Errorf("The handle is no longer valid"),
 	StatusUserSessionDeleted:         fmt.Errorf("User session deleted"),
 	StatusPasswordMustChange:         fmt.Errorf("User is required to change password at next logon"),
 	StatusAccountLockedOut:           fmt.Errorf("User account has been locked!"),
@@ -263,6 +261,17 @@ const (
 	SessionFlagIsGuest     uint16 = 0x0001
 	SessionFlagIsNull      uint16 = 0x0002
 	SessionFlagEncryptData uint16 = 0x0004
+)
+
+// MS-SMB2 Section 2.2.5 SessionSetup request flags
+const (
+	SMB2_SESSION_FLAG_BINDING byte = 0x01
+)
+
+// MS-SMB2 NTSTATUS values not already listed in the table above.
+const (
+	StatusRequestNotAccepted uint32 = 0xc00000d0
+	StatusCancelled          uint32 = 0xc0000120
 )
 
 // File, Pipe, Printer access masks
@@ -580,7 +589,7 @@ var (
 )
 
 // Custom error not part of SMB
-var ErrorNotDir = fmt.Errorf("Not a directory")
+var ErrorNotDir = fmt.Errorf("not a directory")
 
 type Header struct { // 64 bytes
 	ProtocolID    []byte `smb:"fixed:4"`
@@ -766,11 +775,6 @@ type TreeDisconnectRes struct {
 	Reserved      uint16
 }
 
-type Filetime struct {
-	DwLowDateTime  uint32
-	DwHighDateTime uint32
-}
-
 type CreateReq struct {
 	Header
 	StructureSize        uint16 // Must always be 57 regardless of Buffer size
@@ -877,532 +881,64 @@ type QueryInfoRes struct {
 	Buffer             []byte
 }
 
-type SecurityDescriptor struct {
-	Revision    uint16
-	Control     uint16
-	OffsetOwner uint32
-	OffsetGroup uint32
-	OffsetSacl  uint32 // From beginning of struct?
-	OffsetDacl  uint32 // From beginning of struct?
-	OwnerSid    *SID
-	GroupSid    *SID
-	Sacl        *PACL
-	Dacl        *PACL
-}
+func (s *QueryInfoReq) MarshalBinary(meta *encoder.Metadata) (ret []byte, err error) {
+	log.Traceln("In MarshalBinary for QueryInfoReq")
+	buf := make([]byte, 0, 40+len(s.Buffer))
 
-type PACL struct {
-	AclRevision uint16
-	AclSize     uint16
-	AceCount    uint32
-	ACLS        []ACE
-}
-
-// MS-DTYP Section 2.4.4.1 ACE_HEADER
-type ACEHeader struct {
-	Type  byte
-	Flags byte
-	Size  uint16 //Includes header size?
-}
-
-type ACE struct {
-	Header ACEHeader
-	Mask   uint32
-	Sid    SID //Must be multiple of 4
-}
-
-type SID struct {
-	Revision       byte
-	NumAuth        byte
-	Authority      []byte
-	SubAuthorities []uint32
-}
-
-func (self *QueryInfoReq) MarshalBinary(meta *encoder.Metadata) (ret []byte, err error) {
-	log.Debugln("In MarshalBinary for QueryInfoReq")
-	buf := make([]byte, 0, 40+len(self.Buffer))
-
-	hBuf, err := encoder.Marshal(self.Header)
+	hBuf, err := encoder.Marshal(s.Header)
 	if err != nil {
 		log.Debugln(err)
 		return nil, err
 	}
 	buf = append(buf, hBuf...)
 	// StructureSize
-	buf = binary.LittleEndian.AppendUint16(buf, self.StructureSize)
+	buf = binary.LittleEndian.AppendUint16(buf, s.StructureSize)
 	// Info Type
-	buf = append(buf, self.InfoType)
+	buf = append(buf, s.InfoType)
 	// FileInfoClass
-	buf = append(buf, self.FileInfoClass)
+	buf = append(buf, s.FileInfoClass)
 	// OutputBufferLength
-	buf = binary.LittleEndian.AppendUint32(buf, self.OutputBufferLength)
+	buf = binary.LittleEndian.AppendUint32(buf, s.OutputBufferLength)
 	// InputBufferOffset
 	inputBufferOffset := uint16(0)
-	if len(self.Buffer) > 0 {
+	if len(s.Buffer) > 0 {
 		inputBufferOffset = 104 // 40 bytes for QueryInfo, 64 for SMB2 Header
 	}
 	buf = binary.LittleEndian.AppendUint16(buf, inputBufferOffset)
 	// Reserved
 	buf = binary.LittleEndian.AppendUint16(buf, 0)
 	// InputBufferLength
-	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(self.Buffer)))
+	buf = binary.LittleEndian.AppendUint32(buf, uint32(len(s.Buffer)))
 	// AdditionalInformation
-	buf = binary.LittleEndian.AppendUint32(buf, self.AdditionalInformation)
+	buf = binary.LittleEndian.AppendUint32(buf, s.AdditionalInformation)
 	// Flags
-	buf = binary.LittleEndian.AppendUint32(buf, self.Flags)
+	buf = binary.LittleEndian.AppendUint32(buf, s.Flags)
 	// FileID
-	buf = append(buf, self.FileId...)
+	buf = append(buf, s.FileId...)
 	// Buffer
-	buf = append(buf, self.Buffer...)
+	buf = append(buf, s.Buffer...)
 
 	return buf, nil
 }
 
-func (self *QueryInfoReq) UnmarshalBinary(buf []byte, meta *encoder.Metadata) (err error) {
-	return fmt.Errorf("NOT IMPLEMENTED UnmarshalBinary of QueryInfoReq")
-}
+// QueryInfoReq.UnmarshalBinary and QueryInfoRes.MarshalBinary live in
+// marshal_server.go (server-side direction).
 
-func (self *QueryInfoRes) MarshalBinary(meta *encoder.Metadata) (ret []byte, err error) {
-	return nil, fmt.Errorf("NOT IMPLEMENTED MarshalBinary of QueryInfoRes")
-}
-
-func (self *QueryInfoRes) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error {
-	log.Debugln("In UnmarshalBinary for QueryInfoRes")
-	err := encoder.Unmarshal(buf[:64], &self.Header)
+func (s *QueryInfoRes) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error {
+	log.Traceln("In UnmarshalBinary for QueryInfoRes")
+	err := encoder.Unmarshal(buf[:64], &s.Header)
 	if err != nil {
-		log.Errorln(err)
 		return err
 	}
 	offset := 64
-	self.StructureSize = binary.LittleEndian.Uint16(buf[offset : offset+2])
+	s.StructureSize = binary.LittleEndian.Uint16(buf[offset : offset+2])
 	offset += 2
-	self.OutputBufferOffset = binary.LittleEndian.Uint16(buf[offset : offset+2])
+	s.OutputBufferOffset = binary.LittleEndian.Uint16(buf[offset : offset+2])
 	offset += 2
-	self.OutputBufferLength = binary.LittleEndian.Uint32(buf[offset : offset+4])
+	s.OutputBufferLength = binary.LittleEndian.Uint32(buf[offset : offset+4])
 
-	offset = int(self.OutputBufferOffset)
-	self.Buffer = buf[offset : offset+int(self.OutputBufferLength)]
-
-	return nil
-}
-
-func (self *SecurityDescriptor) MarshalBinary(meta *encoder.Metadata) (ret []byte, err error) {
-	w := bytes.NewBuffer(ret)
-	ptrBuf := make([]byte, 0)
-	// Order: 1. SACL, 2. DACL, 3. Owner, 4. Group
-	bufOffset := uint32(20)
-
-	if self.Sacl != nil {
-		sBuf, err := self.Sacl.MarshalBinary(meta)
-		if err != nil {
-			log.Errorln(err)
-			return nil, err
-		}
-		ptrBuf = append(ptrBuf, sBuf...)
-		self.Control |= SecurityDescriptorFlagSP
-		self.OffsetSacl = bufOffset
-		bufOffset += uint32(len(sBuf))
-	}
-	if self.Dacl != nil {
-		dBuf, err := self.Dacl.MarshalBinary(meta)
-		if err != nil {
-			return nil, err
-		}
-		ptrBuf = append(ptrBuf, dBuf...)
-		self.Control |= SecurityDescriptorFlagDP
-		self.OffsetDacl = bufOffset
-		bufOffset += uint32(len(dBuf))
-	}
-
-	if self.OwnerSid != nil {
-		oBuf, err := self.OwnerSid.MarshalBinary(meta)
-		if err != nil {
-			return nil, err
-		}
-		ptrBuf = append(ptrBuf, oBuf...)
-		self.OffsetOwner = bufOffset
-		bufOffset += uint32(len(oBuf))
-	}
-
-	if self.OffsetGroup != 0 {
-		gBuf, err := self.GroupSid.MarshalBinary(meta)
-		if err != nil {
-			return nil, err
-		}
-		ptrBuf = append(ptrBuf, gBuf...)
-		self.OffsetGroup = bufOffset
-	}
-
-	// Encode revision
-	err = binary.Write(w, binary.LittleEndian, self.Revision)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	// Encode control
-	err = binary.Write(w, binary.LittleEndian, self.Control)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	// Encode  OffsetOwner
-	err = binary.Write(w, binary.LittleEndian, self.OffsetOwner)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	// Encode  OffsetGroup
-	err = binary.Write(w, binary.LittleEndian, self.OffsetGroup)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	// Encode  OffsetSacl
-	err = binary.Write(w, binary.LittleEndian, self.OffsetSacl)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	// Encode  OffsetDacl
-	err = binary.Write(w, binary.LittleEndian, self.OffsetDacl)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	// Encode serialized Owner, Group, Sacl and Dacl
-	_, err = w.Write(ptrBuf)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	return w.Bytes(), nil
-}
-
-func (self *SecurityDescriptor) UnmarshalBinary(buf []byte, meta *encoder.Metadata) (err error) {
-
-	r := bytes.NewReader(buf)
-
-	err = binary.Read(r, binary.LittleEndian, &self.Revision)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Read(r, binary.LittleEndian, &self.Control)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Read(r, binary.LittleEndian, &self.OffsetOwner)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Read(r, binary.LittleEndian, &self.OffsetGroup)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Read(r, binary.LittleEndian, &self.OffsetSacl)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Read(r, binary.LittleEndian, &self.OffsetDacl)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	if self.OffsetOwner != 0 {
-		_, err = r.Seek(int64(self.OffsetOwner), io.SeekStart)
-		self.OwnerSid, err = readSID(r)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-	}
-	if self.OffsetGroup != 0 {
-		_, err = r.Seek(int64(self.OffsetGroup), io.SeekStart)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		self.GroupSid, err = readSID(r)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-	}
-
-	if (self.Control & SecurityDescriptorFlagSP) == SecurityDescriptorFlagSP {
-		_, err = r.Seek(int64(self.OffsetSacl), io.SeekStart)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		self.Sacl, err = readPACL(r)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-	}
-
-	if (self.Control & SecurityDescriptorFlagDP) == SecurityDescriptorFlagDP {
-		_, err = r.Seek(int64(self.OffsetDacl), io.SeekStart)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		self.Dacl, err = readPACL(r)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-	}
-
-	return nil
-}
-
-func (self *SID) MarshalBinary(meta *encoder.Metadata) (ret []byte, err error) {
-	w := bytes.NewBuffer(ret)
-
-	// Encode ACE SID
-	err = binary.Write(w, binary.LittleEndian, self.Revision)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Write(w, binary.LittleEndian, byte(len(self.SubAuthorities)))
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Write(w, binary.LittleEndian, self.Authority)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Write(w, binary.LittleEndian, self.SubAuthorities)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	return w.Bytes(), nil
-}
-
-func readSID(r *bytes.Reader) (s *SID, err error) {
-	s = &SID{}
-	// Decode ACE SID
-	err = binary.Read(r, binary.LittleEndian, &s.Revision)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Read(r, binary.LittleEndian, &s.NumAuth)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	s.Authority = make([]byte, 6)
-	err = binary.Read(r, binary.LittleEndian, &s.Authority)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	s.SubAuthorities = make([]uint32, s.NumAuth)
-	for i := range s.SubAuthorities {
-		err = binary.Read(r, binary.LittleEndian, &s.SubAuthorities[i])
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-	}
-
-	return
-}
-
-func (self *SID) UnmarshalBinary(buf []byte, meta *encoder.Metadata) (err error) {
-	r := bytes.NewReader(buf)
-	sid, err := readSID(r)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	*self = *sid
-	return nil
-}
-
-func (self *ACE) MarshalBinary(meta *encoder.Metadata) (ret []byte, err error) {
-	w := bytes.NewBuffer(ret)
-
-	err = binary.Write(w, binary.LittleEndian, self.Header.Type)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Write(w, binary.LittleEndian, self.Header.Flags)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Write(w, binary.LittleEndian, self.Header.Size)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	err = binary.Write(w, binary.LittleEndian, self.Mask)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	// Encode ACE SID
-	sidBuf, err := self.Sid.MarshalBinary(meta)
-	if err != nil {
-		log.Errorln(err)
-		return nil, err
-	}
-	err = binary.Write(w, binary.LittleEndian, sidBuf)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	return w.Bytes(), nil
-}
-
-func readACE(r *bytes.Reader) (a *ACE, err error) {
-	a = &ACE{}
-	err = binary.Read(r, binary.LittleEndian, &a.Header.Type)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	err = binary.Read(r, binary.LittleEndian, &a.Header.Flags)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	err = binary.Read(r, binary.LittleEndian, &a.Header.Size)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	err = binary.Read(r, binary.LittleEndian, &a.Mask)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	sid, err := readSID(r)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	a.Sid = *sid
-
-	return
-}
-
-func (self *ACE) UnmarshalBinary(buf []byte, meta *encoder.Metadata) (err error) {
-	r := bytes.NewReader(buf)
-	ace, err := readACE(r)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	*self = *ace
-	return nil
-}
-
-func (self *PACL) MarshalBinary(meta *encoder.Metadata) (ret []byte, err error) {
-	w := bytes.NewBuffer(ret)
-
-	err = binary.Write(w, binary.LittleEndian, self.AclRevision)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Write(w, binary.LittleEndian, self.AclSize)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	// Encode AceCount at 4 byte boundary
-	err = binary.Write(w, binary.LittleEndian, uint32(len(self.ACLS)))
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	for _, item := range self.ACLS {
-		var aceBuf []byte
-		aceBuf, err = item.MarshalBinary(meta)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		_, err = w.Write(aceBuf)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-	}
-
-	return w.Bytes(), nil
-}
-
-func readPACL(r *bytes.Reader) (p *PACL, err error) {
-	p = &PACL{}
-	err = binary.Read(r, binary.LittleEndian, &p.AclRevision)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	err = binary.Read(r, binary.LittleEndian, &p.AclSize)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	err = binary.Read(r, binary.LittleEndian, &p.AceCount)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	p.ACLS = make([]ACE, p.AceCount)
-	for i := range p.ACLS {
-		var ace *ACE
-		ace, err = readACE(r)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		p.ACLS[i] = *ace
-	}
-
-	return
-}
-
-func (self *PACL) UnmarshalBinary(buf []byte, meta *encoder.Metadata) (err error) {
-	r := bytes.NewReader(buf)
-	pacl, err := readPACL(r)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	*self = *pacl
+	offset = int(s.OutputBufferOffset)
+	s.Buffer = buf[offset : offset+int(s.OutputBufferLength)]
 
 	return nil
 }
@@ -1416,23 +952,6 @@ func ParseAccessMask(mask uint32) []string {
 	}
 	slices.Sort(permissions)
 	return permissions
-}
-
-func (a ACE) Permissions() []string {
-	return ParseAccessMask(a.Mask)
-}
-
-func (s SID) String() string {
-	ia := "0"
-	l := len(s.Authority)
-	if l > 0 {
-		ia = strconv.FormatUint(uint64(s.Authority[l-1]), 10)
-	}
-	subAuthorities := make([]string, len(s.SubAuthorities))
-	for i, sub := range s.SubAuthorities {
-		subAuthorities[i] = strconv.FormatUint(uint64(sub), 10)
-	}
-	return fmt.Sprintf("S-1-%s-%s", ia, strings.Join(subAuthorities, "-"))
 }
 
 type FileSecurityInformationACL struct {
@@ -1477,6 +996,35 @@ type SharedFile struct {
 	LastWriteTime  uint64
 	ChangeTime     uint64
 	//FileId          uint64
+}
+
+// MS-SMB2 §2.2.28 Echo (Keepalive) Request — sent by clients to keep an
+// otherwise-idle connection alive and verify the server is reachable.
+type EchoReq struct {
+	Header
+	StructureSize uint16 // Must be 4
+	Reserved      uint16
+}
+
+// MS-SMB2 §2.2.29 Echo Response — same shape as the request.
+type EchoRes struct {
+	Header
+	StructureSize uint16 // Must be 4
+	Reserved      uint16
+}
+
+type FlushReq struct {
+	Header
+	StructureSize uint16 // Must be 24
+	Reserved1     uint16
+	Reserved2     uint32
+	FileId        []byte `smb:"fixed:16"`
+}
+
+type FlushRes struct {
+	Header
+	StructureSize uint16 // Must be 4
+	Reserved      uint16
 }
 
 type ReadReq struct {
@@ -1586,50 +1134,48 @@ func calcCreditCharge(payloadSize uint32) uint16 {
 	return uint16(math.Ceil(((float64(payloadSize) - 1) / 65536) + 1))
 }
 
-func (self *NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, error) {
-	log.Debugln("In MarshalBinary for NegotiateReq")
+func (s *NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, error) {
+	log.Traceln("In MarshalBinary for NegotiateReq")
 	buf := make([]byte, 0, 100)
 	padding := 0
-	hBuf, err := encoder.Marshal(self.Header)
+	hBuf, err := encoder.Marshal(s.Header)
 	if err != nil {
 		log.Debugln(err)
 		return nil, err
 	}
 	buf = append(buf, hBuf...)
 	// StructureSize
-	buf = binary.LittleEndian.AppendUint16(buf, self.StructureSize)
+	buf = binary.LittleEndian.AppendUint16(buf, s.StructureSize)
 	// DialectCount
-	buf = binary.LittleEndian.AppendUint16(buf, uint16(len(self.Dialects)))
+	buf = binary.LittleEndian.AppendUint16(buf, uint16(len(s.Dialects)))
 	// SecurityMode
-	buf = binary.LittleEndian.AppendUint16(buf, self.SecurityMode)
+	buf = binary.LittleEndian.AppendUint16(buf, s.SecurityMode)
 	//Reserved
 	buf = binary.LittleEndian.AppendUint16(buf, 0)
 	// Capabilities
-	buf = binary.LittleEndian.AppendUint32(buf, self.Capabilities)
-	buf = append(buf, make([]byte, 16)...)
-	//buf = append(buf, self.ClientGuid...)
-	if len(self.ContextList) == 0 {
+	buf = binary.LittleEndian.AppendUint32(buf, s.Capabilities)
+	buf = append(buf, s.ClientGuid...)
+	if len(s.ContextList) == 0 {
 		buf = binary.LittleEndian.AppendUint32(buf, 0)
 		buf = binary.LittleEndian.AppendUint16(buf, 0)
 	} else {
-		fmt.Printf("Len of contextlist is : %d\n", len(self.ContextList))
-		padding = 8 - ((36 + len(self.Dialects)*2) % 8)
-		offset := 64 + 36 + len(self.Dialects)*2 + padding
+		padding = 8 - ((36 + len(s.Dialects)*2) % 8)
+		offset := 64 + 36 + len(s.Dialects)*2 + padding
 		buf = binary.LittleEndian.AppendUint32(buf, uint32(offset))
-		buf = binary.LittleEndian.AppendUint16(buf, self.NegotiateContextCount)
+		buf = binary.LittleEndian.AppendUint16(buf, s.NegotiateContextCount)
 	}
 	// Reserved2
 	buf = binary.LittleEndian.AppendUint16(buf, 0)
 
-	if len(self.Dialects) != 0 {
-		for _, d := range self.Dialects {
+	if len(s.Dialects) != 0 {
+		for _, d := range s.Dialects {
 			buf = binary.LittleEndian.AppendUint16(buf, d)
 		}
 	}
-	if len(self.ContextList) != 0 {
+	if len(s.ContextList) != 0 {
 		// Padding
 		buf = append(buf, make([]byte, padding)...)
-		for _, c := range self.ContextList {
+		for _, c := range s.ContextList {
 			contextBuf, err := encoder.Marshal(c)
 			if err != nil {
 				log.Debugln(err)
@@ -1641,44 +1187,44 @@ func (self *NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, error) 
 	return buf, nil
 }
 
-func (self *NegotiateReq) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error {
-	log.Debugln("In UnmarshalBinary for NegotiateReq")
-	err := encoder.Unmarshal(buf[:64], &self.Header)
+func (s *NegotiateReq) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error {
+	log.Traceln("In UnmarshalBinary for NegotiateReq")
+	err := encoder.Unmarshal(buf[:64], &s.Header)
 	if err != nil {
-		log.Errorln(err)
 		return err
 	}
 	offset := 64
-	self.StructureSize = binary.LittleEndian.Uint16(buf[offset : offset+2])
+	s.StructureSize = binary.LittleEndian.Uint16(buf[offset : offset+2])
 	offset += 2
-	self.DialectCount = binary.LittleEndian.Uint16(buf[offset : offset+2])
+	s.DialectCount = binary.LittleEndian.Uint16(buf[offset : offset+2])
+	offset += 2
+	s.SecurityMode = binary.LittleEndian.Uint16(buf[offset : offset+2])
 	offset += 2
 	// 2 bytes reserved
 	offset += 2
-	self.Capabilities = binary.LittleEndian.Uint32(buf[offset : offset+4])
+	s.Capabilities = binary.LittleEndian.Uint32(buf[offset : offset+4])
 	offset += 4
-	self.ClientGuid = buf[offset : offset+16]
+	s.ClientGuid = buf[offset : offset+16]
 	offset += 16
-	self.NegotiateContextOffset = binary.LittleEndian.Uint32(buf[offset : offset+4])
+	s.NegotiateContextOffset = binary.LittleEndian.Uint32(buf[offset : offset+4])
 	offset += 4
-	self.NegotiateContextCount = binary.LittleEndian.Uint16(buf[offset : offset+2])
+	s.NegotiateContextCount = binary.LittleEndian.Uint16(buf[offset : offset+2])
 	offset += 2
 	// 2 bytes reserved2
 	offset += 2
-	for i := 0; i < int(self.DialectCount); i++ {
-		self.Dialects = append(self.Dialects, binary.LittleEndian.Uint16(buf[offset:offset+2]))
+	for i := 0; i < int(s.DialectCount); i++ {
+		s.Dialects = append(s.Dialects, binary.LittleEndian.Uint16(buf[offset:offset+2]))
 		offset += 2
 	}
 
-	offset = int(self.NegotiateContextOffset)
-	for i := 0; i < int(self.NegotiateContextCount); i++ {
+	offset = int(s.NegotiateContextOffset)
+	for i := 0; i < int(s.NegotiateContextCount); i++ {
 		var negContext NegContext
 		err = encoder.Unmarshal(buf[offset:], &negContext)
 		if err != nil {
-			log.Errorln(err)
 			return err
 		}
-		self.ContextList = append(self.ContextList, negContext)
+		s.ContextList = append(s.ContextList, negContext)
 		negContextSize := int(8 + negContext.DataLength)
 		if negContextSize%8 != 0 {
 			negContextSize += 8 - (negContextSize % 8)
@@ -1689,11 +1235,15 @@ func (self *NegotiateReq) UnmarshalBinary(buf []byte, meta *encoder.Metadata) er
 	return nil
 }
 
+// newHeader returns an SMB2 header with CreditCharge=0. Callers that target
+// SMB 2.1+ MUST set CreditCharge to a non-zero credits-consumed value before
+// sending (typically 1, or the result of calcCreditCharge for large
+// transfers). In SMB 2.0.2 the field MUST remain 0 (MS-SMB2 §2.2.1.2).
 func newHeader() Header {
 	return Header{
 		ProtocolID:    []byte(ProtocolSmb2),
 		StructureSize: 64,
-		CreditCharge:  1,
+		CreditCharge:  0,
 		Status:        0,
 		Command:       0,
 		Credits:       1,
@@ -1704,6 +1254,20 @@ func newHeader() Header {
 		TreeID:        0,
 		SessionID:     0,
 		Signature:     make([]byte, 16),
+	}
+}
+
+// applyCreditCharge sets header.CreditCharge per the negotiated dialect.
+// SMB 2.0.2 reserves the field (must be 0); all other dialects use it as the
+// number of credits the request consumes (default 1 unless the caller has
+// already set a larger value via calcCreditCharge).
+func (s *Session) applyCreditCharge(header *Header) {
+	if s.dialect == DialectSmb_2_0_2 {
+		header.CreditCharge = 0
+		return
+	}
+	if header.CreditCharge == 0 {
+		header.CreditCharge = 1
 	}
 }
 
@@ -1719,7 +1283,8 @@ func NewTransformHeader() TransformHeader {
 func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
 	header := newHeader()
 	header.Command = CommandNegotiate
-	header.CreditCharge = 1
+	// CreditCharge stays at 0: dialect not yet known, and 2.0.2 requires 0.
+	// Servers running 2.1+ ignore the value on the NegotiateReq itself.
 
 	var dialects []uint16
 
@@ -1729,6 +1294,25 @@ func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
 		dialects = []uint16{
 			DialectSmb_3_1_1,
 			DialectSmb_2_1,
+			DialectSmb_2_0_2,
+		}
+	}
+
+	// MS-SMB2 §2.2.3: the Capabilities field MUST be 0 unless the client
+	// implements SMB 3.x. Detect that by inspecting the offered dialect list.
+	offers3x := false
+	for _, d := range dialects {
+		if d >= DialectSmb_3_0 {
+			offers3x = true
+			break
+		}
+	}
+
+	var capabilities uint32
+	if offers3x {
+		capabilities = GlobalCapLargeMTU
+		if !s.options.DisableEncryption {
+			capabilities |= GlobalCapEncryption
 		}
 	}
 
@@ -1738,16 +1322,12 @@ func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
 		DialectCount:  uint16(len(dialects)),
 		SecurityMode:  SecurityModeSigningEnabled,
 		Reserved:      0,
-		Capabilities:  GlobalCapLargeMTU,
+		Capabilities:  capabilities,
 		ClientGuid:    s.clientGuid,
 		Dialects:      dialects,
 	}
 	if s.isSigningRequired.Load() {
 		req.SecurityMode = SecurityModeSigningEnabled | SecurityModeSigningRequired
-	}
-
-	if !s.options.DisableEncryption {
-		req.Capabilities |= GlobalCapEncryption
 	}
 
 	if !s.options.ForceSMB2 {
@@ -1758,33 +1338,37 @@ func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
 			Salt:               make([]byte, 32),
 		}
 		if _, err := rand.Read(pic.Salt); err != nil {
-			log.Errorln(err)
 			return req, err
 		}
+		ciphers := s.options.Ciphers
+		if ciphers == nil {
+			ciphers = []uint16{AES128CCM, AES128GCM, AES256CCM, AES256GCM}
+		}
 		cc := EncryptionContext{
-			CipherCount: 4,
-			Ciphers:     []uint16{AES128CCM, AES128GCM, AES256CCM, AES256GCM},
+			CipherCount: uint16(len(ciphers)),
+			Ciphers:     ciphers,
 		}
 		sc := SigningContext{
-			SigningAlgorithmCount: 1,
-			SigningAlgorithms:     []uint16{AES_CMAC},
+			// Order matters: highest-preference first. AES_GMAC is the
+			// fastest on modern hardware (Windows 11 / Server 2022+);
+			// AES_CMAC is the universal SMB 3.x default; HMAC_SHA256 is
+			// included for legacy interop.
+			SigningAlgorithms: []uint16{AES_GMAC, AES_CMAC, HMAC_SHA256},
 		}
+		sc.SigningAlgorithmCount = uint16(len(sc.SigningAlgorithms))
 
 		picBuf, err := encoder.Marshal(pic)
 		if err != nil {
-			log.Errorln(err)
 			return NegotiateReq{}, err
 		}
 
 		ccBuf, err := encoder.Marshal(cc)
 		if err != nil {
-			log.Errorln(err)
 			return NegotiateReq{}, err
 		}
 
 		scBuf, err := encoder.Marshal(sc)
 		if err != nil {
-			log.Errorln(err)
 			return NegotiateReq{}, err
 		}
 
@@ -1807,8 +1391,15 @@ func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
 			ContextType: SigningCapabilities,
 			Data:        scBuf,
 			DataLength:  uint16(len(scBuf)),
-			Padd:        make([]byte, (8-(len(scBuf)%8))%8),
+			//Padd:        make([]byte, (8-(len(scBuf)%8))%8), // Padding not needed for the last item in the list.
 		}
+		/*
+			TODO When rewriting the marshalling, move padding to before instead ot after each context based on alignment.
+			The first negotiate context in the list MUST appear at the byte offset
+			indicated by the SMB2 NEGOTIATE request's NegotiateContextOffset field.
+			Subsequent negotiate contexts MUST appear at the first 8-byte-aligned
+			offset following the previous negotiate context.
+		*/
 		req.ContextList = append(req.ContextList, n)
 
 		req.NegotiateContextCount = uint16(len(req.ContextList))
@@ -1844,19 +1435,17 @@ func NewNegotiateRes() NegotiateRes {
 func (s *Connection) NewSessionSetup1Req(spnegoClient *spnego.Client) (req SessionSetup1Req, err error) {
 	header := newHeader()
 	header.Command = CommandSessionSetup
-	header.CreditCharge = 1
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 
 	negTokenInitbytes, err := spnegoClient.InitSecContext(nil)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
 	var init gss.NegTokenInit
 	err = encoder.Unmarshal(negTokenInitbytes, &init)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
@@ -1872,8 +1461,12 @@ func (s *Connection) NewSessionSetup1Req(spnegoClient *spnego.Client) (req Sessi
 		SecurityBlob:         &init,
 	}
 
+	// MS-SMB2 §2.2.5: SMB2_NEGOTIATE_SIGNING_REQUIRED implies (and must be
+	// combined with) SMB2_NEGOTIATE_SIGNING_ENABLED. Sending 0x02 alone
+	// (REQUIRED but not ENABLED) is contradictory; strict servers (Windows)
+	// can TCP-RST the connection instead of replying with an SMB error.
 	if s.isSigningRequired.Load() {
-		req.SecurityMode = byte(SecurityModeSigningRequired)
+		req.SecurityMode = byte(SecurityModeSigningEnabled | SecurityModeSigningRequired)
 	} else {
 		req.SecurityMode = byte(SecurityModeSigningEnabled)
 	}
@@ -1906,13 +1499,12 @@ func NewSessionSetup1Res() (SessionSetup1Res, error) {
 func (s *Connection) NewSessionSetup2Req(sc []byte, msg *SessionSetup1Res) (SessionSetup2Req, error) {
 	header := newHeader()
 	header.Command = CommandSessionSetup
-	header.CreditCharge = 1
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 
 	var resp gss.NegTokenResp
 	err := encoder.Unmarshal(sc, &resp)
 	if err != nil {
-		log.Errorln(err)
 		return SessionSetup2Req{}, err
 	}
 
@@ -1929,8 +1521,9 @@ func (s *Connection) NewSessionSetup2Req(sc []byte, msg *SessionSetup1Res) (Sess
 		SecurityBlob:         &resp,
 	}
 
+	// See NewSessionSetup1Req for the rationale on combining ENABLED+REQUIRED.
 	if s.isSigningRequired.Load() {
-		req.SecurityMode = byte(SecurityModeSigningRequired)
+		req.SecurityMode = byte(SecurityModeSigningEnabled | SecurityModeSigningRequired)
 	} else {
 		req.SecurityMode = byte(SecurityModeSigningEnabled)
 	}
@@ -1950,6 +1543,7 @@ func NewSessionSetup2Res() (SessionSetup2Res, error) {
 func (s *Session) NewLogoffReq() LogoffReq {
 	header := newHeader()
 	header.Command = CommandLogoff
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 	ret := LogoffReq{
 		Header:        header,
@@ -1971,6 +1565,7 @@ func NewLogoffRes() LogoffRes {
 func (s *Session) NewTreeConnectReq(name string) (TreeConnectReq, error) {
 	header := newHeader()
 	header.Command = CommandTreeConnect
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 
 	path := fmt.Sprintf("\\\\%s\\%s", s.options.Host, name)
@@ -1991,7 +1586,7 @@ func NewTreeConnectRes() (TreeConnectRes, error) {
 func (s *Session) NewTreeDisconnectReq(treeId uint32) (TreeDisconnectReq, error) {
 	header := newHeader()
 	header.Command = CommandTreeDisconnect
-	header.CreditCharge = 1
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 	header.TreeID = treeId
 
@@ -2017,7 +1612,7 @@ func (s *Session) NewCreateReq(share, name string,
 
 	header := newHeader()
 	header.Command = CommandCreate
-	header.CreditCharge = 1
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 	header.TreeID = s.trees[share]
 	var buf []byte
@@ -2062,7 +1657,7 @@ func (s *Session) NewCreateReq(share, name string,
 func (s *Session) NewCloseReq(share string, fileId []byte) (CloseReq, error) {
 	header := newHeader()
 	header.Command = CommandClose
-	header.CreditCharge = 1
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 	header.TreeID = s.trees[share]
 
@@ -2089,6 +1684,7 @@ func (s *Session) NewQueryDirectoryReq(share, pattern string, fileId []byte,
 	header := newHeader()
 	header.Command = CommandQueryDirectory
 	header.CreditCharge = calcCreditCharge(outputBufferLength)
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 	header.TreeID = s.trees[share]
 
@@ -2140,6 +1736,7 @@ func (s *Session) NewReadReq(share string, fileid []byte,
 	header := newHeader()
 	header.Command = CommandRead
 	header.CreditCharge = calcCreditCharge(length)
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 	header.TreeID = s.trees[share]
 
@@ -2176,6 +1773,7 @@ func (s *Session) NewWriteReq(share string, fileid []byte,
 	header := newHeader()
 	header.Command = CommandWrite
 	header.CreditCharge = calcCreditCharge(uint32(len(data)))
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 	header.TreeID = s.trees[share]
 
@@ -2208,11 +1806,11 @@ func (s *Session) NewWriteReq(share string, fileid []byte,
 
 func (f *File) NewIoCTLReq(operation uint32, data []byte) (*IoCtlReq, error) {
 	if f.fd == nil {
-		return nil, fmt.Errorf("Can't operate on a closed file")
+		return nil, fmt.Errorf("can't operate on a closed file")
 	}
 	header := newHeader()
 	header.Command = CommandIOCtl
-	header.CreditCharge = 1
+	f.applyCreditCharge(&header)
 	header.Credits = 127
 	header.SessionID = f.sessionID
 	header.TreeID = f.shareid
@@ -2245,7 +1843,7 @@ func (s *Session) NewSetInfoReq(share string, fileId []byte) (SetInfoReq, error)
 
 	header := newHeader()
 	header.Command = CommandSetInfo
-	header.CreditCharge = 1
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 	header.TreeID = s.trees[share]
 
@@ -2278,6 +1876,7 @@ func (s *Session) NewQueryInfoReq(
 	header := newHeader()
 	header.Command = CommandQueryInfo
 	header.CreditCharge = calcCreditCharge(outputBufferLength)
+	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
 	header.TreeID = s.trees[share]
 

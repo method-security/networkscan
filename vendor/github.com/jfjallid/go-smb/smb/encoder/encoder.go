@@ -40,11 +40,23 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-
-	"github.com/jfjallid/golog"
 )
 
-var log = golog.Get("github.com/jfjallid/go-smb/smb/encoder")
+// checkVarBounds validates that a variable-length field of count*elemSize bytes
+// starting at offset fits within a buffer of bufLen bytes. The comparison is
+// performed in uint64 so a wire-controlled offset/count cannot overflow and
+// wrap past the guard; it returns an error instead of letting the subsequent
+// slice expression panic the (recover-less) decode goroutine.
+func checkVarBounds(bufLen, offset, count, elemSize int) error {
+	if offset < 0 || count < 0 || elemSize < 0 {
+		return fmt.Errorf("variable-length field has negative offset (%d), count (%d) or element size (%d)", offset, count, elemSize)
+	}
+	end := uint64(offset) + uint64(count)*uint64(elemSize)
+	if uint64(offset) > uint64(bufLen) || end > uint64(bufLen) {
+		return fmt.Errorf("variable-length field at offset %d (%d bytes) exceeds buffer of %d bytes", offset, count*elemSize, bufLen)
+	}
+	return nil
+}
 
 type BinaryMarshallable interface {
 	MarshalBinary(*Metadata) ([]byte, error)
@@ -56,14 +68,14 @@ type Metadata struct {
 	Lens       map[string]uint64
 	Offsets    map[string]uint64
 	Counts     map[string]uint64
-	Parent     interface{}
+	Parent     any
 	ParentBuf  []byte
 	CurrOffset uint64
 	CurrField  string
 }
 
 type TagMap struct {
-	m   map[string]interface{}
+	m   map[string]any
 	has map[string]bool
 }
 
@@ -71,32 +83,32 @@ func (t TagMap) Has(key string) bool {
 	return t.has[key]
 }
 
-func (t TagMap) Set(key string, val interface{}) {
+func (t TagMap) Set(key string, val any) {
 	t.m[key] = val
 	t.has[key] = true
 }
 
-func (t TagMap) Get(key string) interface{} {
+func (t TagMap) Get(key string) any {
 	return t.m[key]
 }
 
 func (t TagMap) GetInt(key string) (int, error) {
 	if !t.Has(key) {
-		return 0, errors.New("Key does not exist in tag")
+		return 0, errors.New("key does not exist in tag")
 	}
 	return t.Get(key).(int), nil
 }
 
 func (t TagMap) GetString(key string) (string, error) {
 	if !t.Has(key) {
-		return "", errors.New("Key does not exist in tag")
+		return "", errors.New("key does not exist in tag")
 	}
 	return t.Get(key).(string), nil
 }
 
 func parseTags(sf reflect.StructField) (*TagMap, error) {
 	ret := &TagMap{
-		m:   make(map[string]interface{}),
+		m:   make(map[string]any),
 		has: make(map[string]bool),
 	}
 	tag := sf.Tag.Get("smb")
@@ -106,12 +118,12 @@ func parseTags(sf reflect.StructField) (*TagMap, error) {
 		switch tokens[0] {
 		case "len", "offset", "count":
 			if len(tokens) != 2 {
-				return nil, errors.New("Missing required tag data. Expecting key:val")
+				return nil, errors.New("missing required tag data, expecting key:val")
 			}
 			ret.Set(tokens[0], tokens[1])
 		case "fixed", "align":
 			if len(tokens) != 2 {
-				return nil, errors.New("Missing required tag data. Expecting key:val")
+				return nil, errors.New("missing required tag data, expecting key:val")
 			}
 			i, err := strconv.Atoi(tokens[1])
 			if err != nil {
@@ -122,7 +134,7 @@ func parseTags(sf reflect.StructField) (*TagMap, error) {
 			ret.Set(tokens[0], true)
 		case "omitempty":
 			if len(tokens) != 2 {
-				return nil, errors.New("Missing required tag data. Expecting key:val")
+				return nil, errors.New("missing required tag data, expecting key:val")
 			}
 			i, err := strconv.Atoi(tokens[1])
 			if err != nil {
@@ -137,7 +149,7 @@ func parseTags(sf reflect.StructField) (*TagMap, error) {
 
 func getOffsetByFieldName(fieldName string, meta *Metadata) (uint64, error) {
 	if meta == nil || meta.Tags == nil || meta.Parent == nil || meta.Lens == nil {
-		return 0, errors.New("Cannot determine field offset. Missing required metadata")
+		return 0, errors.New("cannot determine field offset, missing required metadata")
 	}
 	var ret uint64
 	var found bool
@@ -165,15 +177,41 @@ func getOffsetByFieldName(fieldName string, meta *Metadata) (uint64, error) {
 		}
 	}
 	if !found {
-		return 0, errors.New("Cannot find field name within struct: " + fieldName)
+		return 0, errors.New("cannot find field name within struct: " + fieldName)
 	}
 	return ret, nil
+}
+
+// isFieldEmpty reports whether the named field on meta.Parent has zero length.
+// It first consults meta.Lens (the marshaled-length cache), then falls back to
+// reflecting on the parent struct so that callers running before the target
+// field has been encoded — e.g. an offset:X tag where X comes later in the
+// struct — still get an accurate empty/non-empty answer.
+func isFieldEmpty(fieldName string, meta *Metadata) (bool, error) {
+	if meta == nil || meta.Parent == nil {
+		return false, errors.New("cannot determine field emptiness, missing required metadata")
+	}
+	if val, ok := meta.Lens[fieldName]; ok {
+		return val == 0, nil
+	}
+	parentvf := reflect.Indirect(reflect.ValueOf(meta.Parent))
+	field := parentvf.FieldByName(fieldName)
+	if !field.IsValid() {
+		return false, errors.New("invalid field, cannot determine emptiness for " + fieldName)
+	}
+	switch field.Kind() {
+	case reflect.Ptr, reflect.Interface:
+		return field.IsNil(), nil
+	case reflect.Slice, reflect.Array, reflect.Map, reflect.String:
+		return field.Len() == 0, nil
+	}
+	return false, nil
 }
 
 func getFieldLengthByName(fieldName string, meta *Metadata) (uint64, error) {
 	var ret uint64
 	if meta == nil || meta.Tags == nil || meta.Parent == nil || meta.Lens == nil {
-		return 0, errors.New("Cannot determine field length. Missing required metadata")
+		return 0, errors.New("cannot determine field length, missing required metadata")
 	}
 
 	// Check if length is stored in field length cache
@@ -185,15 +223,13 @@ func getFieldLengthByName(fieldName string, meta *Metadata) (uint64, error) {
 
 	field := parentvf.FieldByName(fieldName)
 	if !field.IsValid() {
-		fmt.Printf("Cannot determine length of field %s\n", fieldName)
-		fmt.Println(meta.Lens)
-		return 0, errors.New("Invalid field. Cannot determine length.")
+		return 0, fmt.Errorf("invalid field %s: cannot determine length (lens: %v)", fieldName, meta.Lens)
 	}
 
 	bm, ok := field.Interface().(BinaryMarshallable)
 	if ok {
 		// Custom marshallable interface found.
-		buf, err := bm.(BinaryMarshallable).MarshalBinary(meta)
+		buf, err := bm.MarshalBinary(meta)
 		if err != nil {
 			return 0, err
 		}
@@ -212,7 +248,7 @@ func getFieldLengthByName(fieldName string, meta *Metadata) (uint64, error) {
 		}
 		ret = uint64(len(buf))
 	case reflect.Interface:
-		return 0, errors.New("Interface length calculation not implemented")
+		return 0, errors.New("interface length calculation not implemented")
 	case reflect.Slice, reflect.Array:
 		switch field.Type().Elem().Kind() {
 		case reflect.Uint8:
@@ -220,7 +256,7 @@ func getFieldLengthByName(fieldName string, meta *Metadata) (uint64, error) {
 		case reflect.Uint16:
 			ret = uint64(len(field.Interface().([]uint16))) //TODO Is this correct?
 		default:
-			return 0, errors.New("Cannot calculate the length of unknown slice type for " + fieldName)
+			return 0, errors.New("cannot calculate the length of unknown slice type for " + fieldName)
 		}
 	case reflect.Uint8:
 		ret = uint64(binary.Size(field.Interface().(uint8)))
@@ -231,22 +267,37 @@ func getFieldLengthByName(fieldName string, meta *Metadata) (uint64, error) {
 	case reflect.Uint64:
 		ret = uint64(binary.Size(field.Interface().(uint64)))
 	default:
-		return 0, errors.New("Cannot calculate the length of unknown kind for field " + fieldName)
+		return 0, errors.New("cannot calculate the length of unknown kind for field " + fieldName)
 	}
 	meta.Lens[fieldName] = ret
 	return ret, nil
 }
 
-func Marshal(v interface{}) ([]byte, error) {
+func Marshal(v any) ([]byte, error) {
 	return marshal(v, nil)
 }
 
-func marshal(v interface{}, meta *Metadata) ([]byte, error) {
+func marshal(v any, meta *Metadata) ([]byte, error) {
 	var ret []byte
 	typev := reflect.TypeOf(v)
 	valuev := reflect.ValueOf(v)
 
 	bm, ok := v.(BinaryMarshallable)
+	if !ok && typev != nil && typev.Kind() != reflect.Ptr {
+		// MarshalBinary is conventionally defined on a pointer receiver
+		// (matching the rest of this package). A caller passing a struct
+		// value through interface{} would otherwise silently bypass it and
+		// fall through to the reflection-based path, producing a structurally
+		// different (often wire-invalid) buffer. Take the address transparently
+		// so the dispatch is independent of value-vs-pointer at the call site.
+		// See TestNegotiateReqContextOffsetAligned for the regression this
+		// guards against.
+		pv := reflect.New(typev)
+		pv.Elem().Set(valuev)
+		if pbm, pok := pv.Interface().(BinaryMarshallable); pok {
+			bm, ok = pbm, true
+		}
+	}
 	if ok {
 		// Custom marshallable interface found.
 		buf, err := bm.MarshalBinary(meta)
@@ -335,8 +386,7 @@ func marshal(v interface{}, meta *Metadata) ([]byte, error) {
 				//TODO Perhaps I should record the length of the array in a tag or field?
 			}
 		default:
-			err := fmt.Errorf("Want to marshal slice of unknown type: %v\n", typev.Elem().Kind())
-			log.Errorln(err)
+			err := fmt.Errorf("want to marshal slice of unknown type: %v", typev.Elem().Kind())
 			return nil, err // Originally this error was ignored
 		}
 	case reflect.Uint8:
@@ -361,11 +411,19 @@ func marshal(v interface{}, meta *Metadata) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			l, err := getOffsetByFieldName(fieldName, meta)
+			empty, err := isFieldEmpty(fieldName, meta)
 			if err != nil {
 				return nil, err
 			}
-			data = uint16(l)
+			if empty {
+				data = uint16(0)
+			} else {
+				l, err := getOffsetByFieldName(fieldName, meta)
+				if err != nil {
+					return nil, err
+				}
+				data = uint16(l)
+			}
 		}
 		if err := binary.Write(w, binary.LittleEndian, data); err != nil {
 			return nil, err
@@ -388,21 +446,17 @@ func marshal(v interface{}, meta *Metadata) ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			l, err := getOffsetByFieldName(fieldName, meta)
+			empty, err := isFieldEmpty(fieldName, meta)
 			if err != nil {
 				return nil, err
 			}
-			//If the buffer length is 0, no need to encode the offset
-			// Perhaps this should be handled in getOffsetByFieldName function?
-			emptyBuffer := false
-			if val, ok := meta.Lens[fieldName]; ok {
-				if val == 0 {
-					emptyBuffer = true
-				}
-			}
-			if emptyBuffer {
+			if empty {
 				data = uint32(0)
 			} else {
+				l, err := getOffsetByFieldName(fieldName, meta)
+				if err != nil {
+					return nil, err
+				}
 				data = uint32(l)
 			}
 		}
@@ -420,14 +474,13 @@ func marshal(v interface{}, meta *Metadata) ([]byte, error) {
 			return nil, err
 		}
 	default:
-		err := fmt.Errorf("Marshal not implemented for kind: %s", typev.Kind())
-		log.Errorln(err)
+		err := fmt.Errorf("marshal not implemented for kind: %s", typev.Kind())
 		return nil, err
 	}
 	return w.Bytes(), nil
 }
 
-func unmarshal(buf []byte, v interface{}, meta *Metadata) (interface{}, error) {
+func unmarshal(buf []byte, v any, meta *Metadata) (any, error) {
 	typev := reflect.TypeOf(v)
 	valuev := reflect.ValueOf(v)
 
@@ -481,7 +534,7 @@ func unmarshal(buf []byte, v interface{}, meta *Metadata) (interface{}, error) {
 				return nil, err
 			}
 			m.Tags = tags
-			var data interface{}
+			var data any
 			switch typev.Field(i).Type.Kind() {
 			case reflect.Struct:
 				data, err = unmarshal(buf[m.CurrOffset:], valuev.Field(i).Addr().Interface(), m)
@@ -491,17 +544,6 @@ func unmarshal(buf []byte, v interface{}, meta *Metadata) (interface{}, error) {
 			if err != nil {
 				return nil, err
 			}
-			//if (valuev.Field(i).Kind() == reflect.Ptr) && (reflect.TypeOf(data).Kind() == reflect.Struct) {
-			//    fmt.Println(valuev.Field(i).Type())
-			//    fmt.Printf("Target Kind: %v, Data kind: %v\n", valuev.Field(i).Kind(), reflect.TypeOf(data).Kind())
-			//    //valuev.Field(i).Set(reflect.TypeOf(data))
-			//    t := reflect.ValueOf(data)
-			//    valuev.Field(i).Set(t)
-			//} else {
-			//    valuev.Field(i).Set(reflect.ValueOf(data))
-			//}
-			//fmt.Println(reflect.ValueOf(data))
-
 			// Handle nil results
 			if data == nil {
 				continue
@@ -633,8 +675,7 @@ func unmarshal(buf []byte, v interface{}, meta *Metadata) (interface{}, error) {
 				if val, ok := meta.Lens[meta.CurrField]; ok {
 					length = int(val)
 				} else {
-					err := fmt.Errorf("Variable length field missing length reference in struct field: " + meta.CurrField)
-					log.Errorln(err)
+					err := fmt.Errorf("variable length field missing length reference in struct field: %s", meta.CurrField)
 					return nil, err
 				}
 				if val, ok := meta.Offsets[meta.CurrField]; ok {
@@ -645,6 +686,9 @@ func unmarshal(buf []byte, v interface{}, meta *Metadata) (interface{}, error) {
 				}
 				if offset != int(meta.CurrOffset) {
 					// Variable length data is relative to parent/outer struct. Reset reader to point to beginning of data
+					if err := checkVarBounds(len(meta.ParentBuf), offset, length, 1); err != nil {
+						return nil, err
+					}
 					r = bytes.NewBuffer(meta.ParentBuf[offset : offset+length])
 					// Variable length data fields do NOT advance current offset.
 				} else {
@@ -672,8 +716,7 @@ func unmarshal(buf []byte, v interface{}, meta *Metadata) (interface{}, error) {
 					if val, ok := meta.Lens[meta.CurrField]; ok {
 						length = int(val)
 					} else {
-						err := fmt.Errorf("Variable length field missing length reference in struct field: " + meta.CurrField)
-						log.Errorln(err)
+						err := fmt.Errorf("variable length field missing length reference in struct field: %s", meta.CurrField)
 						return nil, err
 					}
 					if val, ok := meta.Offsets[meta.CurrField]; ok {
@@ -684,6 +727,9 @@ func unmarshal(buf []byte, v interface{}, meta *Metadata) (interface{}, error) {
 					}
 					if offset != int(meta.CurrOffset) {
 						// Variable length data is relative to parent/outer struct. Reset reader to point to beginning of data
+						if err := checkVarBounds(len(meta.ParentBuf), offset, length, 2); err != nil {
+							return nil, err
+						}
 						r = bytes.NewBuffer(meta.ParentBuf[offset : offset+length*2]) //TODO Should this be x2? Was originally only length
 						// Variable length data fields do NOT advance current offset.
 					} else {
@@ -711,7 +757,7 @@ func unmarshal(buf []byte, v interface{}, meta *Metadata) (interface{}, error) {
 				if val, ok := meta.Counts[meta.CurrField]; ok {
 					count = int(val)
 				} else {
-					return nil, errors.New("Variable length (uint32) field missing count reference in struct field: " + meta.CurrField)
+					return nil, errors.New("variable length (uint32) field missing count reference in struct field: " + meta.CurrField)
 				}
 				meta.CurrOffset += uint64(count * 4)
 				data = make([]uint32, count)
@@ -728,8 +774,7 @@ func unmarshal(buf []byte, v interface{}, meta *Metadata) (interface{}, error) {
 					return nil, nil
 				}
 			} else {
-				err := fmt.Errorf("NOT IMPLEMENTED unmarshal of slice of structs missing Count tag")
-				fmt.Println(err)
+				err := fmt.Errorf("not implemented: unmarshal of slice of structs missing Count tag")
 				return nil, err
 			}
 			list := reflect.MakeSlice(typev, 0, int(count))
@@ -749,21 +794,16 @@ func unmarshal(buf []byte, v interface{}, meta *Metadata) (interface{}, error) {
 			return list.Interface(), nil
 
 		default:
-			err := fmt.Errorf("Unmarshal not implemented for slice kind:" + typev.Kind().String())
-			log.Errorln(err)
+			err := fmt.Errorf("unmarshal not implemented for slice kind: %s", typev.Kind().String())
 			return nil, err
 		}
 	default:
-		err := fmt.Errorf("Unmarshal not implemented for kind:" + typev.Kind().String())
-		log.Errorln(err)
+		err := fmt.Errorf("unmarshal not implemented for kind: %s", typev.Kind().String())
 		return nil, err
 	}
-
-	return nil, nil
-
 }
 
-func Unmarshal(buf []byte, v interface{}) error {
+func Unmarshal(buf []byte, v any) error {
 	_, err := unmarshal(buf, v, nil)
 	return err
 }

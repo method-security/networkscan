@@ -6,10 +6,12 @@ import (
 	"net"
 	"strings"
 
-	"github.com/pkg/errors"
+	"errors"
+
 	"github.com/projectdiscovery/naabu/v2/pkg/port"
 	"github.com/projectdiscovery/naabu/v2/pkg/privileges"
 	"github.com/projectdiscovery/naabu/v2/pkg/scan"
+	"github.com/projectdiscovery/utils/errkit"
 	fileutil "github.com/projectdiscovery/utils/file"
 	iputil "github.com/projectdiscovery/utils/ip"
 	osutil "github.com/projectdiscovery/utils/os"
@@ -35,6 +37,11 @@ func (options *Options) ValidateOptions() error {
 		return errNoInputList
 	}
 
+	if (options.WithHostDiscovery || options.OnlyHostDiscovery) && options.ScanType != SynScan {
+		gologger.Warning().Msgf("host discovery requires syn scan, automatically switching to syn scan")
+		options.ScanType = SynScan
+	}
+
 	// Both verbose and silent flags were used
 	if options.Verbose && options.Silent {
 		return errOutputMode
@@ -44,14 +51,8 @@ func (options *Options) ValidateOptions() error {
 		return errTwoOutputMode
 	}
 
-	if options.Timeout == 0 {
-		return errors.Wrap(errZeroValue, "timeout")
-	} else if !privileges.IsPrivileged && options.Timeout == DefaultPortTimeoutSynScan {
-		options.Timeout = DefaultPortTimeoutConnectScan
-	}
-
 	if options.Rate == 0 {
-		return errors.Wrap(errZeroValue, "rate")
+		return errkit.Wrap(errZeroValue, "rate")
 	} else if !privileges.IsPrivileged && options.Rate == DefaultRateSynScan {
 		options.Rate = DefaultRateConnectScan
 	}
@@ -140,6 +141,18 @@ func (options *Options) ValidateOptions() error {
 		options.ScanType = ConnectScan
 	}
 
+	if options.ConnectPayload != "" && options.ScanType != ConnectScan {
+		return errors.New("connect payload can only be used with connect scan")
+	}
+
+	if options.DnsOrder != "p" && options.DnsOrder != "l" && options.DnsOrder != "lp" && options.DnsOrder != "pl" {
+		return errors.New("dns-order must be one of p, l, lp, pl")
+	}
+
+	if options.DnsOrder == "p" && options.Proxy == "" {
+		return errors.New("dns-order 'p' (proxy-only) requires --proxy to be set")
+	}
+
 	if options.ScanType == SynScan && scan.PkgRouter == nil {
 		gologger.Warning().Msgf("Routing could not be determined (are you using a VPN?).falling back to connect scan")
 		options.ScanType = ConnectScan
@@ -147,6 +160,21 @@ func (options *Options) ValidateOptions() error {
 
 	if options.ServiceDiscovery || options.ServiceVersion {
 		return errors.New("service discovery feature is not implemented")
+	}
+
+	if options.WarmUpTime <= 0 {
+		gologger.Debug().Msgf("Warm up time must be greater than 0, setting to 2")
+		options.WarmUpTime = 2
+	}
+
+	if options.SmartScan && options.Stream {
+		return errors.New("smart scan is not supported in stream mode")
+	}
+	if options.SmartScan && options.Passive {
+		return errors.New("smart scan is not supported in passive mode")
+	}
+	if options.PredictionThreshold < 0 || options.PredictionThreshold > 100 {
+		return errors.New("prediction threshold must be between 0 and 100")
 	}
 
 	return nil

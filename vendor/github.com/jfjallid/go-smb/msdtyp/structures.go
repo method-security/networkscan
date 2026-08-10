@@ -26,14 +26,11 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-
-	"github.com/jfjallid/golog"
 )
 
 var (
-	le  = binary.LittleEndian
-	be  = binary.BigEndian
-	log = golog.Get("github.com/jfjallid/go-smb/msdtyp")
+	le = binary.LittleEndian
+	be = binary.BigEndian
 )
 
 // MS-DTYP Section 2.4.6 Security_Descriptor Control Flag
@@ -126,6 +123,32 @@ var aceFlagsMap = map[byte]string{
 	FailedAccessAceFlag:     "FailedAccessAce",
 }
 
+// MS-DTYP Section 2.4.4.3 ACCESS_ALLOWED_OBJECT_ACE - Flags field bits that
+// indicate which of the optional ObjectType / InheritedObjectType GUIDs are
+// present in the ACE body.
+const (
+	AceObjectTypePresent          uint32 = 0x00000001
+	AceInheritedObjectTypePresent uint32 = 0x00000002
+)
+
+var objectAceTypes = map[byte]bool{
+	AccessAllowedObjectAceType:         true,
+	AccessDeniedObjectAceType:          true,
+	SystemAuditObjectAceType:           true,
+	SystemAlarmObjectAceType:           true,
+	AccessAllowedCallbackObjectAceType: true,
+	AccessDeniedCallbackObjectAceType:  true,
+	SystemAuditCallbackObjectAceType:   true,
+	SystemAlarmCallbackObjectAceType:   true,
+}
+
+// IsObjectAceType reports whether an ACE type carries the optional Flags +
+// ObjectType + InheritedObjectType GUID fields (the ACCESS_*_OBJECT_ACE family,
+// MS-DTYP 2.4.4.3-2.4.4.6) rather than the plain Mask|SID body.
+func IsObjectAceType(t byte) bool {
+	return objectAceTypes[t]
+}
+
 const (
 	AccessMaskGenericRead          = "GENERIC_READ"
 	AccessMaskGenericWrite         = "GENERIC_WRITE"
@@ -185,34 +208,25 @@ type ACEHeader struct {
 	Size  uint16 //Includes header size?
 }
 
-// MS-DTYP Section 2.4.4.2 ACCESS_ALLOWED_ACE
+// MS-DTYP Section 2.4.4.2 ACCESS_ALLOWED_ACE and 2.4.4.3 ACCESS_ALLOWED_OBJECT_ACE.
+// ObjectFlags/ObjectType/InheritedObjectType are only populated (and only
+// (un)marshalled) for the object-ACE family, see IsObjectAceType. They are zero
+// for basic ACEs, so existing callers reading Mask/Sid are unaffected.
 type ACE struct {
-	Header ACEHeader
-	Mask   uint32
-	Sid    SID //Must be multiple of 4
+	Header              ACEHeader
+	Mask                uint32
+	ObjectFlags         uint32   // object ACEs only; which GUIDs follow
+	ObjectType          [16]byte // present iff ObjectFlags&AceObjectTypePresent
+	InheritedObjectType [16]byte // present iff ObjectFlags&AceInheritedObjectTypePresent
+	Sid                 SID      //Must be multiple of 4
 }
 
 // MS-DTYP Section 2.4.2.3 RPC_SID
 type SID struct {
 	Revision       byte
 	NumAuth        byte
-	Authority      []byte
-	SubAuthorities []uint32
-}
-
-// MS-DTYP Section 2.3.10 RPC_UNICODE_STRING
-/*
-typedef struct _RPC_UNICODE_STRING {
-  unsigned short Length;
-  unsigned short MaximumLength;
-  [size_is(MaximumLength/2), length_is(Length/2)]
-    WCHAR* Buffer;
-} RPC_UNICODE_STRING,
- *PRPC_UNICODE_STRING;
-*/
-type RPCUnicodeStr struct {
-	MaxLength uint16
-	S         string // Must NOT be null terminated
+	Authority      [6]byte
+	SubAuthorities []uint32 `ndr:"conformant"`
 }
 
 // MS-DTYP Section 2.4.6.1 SECURITY_DESCRIPTOR
@@ -230,11 +244,13 @@ type SecurityDescriptor struct {
 }
 
 type AcePermissions struct {
-	AceType        string
-	AceFlags       byte
-	AceFlagStrings string
-	Permissions    []string
-	Sid            string
+	AceType             string
+	AceFlags            byte
+	AceFlagStrings      string
+	Permissions         []string
+	Sid                 string
+	ObjectType          string // GUID string; empty unless an object ACE with ObjectType present
+	InheritedObjectType string // GUID string; empty unless an object ACE with InheritedObjectType present
 }
 
 type PaclPermissions struct {
@@ -242,377 +258,173 @@ type PaclPermissions struct {
 	Entries []AcePermissions
 }
 
-func (self *ReturnCode) MarshalBinary() ([]byte, error) {
-	return nil, fmt.Errorf("NOT IMPLEMENTED MarshalBinary for ReturnCode")
+func (s *ReturnCode) MarshalBinary() ([]byte, error) {
+	return nil, fmt.Errorf("not implemented: MarshalBinary for ReturnCode")
 }
 
-func (self *ReturnCode) UnmarshalBinary(buf []byte) error {
-	self.uint32 = le.Uint32(buf)
+func (s *ReturnCode) UnmarshalBinary(buf []byte) error {
+	s.uint32 = le.Uint32(buf)
 	return nil
 }
 
-// Specifically to handle all the ref id ptrs and array len and size valus that are lifted out of the structures
-func ReadRPCUnicodeStrArray(r *bytes.Reader, nullTerminated bool) (items []string, err error) {
-	// Skip ref id
-	_, err = r.Seek(4, io.SeekCurrent)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	count := uint32(0)
-
-	err = binary.Read(r, le, &count)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	// Need to keep track of strings that are empty and should be skipped
-	readStrAtPos := make([]bool, count)
-	for i := 0; i < int(count); i++ {
-		var len uint16
-		err = binary.Read(r, le, &len)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		if len > 0 {
-			readStrAtPos[i] = true
-		}
-		// Skip maxSize and ref id ptr
-		_, err = r.Seek(6, io.SeekCurrent)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-	}
-
-	for i := 0; i < int(count); i++ {
-		s := ""
-		if readStrAtPos[i] {
-			// String structure is not empty
-			s, err = ReadConformantVaryingString(r, nullTerminated)
-			if err != nil {
-				log.Errorln(err)
-				return
-			}
-		}
-		items = append(items, s)
-	}
-
-	return
+func (r ReturnCode) Value() uint32 {
+	return r.uint32
 }
 
-func WriteRPCUnicodeStrArray(w io.Writer, items []string, refId *uint32, nullTerminate bool) (n int, err error) {
-	// Write ref id
-	err = binary.Write(w, le, refId)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	*refId++
-	n += 4
-
-	// Write MaxCount
-	err = binary.Write(w, le, uint32(len(items)))
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	n += 4
-
-	for i := 0; i < len(items); i++ {
-		strLen := uint16(0)
-		maxLen := uint16(0)
-		s := items[i]
-		if nullTerminate {
-			strLen = uint16(len(s)+2) * 2
-			maxLen = strLen
-		} else {
-			strLen = uint16(len(s)) * 2
-			maxLen = strLen + 2
-		}
-		// Write string len
-		err = binary.Write(w, le, strLen)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		n += 4
-		// Write string max size
-		err = binary.Write(w, le, maxLen)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		n += 4
-		// Write refId ptr
-		err = binary.Write(w, le, refId)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		n += 4
-		*refId++
-	}
-
-	n2 := 0
-	for i := 0; i < len(items); i++ {
-		n2, err = WriteConformantVaryingString(w, items[i], nullTerminate)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		n += n2
-	}
-
-	return
-}
-
-func ReadRPCUnicodeStr(r *bytes.Reader, nullTerminated bool) (s string, maxLength uint16, err error) {
-	l := uint16(0)
-	err = binary.Read(r, le, &l)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	err = binary.Read(r, le, &maxLength)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	// Is there any problems with skipping to read more if length is 0
-	if l == 0 {
-		// Skip null ptr
-		_, err = r.Seek(4, io.SeekCurrent)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-	}
-
-	s, err = ReadConformantVaryingStringPtr(r, nullTerminated)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	return
-}
-
-func ReadRPCUnicodeStrPtr(r *bytes.Reader, nullTerminated bool) (s string, maxLength uint16, err error) {
-	// Skip ReferentId Ptr
-	_, err = r.Seek(4, io.SeekCurrent)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	return ReadRPCUnicodeStr(r, nullTerminated)
-}
-
-// Not null terminated
-func WriteRPCUnicodeStrPtr(w io.Writer, s string, refId *uint32) (n int, err error) {
-	unc := ToUnicode(s)
-
-	var length, maxLength uint16
-	length = uint16(len(unc))
-	err = binary.Write(w, le, length) // Len
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	maxLength = length
-	err = binary.Write(w, le, maxLength) // max length
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	n, err = WriteConformantVaryingStringPtr(w, s, refId, false)
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-
-	n += 4 // Len and Max Size
-
-	return
-}
-
-func (self *SecurityDescriptor) MarshalBinary() (ret []byte, err error) {
+func (s *SecurityDescriptor) MarshalBinary() (ret []byte, err error) {
 	w := bytes.NewBuffer(ret)
 	ptrBuf := make([]byte, 0)
 	// Order: 1. SACL, 2. DACL, 3. Owner, 4. Group
 	bufOffset := uint32(20)
 
-	if self.Sacl != nil {
-		sBuf, err := self.Sacl.MarshalBinary()
+	if s.Sacl != nil {
+		sBuf, err := s.Sacl.MarshalBinary()
 		if err != nil {
-			log.Errorln(err)
 			return nil, err
 		}
 		ptrBuf = append(ptrBuf, sBuf...)
-		self.Control |= SecurityDescriptorFlagSP
-		self.OffsetSacl = bufOffset
+		s.Control |= SecurityDescriptorFlagSP
+		s.OffsetSacl = bufOffset
 		bufOffset += uint32(len(sBuf))
 	}
-	if self.Dacl != nil {
-		dBuf, err := self.Dacl.MarshalBinary()
+	if s.Dacl != nil {
+		dBuf, err := s.Dacl.MarshalBinary()
 		if err != nil {
 			return nil, err
 		}
 		ptrBuf = append(ptrBuf, dBuf...)
-		self.Control |= SecurityDescriptorFlagDP
-		self.OffsetDacl = bufOffset
+		s.Control |= SecurityDescriptorFlagDP
+		s.OffsetDacl = bufOffset
 		bufOffset += uint32(len(dBuf))
 	}
 
-	if self.OwnerSid != nil {
-		oBuf, err := self.OwnerSid.MarshalBinary()
+	if s.OwnerSid != nil {
+		oBuf, err := s.OwnerSid.MarshalBinary()
 		if err != nil {
 			return nil, err
 		}
 		ptrBuf = append(ptrBuf, oBuf...)
-		self.OffsetOwner = bufOffset
+		s.OffsetOwner = bufOffset
 		bufOffset += uint32(len(oBuf))
 	}
 
-	if self.OffsetGroup != 0 {
-		gBuf, err := self.GroupSid.MarshalBinary()
+	if s.OffsetGroup != 0 {
+		gBuf, err := s.GroupSid.MarshalBinary()
 		if err != nil {
 			return nil, err
 		}
 		ptrBuf = append(ptrBuf, gBuf...)
-		self.OffsetGroup = bufOffset
+		s.OffsetGroup = bufOffset
 	}
 
 	// Encode revision
-	err = binary.Write(w, le, self.Revision)
+	err = binary.Write(w, le, s.Revision)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	// Encode control
-	err = binary.Write(w, le, self.Control)
+	err = binary.Write(w, le, s.Control)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	// Encode  OffsetOwner
-	err = binary.Write(w, le, self.OffsetOwner)
+	err = binary.Write(w, le, s.OffsetOwner)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	// Encode  OffsetGroup
-	err = binary.Write(w, le, self.OffsetGroup)
+	err = binary.Write(w, le, s.OffsetGroup)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	// Encode  OffsetSacl
-	err = binary.Write(w, le, self.OffsetSacl)
+	err = binary.Write(w, le, s.OffsetSacl)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	// Encode  OffsetDacl
-	err = binary.Write(w, le, self.OffsetDacl)
+	err = binary.Write(w, le, s.OffsetDacl)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
 	// Encode serialized Owner, Group, Sacl and Dacl
 	_, err = w.Write(ptrBuf)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
 	return w.Bytes(), nil
 }
 
-func (self *SecurityDescriptor) UnmarshalBinary(buf []byte) (err error) {
+func (s *SecurityDescriptor) UnmarshalBinary(buf []byte) (err error) {
 
 	r := bytes.NewReader(buf)
 
-	err = binary.Read(r, le, &self.Revision)
+	err = binary.Read(r, le, &s.Revision)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Read(r, le, &self.Control)
+	err = binary.Read(r, le, &s.Control)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Read(r, le, &self.OffsetOwner)
+	err = binary.Read(r, le, &s.OffsetOwner)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Read(r, le, &self.OffsetGroup)
+	err = binary.Read(r, le, &s.OffsetGroup)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Read(r, le, &self.OffsetSacl)
+	err = binary.Read(r, le, &s.OffsetSacl)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Read(r, le, &self.OffsetDacl)
+	err = binary.Read(r, le, &s.OffsetDacl)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
-	if self.OffsetOwner != 0 {
-		_, err = r.Seek(int64(self.OffsetOwner), io.SeekStart)
-		self.OwnerSid, err = ReadSID(r)
+	if s.OffsetOwner != 0 {
+		_, err = r.Seek(int64(s.OffsetOwner), io.SeekStart)
 		if err != nil {
-			log.Errorln(err)
+			return
+		}
+		s.OwnerSid, err = ReadSID(r)
+		if err != nil {
 			return
 		}
 	}
-	if self.OffsetGroup != 0 {
-		_, err = r.Seek(int64(self.OffsetGroup), io.SeekStart)
+	if s.OffsetGroup != 0 {
+		_, err = r.Seek(int64(s.OffsetGroup), io.SeekStart)
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
-		self.GroupSid, err = ReadSID(r)
+		s.GroupSid, err = ReadSID(r)
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
 	}
 
-	if (self.Control & SecurityDescriptorFlagSP) == SecurityDescriptorFlagSP {
-		_, err = r.Seek(int64(self.OffsetSacl), io.SeekStart)
+	if (s.Control & SecurityDescriptorFlagSP) == SecurityDescriptorFlagSP {
+		_, err = r.Seek(int64(s.OffsetSacl), io.SeekStart)
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
-		self.Sacl, err = readPACL(r)
+		s.Sacl, err = readPACL(r)
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
 	}
 
-	if (self.Control & SecurityDescriptorFlagDP) == SecurityDescriptorFlagDP {
-		_, err = r.Seek(int64(self.OffsetDacl), io.SeekStart)
+	if (s.Control & SecurityDescriptorFlagDP) == SecurityDescriptorFlagDP {
+		_, err = r.Seek(int64(s.OffsetDacl), io.SeekStart)
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
-		self.Dacl, err = readPACL(r)
+		s.Dacl, err = readPACL(r)
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
 	}
@@ -620,28 +432,24 @@ func (self *SecurityDescriptor) UnmarshalBinary(buf []byte) (err error) {
 	return nil
 }
 
-func (self *SID) MarshalBinary() (ret []byte, err error) {
+func (s *SID) MarshalBinary() (ret []byte, err error) {
 	w := bytes.NewBuffer(ret)
 
 	// Encode ACE SID
-	err = binary.Write(w, le, self.Revision)
+	err = binary.Write(w, le, s.Revision)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Write(w, le, byte(len(self.SubAuthorities)))
+	err = binary.Write(w, le, byte(len(s.SubAuthorities)))
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Write(w, le, self.Authority)
+	err = binary.Write(w, le, s.Authority)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Write(w, le, self.SubAuthorities)
+	err = binary.Write(w, le, s.SubAuthorities)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
@@ -653,19 +461,16 @@ func ReadSID(r *bytes.Reader) (s *SID, err error) {
 	// Decode ACE SID
 	err = binary.Read(r, le, &s.Revision)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	err = binary.Read(r, le, &s.NumAuth)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
-	s.Authority = make([]byte, 6)
+	//s.Authority = make([]byte, 6)
 	err = binary.Read(r, le, &s.Authority)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
@@ -673,7 +478,6 @@ func ReadSID(r *bytes.Reader) (s *SID, err error) {
 	for i := range s.SubAuthorities {
 		err = binary.Read(r, le, &s.SubAuthorities[i])
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
 	}
@@ -681,52 +485,65 @@ func ReadSID(r *bytes.Reader) (s *SID, err error) {
 	return
 }
 
-func (self *SID) UnmarshalBinary(buf []byte) (err error) {
+func (s *SID) UnmarshalBinary(buf []byte) (err error) {
 	r := bytes.NewReader(buf)
 	sid, err := ReadSID(r)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
-	*self = *sid
+	*s = *sid
 	return nil
 }
 
-func (self *ACE) MarshalBinary() (ret []byte, err error) {
+func (s *ACE) MarshalBinary() (ret []byte, err error) {
 	w := bytes.NewBuffer(ret)
 
-	err = binary.Write(w, le, self.Header.Type)
+	err = binary.Write(w, le, s.Header.Type)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Write(w, le, self.Header.Flags)
+	err = binary.Write(w, le, s.Header.Flags)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Write(w, le, self.Header.Size)
+	err = binary.Write(w, le, s.Header.Size)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
-	err = binary.Write(w, le, self.Mask)
+	err = binary.Write(w, le, s.Mask)
 	if err != nil {
-		log.Errorln(err)
 		return
+	}
+
+	// Object ACEs carry a Flags field followed by 0-2 GUIDs before the SID.
+	if IsObjectAceType(s.Header.Type) {
+		err = binary.Write(w, le, s.ObjectFlags)
+		if err != nil {
+			return
+		}
+		if s.ObjectFlags&AceObjectTypePresent != 0 {
+			err = binary.Write(w, le, s.ObjectType)
+			if err != nil {
+				return
+			}
+		}
+		if s.ObjectFlags&AceInheritedObjectTypePresent != 0 {
+			err = binary.Write(w, le, s.InheritedObjectType)
+			if err != nil {
+				return
+			}
+		}
 	}
 
 	// Encode ACE SID
-	sidBuf, err := self.Sid.MarshalBinary()
+	sidBuf, err := s.Sid.MarshalBinary()
 	if err != nil {
-		log.Errorln(err)
 		return nil, err
 	}
 	err = binary.Write(w, le, sidBuf)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	return w.Bytes(), nil
@@ -736,31 +553,46 @@ func readACE(r *bytes.Reader) (a *ACE, err error) {
 	a = &ACE{}
 	err = binary.Read(r, le, &a.Header.Type)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
 	err = binary.Read(r, le, &a.Header.Flags)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
 	err = binary.Read(r, le, &a.Header.Size)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
 	err = binary.Read(r, le, &a.Mask)
 	if err != nil {
-		log.Errorln(err)
 		return
+	}
+
+	// Object ACEs carry a Flags field followed by 0-2 GUIDs before the SID.
+	if IsObjectAceType(a.Header.Type) {
+		err = binary.Read(r, le, &a.ObjectFlags)
+		if err != nil {
+			return
+		}
+		if a.ObjectFlags&AceObjectTypePresent != 0 {
+			err = binary.Read(r, le, &a.ObjectType)
+			if err != nil {
+				return
+			}
+		}
+		if a.ObjectFlags&AceInheritedObjectTypePresent != 0 {
+			err = binary.Read(r, le, &a.InheritedObjectType)
+			if err != nil {
+				return
+			}
+		}
 	}
 
 	sid, err := ReadSID(r)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	a.Sid = *sid
@@ -768,49 +600,43 @@ func readACE(r *bytes.Reader) (a *ACE, err error) {
 	return
 }
 
-func (self *ACE) UnmarshalBinary(buf []byte) (err error) {
+func (s *ACE) UnmarshalBinary(buf []byte) (err error) {
 	r := bytes.NewReader(buf)
 	ace, err := readACE(r)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
-	*self = *ace
+	*s = *ace
 	return nil
 }
 
-func (self *PACL) MarshalBinary() (ret []byte, err error) {
+func (s *PACL) MarshalBinary() (ret []byte, err error) {
 	w := bytes.NewBuffer(ret)
 
-	err = binary.Write(w, le, self.AclRevision)
+	err = binary.Write(w, le, s.AclRevision)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Write(w, le, self.AclSize)
+	err = binary.Write(w, le, s.AclSize)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
 	// Encode AceCount at 4 byte boundary
-	err = binary.Write(w, le, uint32(len(self.ACLS)))
+	err = binary.Write(w, le, uint32(len(s.ACLS)))
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
-	for _, item := range self.ACLS {
+	for _, item := range s.ACLS {
 		var aceBuf []byte
 		aceBuf, err = item.MarshalBinary()
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
 		_, err = w.Write(aceBuf)
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
 	}
@@ -822,18 +648,15 @@ func readPACL(r *bytes.Reader) (p *PACL, err error) {
 	p = &PACL{}
 	err = binary.Read(r, le, &p.AclRevision)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
 	err = binary.Read(r, le, &p.AclSize)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	err = binary.Read(r, le, &p.AceCount)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
@@ -842,7 +665,6 @@ func readPACL(r *bytes.Reader) (p *PACL, err error) {
 		var ace *ACE
 		ace, err = readACE(r)
 		if err != nil {
-			log.Errorln(err)
 			return
 		}
 		p.ACLS[i] = *ace
@@ -851,14 +673,13 @@ func readPACL(r *bytes.Reader) (p *PACL, err error) {
 	return
 }
 
-func (self *PACL) UnmarshalBinary(buf []byte) (err error) {
+func (s *PACL) UnmarshalBinary(buf []byte) (err error) {
 	r := bytes.NewReader(buf)
 	pacl, err := readPACL(r)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	*self = *pacl
+	*s = *pacl
 
 	return nil
 }
@@ -866,131 +687,70 @@ func (self *PACL) UnmarshalBinary(buf []byte) (err error) {
 func (a ACE) Permissions() AcePermissions {
 	perms := ParseAccessMask(a.Mask)
 	sidStr := a.Sid.ToString()
-	return AcePermissions{
+	p := AcePermissions{
 		Sid:            sidStr,
 		Permissions:    perms,
 		AceType:        AceTypeMap[a.Header.Type],
 		AceFlags:       a.Header.Flags,
 		AceFlagStrings: ParseAceFlags(a.Header.Flags),
 	}
+	if IsObjectAceType(a.Header.Type) {
+		if a.ObjectFlags&AceObjectTypePresent != 0 {
+			p.ObjectType = GuidToString(a.ObjectType)
+		}
+		if a.ObjectFlags&AceInheritedObjectTypePresent != 0 {
+			p.InheritedObjectType = GuidToString(a.InheritedObjectType)
+		}
+	}
+	return p
 }
 
-func (self *PACL) Permissions() PaclPermissions {
+func (s *PACL) Permissions() PaclPermissions {
 	var acePerms []AcePermissions
-	for _, item := range self.ACLS {
+	for _, item := range s.ACLS {
 		acePerms = append(acePerms, item.Permissions())
 	}
 	return PaclPermissions{
-		NumAce:  self.AceCount,
+		NumAce:  s.AceCount,
 		Entries: acePerms,
 	}
 }
 
-func (self *SID) ToString() (s string) {
-	return ConvertSIDtoStr(self)
+func (s *SID) ToString() string {
+	return ConvertSIDtoStr(s)
 }
 
-func (self *SID) GetAuthority() uint32 {
-	return binary.BigEndian.Uint32(self.Authority[2:])
+func (s *SID) GetAuthority() uint32 {
+	return binary.BigEndian.Uint32(s.Authority[2:])
 }
 
-// Write Uni-dimensional Conformant-varying Array of RPCUnicodeStrings
-func WriteUniDimensionalConformanVaryingArray(w io.Writer, items []RPCUnicodeStr, maxCount uint32, refId *uint32) (n int, err error) {
-	// Write MaxCount
-	err = binary.Write(w, le, maxCount)
+func (s *Filetime) ToWriter(w io.Writer) (n int, err error) {
+	err = binary.Write(w, le, s.LowDateTime)
 	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	n += 4
-	// Write Offset
-	err = binary.Write(w, le, uint32(0))
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	n += 4
-	// Write ActualCount
-	err = binary.Write(w, le, uint32(len(items)))
-	if err != nil {
-		log.Errorln(err)
-		return
-	}
-	n += 4
-
-	// Write length, maxLength and refId for each array item lifted out of the RPCUnicodeString structures
-	for i := 0; i < len(items); i++ {
-		buff := ToUnicode(items[i].S)
-		actualLen := uint16(len(buff))
-		maxLen := actualLen
-		// Write actualLen
-		err = binary.Write(w, le, actualLen)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		n += 2
-		// Write string max size
-		err = binary.Write(w, le, maxLen)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		n += 2
-		// Write refId ptr
-		err = binary.Write(w, le, refId)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		n += 4
-		*refId++
-	}
-
-	n2 := 0
-	for i := 0; i < len(items); i++ {
-		n2, err = WriteConformantVaryingString(w, items[i].S, false)
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-		n += n2
-	}
-
-	return
-}
-
-func (self *Filetime) ToWriter(w io.Writer) (n int, err error) {
-	err = binary.Write(w, le, self.LowDateTime)
-	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	n += 2
-	err = binary.Write(w, le, self.HighDateTime)
+	err = binary.Write(w, le, s.HighDateTime)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	n += 2
 	return
 }
 
-func (self *Filetime) FromReader(r *bytes.Reader) (err error) {
-	err = binary.Read(r, le, &self.LowDateTime)
+func (s *Filetime) FromReader(r *bytes.Reader) (err error) {
+	err = binary.Read(r, le, &s.LowDateTime)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
-	err = binary.Read(r, le, &self.HighDateTime)
+	err = binary.Read(r, le, &s.HighDateTime)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 	return
 }
 
-func (self *Filetime) ToString() string {
-	t := ConvertFromFiletime(self)
+func (s *Filetime) ToString() string {
+	t := ConvertFromFiletime(s)
 	return t.String()
 }

@@ -1,57 +1,72 @@
 package runner
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/projectdiscovery/naabu/v2/pkg/privileges"
 	"github.com/projectdiscovery/naabu/v2/pkg/result"
 	"github.com/projectdiscovery/naabu/v2/pkg/scan"
+	"github.com/projectdiscovery/networkpolicy"
+	"github.com/projectdiscovery/utils/env"
 	fileutil "github.com/projectdiscovery/utils/file"
 	sliceutil "github.com/projectdiscovery/utils/slice"
+	"github.com/projectdiscovery/utils/structs"
 
 	"github.com/projectdiscovery/goflags"
 	"github.com/projectdiscovery/gologger"
+	pdcpauth "github.com/projectdiscovery/utils/auth/pdcp"
 	updateutils "github.com/projectdiscovery/utils/update"
+)
+
+var (
+	PDCPApiKey = ""
+	TeamIDEnv  = env.GetEnvOrDefault("PDCP_TEAM_ID", "")
 )
 
 // Options contains the configuration options for tuning
 // the port enumeration process.
-// nolint:maligned // just an option structure
+// nolint
 type Options struct {
 	Verbose        bool // Verbose flag indicates whether to show verbose output or not
 	NoColor        bool // No-Color disables the colored output
 	JSON           bool // JSON specifies whether to use json for output format or text file
 	Silent         bool // Silent suppresses any extra text and only writes found host:port to screen
+	DisableStdout  bool // DisableStdout suppresses stdout output (useful for SDK usage with OnResult callback)
 	Stdin          bool // Stdin specifies whether stdin input was given to the process
 	Verify         bool // Verify is used to check if the ports found were valid using CONNECT method
 	Version        bool // Version specifies if we should just show version and exit
 	Ping           bool // Ping uses ping probes to discover fastest active host and discover dead hosts
 	Debug          bool // Prints out debug information
 	ExcludeCDN     bool // Excludes ip of knows CDN ranges for full port scan
-	Nmap           bool // Invoke nmap detailed scan on results
+	Nmap           bool // Invoke nmap detailed scan on results (only when NmapCLI is provided)
 	InterfacesList bool // InterfacesList show interfaces list
 
-	Retries        int                 // Retries is the number of retries for the port
-	Rate           int                 // Rate is the rate of port scan requests
-	Timeout        int                 // Timeout is the seconds to wait for ports to respond
-	WarmUpTime     int                 // WarmUpTime between scan phases
-	Host           goflags.StringSlice // Host is the single host or comma-separated list of hosts to find ports for
-	HostsFile      string              // HostsFile is the file containing list of hosts to find port for
-	Output         string              // Output is the file to write found ports to.
-	Ports          string              // Ports is the ports to use for enumeration
-	PortsFile      string              // PortsFile is the file containing ports to use for enumeration
-	ExcludePorts   string              // ExcludePorts is the list of ports to exclude from enumeration
-	ExcludeIps     string              // Ips or cidr to be excluded from the scan
-	ExcludeIpsFile string              // File containing Ips or cidr to exclude from the scan
-	TopPorts       string              // Tops ports to scan
-	PortThreshold  int                 // PortThreshold is the number of ports to find before skipping the host
-	SourceIP       string              // SourceIP to use in TCP packets
-	SourcePort     string              // Source Port to use in packets
-	Interface      string              // Interface to use for TCP packets
-	ConfigFile     string              // Config file contains a scan configuration
-	NmapCLI        string              // Nmap command (has priority over config file)
-	Threads        int                 // Internal worker threads
+	Retries int // Retries is the number of retries for the port
+	Rate    int // Rate is the rate of port scan requests
+	// Timeout        int                 // Timeout is the milliseconds to wait for ports to respond
+	Timeout             time.Duration
+	WarmUpTime          int                 // WarmUpTime between scan phases
+	Host                goflags.StringSlice // Host is the single host or comma-separated list of hosts to find ports for
+	HostsFile           string              // HostsFile is the file containing list of hosts to find port for
+	Output              string              // Output is the file to write found ports to.
+	ListOutputFields    bool                // OutputFields is the list of fields to output (comma separated)
+	ExcludeOutputFields goflags.StringSlice // ExcludeOutputFields is the list of fields to exclude from the output
+	Ports               string              // Ports is the ports to use for enumeration
+	PortsFile           goflags.StringSlice // PortsFile is the file containing ports to use for enumeration
+	ExcludePorts        goflags.StringSlice // ExcludePorts is the list of ports to exclude from enumeration
+	ExcludeIps          string              // Ips or cidr to be excluded from the scan
+	ExcludeIpsFile      string              // File containing Ips or cidr to exclude from the scan
+	TopPorts            string              // Tops ports to scan
+	PortThreshold       int                 // PortThreshold is the number of ports to find before skipping the host
+	SourceIP            string              // SourceIP to use in TCP packets
+	SourcePort          string              // Source Port to use in packets
+	Interface           string              // Interface to use for TCP packets
+	ConfigFile          string              // Config file contains a scan configuration
+	NmapCLI             string              // Nmap command (has priority over config file)
+	Threads             int                 // Internal worker threads
 	// Deprecated: stats are automatically available through local endpoint
 	EnableProgressBar bool // Enable progress bar
 	// Deprecated: stats are automatically available through local endpoint (maybe used on cloud?)
@@ -59,10 +74,13 @@ type Options struct {
 	ScanAllIPS        bool                // Scan all the ips
 	IPVersion         goflags.StringSlice // IP Version to use while resolving hostnames
 	ScanType          string              // Scan Type
+	ConnectPayload    string              // Payload to use with CONNECT scan types
 	Proxy             string              // Socks5 proxy
 	ProxyAuth         string              // Socks5 proxy authentication (username:password)
 	Resolvers         string              // Resolvers (comma separated or file)
 	baseResolvers     []string
+	DnsOrder          string              // DNS resolution order (p/l/lp/pl)
+	SystemResolver    bool                // Use system DNS resolver as fallback
 	OnResult          result.ResultFn // callback on final host result
 	OnReceive         result.ResultFn // callback on response receive
 	CSV               bool
@@ -99,6 +117,32 @@ type Options struct {
 	DisableUpdateCheck bool
 	// MetricsPort with statistics
 	MetricsPort int
+
+	NetworkPolicyOptions *networkpolicy.Options
+	// PdcpAuth for projectdiscovery cloud
+	PdcpAuth string
+	// PdcpAuthCredFile for projectdiscovery cloud
+	PdcpAuthCredFile string
+	// AssetUpload for projectdiscovery cloud
+	AssetUpload bool
+	// TeamID for projectdiscovery cloud
+	TeamID string
+	// AssetID for projectdiscovery cloud
+	AssetID string
+	// AssetName for projectdiscovery cloud
+	AssetName string
+	// AssetFileUpload for projectdiscovery cloud
+	AssetFileUpload string
+	// OnClose adds a callback function that is invoked when naabu is closed
+	// to be exact at end of existing closures
+	OnClose func()
+
+	// SmartScan enables predictive port scanning: after the initial scan,
+	// a correlation model predicts additional likely-open ports per host.
+	SmartScan bool
+	// PredictionThreshold is the minimum confidence percentage (0–100) to
+	// act on a port prediction (default 20, meaning 20%).
+	PredictionThreshold int
 }
 
 // ParseOptions parses the command line flags provided by a user
@@ -119,15 +163,15 @@ func ParseOptions() *Options {
 	flagSet.CreateGroup("port", "Port",
 		flagSet.StringVarP(&options.Ports, "p", "port", "", "ports to scan (80,443, 100-200)"),
 		flagSet.StringVarP(&options.TopPorts, "tp", "top-ports", "", "top ports to scan (default 100) [full,100,1000]"),
-		flagSet.StringVarP(&options.ExcludePorts, "ep", "exclude-ports", "", "ports to exclude from scan (comma-separated)"),
-		flagSet.StringVarP(&options.PortsFile, "pf", "ports-file", "", "list of ports to scan (file)"),
+		flagSet.StringSliceVarP(&options.ExcludePorts, "ep", "exclude-ports", nil, "ports to exclude from scan (file or comma-separated)", goflags.FileCommaSeparatedStringSliceOptions),
+		flagSet.StringSliceVarP(&options.PortsFile, "pf", "ports-file", nil, "list of ports to scan (file or comma-separated)", goflags.FileCommaSeparatedStringSliceOptions),
 		flagSet.IntVarP(&options.PortThreshold, "pts", "port-threshold", 0, "port threshold to skip port scan for the host"),
 		flagSet.BoolVarP(&options.ExcludeCDN, "ec", "exclude-cdn", false, "skip full port scans for CDN/WAF (only scan for port 80,443)"),
 		flagSet.BoolVarP(&options.OutputCDN, "cdn", "display-cdn", false, "display cdn in use"),
 	)
 
 	flagSet.CreateGroup("rate-limit", "Rate-limit",
-		flagSet.IntVar(&options.Threads, "c", 25, "general internal worker threads"),
+		flagSet.IntVar(&options.Threads, "c", DefaultThreadsNum, "general internal worker threads"),
 		flagSet.IntVar(&options.Rate, "rate", DefaultRateSynScan, "packets to send per second"),
 	)
 
@@ -138,6 +182,8 @@ func ParseOptions() *Options {
 
 	flagSet.CreateGroup("output", "Output",
 		flagSet.StringVarP(&options.Output, "output", "o", "", "file to write output to (optional)"),
+		flagSet.BoolVarP(&options.ListOutputFields, "list-output-fields", "lof", false, "list of fields to output (comma separated)"),
+		flagSet.StringSliceVarP(&options.ExcludeOutputFields, "exclude-output-fields", "eof", nil, "exclude output fields output based on a condition", goflags.NormalizedOriginalStringSliceOptions),
 		flagSet.BoolVarP(&options.JSON, "json", "j", false, "write output in JSON lines format"),
 		flagSet.BoolVar(&options.CSV, "csv", false, "write output in csv format"),
 	)
@@ -145,9 +191,10 @@ func ParseOptions() *Options {
 	flagSet.CreateGroup("config", "Configuration",
 		flagSet.StringVar(&cfgFile, "config", "", "path to the naabu configuration file (default $HOME/.config/naabu/config.yaml)"),
 		flagSet.BoolVarP(&options.ScanAllIPS, "sa", "scan-all-ips", false, "scan all the IP's associated with DNS record"),
-		flagSet.StringSliceVarP(&options.IPVersion, "iv", "ip-version", []string{scan.IPv4}, "ip version to scan of hostname (4,6) - (default 4)", goflags.NormalizedStringSliceOptions),
+		flagSet.StringSliceVarP(&options.IPVersion, "iv", "ip-version", []string{scan.IPv4, scan.IPv6}, "ip version to scan of hostname (4,6) - (default 4,6)", goflags.NormalizedStringSliceOptions),
 		flagSet.StringVarP(&options.ScanType, "s", "scan-type", ConnectScan, "type of port scan (SYN/CONNECT)"),
 		flagSet.StringVar(&options.SourceIP, "source-ip", "", "source ip and port (x.x.x.x:yyy - might not work on OSX) "),
+		flagSet.StringVarP(&options.ConnectPayload, "cp", "connect-payload", "", "payload to send in CONNECT scans (optional)"),
 		flagSet.BoolVarP(&options.InterfacesList, "il", "interface-list", false, "list available interfaces and public ip"),
 		flagSet.StringVarP(&options.Interface, "i", "interface", "", "network Interface to use for port scan"),
 		flagSet.BoolVar(&options.Nmap, "nmap", false, "invoke nmap scan on targets (nmap must be installed) - Deprecated"),
@@ -155,6 +202,8 @@ func ParseOptions() *Options {
 		flagSet.StringVar(&options.Resolvers, "r", "", "list of custom resolver dns resolution (comma separated or from file)"),
 		flagSet.StringVar(&options.Proxy, "proxy", "", "socks5 proxy (ip[:port] / fqdn[:port]"),
 		flagSet.StringVar(&options.ProxyAuth, "proxy-auth", "", "socks5 proxy authentication (username:password)"),
+		flagSet.StringVar(&options.DnsOrder, "dns-order", "l", "dns resolution order (p/l/lp/pl)"),
+		flagSet.BoolVarP(&options.SystemResolver, "system-resolver", "sr", false, "use system DNS as fallback resolver"),
 		flagSet.BoolVar(&options.Resume, "resume", false, "resume scan using resume.cfg"),
 		flagSet.BoolVar(&options.Stream, "stream", false, "stream mode (disables resume, nmap, verify, retries, shuffling, etc)"),
 		flagSet.BoolVar(&options.Passive, "passive", false, "display passive open ports using shodan internetdb api"),
@@ -189,10 +238,12 @@ func ParseOptions() *Options {
 
 	flagSet.CreateGroup("optimization", "Optimization",
 		flagSet.IntVar(&options.Retries, "retries", DefaultRetriesSynScan, "number of retries for the port scan"),
-		flagSet.IntVar(&options.Timeout, "timeout", DefaultPortTimeoutSynScan, "millisecond to wait before timing out"),
+		flagSet.DurationVar(&options.Timeout, "timeout", DefaultPortTimeoutSynScan, "millisecond to wait before timing out"),
 		flagSet.IntVar(&options.WarmUpTime, "warm-up-time", 2, "time in seconds between scan phases"),
 		flagSet.BoolVar(&options.Ping, "ping", false, "ping probes for verification of host"),
 		flagSet.BoolVar(&options.Verify, "verify", false, "validate the ports again with TCP verification"),
+		flagSet.BoolVarP(&options.SmartScan, "smart-scan", "ss", false, "predictive port scanning using port correlation model"),
+		flagSet.IntVarP(&options.PredictionThreshold, "prediction-threshold", "pt", 20, "minimum confidence for port predictions (0-100%)"),
 	)
 
 	flagSet.CreateGroup("debug", "Debug",
@@ -207,7 +258,28 @@ func ParseOptions() *Options {
 		flagSet.IntVarP(&options.MetricsPort, "metrics-port", "mp", 63636, "port to expose naabu metrics on"),
 	)
 
+	flagSet.CreateGroup("cloud", "Cloud",
+		flagSet.DynamicVar(&options.PdcpAuth, "auth", "true", "configure projectdiscovery cloud (pdcp) api key"),
+		flagSet.StringVarP(&options.PdcpAuthCredFile, "auth-config", "ac", "", "configure projectdiscovery cloud (pdcp) api key credential file"),
+		flagSet.BoolVarP(&options.AssetUpload, "dashboard", "pd", false, "upload / view output in projectdiscovery cloud (pdcp) UI dashboard"),
+		flagSet.StringVarP(&options.TeamID, "team-id", "tid", TeamIDEnv, "upload asset results to given team id (optional)"),
+		flagSet.StringVarP(&options.AssetID, "asset-id", "aid", "", "upload new assets to existing asset id (optional)"),
+		flagSet.StringVarP(&options.AssetName, "asset-name", "aname", "", "assets group name to set (optional)"),
+		flagSet.StringVarP(&options.AssetFileUpload, "dashboard-upload", "pdu", "", "upload naabu output file (jsonl) in projectdiscovery cloud (pdcp) UI dashboard"),
+	)
+
 	_ = flagSet.Parse()
+
+	if options.ListOutputFields {
+		fields, err := structs.GetStructFields(Result{})
+		if err != nil {
+			gologger.Fatal().Msgf("Could not get struct fields: %s\n", err)
+		}
+		for _, field := range fields {
+			fmt.Println(field)
+		}
+		os.Exit(0)
+	}
 
 	if cfgFile != "" {
 		if !fileutil.FileExists(cfgFile) {
@@ -219,9 +291,32 @@ func ParseOptions() *Options {
 		}
 	}
 
+	if options.PdcpAuthCredFile != "" {
+		pdcpauth.PDCPCredFile = options.PdcpAuthCredFile
+		pdcpauth.PDCPDir = filepath.Dir(pdcpauth.PDCPCredFile)
+	}
+
+	// api key hierarchy: cli flag > env var > .pdcp/credential file
+	if options.PdcpAuth == "true" {
+		AuthWithPDCP()
+	} else if len(options.PdcpAuth) == 36 {
+		PDCPApiKey = options.PdcpAuth
+		ph := pdcpauth.PDCPCredHandler{}
+		if _, err := ph.GetCreds(); err == pdcpauth.ErrNoCreds {
+			apiServer := env.GetEnvOrDefault("PDCP_API_SERVER", pdcpauth.DefaultApiServer)
+			if validatedCreds, err := ph.ValidateAPIKey(PDCPApiKey, apiServer, "naabu"); err == nil {
+				_ = ph.SaveCreds(validatedCreds)
+			}
+		}
+	}
+
 	if options.HealthCheck {
 		gologger.Print().Msgf("%s\n", DoHealthCheck(options, flagSet))
 		os.Exit(0)
+	}
+
+	if env.GetEnvOrDefault("DISABLE_STDOUT", "") != "" {
+		options.DisableStdout = true
 	}
 
 	// Check if stdin pipe was given
@@ -238,16 +333,16 @@ func ParseOptions() *Options {
 	showBanner()
 
 	if options.Version {
-		gologger.Info().Msgf("Current Version: %s\n", version)
+		gologger.Info().Msgf("Current Version: %s\n", Version)
 		os.Exit(0)
 	}
 
 	if !options.DisableUpdateCheck {
-		latestVersion, err := updateutils.GetToolVersionCallback("naabu", version)()
+		latestVersion, err := updateutils.GetToolVersionCallback("naabu", Version)()
 		if err != nil {
 			gologger.Verbose().Msgf("naabu version check failed: %v", err.Error())
 		} else {
-			gologger.Info().Msgf("Current naabu version %v %v", version, updateutils.GetVersionDescription(version, latestVersion))
+			gologger.Info().Msgf("Current naabu version %v %v", Version, updateutils.GetVersionDescription(Version, latestVersion))
 		}
 	}
 
@@ -280,9 +375,10 @@ func (options *Options) shouldDiscoverHosts() bool {
 }
 
 func (options *Options) hasProbes() bool {
+	//nolint
 	return options.ArpPing || options.IPv6NeighborDiscoveryPing || options.IcmpAddressMaskRequestProbe ||
 		options.IcmpEchoRequestProbe || options.IcmpTimestampRequestProbe || len(options.TcpAckPingProbes) > 0 ||
-		len(options.TcpAckPingProbes) > 0
+		len(options.TcpSynPingProbes) > 0
 }
 
 func (options *Options) shouldUseRawPackets() bool {
@@ -295,4 +391,14 @@ func (options *Options) ShouldScanIPv4() bool {
 
 func (options *Options) ShouldScanIPv6() bool {
 	return sliceutil.Contains(options.IPVersion, "6")
+}
+
+func (options *Options) GetTimeout() time.Duration {
+	if options.Timeout < time.Millisecond*500 {
+		if options.ScanType == SynScan {
+			return DefaultPortTimeoutSynScan
+		}
+		return DefaultPortTimeoutConnectScan
+	}
+	return options.Timeout
 }

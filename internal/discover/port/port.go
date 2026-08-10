@@ -203,7 +203,7 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 		return nil, err
 	}
 
-	defer portscan.Close()
+	defer func() { _ = portscan.Close() }()
 
 	// Restore original gologger writer
 	gologger.DefaultLogger.SetWriter(originalWriter)

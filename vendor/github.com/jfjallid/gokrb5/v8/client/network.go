@@ -14,73 +14,107 @@ import (
 	"golang.org/x/net/proxy"
 )
 
-// SendToKDC performs network actions to send data to the KDC.
+// sendToKDC sends b to the KDC for realm and returns the raw reply bytes.
+//
+// Transport selection follows udp_preference_limit, but the retry logic is
+// DC-aware: the KDC list is resolved once and each candidate DC is tried in
+// turn. A UDP attempt answered with KRB_ERR_RESPONSE_TOO_BIG is retried over
+// TCP against the SAME DC (not a freshly re-resolved, possibly different,
+// round-robin address). A transport-level failure for one DC (e.g. a filtered
+// TCP/88) advances to the next DC instead of dead-ending. A definitive KRBError
+// (anything other than RESPONSE_TOO_BIG) is returned immediately. When every DC
+// fails at the transport level the returned error names each DC and why it
+// failed, so a problem like a filtered TCP port is visible instead of being
+// masked behind a stale "response too big".
 func (cl *Client) sendToKDC(b []byte, realm string) ([]byte, error) {
-	var rb []byte
-	if cl.Config.LibDefaults.UDPPreferenceLimit == 1 {
-		//1 means we should always use TCP
-		rb, errtcp := cl.sendKDCTCP(realm, b)
-		if errtcp != nil {
-			if e, ok := errtcp.(messages.KRBError); ok {
-				return rb, e
-			}
-			return rb, fmt.Errorf("communication error with KDC via TCP: %v", errtcp)
-		}
-		return rb, nil
+	// Resolve through the client's runtime alias table before dialing.
+	// This catches per-client aliases learned at runtime (CCache load,
+	// TGS referral) that Config.RealmAliases doesn't know about, and it
+	// folds onto whatever canonical form c.Realms uses. GetKDCs has its
+	// own Config-level alias fallback for callers outside a Client.
+	if cl.aliases != nil {
+		realm = cl.aliases.Resolve(realm)
 	}
-	if len(b) <= cl.Config.LibDefaults.UDPPreferenceLimit {
-		//Try UDP first, TCP second
-		rb, errudp := cl.sendKDCUDP(realm, b)
-		if errudp != nil {
-			if e, ok := errudp.(messages.KRBError); ok && e.ErrorCode != errorcode.KRB_ERR_RESPONSE_TOO_BIG {
-				// Got a KRBError from KDC
-				// If this is not a KRB_ERR_RESPONSE_TOO_BIG we will return immediately otherwise will try TCP.
-				return rb, e
-			}
-			// Try TCP
-			r, errtcp := cl.sendKDCTCP(realm, b)
-			if errtcp != nil {
-				if e, ok := errtcp.(messages.KRBError); ok {
-					// Got a KRBError
-					return r, e
-				}
-				return r, fmt.Errorf("failed to communicate with KDC. Attempts made with UDP (%v) and then TCP (%v)", errudp, errtcp)
-			}
-			rb = r
-		}
-		return rb, nil
+
+	// A udp_preference_limit of 1 means "always use TCP". Otherwise UDP is
+	// tried first only when the request is small enough to plausibly get a
+	// UDP reply; larger requests (which almost always yield larger replies)
+	// go straight to TCP.
+	tryUDPFirst := cl.Config.LibDefaults.UDPPreferenceLimit != 1 &&
+		len(b) <= cl.Config.LibDefaults.UDPPreferenceLimit
+
+	// Resolve the ordered KDC list once so a UDP attempt and its TCP retry
+	// target the same server, and so we can iterate across DCs on failure.
+	_, kdcs, err := cl.Config.GetKDCs(realm, !tryUDPFirst)
+	if err != nil {
+		return nil, err
 	}
-	//Try TCP first, UDP second
-	rb, errtcp := cl.sendKDCTCP(realm, b)
-	if errtcp != nil {
-		if e, ok := errtcp.(messages.KRBError); ok {
-			// Got a KRBError from KDC so returning and not trying UDP.
+
+	var attemptErrs []string
+	for i := 1; i <= len(kdcs); i++ {
+		kdc := kdcs[i]
+		rb, err := cl.exchangeWithKDC(kdc, b, tryUDPFirst)
+		if err == nil {
+			return rb, nil
+		}
+		// A KRBError is a definitive answer from this KDC (e.g. principal
+		// unknown, clock skew); trying another DC will not change it.
+		// RESPONSE_TOO_BIG is the one exception and is handled inside
+		// exchangeWithKDC, so it never reaches here as a KRBError.
+		if e, ok := err.(messages.KRBError); ok {
 			return rb, e
 		}
-		rb, errudp := cl.sendKDCUDP(realm, b)
-		if errudp != nil {
-			if e, ok := errudp.(messages.KRBError); ok {
-				// Got a KRBError
-				return rb, e
-			}
-			return rb, fmt.Errorf("failed to communicate with KDC. Attempts made with TCP (%v) and then UDP (%v)", errtcp, errudp)
-		}
+		attemptErrs = append(attemptErrs, fmt.Sprintf("%s (%v)", kdc, err))
 	}
-	return rb, nil
+	return nil, fmt.Errorf("failed to reach a usable KDC for realm %s. Attempts: %s", realm, strings.Join(attemptErrs, "; "))
 }
 
-// sendKDCUDP sends bytes to the KDC via UDP.
-func (cl *Client) sendKDCUDP(realm string, b []byte) ([]byte, error) {
-	var r []byte
-	_, kdcs, err := cl.Config.GetKDCs(realm, false)
-	if err != nil {
-		return r, err
+// exchangeWithKDC performs a single-DC send. When tryUDPFirst is set it sends
+// over UDP and, if the KDC replies KRB_ERR_RESPONSE_TOO_BIG (or the UDP send
+// itself fails), retries the SAME DC over TCP. A definitive KRBError is returned
+// unchanged so the caller can stop; transport failures are returned as plain
+// errors so the caller can move on to the next DC.
+func (cl *Client) exchangeWithKDC(kdc string, b []byte, tryUDPFirst bool) ([]byte, error) {
+	single := map[int]string{1: kdc}
+
+	if tryUDPFirst {
+		rb, errudp := dialSendUDP(single, b, cl.settings.GetDialTimeout())
+		if errudp == nil {
+			rb, kerr := checkForKRBError(rb)
+			if kerr == nil {
+				return rb, nil
+			}
+			if e, ok := kerr.(messages.KRBError); ok && e.ErrorCode != errorcode.KRB_ERR_RESPONSE_TOO_BIG {
+				// Definitive KDC error; surface it.
+				return rb, kerr
+			}
+			// RESPONSE_TOO_BIG: fall through to TCP against the same DC.
+		}
+
+		rb, errtcp := cl.sendTCPSingle(single, b)
+		if errtcp != nil {
+			if _, ok := errtcp.(messages.KRBError); ok {
+				return rb, errtcp
+			}
+			if errudp != nil {
+				return rb, fmt.Errorf("UDP failed (%v) and TCP retry failed (%v)", errudp, errtcp)
+			}
+			return rb, fmt.Errorf("response too big for UDP and TCP retry to %s failed: %v", kdc, errtcp)
+		}
+		return rb, nil
 	}
-	r, err = dialSendUDP(kdcs, b, cl.settings.GetDialTimeout())
+
+	return cl.sendTCPSingle(single, b)
+}
+
+// sendTCPSingle sends b to the single KDC in kdcs over TCP and classifies a
+// KRBError reply as such.
+func (cl *Client) sendTCPSingle(kdcs map[int]string, b []byte) ([]byte, error) {
+	rb, err := dialSendTCP(kdcs, b, cl.settings.GetDialTimeout(), cl.settings.ProxyDialer())
 	if err != nil {
-		return r, err
+		return rb, err
 	}
-	return checkForKRBError(r)
+	return checkForKRBError(rb)
 }
 
 // dialSendUDP establishes a UDP connection to a KDC.
@@ -115,7 +149,10 @@ func sendUDP(conn *net.UDPConn, b []byte) ([]byte, error) {
 	if err != nil {
 		return r, fmt.Errorf("error sending to (%s): %v", conn.RemoteAddr().String(), err)
 	}
-	udpbuf := make([]byte, 4096)
+	// Size the buffer to the maximum UDP payload so a large datagram is not
+	// silently truncated (which would later surface as an opaque decode error
+	// rather than triggering the TCP retry path).
+	udpbuf := make([]byte, 65535)
 	n, _, err := conn.ReadFrom(udpbuf)
 	r = udpbuf[:n]
 	if err != nil {
@@ -125,20 +162,6 @@ func sendUDP(conn *net.UDPConn, b []byte) ([]byte, error) {
 		return r, fmt.Errorf("no response data from %s", conn.RemoteAddr().String())
 	}
 	return r, nil
-}
-
-// sendKDCTCP sends bytes to the KDC via TCP.
-func (cl *Client) sendKDCTCP(realm string, b []byte) ([]byte, error) {
-	var r []byte
-	_, kdcs, err := cl.Config.GetKDCs(realm, true)
-	if err != nil {
-		return r, err
-	}
-	r, err = dialSendTCP(kdcs, b, cl.settings.GetDialTimeout(), cl.settings.ProxyDialer())
-	if err != nil {
-		return r, err
-	}
-	return checkForKRBError(r)
 }
 
 // dialKDCTCP establishes a TCP connection to a KDC.

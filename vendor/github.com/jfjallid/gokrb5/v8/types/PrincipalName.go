@@ -47,6 +47,27 @@ func (pn PrincipalName) Equal(n PrincipalName) bool {
 	return true
 }
 
+// EqualFold tests if the PrincipalName is equal to the one provided, ignoring
+// ASCII case. This implements the practical Active Directory / Entra convention
+// that the service and host portions of an SPN are case-insensitive (the KDC
+// canonicalises the host to the case stored in the directory and returns it in
+// the ticket regardless of the case requested).
+//
+// EqualFold must NOT be used for wire-level comparisons that the protocol
+// defines as case-sensitive (RFC 4120 section 6.2) nor for salt derivation
+// (see GetSalt); use Equal for those.
+func (pn PrincipalName) EqualFold(n PrincipalName) bool {
+	if len(pn.NameString) != len(n.NameString) {
+		return false
+	}
+	for i, s := range pn.NameString {
+		if !strings.EqualFold(n.NameString[i], s) {
+			return false
+		}
+	}
+	return true
+}
+
 // PrincipalNameString returns the PrincipalName in string form.
 func (pn PrincipalName) PrincipalNameString() string {
 	return strings.Join(pn.NameString, "/")

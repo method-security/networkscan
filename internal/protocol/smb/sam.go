@@ -18,7 +18,7 @@ import (
 
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	"github.com/Method-Security/networkscan/internal/common/ntlm"
-	"github.com/jfjallid/go-smb/smb/dcerpc/msrrp"
+	"github.com/jfjallid/go-smb/dcerpc/msrrp"
 	"github.com/jfjallid/go-smb/smb/encoder"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"golang.org/x/crypto/md4"
@@ -214,7 +214,7 @@ func GetSysKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) ([]byte, erro
 		return nil, err
 	}
 
-	fBytes, _, err := rpccon.QueryValue2(hSubKey, "F")
+	fBytes, _, _, err := rpccon.QueryValue2(hSubKey, "F")
 	if err != nil {
 		_ = rpccon.CloseKeyHandle(hSubKey)
 		return nil, err
@@ -338,7 +338,7 @@ func GetNTHash(rpccon *msrrp.RPCCon, base []byte, rids []string, modifyDacl bool
 			return nil, err
 		}
 
-		v, _, err := rpccon.QueryValue2(hSubKey, "V")
+		v, _, _, err := rpccon.QueryValue2(hSubKey, "V")
 		if err != nil {
 			_ = rpccon.CloseKeyHandle(hSubKey)
 			return nil, err

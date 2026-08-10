@@ -23,7 +23,6 @@
 package smb
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -32,16 +31,17 @@ import (
 	"crypto/sha512"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"hash"
 	"io"
-	"net"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/jfjallid/go-smb/gss"
+	"github.com/jfjallid/go-smb/msdtyp"
 	"github.com/jfjallid/go-smb/ntlmssp"
 	"github.com/jfjallid/go-smb/smb/crypto/ccm"
 	"github.com/jfjallid/go-smb/smb/crypto/cmac"
@@ -100,11 +100,10 @@ type Session struct {
 	// Used in SMB 3.1.1 instead of sessionKey for higher level applications
 	// such as to encrypt a password parameter
 	applicationKey []byte // SMB 3.X only
-	signer         hash.Hash
-	verifier       hash.Hash
+	signer         smbSigner
+	verifier       smbVerifier
 	encrypter      cipher.AEAD
 	decrypter      cipher.AEAD
-	conn           net.Conn
 	dialect        uint16
 	options        Options
 	trees          map[string]uint32
@@ -125,22 +124,31 @@ type Options struct {
 	RequireMessageSigning bool
 	DisableEncryption     bool
 	ForceSMB2             bool
-	Initiator             gss.Mechanism
-	DialTimeout           time.Duration
-	ProxyDialer           proxy.Dialer
-	RelayPort             int
-	ManualLogin           bool
+	// SMB2Only skips the SMB1 multi-protocol negotiate and sends an SMB2
+	// NEGOTIATE directly. Useful against servers with SMB1 disabled.
+	SMB2Only    bool
+	Initiator   gss.Mechanism
+	DialTimeout time.Duration
+	ProxyDialer proxy.Dialer
+	ManualLogin bool
+	// Ciphers, when non-nil, overrides the SMB 3.1.1 EncryptionCapabilities
+	// offer in the Negotiate request. The slice order is the client's
+	// preference — the server picks the first entry it recognizes. Leaving
+	// it nil keeps the default offer (AES-128-CCM, AES-128-GCM, AES-256-CCM,
+	// AES-256-GCM). Useful for tests that need to pin which cipher gets
+	// negotiated.
+	Ciphers []uint16
 }
 
 func validateOptions(opt Options) error {
 	if opt.Host == "" {
-		return fmt.Errorf("Missing required option: Host. Use -h for help on usage.")
+		return fmt.Errorf("missing required option: Host (use -h for help on usage)")
 	}
 	if opt.Port < 1 || opt.Port > 65535 {
-		return fmt.Errorf("Invalid or missing value: Port. Use -h for help on usage.")
+		return fmt.Errorf("invalid or missing value: Port (use -h for help on usage)")
 	}
 	if opt.Initiator == nil && !opt.ManualLogin {
-		return fmt.Errorf("Initiator empty")
+		return fmt.Errorf("initiator empty")
 	}
 	return nil
 }
@@ -181,61 +189,59 @@ func (s *Session) IsSigningRequired() bool {
 	return s.isSigningRequired.Load()
 }
 
-func (c *Connection) NegotiateProtocol() error {
+func (c *Connection) NegotiateProtocol() (err error) {
+	// Debug breadcrumb at the layer seam: connection establishment spans
+	// multiple round trips before sendrecv-based operations take over.
+	defer func() {
+		if err != nil {
+			log.Debugln(err)
+		}
+	}()
 	var rr *requestResponse
 	var negRes NegotiateRes
+	var negResBuf []byte
 
-	negReq1, err := c.NewSMB1NegotiateReq()
-	if err != nil {
-		log.Errorln(err)
-		return err
-	}
-	log.Debugln("Sending SMB1 NegotiateProtocol request")
-	rr, err = c.send(&negReq1)
-	if err != nil {
-		log.Debugln(err)
-		return err
-	}
-
-	negResBuf, err := c.recv(rr)
-	if err != nil {
-		log.Debugln(err)
-		return err
-	}
-
-	if negResBuf[0] == 0xFF {
-		// Server does not support or want to use SMB2.
-		err = fmt.Errorf("Target %s is only accepting SMBv1, but SMBv1 support is not implemented", c.conn.RemoteAddr().String())
-		log.Errorln(err) // Skip print?
-		return err
-	}
-
-	negRes1 := NewNegotiateRes()
-	log.Debugln("Unmarshalling NegotiateProtocol response")
-	if err := encoder.Unmarshal(negResBuf, &negRes1); err != nil {
-		log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(negResBuf))
-		return err
-	}
-
-	if negRes1.DialectRevision <= DialectSmb2_ALL {
-		if negRes1.DialectRevision != DialectSmb2_ALL {
-			// NOTE this is likely breaking the SMB2 specification, but since
-			// servers such as impacket's smbserver.py responds incorrectly to
-			// a multi-protocol negotiation request we attempt to renegotiate
-			// the protocol dialect using SMB2.
-			err = fmt.Errorf("Server responded to the multi-protocol negotiation with an invalid DialectRevision of 0x%x, but expected 0x%x. Restarting protocol negotiation using SMB2.\n", negRes1.DialectRevision, DialectSmb2_ALL)
-			log.Errorln(err)
-		}
-		// Send new SMB2 NegotiateRequest message
+	if c.options.SMB2Only {
+		// Skip SMB1 multi-protocol negotiate and go straight to an SMB2
+		// NEGOTIATE request. The dialect list (including 2.0.2) is the
+		// authoritative offer.
 		negReq, err := c.NewNegotiateReq()
 		if err != nil {
-			log.Errorln(err)
 			return err
 		}
-		log.Debugln("Sending SMB2 NegotiateProtocol request")
-		// Reuse rr variable for second neg protocol req to keep reference
-		// for calculation of pre-auth integrity hash
-		rr, err = c.send(negReq)
+		c.offeredDialects = append([]uint16(nil), negReq.Dialects...)
+		log.Debugln("Sending SMB2-only NegotiateProtocol request")
+		rr, err = c.send(&negReq)
+		if err != nil {
+			log.Debugln(err)
+			return err
+		}
+		negResBuf, err = c.recv(rr)
+		if err != nil {
+			log.Debugln(err)
+			return err
+		}
+		if len(negResBuf) > 0 && negResBuf[0] == 0xFF {
+			err = fmt.Errorf("target %s only accepts SMBv1, but SMBv1 is not implemented", c.conn.RemoteAddr().String())
+			return err
+		}
+		negRes = NewNegotiateRes()
+		log.Traceln("Unmarshalling SMB2-only NegotiateProtocol response")
+		if err := encoder.Unmarshal(negResBuf, &negRes); err != nil {
+			log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(negResBuf))
+			return err
+		}
+	} else {
+		negReq1, err := c.NewSMB1NegotiateReq()
+		if err != nil {
+			return err
+		}
+		log.Debugln("Sending SMB1 NegotiateProtocol request")
+		// SMB1 multi-proto advertises [SMB 2.002, SMB 2.100, SMB 2.???].
+		// Record the SMB2 equivalents so dialect validation accepts a
+		// direct 2.0.2 / 2.1 selection by the server.
+		c.offeredDialects = []uint16{DialectSmb_2_0_2, DialectSmb_2_1, DialectSmb2_ALL}
+		rr, err = c.send(&negReq1)
 		if err != nil {
 			log.Debugln(err)
 			return err
@@ -247,33 +253,70 @@ func (c *Connection) NegotiateProtocol() error {
 			return err
 		}
 
-		negRes = NewNegotiateRes()
-		log.Debugln("Unmarshalling second NegotiateProtocol response")
-		if err := encoder.Unmarshal(negResBuf, &negRes); err != nil {
+		if negResBuf[0] == 0xFF {
+			// Server does not support or want to use SMB2.
+			err = fmt.Errorf("target %s is only accepting SMBv1, but SMBv1 support is not implemented", c.conn.RemoteAddr().String())
+			return err
+		}
+
+		negRes1 := NewNegotiateRes()
+		log.Traceln("Unmarshalling NegotiateProtocol response")
+		if err := encoder.Unmarshal(negResBuf, &negRes1); err != nil {
 			log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(negResBuf))
 			return err
 		}
-	} else {
-		err = fmt.Errorf("Server responded to the multi-protocol negotiation with an invalid DialectRevision of 0x%x\n", negRes1.DialectRevision)
-		log.Debugln(err)
-		return err
-	}
 
-	if negRes.Header.Status != StatusOk {
-		status, found := StatusMap[negRes.Header.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for Negotiate response: 0x%x\n", negRes.Header.Status)
-			log.Errorln(err)
+		switch {
+		case negRes1.DialectRevision == DialectSmb_2_0_2:
+			// 2.0.2-only server: take this response as final, no SMB2
+			// follow-up negotiate.
+			negRes = negRes1
+		case negRes1.DialectRevision == DialectSmb2_ALL:
+			// Wildcard: send an SMB2 negotiate to pin the dialect.
+			negReq, err := c.NewNegotiateReq()
+			if err != nil {
+				return err
+			}
+			c.offeredDialects = append([]uint16(nil), negReq.Dialects...)
+			log.Debugln("Sending SMB2 NegotiateProtocol request")
+			// Reuse rr variable for the second neg protocol req to keep
+			// reference for calculation of the pre-auth integrity hash.
+			// Address-of so encoder.Marshal sees the pointer-receiver
+			// MarshalBinary and emits 8-byte-aligned NegotiateContextOffset.
+			rr, err = c.send(&negReq)
+			if err != nil {
+				log.Debugln(err)
+				return err
+			}
+			negResBuf, err = c.recv(rr)
+			if err != nil {
+				log.Debugln(err)
+				return err
+			}
+			negRes = NewNegotiateRes()
+			log.Traceln("Unmarshalling second NegotiateProtocol response")
+			if err := encoder.Unmarshal(negResBuf, &negRes); err != nil {
+				log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(negResBuf))
+				return err
+			}
+		case negRes1.DialectRevision < DialectSmb2_ALL:
+			// Non-2.0.2 / non-wildcard (e.g. 2.1 from a server that does
+			// not honor wildcard). Treat as final.
+			negRes = negRes1
+		default:
+			err = fmt.Errorf("server responded to the multi-protocol negotiation with an invalid DialectRevision of 0x%x", negRes1.DialectRevision)
+			log.Debugln(err)
 			return err
 		}
-		log.Debugf("NT Status Error: %v\n", status)
-		return status
+	}
+
+	if err = statusError("Negotiate", negRes.Header.Status); err != nil {
+		return err
 	}
 
 	oid := negRes.SecurityBlob.OID
 	if !oid.Equal(gss.SpnegoOid) {
-		err = fmt.Errorf("Unknown security type OID: %s\n", oid)
-		log.Errorln(err)
+		err = fmt.Errorf("unknown security type OID: %s", oid)
 		return err
 	}
 
@@ -287,11 +330,21 @@ func (c *Connection) NegotiateProtocol() error {
 		}
 	}
 	if !hasNTLMSSP && !hasKerberosSSP {
-		return fmt.Errorf("Right now, this library only supports NTLMSSP and KRB5 Kerberos, and the server supports neither")
+		return fmt.Errorf("this library only supports NTLMSSP and KRB5 Kerberos, and the server supports neither")
 	}
 
 	c.securityMode = negRes.SecurityMode
 	c.dialect = negRes.DialectRevision
+
+	// Validate the server-selected dialect against the dialects we offered
+	// (MS-SMB2 §3.2.5.2). Reject anything else to avoid silent downgrade.
+	if len(c.offeredDialects) > 0 {
+		allowed := slices.Contains(c.offeredDialects, c.dialect)
+		if !allowed {
+			err = fmt.Errorf("server selected dialect 0x%x which the client did not offer", c.dialect)
+			return err
+		}
+	}
 
 	// Determine whether signing is required
 	mode := uint16(c.securityMode)
@@ -334,12 +387,10 @@ func (c *Connection) NegotiateProtocol() error {
 			pic := PreauthIntegrityContext{}
 			err = encoder.Unmarshal(context.Data, &pic)
 			if err != nil {
-				log.Errorln(err)
 				return err
 			}
 			if pic.HashAlgorithmCount != 1 { // Must be 1 selection according to spec
 				err = fmt.Errorf("multiple hash algorithms")
-				log.Errorln(err)
 				return err
 			}
 			c.preauthIntegrityHashId = pic.HashAlgorithms[0]
@@ -357,20 +408,17 @@ func (c *Connection) NegotiateProtocol() error {
 				h.Sum(c.preauthIntegrityHashValue[:0])
 
 			default:
-				err = fmt.Errorf("Unknown hash algorithm")
-				log.Errorln(err)
+				err = fmt.Errorf("unknown hash algorithm")
 				return err
 			}
 		case EncryptionCapabilities:
 			ec := EncryptionContext{}
 			err = encoder.Unmarshal(context.Data, &ec)
 			if err != nil {
-				log.Errorln(err)
 				return err
 			}
 			if ec.CipherCount != 1 { // Must be 1 according to spec
 				err = fmt.Errorf("multiple cipher algorithms")
-				log.Errorln(err)
 				return err
 			}
 			c.cipherId = ec.Ciphers[0]
@@ -380,8 +428,7 @@ func (c *Connection) NegotiateProtocol() error {
 			case AES128CCM:
 			case AES256CCM:
 			default:
-				err = fmt.Errorf("Unknown cipher algorithm (%d)\n", c.cipherId)
-				log.Errorln(err)
+				err = fmt.Errorf("unknown cipher algorithm (%d)", c.cipherId)
 				return err
 			}
 			c.supportsEncryption = true
@@ -390,21 +437,19 @@ func (c *Connection) NegotiateProtocol() error {
 			sc := SigningContext{}
 			err = encoder.Unmarshal(context.Data, &sc)
 			if err != nil {
-				log.Errorln(err)
 				return err
 			}
 			if sc.SigningAlgorithmCount != 1 {
 				err = fmt.Errorf("multiple signing algorithms")
-				log.Errorln(err)
 				return err
 			}
 			c.signingId = sc.SigningAlgorithms[0]
 			switch c.signingId {
 			case HMAC_SHA256:
 			case AES_CMAC:
+			case AES_GMAC:
 			default:
-				err = fmt.Errorf("Unknown signing algorithm (%d)\n", c.signingId)
-				log.Errorln(err)
+				err = fmt.Errorf("unknown signing algorithm (%d)", c.signingId)
 				return err
 			}
 
@@ -422,7 +467,13 @@ func (c *Connection) NegotiateProtocol() error {
 	return nil
 }
 
-func (c *Connection) SessionSetup() error {
+func (c *Connection) SessionSetup() (err error) {
+	// Debug breadcrumb at the layer seam, see NegotiateProtocol.
+	defer func() {
+		if err != nil {
+			log.Debugln(err)
+		}
+	}()
 	// Make sure to reset relevant options to allow multiple logins
 	c.disableSession()
 	c.sessionID = 0
@@ -430,7 +481,6 @@ func (c *Connection) SessionSetup() error {
 
 	spnegoClient, err := spnego.NewClient([]gss.Mechanism{c.options.Initiator})
 	if err != nil {
-		log.Errorln(err)
 		return err
 	}
 	log.Debugln("Sending SessionSetup1 request")
@@ -451,16 +501,14 @@ func (c *Connection) SessionSetup() error {
 
 	rr, err := c.send(ssreq)
 	if err != nil {
-		log.Errorln(err)
 		return err
 	}
 	ssresbuf, err := c.recv(rr)
 	if err != nil {
-		log.Errorln(err)
 		return err
 	}
 
-	log.Debugln("Unmarshalling SessionSetup1 response")
+	log.Traceln("Unmarshalling SessionSetup1 response")
 	if err := encoder.Unmarshal(ssresbuf, &ssres); err != nil {
 		log.Debugln(err)
 		return err
@@ -488,37 +536,35 @@ func (c *Connection) SessionSetup() error {
 			case ntlmssp.MsvAvDnsDomainName:
 				c.targetInfo.DnsDomainName, err = encoder.FromUnicodeString(av.Value)
 				if err != nil {
-					log.Errorf("Failed to decode DNS Domain Name from AV Pair with error: %s\n", err)
+					// Informational fields only, not a reason to fail the session setup.
+					log.Warningf("Failed to decode DNS Domain Name from AV Pair with error: %s\n", err)
+					err = nil
 				}
 			case ntlmssp.MsvAvDnsComputerName:
 				c.targetInfo.DnsComputerName, err = encoder.FromUnicodeString(av.Value)
 				if err != nil {
-					log.Errorf("Failed to decode DNS Computer Name from AV Pair with error: %s\n", err)
+					log.Warningf("Failed to decode DNS Computer Name from AV Pair with error: %s\n", err)
+					err = nil
 				}
 			case ntlmssp.MsvAvNbDomainName:
 				c.targetInfo.NBDomainName, err = encoder.FromUnicodeString(av.Value)
 				if err != nil {
-					log.Errorf("Failed to decode NB Domain Name from AV Pair with error: %s\n", err)
+					log.Warningf("Failed to decode NB Domain Name from AV Pair with error: %s\n", err)
+					err = nil
 				}
 			case ntlmssp.MsvAvNbComputerName:
 				c.targetInfo.NBComputerName, err = encoder.FromUnicodeString(av.Value)
 				if err != nil {
-					log.Errorf("Failed to decode NB Computer Name from AV Pair with error: %s\n", err)
+					log.Warningf("Failed to decode NB Computer Name from AV Pair with error: %s\n", err)
+					err = nil
 				}
 			default:
 			}
 		}
 	}
 
-	if (ssres.Header.Status != StatusMoreProcessingRequired) && (ssres.Header.Status != StatusOk) {
-		status, found := StatusMap[ssres.Header.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for SessionSetup1 response: 0x%x\n", ssres.Header.Status)
-			log.Errorln(err)
-			return err
-		}
-		log.Debugf("NT Status Error: %v\n", status)
-		return status
+	if err = statusError("SessionSetup1", ssres.Header.Status, StatusMoreProcessingRequired); err != nil {
+		return err
 	}
 
 	c.sessionID = ssres.Header.SessionID
@@ -526,11 +572,9 @@ func (c *Connection) SessionSetup() error {
 	if c.isSigningRequired.Load() {
 		if ssres.Flags&SessionFlagIsGuest != 0 {
 			err = fmt.Errorf("guest account doesn't support signing")
-			log.Errorln(err)
 			return err
 		} else if ssres.Flags&SessionFlagIsNull != 0 {
 			err = fmt.Errorf("anonymous account doesn't support signing")
-			log.Errorln(err)
 			return err
 		}
 	}
@@ -570,17 +614,21 @@ func (c *Connection) SessionSetup() error {
 
 	securityBlob, err := encoder.Marshal(ssres.SecurityBlob)
 	if err != nil {
-		log.Errorln(err)
 		return err
 	}
 
 	sc, err := spnegoClient.InitSecContext(securityBlob)
 	if err != nil {
-		log.Errorln(err)
 		return err
 	}
 
 	var ss2req SessionSetup2Req
+
+	// finalSSResbuf holds the raw bytes of the last SESSION_SETUP response in
+	// the exchange. Its signature is verified once the signing key is derived
+	// (see below) — MS-SMB2 §3.2.5.3.1. In the common multi-leg flow this is
+	// the SessionSetup2 response; in a single-leg flow it is the first one.
+	finalSSResbuf := ssresbuf
 
 	// Retrieve the full username used in the authentication attempt
 	// <domain\username> or just <username> if domain component is empty
@@ -597,35 +645,26 @@ func (c *Connection) SessionSetup() error {
 
 		rr, err = c.send(ss2req)
 		if err != nil {
-			log.Errorln(err)
-			log.Debugln(err)
 			return err
 		}
 
 		ss2resbuf, err := c.recv(rr)
 		if err != nil {
-			log.Errorln(err)
 			return err
 		}
-		log.Debugln("Unmarshalling SessionSetup2 response header")
+		finalSSResbuf = ss2resbuf
+		log.Traceln("Unmarshalling SessionSetup2 response header")
 
 		var authResp Header
 		if err := encoder.Unmarshal(ss2resbuf, &authResp); err != nil {
 			log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(ss2resbuf))
 			return err
 		}
-		if authResp.Status != StatusOk {
-			status, found := StatusMap[authResp.Status]
-			if !found {
-				err = fmt.Errorf("Received unknown SMB Header status for SessionSetup2 response: 0x%x\n", authResp.Status)
-				log.Errorln(err)
-				return err
-			}
-			log.Debugf("NT Status Error: %v\n", status)
-			return status
+		if err = statusError("SessionSetup2", authResp.Status); err != nil {
+			return err
 		}
 
-		log.Debugln("Unmarshalling SessionSetup2 response")
+		log.Traceln("Unmarshalling SessionSetup2 response")
 		ssres2, err := NewSessionSetup2Res()
 		if err != nil {
 			log.Debugln(err)
@@ -660,6 +699,9 @@ func (c *Connection) SessionSetup() error {
 		c.options.DisableEncryption = true
 		//c.sessionFlags = ssres2.Flags             //NOTE Replace all sessionFlags here?
 		c.sessionFlags &= ^SessionFlagEncryptData // Make sure encryption is disabled
+		if c.IsGuestSession() {
+			c.authUsername += " (GUEST)"
+		}
 	}
 
 	c.isAuthenticated = true
@@ -672,8 +714,8 @@ func (c *Connection) SessionSetup() error {
 		switch c.dialect {
 		case DialectSmb_2_0_2, DialectSmb_2_1:
 			if !c.isSigningDisabled {
-				c.Session.signer = hmac.New(sha256.New, sessionKey)
-				c.Session.verifier = hmac.New(sha256.New, sessionKey)
+				c.Session.signer = newHashSigner(hmac.New(sha256.New, sessionKey))
+				c.Session.verifier = newHashVerifier(hmac.New(sha256.New, sessionKey))
 			}
 		case DialectSmb_3_1_1:
 			switch c.preauthIntegrityHashId {
@@ -694,84 +736,93 @@ func (c *Connection) SessionSetup() error {
 
 			switch c.signingId {
 			case AES_CMAC:
-				c.Session.signer, err = cmac.New(signingKey)
-				if err != nil {
-					log.Errorln(err)
-					return err
+				cs, errS := cmac.New(signingKey)
+				if errS != nil {
+					return fmt.Errorf("init AES-CMAC signer: %w", errS)
 				}
-				c.Session.verifier, err = cmac.New(signingKey)
-				if err != nil {
-					log.Errorln(err)
-					return err
+				cv, errV := cmac.New(signingKey)
+				if errV != nil {
+					return fmt.Errorf("init AES-CMAC verifier: %w", errV)
 				}
+				c.Session.signer = newHashSigner(cs)
+				c.Session.verifier = newHashVerifier(cv)
+			case HMAC_SHA256:
+				c.Session.signer = newHashSigner(hmac.New(sha256.New, signingKey))
+				c.Session.verifier = newHashVerifier(hmac.New(sha256.New, signingKey))
+			case AES_GMAC:
+				gcm, errG := newAESGMAC(signingKey)
+				if errG != nil {
+					return fmt.Errorf("init AES-GMAC signer: %w", errG)
+				}
+				c.Session.signer = newGmacSigner(gcm)
+				c.Session.verifier = newGmacVerifier(gcm)
 			default:
-				err = fmt.Errorf("Unknown signing algorithm (%d) not implemented", c.signingId)
-				log.Errorln(err)
+				err = fmt.Errorf("unknown signing algorithm (%d) not implemented", c.signingId)
 				return err
 			}
 
-			// Determine size of L variable for the KDF
-			var l uint32
-			switch c.cipherId {
-			case AES128GCM:
-				l = 128
-			case AES128CCM:
-				l = 128
-			case AES256CCM:
-				l = 256
-			case AES256GCM:
-				l = 256
-			default:
-				err = fmt.Errorf("Cipher algorithm (%d) not implemented", c.cipherId)
-				log.Errorln(err)
-				return err
-			}
-
-			encryptionKey := kdf(sessionKey, []byte("SMBC2SCipherKey\x00"), c.Session.preauthIntegrityHashValue[:], l)
-			decryptionKey := kdf(sessionKey, []byte("SMBS2CCipherKey\x00"), c.Session.preauthIntegrityHashValue[:], l)
-
-			switch c.cipherId {
-			case AES128GCM, AES256GCM:
-				ciph, err := aes.NewCipher(encryptionKey)
-				if err != nil {
-					log.Errorln(err)
-					return err
-				}
-				c.Session.encrypter, err = cipher.NewGCMWithNonceSize(ciph, 12)
-				if err != nil {
-					log.Errorln(err)
+			if c.supportsEncryption {
+				// Determine size of L variable for the KDF
+				var l uint32
+				switch c.cipherId {
+				case AES128GCM:
+					l = 128
+				case AES128CCM:
+					l = 128
+				case AES256CCM:
+					l = 256
+				case AES256GCM:
+					l = 256
+				default:
+					err = fmt.Errorf("cipher algorithm (%d) not implemented", c.cipherId)
 					return err
 				}
 
-				ciph, err = aes.NewCipher(decryptionKey)
-				if err != nil {
-					log.Errorln(err)
+				encryptionKey := kdf(sessionKey, []byte("SMBC2SCipherKey\x00"), c.Session.preauthIntegrityHashValue[:], l)
+				decryptionKey := kdf(sessionKey, []byte("SMBS2CCipherKey\x00"), c.Session.preauthIntegrityHashValue[:], l)
+
+				switch c.cipherId {
+				case AES128GCM, AES256GCM:
+					ciph, err := aes.NewCipher(encryptionKey)
+					if err != nil {
+						return err
+					}
+					c.Session.encrypter, err = cipher.NewGCMWithNonceSize(ciph, 12)
+					if err != nil {
+						return err
+					}
+
+					ciph, err = aes.NewCipher(decryptionKey)
+					if err != nil {
+						return err
+					}
+					c.Session.decrypter, err = cipher.NewGCMWithNonceSize(ciph, 12)
+					if err != nil {
+						return err
+					}
+					log.Debugln("Initialized encrypter and decrypter with GCM")
+				case AES128CCM, AES256CCM:
+					ciph, err := aes.NewCipher(encryptionKey)
+					if err != nil {
+						return err
+					}
+					c.Session.encrypter, err = ccm.NewCCMWithNonceAndTagSizes(ciph, 11, 16)
+					if err != nil {
+						return err
+					}
+					ciph, err = aes.NewCipher(decryptionKey)
+					if err != nil {
+						return err
+					}
+					c.Session.decrypter, err = ccm.NewCCMWithNonceAndTagSizes(ciph, 11, 16)
+					if err != nil {
+						return err
+					}
+					log.Debugln("Initialized encrypter and decrypter with CCM")
+				default:
+					err = fmt.Errorf("cipher algorithm (%d) not implemented", c.cipherId)
 					return err
 				}
-				c.Session.decrypter, err = cipher.NewGCMWithNonceSize(ciph, 12)
-				if err != nil {
-					log.Errorln(err)
-					return err
-				}
-				log.Debugln("Initialized encrypter and decrypter with GCM")
-			case AES128CCM, AES256CCM:
-				ciph, err := aes.NewCipher(encryptionKey)
-				if err != nil {
-					log.Errorln(err)
-					return err
-				}
-				c.Session.encrypter, err = ccm.NewCCMWithNonceAndTagSizes(ciph, 11, 16)
-				ciph, err = aes.NewCipher(decryptionKey)
-				if err != nil {
-					log.Errorln(err)
-					return err
-				}
-				c.Session.decrypter, err = ccm.NewCCMWithNonceAndTagSizes(ciph, 11, 16)
-				log.Debugln("Initialized encrypter and decrypter with CCM")
-			default:
-				err = fmt.Errorf("Cipher algorithm (%d) not implemented", c.cipherId)
-				log.Errorln(err)
-				return err
 			}
 
 			// Handle ApplicationKey
@@ -779,11 +830,56 @@ func (c *Connection) SessionSetup() error {
 		}
 	}
 
+	// MS-SMB2 §3.2.5.3.1: when signing is negotiated the client MUST verify
+	// the signature on the final SESSION_SETUP response. It authenticates the
+	// server and detects tampering or a downgrade by an active attacker. This
+	// response is consumed before the signing key exists and the normal
+	// receive-path verify gate skips the SessionSetup command, so it is checked
+	// here, once the verifier has been derived. The gate mirrors the receive
+	// path (connection.go): for 3.1.1 always (the preauth-integrity hash also
+	// backstops it); for 2.0.2/2.1/3.0/3.0.2, only when signing is required —
+	// those dialects have no preauth-hash backstop, so this is the sole check.
+	// Guest/null sessions disable signing and are excluded. Fail closed.
+	if c.verifyFinalSessionSetupSignature() {
+		if len(finalSSResbuf) < 64 {
+			return fmt.Errorf("final SessionSetup response is too short (%d bytes) to verify its signature", len(finalSSResbuf))
+		}
+		var fh Header
+		if err := encoder.Unmarshal(finalSSResbuf[:64], &fh); err != nil {
+			return fmt.Errorf("decode final SessionSetup response header: %w", err)
+		}
+		if fh.Flags&SMB2_FLAGS_SIGNED != SMB2_FLAGS_SIGNED {
+			return fmt.Errorf("final SessionSetup response is not signed but signing is required; aborting")
+		}
+		if !c.verify(finalSSResbuf) {
+			return fmt.Errorf("final SessionSetup response has an invalid signature; aborting")
+		}
+		log.Debugln("Verified signature on final SessionSetup response")
+	}
+
 	log.Debugln("Completed NegotiateProtocol and SessionSetup")
 
 	c.enableSession()
 
 	return nil
+}
+
+// verifyFinalSessionSetupSignature reports whether the final SESSION_SETUP
+// response signature must be verified (MS-SMB2 §3.2.5.3.1). It mirrors the
+// inbound verify gate in runReceiver: SMB 3.1.1 always verifies (guest/null
+// excluded), older dialects verify only when signing is required. A nil
+// verifier (signing disabled) means there is nothing to check.
+func (c *Connection) verifyFinalSessionSetupSignature() bool {
+	if c.Session.verifier == nil {
+		return false
+	}
+	if c.sessionFlags&(SessionFlagIsGuest|SessionFlagIsNull) != 0 {
+		return false
+	}
+	if c.dialect == DialectSmb_3_1_1 {
+		return true
+	}
+	return c.isSigningRequired.Load()
 }
 
 func (c *Connection) Logoff() error {
@@ -794,26 +890,18 @@ func (c *Connection) Logoff() error {
 	req := c.NewLogoffReq()
 	buf, err := c.sendrecv(req)
 	if err != nil {
-		log.Errorln(err)
 		return err
 	}
 
 	res := NewLogoffRes()
-	log.Debugln("Unmarshalling Logoff response")
+	log.Traceln("Unmarshalling Logoff response")
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugln(err)
 		return err
 	}
 
-	if res.Status != StatusOk {
-		status, found := StatusMap[res.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for Logoff response: 0x%x\n", res.Status)
-			log.Errorln(err)
-			return err
-		}
-		log.Debugf("NT Status Error: %v\n", status)
-		return status
+	if err = statusError("Logoff", res.Status); err != nil {
+		return err
 	}
 	c.disableSession()
 	c.sessionID = 0
@@ -827,21 +915,17 @@ func (s *Session) sign(buf []byte) ([]byte, error) {
 	var hdr Header
 	err := encoder.Unmarshal(buf[:64], &hdr)
 	if err != nil {
-		log.Errorln(err)
 		return nil, err
 	}
 	hdr.Flags |= SMB2_FLAGS_SIGNED
 	hdr.Signature = make([]byte, 16)
 	hdrBuf, err := encoder.Marshal(hdr)
 	if err != nil {
-		log.Errorln(err)
 		return nil, err
 	}
 	copy(buf[:64], hdrBuf[:64])
-	h := s.signer
-	h.Reset()
-	h.Write(buf)
-	copy(buf[48:64], h.Sum(nil))
+	sig := s.signer.Sign(buf)
+	copy(buf[48:64], sig)
 
 	return buf, nil
 }
@@ -849,28 +933,17 @@ func (s *Session) sign(buf []byte) ([]byte, error) {
 func (s *Session) verify(buf []byte) (ok bool) {
 	signature := make([]byte, 16)
 	copy(signature, buf[48:64])
-	// Remove signature
+	// Zero the signature field for the MAC computation, then restore it
+	// regardless of outcome so callers see the original packet bytes.
 	copy(buf[48:64], make([]byte, 16))
-	h := s.verifier
-	h.Reset()
-	h.Write(buf)
-	// Restore signature
-	copy(buf[48:64], signature)
-	newSig := h.Sum(nil)
-	// Not sure this is entirely correct, but smb 2.1 uses sha256 which generates too long hashes
-	// Might be worth to investigate if signature is ever more than 16 bytes
-	if s.dialect <= DialectSmb_2_1 {
-		newSig = newSig[:16]
-	}
-
-	return bytes.Equal(signature, newSig)
+	defer copy(buf[48:64], signature)
+	return s.verifier.Verify(buf, signature)
 }
 
 func (s *Session) encrypt(buf []byte) ([]byte, error) {
 	nonce := make([]byte, s.encrypter.NonceSize())
 	_, err := rand.Read(nonce)
 	if err != nil {
-		log.Errorln(err)
 		return nil, err
 	}
 	tHdr := NewTransformHeader()
@@ -879,11 +952,9 @@ func (s *Session) encrypt(buf []byte) ([]byte, error) {
 	tHdr.SessionId = s.sessionID
 	tHdrBytes, err := encoder.Marshal(tHdr)
 	if err != nil {
-		log.Errorln(err)
 		return nil, err
 	}
-	ciphertext := make([]byte, 0)
-	ciphertext = s.encrypter.Seal(nil, nonce, buf, tHdrBytes[20:52])
+	ciphertext := s.encrypter.Seal(nil, nonce, buf, tHdrBytes[20:52])
 	copy(tHdrBytes[4:20], ciphertext[len(ciphertext)-16:])
 	return append(tHdrBytes, ciphertext[:len(ciphertext)-16]...), nil
 }
@@ -892,7 +963,6 @@ func (s *Session) decrypt(buf []byte) ([]byte, error) {
 	tHdr := NewTransformHeader()
 	err := encoder.Unmarshal(buf[:52], &tHdr)
 	if err != nil {
-		log.Errorln(err)
 		return nil, err
 	}
 	ciphertext := append(buf[52:], tHdr.Signature...)
@@ -931,34 +1001,25 @@ func (c *Connection) TreeConnect(name string) error {
 	}
 
 	var resHeader Header
-	log.Debugf("Unmarshalling TreeConnect response Header [%s]\n", name)
+	log.Tracef("Unmarshalling TreeConnect response Header [%s]\n", name)
 	if err := encoder.Unmarshal(buf[:64], &resHeader); err != nil {
 		log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(buf))
 		return err
 	}
-	if resHeader.Status == StatusAccessDenied {
-		return StatusMap[StatusAccessDenied]
-	} else if resHeader.Status == StatusBadNetworkName {
-		return StatusMap[StatusBadNetworkName]
+	if err := statusError("TreeConnect", resHeader.Status); err != nil {
+		return err
 	}
 
 	var res TreeConnectRes
 
-	log.Debugf("Unmarshalling TreeConnect response [%s]\n", name)
+	log.Tracef("Unmarshalling TreeConnect response [%s]\n", name)
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(buf))
 		return err
 	}
 
-	if res.Header.Status != StatusOk {
-		status, found := StatusMap[res.Header.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for TreeConnect response: 0x%x\n", res.Header.Status)
-			log.Errorln(err)
-			return err
-		}
-		log.Debugf("Failed to perform TreeConnect with NT Status Error: %v\n", status)
-		return status
+	if err = statusError("TreeConnect", res.Header.Status); err != nil {
+		return err
 	}
 	c.trees[name] = res.Header.TreeID
 	c.credits += uint64(res.Header.Credits) // Add granted credits
@@ -982,7 +1043,7 @@ func (c *Connection) TreeDisconnect(name string) error {
 	}
 
 	if !pathFound {
-		err := fmt.Errorf("Unable to find tree path for disconnect")
+		err := fmt.Errorf("unable to find tree path for disconnect")
 		log.Debugln(err)
 		return err
 	}
@@ -998,21 +1059,14 @@ func (c *Connection) TreeDisconnect(name string) error {
 		log.Debugln(err)
 		return err
 	}
-	log.Debugf("Unmarshalling TreeDisconnect response for [%s]\n", name)
+	log.Tracef("Unmarshalling TreeDisconnect response for [%s]\n", name)
 	var res TreeDisconnectRes
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(buf))
 		return err
 	}
-	if res.Header.Status != StatusOk {
-		status, found := StatusMap[res.Header.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for TreeDisconnect response: 0x%x\n", res.Header.Status)
-			log.Errorln(err)
-			return err
-		}
-		log.Debugf("Failed to perform TreeDisconnect with NT Status Error: %v\n", status)
-		return status
+	if err = statusError("TreeDisconnect", res.Header.Status); err != nil {
+		return err
 	}
 	delete(c.trees, name)
 
@@ -1021,10 +1075,7 @@ func (c *Connection) TreeDisconnect(name string) error {
 }
 
 func (f *File) IsOpen() bool {
-	if f.fd == nil {
-		return false
-	}
-	return true
+	return f.fd != nil
 }
 
 func (f *File) CloseFile() error {
@@ -1046,21 +1097,14 @@ func (f *File) CloseFile() error {
 		return err
 	}
 	var res CloseRes
-	log.Debugf("Unmarshalling Close response [%s] for fileid [%x]\n", f.share, f.fd)
+	log.Tracef("Unmarshalling Close response [%s] for fileid [%x]\n", f.share, f.fd)
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugln(err)
 		return err
 	}
 
-	if res.Header.Status != StatusOk {
-		status, found := StatusMap[res.Header.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for CloseFile response: 0x%x\n", res.Header.Status)
-			log.Errorln(err)
-			return err
-		}
-		log.Debugf("Failed to CloseFile with NT Status Error: %v\n", status)
-		return status
+	if err = statusError("CloseFile", res.Header.Status); err != nil {
+		return err
 	}
 	log.Debugf("Close of file completed [%s] fileid [%x]\n", f.share, f.fd)
 	f.fd = nil
@@ -1069,7 +1113,7 @@ func (f *File) CloseFile() error {
 
 func (f *File) QueryDirectory(pattern string, flags byte, fileIndex uint32, bufferSize uint32) (sf []SharedFile, err error) {
 	if f.fd == nil {
-		return nil, fmt.Errorf("Can't operate on a closed file")
+		return nil, fmt.Errorf("can't operate on a closed file")
 	}
 	sf = make([]SharedFile, 0)
 	req, err := f.NewQueryDirectoryReq(
@@ -1093,7 +1137,7 @@ func (f *File) QueryDirectory(pattern string, flags byte, fileIndex uint32, buff
 	}
 
 	var res QueryDirectoryRes
-	log.Debugf("Unmarshalling QueryDirectory response [%s]\n", f.share)
+	log.Tracef("Unmarshalling QueryDirectory response [%s]\n", f.share)
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(buf))
 		return sf, err
@@ -1105,15 +1149,7 @@ func (f *File) QueryDirectory(pattern string, flags byte, fileIndex uint32, buff
 		return
 	}
 
-	if res.Header.Status != StatusOk {
-		status, found := StatusMap[res.Header.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for QueryDirectory response: 0x%x\n", res.Header.Status)
-			log.Errorln(err)
-			return
-		}
-		log.Debugf("Failed QueryDirectory with NT Status Error: %v\n", status)
-		err = status
+	if err = statusError("QueryDirectory", res.Header.Status); err != nil {
 		return
 	}
 	if res.OutputBufferLength == 0 {
@@ -1162,80 +1198,101 @@ func (f *File) QueryDirectory(pattern string, flags byte, fileIndex uint32, buff
 }
 
 func (f *File) QueryInfoSecurity(bufferSize uint32) (fs *FileSecurityInformation, err error) {
-	if f.fd == nil {
-		return nil, fmt.Errorf("Can't operate on a closed file")
-	}
-	req, err := f.NewQueryInfoReq(
-		f.share,
-		f.fd,
-		OInfoSecurity,
-		0,
+	sd, err := f.QueryInfoSecurityRaw(
 		OwnerSecurityInformation|GroupSecurityInformation|DACLSecurityInformation,
-		0,
 		bufferSize,
-		nil,
 	)
 	if err != nil {
-		err = fmt.Errorf("new request: %w", err)
-		log.Debugln(err)
-		return
-	}
-
-	buf, err := f.sendrecv(req)
-	if err != nil {
-		err = fmt.Errorf("sendrecv: %w", err)
-		log.Debugln(err)
-		return
-	}
-
-	var res QueryInfoRes
-	log.Debugf("Unmarshalling QueryInfo response [%s]\n", f.share)
-	if err := encoder.Unmarshal(buf, &res); err != nil {
-		log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(buf))
 		return nil, err
+	}
+
+	fs = &FileSecurityInformation{}
+	// OwnerSid/GroupSid are nil when the server returns a descriptor without an
+	// owner or group; ToString would dereference a nil *SID and panic.
+	if sd.OwnerSid != nil {
+		fs.OwnerSID = sd.OwnerSid.ToString()
+	}
+	if sd.GroupSid != nil {
+		fs.GroupSID = sd.GroupSid.ToString()
+	}
+	if sd.Dacl != nil {
+		for _, acl := range sd.Dacl.ACLS {
+			if acl.Header.Type != AccessAllowedAceType {
+				continue
+			}
+			fs.Access = append(fs.Access, FileSecurityInformationACL{
+				Permissions: ParseAccessMask(acl.Mask),
+				SID:         acl.Sid.ToString(),
+			})
+		}
+	}
+
+	return
+}
+
+// QueryInfoSecurityRaw queries the security descriptor of an open file and
+// returns it parsed, preserving every ACE and its raw access mask. Unlike
+// QueryInfoSecurity (which reduces the DACL to friendly allow-ACE permission
+// names and so loses the object-specific bits such as FILE_WRITE_DATA), this
+// gives callers the full descriptor to evaluate themselves. additionalInformation
+// selects the components to request, e.g.
+// OwnerSecurityInformation|GroupSecurityInformation|DACLSecurityInformation.
+// A bufferSize of 0 selects a default and retries once on a buffer overflow.
+func (f *File) QueryInfoSecurityRaw(additionalInformation, bufferSize uint32) (*msdtyp.SecurityDescriptor, error) {
+	if f.fd == nil {
+		return nil, fmt.Errorf("can't operate on a closed file")
+	}
+	if bufferSize == 0 {
+		bufferSize = 8192
+	}
+
+	query := func(size uint32) (*QueryInfoRes, error) {
+		req, err := f.NewQueryInfoReq(f.share, f.fd, OInfoSecurity, 0, additionalInformation, 0, size, nil)
+		if err != nil {
+			return nil, fmt.Errorf("new request: %w", err)
+		}
+		buf, err := f.sendrecv(req)
+		if err != nil {
+			return nil, fmt.Errorf("sendrecv: %w", err)
+		}
+		res := &QueryInfoRes{}
+		if err := encoder.Unmarshal(buf, res); err != nil {
+			log.Debugf("error: %v\nRaw:\n%v\n", err, hex.Dump(buf))
+			return nil, err
+		}
+		return res, nil
+	}
+
+	res, err := query(bufferSize)
+	if err != nil {
+		return nil, err
+	}
+	// A large DACL overflows a small buffer; retry once with a bigger one.
+	if res.Header.Status == StatusBufferOverflow || res.Header.Status == StatusInfoLengthMismatch {
+		if res, err = query(65536); err != nil {
+			return nil, err
+		}
 	}
 
 	if res.Header.Status == StatusNoSuchFile {
 		return nil, fmt.Errorf("file not found")
 	}
-
-	if res.Header.Status != StatusOk {
-		status, found := StatusMap[res.Header.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for QueryInfo response: 0x%x\n", res.Header.Status)
-			log.Errorln(err)
-			return
-		}
-		log.Debugf("Failed QueryInfo with NT Status Error: %v\n", status)
-		err = fmt.Errorf("status not ok: %w", status)
-		return
+	if err := statusError("QueryInfo", res.Header.Status); err != nil {
+		return nil, err
 	}
 	if res.OutputBufferLength == 0 {
 		return nil, fmt.Errorf("server response didn't contain any info")
 	}
 
-	start, stop := uint32(0), res.OutputBufferLength
-	sd := &SecurityDescriptor{}
-	err = encoder.Unmarshal(res.Buffer[start:stop], sd)
-	if err != nil {
+	end := res.OutputBufferLength
+	if int(end) > len(res.Buffer) {
+		end = uint32(len(res.Buffer))
+	}
+	sd := &msdtyp.SecurityDescriptor{}
+	if err := sd.UnmarshalBinary(res.Buffer[:end]); err != nil {
 		return nil, fmt.Errorf("failed parsing security descriptor: %w", err)
 	}
-
-	fs = &FileSecurityInformation{
-		OwnerSID: sd.OwnerSid.String(),
-		GroupSID: sd.GroupSid.String(),
-	}
-	for _, acl := range sd.Dacl.ACLS {
-		if acl.Header.Type != AccessAllowedAceType {
-			continue
-		}
-		fs.Access = append(fs.Access, FileSecurityInformationACL{
-			Permissions: acl.Permissions(),
-			SID:         acl.Sid.String(),
-		})
-	}
-
-	return
+	return sd, nil
 }
 
 // Assumes a tree connect is already performed
@@ -1266,20 +1323,12 @@ func (s *Connection) ListDirectory(share, dir, pattern string) (files []SharedFi
 		return files, err
 	}
 
-	if h.Status != StatusOk {
-		status, found := StatusMap[h.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for Create/open file response attempting to list files in directory: 0x%x\n", h.Status)
-			log.Errorln(err)
-			return
-		}
-		log.Debugf("Failed to Create/Open file for list directory with NT Status Error: %v\n", status)
-		err = status
+	if err = statusError("Create (list directory)", h.Status); err != nil {
 		return
 	}
 
 	var res CreateRes
-	log.Debugf("Unmarshalling Create response [%s]\n", share)
+	log.Tracef("Unmarshalling Create response [%s]\n", share)
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugf("Error: %v\nRaw\n%v\n", err, hex.Dump(buf))
 		return files, err
@@ -1391,7 +1440,6 @@ func (s *Connection) OpenFileExt(tree string, filepath string, opts *CreateReqOp
 		opts.CreateOpts,
 	)
 
-	//req.Credits = 256
 	if err != nil {
 		log.Debugln(err)
 		return
@@ -1409,20 +1457,12 @@ func (s *Connection) OpenFileExt(tree string, filepath string, opts *CreateReqOp
 		return nil, err
 	}
 
-	if h.Status != StatusOk {
-		status, found := StatusMap[h.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for Create/open file response when opening with special options: 0x%x\n", h.Status)
-			log.Errorln(err)
-			return
-		}
-		log.Debugf("Failed to Create/open file using custom options with NT Status Error: %v\n", status)
-		err = status
+	if err = statusError("Create (custom options)", h.Status); err != nil {
 		return
 	}
 
 	var res CreateRes
-	log.Debugf("Unmarshalling Create response [%s]\n", tree)
+	log.Tracef("Unmarshalling Create response [%s]\n", tree)
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugf("Error: %v\nRaw\n%v\n", err, hex.Dump(buf))
 		return nil, err
@@ -1453,22 +1493,38 @@ func (s *Connection) OpenFile(tree string, filepath string) (file *File, err err
 
 }
 
+// OpenFileReadAttributes opens a file or directory requesting only READ_CONTROL
+// (plus FILE_READ_ATTRIBUTES and SYNCHRONIZE) — enough to read its security
+// descriptor via QueryInfoSecurity / QueryInfoSecurityRaw even when the caller
+// has no data-read access. Remember to call CloseFile on the returned handle.
+func (s *Connection) OpenFileReadAttributes(tree string, filepath string) (file *File, err error) {
+	opts := NewCreateReqOpts()
+	opts.DesiredAccess = FAccMaskReadControl | FAccMaskFileReadAttributes | FAccMaskSynchronize
+	return s.OpenFileExt(tree, filepath, opts)
+}
+
+// connectToTree connects to share if not already connected.
+// Returns true if a new connection was made (caller should defer TreeDisconnect),
+// or false if already connected. Returns an error if the connection failed.
+func (s *Connection) connectToTree(share string) (bool, error) {
+	if _, ok := s.trees[share]; ok {
+		return false, nil
+	}
+	if err := s.TreeConnect(share); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Connection) RetrieveFile(share string, filepath string, offset uint64, callback func([]byte) (int, error)) (err error) {
 
 	if callback == nil {
-		err = fmt.Errorf("Must specify a callback function to handle retrieved data.")
+		err = fmt.Errorf("must specify a callback function to handle retrieved data")
 		log.Debugln(err)
 		return
 	}
 
-	disconnectFromTree := false
-	// Only disconnect from share if it wasn't already connected.
-	// Otherwise, allow reuse of existing connection.
-	if _, ok := s.trees[share]; !ok {
-		disconnectFromTree = true
-	}
-
-	err = s.TreeConnect(share)
+	disconnectFromTree, err := s.connectToTree(share)
 	if err != nil {
 		log.Debugln(err)
 		return
@@ -1505,20 +1561,12 @@ func (s *Connection) RetrieveFile(share string, filepath string, offset uint64, 
 		return err
 	}
 
-	if h.Status != StatusOk {
-		status, found := StatusMap[h.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for Create/open file response when attempting to download a file: 0x%x\n", h.Status)
-			log.Errorln(err)
-			return
-		}
-		log.Debugf("Failed to Create/open file for reading with NT Status Error: %v\n", status)
-		err = status
+	if err = statusError("Create (read file)", h.Status); err != nil {
 		return
 	}
 
 	var res CreateRes
-	log.Debugf("Unmarshalling Create response [%s]\n", share)
+	log.Tracef("Unmarshalling Create response [%s]\n", share)
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugf("Error: %v\nRaw\n%v\n", err, hex.Dump(buf))
 		return err
@@ -1536,7 +1584,7 @@ func (s *Connection) RetrieveFile(share string, filepath string, offset uint64, 
 		return
 	}
 
-	log.Debugln("Sending ReadFile requests")
+	log.Traceln("Sending ReadFile requests")
 	data := make([]byte, s.maxReadSize)
 	fileSize := res.EndOfFile
 
@@ -1545,7 +1593,7 @@ func (s *Connection) RetrieveFile(share string, filepath string, offset uint64, 
 		n, err := f.ReadFile(data, readOffset)
 		if err != nil {
 			if err == io.EOF {
-				err = fmt.Errorf("Got EOF before finished reading")
+				err = fmt.Errorf("got EOF before finished reading")
 				return err
 			}
 			log.Debugln(err)
@@ -1556,7 +1604,7 @@ func (s *Connection) RetrieveFile(share string, filepath string, offset uint64, 
 			log.Debugln(err)
 			return err
 		} else if n != nw {
-			err = fmt.Errorf("Failed to write all the data to callback")
+			err = fmt.Errorf("failed to write all the data to callback")
 			log.Debugln(err)
 			return err
 		}
@@ -1568,7 +1616,7 @@ func (s *Connection) RetrieveFile(share string, filepath string, offset uint64, 
 
 func (f *File) ReadFile(b []byte, offset uint64) (n int, err error) {
 	if f.fd == nil {
-		return 0, fmt.Errorf("Can't operate on a closed file")
+		return 0, fmt.Errorf("can't operate on a closed file")
 	}
 	maxReadBufferSize := 65536
 	if f.supportsMultiCredit {
@@ -1589,7 +1637,6 @@ func (f *File) ReadFile(b []byte, offset uint64) (n int, err error) {
 		0, // Read at least 1 byte
 	)
 	if err != nil {
-		log.Errorln(err)
 		return
 	}
 
@@ -1599,7 +1646,6 @@ func (f *File) ReadFile(b []byte, offset uint64) (n int, err error) {
 		return
 	}
 
-	log.Debugln("Reading response")
 	var h Header
 	if err := encoder.Unmarshal(buf[:64], &h); err != nil {
 		log.Debugf("Error: %v\nRaw\n%v\n", err, hex.Dump(buf))
@@ -1617,20 +1663,12 @@ func (f *File) ReadFile(b []byte, offset uint64) (n int, err error) {
 		return 0, io.EOF
 	} else if h.Status == FsctlStatusPipeDisconnected {
 		return 0, StatusMap[FsctlStatusPipeDisconnected]
-	} else if h.Status > 0 {
-		status, found := StatusMap[h.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown response code for Read Request: 0x%x\n", h.Status)
-			log.Errorln(err)
-			return
-		}
-		log.Debugf("Failed Read Request with error: %s\n", status)
-		err = status
+	} else if err = statusError("Read", h.Status); err != nil {
 		return
 	}
 
 	var res ReadRes
-	log.Debugf("Unmarshalling Read response [%s]\n", f.share)
+	log.Tracef("Unmarshalling Read response [%s]\n", f.share)
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugln(err)
 		return n, err
@@ -1640,14 +1678,14 @@ func (f *File) ReadFile(b []byte, offset uint64) (n int, err error) {
 	// in the response buffer or if it begins later.
 	bufferOffset := int(res.DataOffset - 64 - 16)
 	if len(res.Buffer) < bufferOffset {
-		err = fmt.Errorf("Returned offset is outside response buffer")
+		err = fmt.Errorf("returned offset is outside response buffer")
 		log.Debugln(err)
 		return
 	}
 	nCopy := copy(b, res.Buffer[bufferOffset:])
 	n = int(res.DataLength)
 	if nCopy != n {
-		err = fmt.Errorf("Failed to copy result data into supplied buffer")
+		err = fmt.Errorf("failed to copy result data into supplied buffer")
 		log.Debugln(err)
 		return
 	}
@@ -1655,14 +1693,7 @@ func (f *File) ReadFile(b []byte, offset uint64) (n int, err error) {
 }
 
 func (s *Connection) PutFile(share string, filepath string, offset uint64, callback func([]byte) (int, error)) (err error) {
-	disconnectFromTree := false
-	// Only disconnect from share if it wasn't already connected.
-	// Otherwise, allow reuse of existing connection.
-	if _, ok := s.trees[share]; !ok {
-		disconnectFromTree = true
-	}
-
-	err = s.TreeConnect(share)
+	disconnectFromTree, err := s.connectToTree(share)
 	if err != nil {
 		log.Debugln(err)
 		return
@@ -1709,20 +1740,12 @@ func (s *Connection) PutFile(share string, filepath string, offset uint64, callb
 		return err
 	}
 
-	if h.Status != StatusOk {
-		status, found := StatusMap[h.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for Create/open file response when attempting to upload a file: 0x%x\n", h.Status)
-			log.Errorln(err)
-			return
-		}
-		log.Debugf("Failed to Create/open file for writing with NT Status Error: %v\n", status)
-		err = status
+	if err = statusError("Create (write file)", h.Status); err != nil {
 		return
 	}
 
 	var res CreateRes
-	log.Debugf("Unmarshalling Create response [%s]\n", share)
+	log.Tracef("Unmarshalling Create response [%s]\n", share)
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugf("Error: %v\nRaw\n%v\n", err, hex.Dump(buf))
 		return err
@@ -1736,7 +1759,7 @@ func (s *Connection) PutFile(share string, filepath string, offset uint64, callb
 	}
 	defer f.CloseFile()
 
-	log.Debugln("Sending WriteFile requests")
+	log.Traceln("Sending WriteFile requests")
 
 	writeOffset := offset
 	for {
@@ -1746,7 +1769,6 @@ func (s *Connection) PutFile(share string, filepath string, offset uint64, callb
 			if err == io.EOF {
 				break
 			}
-			log.Errorln(err)
 			return err
 		}
 
@@ -1763,7 +1785,7 @@ func (s *Connection) PutFile(share string, filepath string, offset uint64, callb
 
 func (f *File) WriteFile(data []byte, offset uint64) (n int, err error) {
 	if f.fd == nil {
-		return 0, fmt.Errorf("Can't operate on a closed file")
+		return 0, fmt.Errorf("can't operate on a closed file")
 	}
 	maxWriteBufferSize := 65536
 	if f.supportsMultiCredit {
@@ -1793,20 +1815,12 @@ func (f *File) WriteFile(data []byte, offset uint64) (n int, err error) {
 	}
 
 	var res WriteRes
-	log.Debugf("Unmarshalling Write response [%s]\n", f.share)
+	log.Tracef("Unmarshalling Write response [%s]\n", f.share)
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugf("Error: %v\nRaw\n%v\n", err, hex.Dump(buf))
 		return n, err
 	}
-	if res.Status != StatusOk {
-		status, found := StatusMap[res.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for Write response when writing to file: 0x%x\n", res.Status)
-			log.Errorln(err)
-			return
-		}
-		log.Debugf("Failed to write file with NT Status Error: %v\n", status)
-		err = status
+	if err = statusError("Write", res.Status); err != nil {
 		return
 	}
 	n = int(res.Count)
@@ -1818,18 +1832,7 @@ func (f *File) IsDir() bool {
 }
 
 func (s *Connection) deleteFileDir(share string, path string, isDir bool) (err error) {
-	disconnectFromTree := false
-	// Only disconnect from share if it wasn't already connected.
-	// Otherwise, allow reuse of existing connection.
-	if _, ok := s.trees[share]; !ok {
-		disconnectFromTree = true
-	}
-
-	// Normalize path
-	path = strings.ReplaceAll(path, `/`, `\`)
-	path = strings.Trim(path, `\`)
-
-	err = s.TreeConnect(share)
+	disconnectFromTree, err := s.connectToTree(share)
 	if err != nil {
 		log.Debugln(err)
 		return
@@ -1838,6 +1841,10 @@ func (s *Connection) deleteFileDir(share string, path string, isDir bool) (err e
 	if disconnectFromTree {
 		defer s.TreeDisconnect(share)
 	}
+
+	// Normalize path
+	path = strings.ReplaceAll(path, `/`, `\`)
+	path = strings.Trim(path, `\`)
 
 	var accessMask uint32
 	var createOpts uint32
@@ -1878,22 +1885,12 @@ func (s *Connection) deleteFileDir(share string, path string, isDir bool) (err e
 		return err
 	}
 
-	if h.Status != StatusOk {
-		status, found := StatusMap[h.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for Create response when opening file for deletion: 0x%x\n", h.Status)
-			log.Errorln(err)
-			return err
-		}
-		err = status
-		if h.Status != StatusObjectNameNotFound {
-			log.Debugf("Failed to Create/open file for deletion with NT Status Error: %v\n", status)
-		}
+	if err = statusError("Create (delete file)", h.Status); err != nil {
 		return
 	}
 
 	var res CreateRes
-	log.Debugf("Unmarshalling Create response [%s]\n", share)
+	log.Tracef("Unmarshalling Create response [%s]\n", share)
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugln(err)
 		return err
@@ -1932,15 +1929,8 @@ func (s *Connection) deleteFileDir(share string, path string, isDir bool) (err e
 		return err
 	}
 
-	if h2.Status != StatusOk {
-		status, found := StatusMap[h2.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for SetInfo response when deleting file or directory: 0x%x\n", h2.Status)
-			log.Errorln(err)
-			return err
-		}
-		log.Debugf("Failed to delete file or directory with NT Status Error: %v\n", status)
-		return status
+	if err = statusError("SetInfo response when deleting file or directory", h2.Status); err != nil {
+		return err
 	}
 
 	return
@@ -1957,29 +1947,18 @@ func (s *Connection) DeleteDir(share string, dirpath string) (err error) {
 func (s *Connection) WriteIoCtlReq(req *IoCtlReq) (res IoCtlRes, err error) {
 	buf, err := s.sendrecv(req)
 	if err != nil {
-		log.Errorln(err)
 		return res, err
 	}
 	var h Header
 	if err = encoder.Unmarshal(buf[:64], &h); err != nil {
-		log.Errorln(err)
 		return res, err
 	}
 
-	if h.Status != StatusOk {
-		status, found := StatusMap[h.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for IoCtlRequest: 0x%x\n", h.Status)
-			log.Errorln(err)
-			return
-		}
-		err = status
-		log.Errorf("IoCtlRequest failed with status: %s\n", status)
+	if err = statusError("IoCtlRequest", h.Status); err != nil {
 		return
 	}
 
 	if err = encoder.Unmarshal(buf, &res); err != nil {
-		log.Errorln(err)
 		return res, err
 	}
 
@@ -2003,18 +1982,7 @@ func (c *Connection) Close() {
 
 // Create a new directory
 func (s *Connection) Mkdir(share string, path string) (err error) {
-	disconnectFromTree := false
-	// Only disconnect from share if it wasn't already connected.
-	// Otherwise, allow reuse of existing connection.
-	if _, ok := s.trees[share]; !ok {
-		disconnectFromTree = true
-	}
-
-	// Normalize path
-	path = strings.ReplaceAll(path, `/`, `\`)
-	path = strings.Trim(path, `\`)
-
-	err = s.TreeConnect(share)
+	disconnectFromTree, err := s.connectToTree(share)
 	if err != nil {
 		log.Debugln(err)
 		return
@@ -2023,6 +1991,10 @@ func (s *Connection) Mkdir(share string, path string) (err error) {
 	if disconnectFromTree {
 		defer s.TreeDisconnect(share)
 	}
+
+	// Normalize path
+	path = strings.ReplaceAll(path, `/`, `\`)
+	path = strings.Trim(path, `\`)
 
 	req, err := s.NewCreateReq(share, path,
 		OpLockLevelNone,
@@ -2051,23 +2023,12 @@ func (s *Connection) Mkdir(share string, path string) (err error) {
 		return err
 	}
 
-	if h.Status != StatusOk {
-		status, found := StatusMap[h.Status]
-		if !found {
-			err = fmt.Errorf("Received unknown SMB Header status for Create/open file response when attempting to upload a file: 0x%x\n", h.Status)
-			log.Errorln(err)
-			return
-		}
-		err = status
-		if h.Status != StatusObjectNameCollision {
-			// Skip printing error message if it just says that directory already exists
-			log.Debugf("Failed to Create/open file for writing with NT Status Error: %v\n", status)
-		}
+	if err = statusError("Create (write file)", h.Status); err != nil {
 		return
 	}
 
 	var res CreateRes
-	log.Debugf("Unmarshalling Create response [%s]\n", share)
+	log.Tracef("Unmarshalling Create response [%s]\n", share)
 	if err := encoder.Unmarshal(buf, &res); err != nil {
 		log.Debugf("Error: %v\nRaw\n%v\n", err, hex.Dump(buf))
 		return err
@@ -2087,18 +2048,7 @@ func (s *Connection) Mkdir(share string, path string) (err error) {
 // Creates a directory named path along with any necessary parent directories
 // If the directory specified by path already exists, the return value is nil
 func (s *Connection) MkdirAll(share string, path string) (err error) {
-	disconnectFromTree := false
-	// Only disconnect from share if it wasn't already connected.
-	// Otherwise, allow reuse of existing connection.
-	if _, ok := s.trees[share]; !ok {
-		disconnectFromTree = true
-	}
-
-	// Normalize path
-	path = strings.ReplaceAll(path, `/`, `\`)
-	path = strings.Trim(path, `\`)
-
-	err = s.TreeConnect(share)
+	disconnectFromTree, err := s.connectToTree(share)
 	if err != nil {
 		log.Debugln(err)
 		return
@@ -2107,6 +2057,10 @@ func (s *Connection) MkdirAll(share string, path string) (err error) {
 	if disconnectFromTree {
 		defer s.TreeDisconnect(share)
 	}
+
+	// Normalize path
+	path = strings.ReplaceAll(path, `/`, `\`)
+	path = strings.Trim(path, `\`)
 
 	// First check if directory already exists
 	createOpts := NewCreateReqOpts()
@@ -2119,11 +2073,10 @@ func (s *Connection) MkdirAll(share string, path string) (err error) {
 			return
 		}
 		f.CloseFile()
-		log.Errorf("Failed to create directory (%s) as it already exists and is not a directory\n", path)
-		return ErrorNotDir
+		return fmt.Errorf("create directory %s: already exists and is not a directory: %w", path, ErrorNotDir)
 	} else {
-		if err != StatusMap[StatusObjectNameNotFound] && err != StatusMap[StatusObjectPathNotFound] {
-			log.Errorf("Attempted to check if file or directory exists but got unexpected error: %s\n", err)
+		if !errors.Is(err, StatusMap[StatusObjectNameNotFound]) && !errors.Is(err, StatusMap[StatusObjectPathNotFound]) {
+			err = fmt.Errorf("check if directory %s exists: %w", path, err)
 			return
 		}
 	}
@@ -2133,10 +2086,6 @@ func (s *Connection) MkdirAll(share string, path string) (err error) {
 	if len(elements) > 1 {
 		err = s.MkdirAll(share, strings.Join(elements[:len(elements)-1], `\`))
 		if err != nil {
-			if err == ErrorNotDir {
-				return err
-			}
-			log.Errorf("Failed to create directory (%s) with error: %s\n", elements[:len(elements)-1], err)
 			return err
 		}
 	}
@@ -2144,8 +2093,7 @@ func (s *Connection) MkdirAll(share string, path string) (err error) {
 	// Now the parent dirs should exist, so create the final dir
 	err = s.Mkdir(share, path)
 	if err != nil {
-		log.Errorf("Failed to create directory (%s) with error: %s\n", path, err)
-		return err
+		return fmt.Errorf("create directory %s: %w", path, err)
 	}
 
 	return

@@ -28,15 +28,10 @@ https://xilinx.github.io/Vitis_Libraries/security/2020.1/_images/CCM_encryption.
 */
 
 import (
-	"bytes"
 	"crypto/cipher"
 	"crypto/subtle"
 	"fmt"
-
-	"github.com/jfjallid/golog"
 )
-
-var log = golog.Get("github.com/jfjallid/go-smb/smb/crypto/ccm")
 
 type ccm struct {
 	c         cipher.Block
@@ -51,7 +46,7 @@ type ccm struct {
 // The tagSize must be one of {4, 6, 8, 10, 12, 14, 16} bytes
 // The maximum payload size is based on the size of the nonce using a formula of
 // max payload size = 2^((15 - nonceSize)*8) - 1
-// If the payload exceeds the max size on Seal, nil is returned as there is no error in the
+// If the payload exceeds the max size, Seal panics as there is no error in the
 // return values defined by the AEAD interface.
 // For Seal, the max payload is the size of the plaintext. For Open, the max payload size is
 // defined as the size of the cipertext - the tagSize
@@ -60,19 +55,16 @@ func NewCCMWithNonceAndTagSizes(c cipher.Block, nonceSize, tagSize int) (cipher.
 	// Check length requirements from A.1
 	if c.BlockSize() != 16 {
 		err := fmt.Errorf("CCM mode requires a 16 byte (128-bit) block cipher but got a %d byte", c.BlockSize())
-		log.Errorln(err.Error())
 		return nil, err
 	}
 
 	if (nonceSize < 7) || (nonceSize > 13) {
 		err := fmt.Errorf("CCM: invalid size of nonce. Accepted values are: {7, 8, 9, 10, 11, 12, 13} but received (%d)", nonceSize)
-		log.Errorln(err.Error())
 		return nil, err
 	}
 
 	if ((tagSize < 4) || (tagSize > 16)) || ((tagSize % 2) != 0) {
 		err := fmt.Errorf("CCM: invalid tag size. Accepted values are: {4, 6, 8, 10, 12, 14, 16} but received (%d)", tagSize)
-		log.Errorln(err.Error())
 		return nil, err
 	}
 
@@ -110,9 +102,7 @@ func (ccm *ccm) Seal(dst, nonce, plaintext, additionalData []byte) []byte {
 	*/
 
 	if len(nonce) != ccm.nonceSize {
-		err := fmt.Sprintf("Seal: Incorrect size of nonce for AES CCM. Got %d and expected %d", len(nonce), ccm.nonceSize)
-		log.Criticalln(err)
-		panic(err)
+		panic(fmt.Sprintf("ccm: incorrect nonce length %d, expected %d", len(nonce), ccm.nonceSize))
 	}
 
 	/*
@@ -140,8 +130,7 @@ func (ccm *ccm) Seal(dst, nonce, plaintext, additionalData []byte) []byte {
 	// representation of the octet length of the plaintext e.g., do we have enough bytes left to store
 	// the q value?
 	if maxUint64ValueInBytes(15-ccm.nonceSize) < uint64(len(plaintext)) {
-		log.Errorln("Supplied plaintext was too large to encrypt with the given size of nonce")
-		return nil
+		panic("ccm: plaintext too large to encrypt with the given size of nonce")
 	}
 
 	// The AEAD interface Seal function states that the ciphertext and tag should
@@ -181,7 +170,7 @@ func (ccm *ccm) Seal(dst, nonce, plaintext, additionalData []byte) []byte {
 	return result[:len(plaintext)+ccm.tagSize]
 }
 
-func (self *ccm) Open(dst, nonce, ciphertext, additionalData []byte) (result []byte, err error) {
+func (s *ccm) Open(dst, nonce, ciphertext, additionalData []byte) (result []byte, err error) {
 
 	/*
 	   The algorithm for decryption:
@@ -195,15 +184,13 @@ func (self *ccm) Open(dst, nonce, ciphertext, additionalData []byte) (result []b
 	   8. XOR the output from step 1 with the last output block from step 7 to produce the authentication tag.
 	*/
 
-	if self.tagSize > len(ciphertext) {
-		err = fmt.Errorf("The ciphertext must be of a greater length than the tag size")
-		log.Errorln(err)
+	if s.tagSize > len(ciphertext) {
+		err = fmt.Errorf("ciphertext must be of a greater length than the tag size")
 		return
 	}
 
-	if self.nonceSize > len(nonce) {
-		err = fmt.Errorf("Incorrect nonce size. Must match size specified at initialization")
-		log.Errorln(err)
+	if s.nonceSize > len(nonce) {
+		err = fmt.Errorf("incorrect nonce size, must match size specified at initialization")
 		return
 	}
 
@@ -212,47 +199,46 @@ func (self *ccm) Open(dst, nonce, ciphertext, additionalData []byte) (result []b
 	// q = 15 - n
 	// Check if the ciphertext is too large for the specified tagSize as the size of the
 	// plaintext must be encoded within the bytes left by 15 - nonceSize
-	if maxUint64ValueInBytes(15-self.nonceSize) < uint64(len(ciphertext)-self.tagSize) {
-		err = fmt.Errorf("The size of the ciphertext is too large for the given size of nonce")
-		log.Errorln(err.Error())
+	if maxUint64ValueInBytes(15-s.nonceSize) < uint64(len(ciphertext)-s.tagSize) {
+		err = fmt.Errorf("ciphertext too large for the given size of nonce")
 		return
 	}
 
 	// The AEAD interface Open function states that the plaintext should be appended
 	// to the dst variable, so need to make some extra room
-	result, plaintext := extendSliceForAppend(dst, len(ciphertext)-self.mac.Size())
+	result, plaintext := extendSliceForAppend(dst, len(ciphertext)-s.mac.Size())
 
 	// From A.1
 	// n + q = 15
 	// q = 15 - n
 	// [q-1] = 15 - n - 1
 	Ctr := make([]byte, 16)
-	Ctr[0] = byte(15 - self.nonceSize - 1) // [q-1]3
+	Ctr[0] = byte(15 - s.nonceSize - 1) // [q-1]3
 	copy(Ctr[1:], nonce)
 
 	s0 := make([]byte, 16)
-	self.c.Encrypt(s0, Ctr)
+	s.c.Encrypt(s0, Ctr)
 	// The last part of Ctr_i is the index i
 	// The ctr should be represented as q blocks where q = 15 - nonceSize
-	putUvarintAsBigEndian(Ctr[1+self.nonceSize:], 1) // [i]8q stored in octet number 16-q ... 15
-	ctr := cipher.NewCTR(self.c, Ctr)
+	putUvarintAsBigEndian(Ctr[1+s.nonceSize:], 1) // [i]8q stored in octet number 16-q ... 15
+	ctr := cipher.NewCTR(s.c, Ctr)
 	ctr.XORKeyStream(plaintext, ciphertext[:len(plaintext)])
 
 	// Format B0
-	b0 := self.formatFirstInputBlock(nonce, plaintext, additionalData)
+	b0 := s.formatFirstInputBlock(nonce, plaintext, additionalData)
 
 	// Set Y_0 = CIPH_k(B_0)
 	y0 := make([]byte, 16)
-	self.c.Encrypt(y0, b0)
+	s.c.Encrypt(y0, b0)
 
-	mac := self.calculateMAC(nonce, plaintext, additionalData)
+	mac := s.calculateMAC(nonce, plaintext, additionalData)
 
 	subtle.XORBytes(mac, mac, s0)
 
-	// Check if calculated tag matches provided tag
-	if bytes.Compare(mac, ciphertext[len(plaintext):]) != 0 {
-		err := fmt.Errorf("Invalid authentication tag on ciphertext")
-		log.Errorln(err)
+	// Check if calculated tag matches provided tag. Constant-time to avoid a
+	// timing side-channel that could aid AEAD tag forgery.
+	if subtle.ConstantTimeCompare(mac, ciphertext[len(plaintext):]) != 1 {
+		err := fmt.Errorf("invalid authentication tag on ciphertext")
 		return nil, err
 	}
 

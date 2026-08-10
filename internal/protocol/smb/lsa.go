@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
+	"github.com/jfjallid/go-smb/dcerpc/msrrp"
 	gosmb "github.com/jfjallid/go-smb/smb"
-	"github.com/jfjallid/go-smb/smb/dcerpc/msrrp"
 	"github.com/jfjallid/go-smb/smb/encoder"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"golang.org/x/crypto/md4"
@@ -234,7 +234,7 @@ func GetLSASecretKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) (result
 		}
 	}
 	if VistaStyle {
-		data, _, err = rpccon.QueryValue2(hSubKey, "")
+		data, _, _, err = rpccon.QueryValue2(hSubKey, "")
 		if err != nil {
 			_ = rpccon.CloseKeyHandle(hSubKey)
 			return
@@ -254,7 +254,7 @@ func GetLSASecretKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) (result
 			}
 			return
 		}
-		data, _, err = rpccon.QueryValue2(hSubKey, "")
+		data, _, _, err = rpccon.QueryValue2(hSubKey, "")
 		if err != nil {
 			_ = rpccon.CloseKeyHandle(hSubKey)
 			return
@@ -488,7 +488,7 @@ func GetLSASecrets(rpccon *msrrp.RPCCon, base []byte, history, modifyDacl bool) 
 				return nil, err
 			}
 
-			value, _, err := rpccon.QueryValue2(hSubKey, "")
+			value, _, _, err := rpccon.QueryValue2(hSubKey, "")
 			if err != nil {
 				_ = rpccon.CloseKeyHandle(hSubKey)
 				continue
@@ -569,7 +569,7 @@ func GetCachedHashes(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) (result
 	iterationCount := 10240
 	if foundIterCount {
 		var tmpIterCount uint32
-		data, _, err := rpccon.QueryValue2(hSubKey, `NL$IterationCount`)
+		data, _, _, err := rpccon.QueryValue2(hSubKey, `NL$IterationCount`)
 		if err != nil {
 			return nil, err
 		}
@@ -590,7 +590,7 @@ func GetCachedHashes(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) (result
 		return
 	}
 	for _, name := range names {
-		data, _, err := rpccon.QueryValue2(hSubKey, name)
+		data, _, _, err := rpccon.QueryValue2(hSubKey, name)
 		if err != nil {
 			return nil, err
 		}
@@ -657,7 +657,7 @@ func getNLKMSecretKey(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) (resul
 	if err != nil {
 		return
 	}
-	data, _, err := rpccon.QueryValue2(hSubKey, "")
+	data, _, _, err := rpccon.QueryValue2(hSubKey, "")
 	if err != nil {
 		_ = rpccon.CloseKeyHandle(hSubKey)
 		return
@@ -732,7 +732,7 @@ func GetCachedCredentials(ctx context.Context, rpccon *msrrp.RPCCon, base []byte
 				continue
 			}
 
-			valueData, _, err := rpccon.QueryValue2(hCacheKey, valueName)
+			valueData, _, _, err := rpccon.QueryValue2(hCacheKey, valueName)
 			if err != nil {
 				continue
 			}
@@ -776,7 +776,7 @@ func GetCachedCredentials(ctx context.Context, rpccon *msrrp.RPCCon, base []byte
 			continue
 		}
 
-		value, _, err := rpccon.QueryValue2(hSubKey, "")
+		value, _, _, err := rpccon.QueryValue2(hSubKey, "")
 		if err != nil {
 			_ = rpccon.CloseKeyHandle(hSubKey)
 			continue

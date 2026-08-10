@@ -42,6 +42,24 @@ func addSizeToTag(parent reflect.Value, v reflect.Value, tag reflect.StructTag) 
 	return ndrTag.StructTag(), nil
 }
 
+func (enc *Encoder) writeRawBytes(v reflect.Value, tag reflect.StructTag) error {
+	ndrTag := parseTags(tag)
+	sizeStr, ok := ndrTag.Map["size"]
+	if !ok {
+		return errors.New("size tag not available")
+	}
+	size, err := strconv.Atoi(sizeStr)
+	if err != nil {
+		return fmt.Errorf("size not valid: %v", err)
+	}
+	b := v.Bytes()
+	if len(b) < size {
+		b = append(b, make([]byte, size-len(b))...)
+	}
+	_, err = enc.w.Write(b[:size])
+	return err
+}
+
 func (dec *Decoder) readRawBytes(v reflect.Value, tag reflect.StructTag) error {
 	ndrTag := parseTags(tag)
 	sizeStr, ok := ndrTag.Map["size"]

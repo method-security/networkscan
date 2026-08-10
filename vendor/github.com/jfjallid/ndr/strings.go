@@ -73,6 +73,47 @@ func (dec *Decoder) readStringsArray(v reflect.Value, tag reflect.StructTag, def
 	return nil
 }
 
+func (enc *Encoder) writeStringsArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
+	// Conformant max values (array dimensions + common string max) are already
+	// written by process()/conformantScan(). Just write the varying array with
+	// subStringArrayTag so each element is encoded as a varying string.
+	tag = reflect.StructTag(subStringArrayTag)
+	err := enc.writeVaryingArray(v, tag, def)
+	if err != nil {
+		return fmt.Errorf("could not write string array: %v", err)
+	}
+	return nil
+}
+
+// stringArrayCommonMax walks a (possibly multi-dimensional) slice/array of
+// strings and returns the max UTF-16 code-unit length among all strings, plus
+// one for the null terminator unless skipNull is true. Used by the encoder to
+// emit a valid conformant max_count (>= actual_count) for the common string
+// dimension of a conformant string array.
+func stringArrayCommonMax(v reflect.Value, skipNull bool) uint32 {
+	var walk func(rv reflect.Value) uint32
+	walk = func(rv reflect.Value) uint32 {
+		switch rv.Kind() {
+		case reflect.Slice, reflect.Array:
+			var m uint32
+			for i := 0; i < rv.Len(); i++ {
+				if x := walk(rv.Index(i)); x > m {
+					m = x
+				}
+			}
+			return m
+		case reflect.String:
+			l := uint32(len(utf16.Encode([]rune(rv.String()))))
+			if !skipNull {
+				l++
+			}
+			return l
+		}
+		return 0
+	}
+	return walk(v)
+}
+
 func (enc *Encoder) ToUnicode(input string) []byte {
 	codePoints := utf16.Encode([]rune(input))
 	b := bytes.Buffer{}
@@ -80,47 +121,23 @@ func (enc *Encoder) ToUnicode(input string) []byte {
 	return b.Bytes()
 }
 
-func (enc *Encoder) writeConformantVaryingString(s string) error {
-	var actualLen uint32
-	var unc []byte
-	//if s == "" {
-	//	s = "\x00"
-	//} else {
-	//	if !strings.HasSuffix(s, "\x00") {
-	//		// Add null byte
-	//		s += "\x00"
-	//	}
-	//}
-	unc = enc.ToUnicode(s)
-	actualLen = uint32(len(unc) / 2)
-
-	//NOTE according to NDR, strings should always be null terminated
-	// and both maxCount and actualLen should include the null terminator
-	//if s != "" {
-	//	unc = enc.ToUnicode(s)
-	//	maxLen = uint32(len(unc)/2)
-	//	if s[len(s)-1] == '\x00' {
-	//		actualLen = maxLen - 1 // without the null terminator
-	//	} else {
-	//		actualLen = maxLen
-	//	}
-	//}
+// writeVaryingString writes the inline varying-string representation:
+// offset (0) + actual_count + UTF-16LE data + 4-byte alignment pad. Used for
+// both varying and conformant+varying strings — the conformant max_count is
+// hoisted to the enclosing struct by scanConformantArrays and is not written
+// inline here.
+func (enc *Encoder) writeVaryingString(s string) error {
+	unc := enc.ToUnicode(s)
+	actualLen := uint32(len(unc) / 2)
+	if err := enc.writeUint32(uint32(0)); err != nil { // offset
+		return fmt.Errorf("could not write string offset: %v", err)
+	}
+	if err := enc.writeUint32(actualLen); err != nil { // actual count
+		return fmt.Errorf("could not write string actual count: %v", err)
+	}
+	if err := binary.Write(enc.w, enc.ch.Endianness, unc); err != nil {
+		return fmt.Errorf("could not write string data: %v", err)
+	}
 	enc.ensureAlignment(SizeUint32)
-	binary.Write(enc.w, enc.ch.Endianness, uint32(0)) // offset
-	binary.Write(enc.w, enc.ch.Endianness, actualLen)
-	binary.Write(enc.w, enc.ch.Endianness, unc)
-	enc.ensureAlignment(SizeUint32) // Need to align at 4 byte boundary even if uint16 comes after
 	return nil
 }
-
-//func (enc *Encoder) writeVaryingString(s string, def *[]deferedPtr) (error) {
-//	a := new([]uint16)
-//	v := reflect.ValueOf(a)
-//	var t reflect.StructTag
-//	err := enc.writeUniDimensionalVaryingArray(v.Elem(), t, def)
-//	if err != nil {
-//		return "", err
-//	}
-//	s := uint16SliceToString(*a)
-//	return s, nil
-//}
