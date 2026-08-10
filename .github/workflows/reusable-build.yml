@@ -13,7 +13,7 @@ on:
         type: string
 
 env:
-  GO_VERSION: "1.26"
+  GO_VERSION: "1.26.4"
 
 jobs:
   # Build ARM64 using native GitHub ARM runner but inside Docker for Alpine compatibility
