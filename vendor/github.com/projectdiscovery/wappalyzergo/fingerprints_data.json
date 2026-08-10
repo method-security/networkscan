@@ -14853,6 +14853,28 @@
             "website": "https://www.cartful.com",
             "icon": "Cartful.svg"
         },
+        "Cartline": {
+            "cats": [
+                6
+            ],
+            "js": {
+                "Cartline.platform": "^Cartline$"
+            },
+            "headers": {
+                "x-cartline-platform": "cartline\\.pk"
+            },
+            "meta": {
+                "application-name": [
+                    "^cartline$"
+                ],
+                "generator": [
+                    "^cartline$"
+                ]
+            },
+            "description": "Cartline is a Pakistani ecommerce and WhatsApp-commerce platform for creating online stores with cart, checkout and order management. Part of the One Line commerce suite.",
+            "website": "https://cartline.pk",
+            "icon": "Cartline.svg"
+        },
         "Cartpanda": {
             "cats": [
                 6
@@ -86343,6 +86365,18 @@
             "website": "https://tanstack.com",
             "icon": "TanStack.svg"
         },
+        "TanStack Start": {
+            "cats": [
+                12,
+                18
+            ],
+            "js": {
+                "__TSS_START_OPTIONS__": ""
+            },
+            "description": "TanStack Start takes TanStack Router's typed route tree, URL state, loaders, and prefetching, then adds the server pieces: full-document SSR, streaming, server functions, server routes, and build output for the runtime you choose.",
+            "website": "https://tanstack.com/start",
+            "icon": "TanStack.svg"
+        },
         "Tangiblee": {
             "cats": [
                 105
@@ -93680,6 +93714,31 @@
             "description": "VerseOne is a provider of Content Management Systems (CMS) for the healthcare and housing sectors.",
             "website": "https://www.verseone.com",
             "icon": "VerseOne.svg"
+        },
+        "VertaFlow": {
+            "cats": [
+                5,
+                6,
+                32,
+                53,
+                108
+            ],
+            "dom": {
+                "script[src*=\"api.vertaflow.io/v1/pixel.js\"][data-site]": {
+                    "exists": ""
+                }
+            },
+            "html": [
+                "\u003cscript[^\u003e]+src=[\"']https://api\\.vertaflow\\.io/v1/pixel\\.js[\"'][^\u003e]*data-site=",
+                "powered by vertaflow",
+                "window\\.__tenant_config__="
+            ],
+            "scriptSrc": [
+                "api\\.vertaflow\\.io/v1/pixel\\.js"
+            ],
+            "description": "VertaFlow is a vertical CRM and commerce platform for small businesses, with client portals, payments, storefront widgets, online ordering, messaging, and industry-specific workflows.",
+            "website": "https://vertaflow.io",
+            "icon": "VertaFlow.svg"
         },
         "VertaFlow Analytics": {
             "cats": [
@@ -102961,7 +103020,7 @@
                 "dcAPIKey": ""
             },
             "scriptSrc": [
-                "(?:((?:\\d+\\.)+\\d+)\\/(?:dc\\/)?)?dc(?:\\.leaflet)?\\.js\\;version:\\1"
+                "(?:((?:\\d+\\.)+\\d+)\\/(?:dc\\/)?)?(?:/|-)dc(?:\\.leaflet)?\\.js\\;version:\\1"
             ],
             "description": "A multi-dimensional charting library built to work natively with crossfilter and rendered using d3.js",
             "website": "https://dc-js.github.io/dc.js/",
