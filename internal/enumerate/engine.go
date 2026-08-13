@@ -11,6 +11,7 @@ import (
 	// Generated
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	// Internal
+	dnsenumerate "github.com/Method-Security/networkscan/internal/enumerate/dns"
 	ftp "github.com/Method-Security/networkscan/internal/enumerate/ftp"
 	grpc "github.com/Method-Security/networkscan/internal/enumerate/grpc"
 	ike "github.com/Method-Security/networkscan/internal/enumerate/ike"
@@ -157,6 +158,12 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 	switch config.Service {
 	case enumeratefern.SupportedServiceTypeSsh:
 		return NetworkApplicationEngine{Library: &ssh.LibraryEnumerateSSH{}}, nil
+	case enumeratefern.SupportedServiceTypeDns:
+		lib := &dnsenumerate.LibraryEnumerateDNS{}
+		if config.DnsConfig != nil && config.DnsConfig.OpenResolverProbe != nil {
+			lib.OpenResolverProbe = *config.DnsConfig.OpenResolverProbe
+		}
+		return NetworkApplicationEngine{Library: lib}, nil
 	case enumeratefern.SupportedServiceTypeFtp:
 		return NetworkApplicationEngine{Library: &ftp.LibraryEnumerateFTP{}}, nil
 	case enumeratefern.SupportedServiceTypeSmtp:

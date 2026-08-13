@@ -1,0 +1,37 @@
+imports:
+  dnsProtocol: ../../common/protocol/dns.yml
+types:
+  # Deep-probe output of `enumerate service --service dns`. The discover
+  # plugin produces the version.bind banner (DnsServerInfo); enumerate
+  # re-runs it so the report stands on its own and adds the checks that
+  # characterize what the server will actually do for an unauthenticated
+  # client:
+  #
+  #   - openResolver: the RA flag only says the server *advertises*
+  #     recursion. This is the confirmation — a recursive answer for a
+  #     name the server is not authoritative for. An open resolver is a
+  #     real finding on its own and is reflection/amplification-capable.
+  #
+  #   - dnssecEnabled / authenticatedData: DO-bit query for a signed
+  #     name. Only meaningful for recursive servers — an
+  #     authoritative-only server refuses the probe and both stay unset
+  #     rather than being reported as false.
+  #
+  #   - tcpAvailable: whether TCP/53 answers. This is the precondition
+  #     for AXFR, so Research can tell Pentest whether a zone transfer
+  #     is even reachable.
+  EnumerateDnsDetails:
+    properties:
+      target: string
+      port: integer
+      serverInfo: optional<dnsProtocol.DnsServerInfo>
+      openResolver: optional<boolean>
+      openResolverProbe: optional<string>
+      authenticatedData: optional<boolean>
+      nsid: optional<string>
+      tcpAvailable: optional<boolean>
+
+  # DNS-specific knobs for `enumerate service`.
+  DnsEnumerateConfig:
+    properties:
+      openResolverProbe: optional<string> # Off-zone name used to confirm recursion (default a.root-servers.net.)
