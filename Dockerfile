@@ -5,7 +5,8 @@ ARG TARGETPLATFORM
 ARG NMAP_VERSION="7.95-r0"
 
 # nmap is a dependency for multiple commands
-RUN apk update && apk --no-cache add ca-certificates bash git nmap=$NMAP_VERSION nmap-scripts=$NMAP_VERSION sudo
+# libpcap is a direct runtime dependency of the SYN scanner, not just nmap's.
+RUN apk update && apk --no-cache add ca-certificates bash git libpcap nmap=$NMAP_VERSION nmap-scripts=$NMAP_VERSION sudo
 
 # Setup Method Directory Structure
 RUN \

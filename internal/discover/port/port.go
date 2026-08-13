@@ -3,12 +3,14 @@ package discover
 import (
 	// Standard
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	// Generated
 	common "github.com/Method-Security/networkscan/generated/go/common"
@@ -17,11 +19,13 @@ import (
 	// Internal
 	"github.com/Method-Security/networkscan/utils"
 	// External
+	"github.com/Mzack9999/gopacket/pcap"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	goflags "github.com/projectdiscovery/goflags"
 	gologger "github.com/projectdiscovery/gologger"
 	"github.com/projectdiscovery/gologger/levels"
 	"github.com/projectdiscovery/gologger/writer"
+	"github.com/projectdiscovery/naabu/v2/pkg/privileges"
 	result "github.com/projectdiscovery/naabu/v2/pkg/result"
 	runner "github.com/projectdiscovery/naabu/v2/pkg/runner"
 )
@@ -50,6 +54,11 @@ var requiredPorts = []string{
 	"64998",
 	"65535",
 }
+
+const (
+	captureSnapLen      = 64
+	captureProbeTimeout = time.Second
+)
 
 // stderrWriter implements writer.Writer interface to redirect all gologger output to stderr
 type stderrWriter struct{}
@@ -179,8 +188,15 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 	switch config.ScanType {
 	case discoverfern.PortScanTypeSyn:
 		portscanOpts.ScanType = runner.SynScan
+		portscanOpts.Retries = runner.DefaultRetriesSynScan
+		portscanOpts.Timeout = runner.DefaultPortTimeoutSynScan
+		if err := assertCaptureAvailable(); err != nil {
+			return nil, err
+		}
 	case discoverfern.PortScanTypeConnect:
 		portscanOpts.ScanType = runner.ConnectScan
+		portscanOpts.Retries = runner.DefaultRetriesConnectScan
+		portscanOpts.Timeout = runner.DefaultPortTimeoutConnectScan
 	}
 
 	if config.Ports != nil {
@@ -210,6 +226,32 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 
 	return hosts, nil
 
+}
+
+// Unreported capture failure is indistinguishable from a host with nothing listening.
+func assertCaptureAvailable() error {
+	if !privileges.IsPrivileged {
+		return nil
+	}
+
+	devices, err := pcap.FindAllDevs()
+	if err != nil {
+		return fmt.Errorf("SYN scan requires packet capture: %w", err)
+	}
+
+	for _, device := range devices {
+		if len(device.Addresses) == 0 {
+			continue
+		}
+		handle, err := pcap.OpenLive(device.Name, captureSnapLen, false, captureProbeTimeout)
+		if err != nil {
+			continue
+		}
+		handle.Close()
+		return nil
+	}
+
+	return errors.New("SYN scan requires packet capture: no interface could be opened for capture")
 }
 
 // parsePortScanResult converts a Naabu port scan result into our internal SocketDetails format.

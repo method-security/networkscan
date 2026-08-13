@@ -4,6 +4,7 @@ go 1.26.5
 
 require (
 	github.com/Method-Security/pkg v0.1.1
+	github.com/Mzack9999/gopacket v0.0.0-20260327212258-d211b432c22b
 	github.com/RedTeamPentesting/adauth v0.5.4-0.20260511073005-3d18e8a5a687
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/go-sql-driver/mysql v1.10.0
@@ -42,7 +43,6 @@ require (
 	github.com/FalconOpsLLC/goexec v0.3.0 // indirect
 	github.com/Mzack9999/go-rsync v0.0.0-20250821180103-81ffa574ef4d // indirect
 	github.com/Mzack9999/goimpacket v0.0.0-20260422121140-7085336a0415 // indirect
-	github.com/Mzack9999/gopacket v0.0.0-20260327212258-d211b432c22b // indirect
 	github.com/Ullaakut/nmap/v3 v3.0.6 // indirect
 	github.com/alexsnet/go-vnc v0.1.0 // indirect
 	github.com/brianvoe/gofakeit/v7 v7.2.1 // indirect
