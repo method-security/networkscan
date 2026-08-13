@@ -1,7 +1,5 @@
 types:
-  # DNS record types emitted by the zone transfer pentest action. Mirrors the
-  # set the ontology DnsRecord object models, so no record that could be
-  # represented downstream is downgraded to UNKNOWN on the way out.
+  # Mirrors the set the ontology DnsRecord object models.
   DnsRecordType:
     enum:
       - A
@@ -22,7 +20,6 @@ types:
       - TXT
       - UNKNOWN
 
-  # A single resource record read off the wire.
   DnsRecord:
     properties:
       name: string

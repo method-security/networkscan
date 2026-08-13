@@ -1,20 +1,4 @@
 // Package dns implements the `enumerate service --service dns` command.
-//
-// The discover-stage plugin (internal/discover/service/plugins/dns.go)
-// sends a single version.bind CHAOS TXT query. That is enough to know a
-// DNS server is listening; it is not enough to characterize what the
-// server will do for an unauthenticated client. This stage adds:
-//
-//   - Open-resolver confirmation. The RA flag only advertises recursion;
-//     the confirmation is a recursive answer for a name the server is not
-//     authoritative for.
-//   - DNSSEC posture, via a DO-bit DNSKEY query. Only meaningful against a
-//     recursive server — an authoritative-only server refuses the probe and
-//     the fields stay unset rather than being reported as false.
-//   - NSID (RFC 5001) and id.server, which name the specific instance
-//     behind an anycast address.
-//   - TCP/53 reachability, the precondition for AXFR, so the enumerate
-//     report says whether a zone transfer is reachable at all.
 package dns
 
 import (
@@ -41,37 +25,21 @@ import (
 )
 
 const (
-	// DefaultOpenResolverProbe is a name no target DNS server should be
-	// authoritative for, so a recursive answer for it proves the server
-	// resolves on behalf of arbitrary clients. Stable, and unmistakable for
-	// traffic against a customer's own zones.
+	// Off-zone: a recursive answer for it proves the server resolves for anyone.
 	DefaultOpenResolverProbe = "a.root-servers.net."
 
-	// defaultPort is used when a target carries no port.
 	defaultPort = 53
-
-	// queryBudget caps a single DNS exchange. Six probes run in sequence, so
-	// the context deadline from --timeout is the real ceiling; this keeps one
-	// unresponsive probe from consuming it all.
 	queryBudget = 5 * time.Second
-
-	// ednsUDPSize advertises a 4096-byte receive buffer, which prompts the
-	// server to report its own in the OPT record it sends back.
 	ednsUDPSize = 4096
 )
 
 // LibraryEnumerateDNS implements NetworkApplicationLibrary for DNS.
 type LibraryEnumerateDNS struct {
-	// OpenResolverProbe overrides the off-zone name used to confirm
-	// recursion. Empty means DefaultOpenResolverProbe.
+	// Empty means DefaultOpenResolverProbe.
 	OpenResolverProbe string
 }
 
-// EnumerateTarget runs the probe sequence against a single host:port and
-// returns the enumerate-details union variant. Probes are independent: a
-// failure appends to errors and leaves its fields unset rather than
-// abandoning the remaining probes, so a partially responsive server still
-// produces a usable characterization.
+// EnumerateTarget probes the DNS service at the given target (host:port).
 func (l *LibraryEnumerateDNS) EnumerateTarget(ctx context.Context, target string) (*enumeratefern.EnumerateServiceDetails, []string) {
 	log := svc1log.FromContext(ctx)
 	log.Info("Starting DNS enumeration", svc1log.SafeParam("target", target))
@@ -101,10 +69,7 @@ func (l *LibraryEnumerateDNS) EnumerateTarget(ctx context.Context, target string
 		OpenResolverProbe: &probeName,
 	}
 
-	// Probe 1: root NS with EDNS0 + NSID. Populates the response header
-	// fields plus EDNS0 support, the server's advertised UDP buffer, and the
-	// instance identifier. An authoritative-only server answers REFUSED,
-	// which still carries a usable header and OPT record.
+	// A REFUSED answer still carries a usable header and OPT record.
 	rootQuery := new(dns.Msg)
 	rootQuery.SetQuestion(".", dns.TypeNS)
 	rootQuery.SetEdns0(ednsUDPSize, false)
@@ -129,19 +94,14 @@ func (l *LibraryEnumerateDNS) EnumerateTarget(ctx context.Context, target string
 		}
 	}
 
-	// Probe 2: version.bind. The same query the discover plugin sends; re-run
-	// so this report stands on its own.
 	if version := chaosTXT(ctx, addr, "version.bind.", &errors); version != "" {
 		serverInfo.DnsVersion = &version
 	}
 
-	// Probe 3: id.server. Names the responding instance on implementations
-	// that decline NSID.
 	if serverName := chaosTXT(ctx, addr, "id.server.", &errors); serverName != "" {
 		serverInfo.ServerName = &serverName
 	}
 
-	// Probe 4: open-resolver confirmation.
 	recursionQuery := new(dns.Msg)
 	recursionQuery.SetQuestion(probeName, dns.TypeA)
 	recursionQuery.RecursionDesired = true
@@ -152,8 +112,7 @@ func (l *LibraryEnumerateDNS) EnumerateTarget(ctx context.Context, target string
 			recursionAvailable := resp.RecursionAvailable
 			serverInfo.RecursionAvailable = &recursionAvailable
 		}
-		// Recursion is confirmed only by a real answer: RA plus NOERROR plus
-		// at least one record for a name this server does not own.
+		// RA alone only advertises recursion; a real answer confirms it.
 		openResolver := resp.RecursionAvailable && resp.Rcode == dns.RcodeSuccess && len(resp.Answer) > 0
 		detail.OpenResolver = &openResolver
 		if openResolver {
@@ -163,9 +122,7 @@ func (l *LibraryEnumerateDNS) EnumerateTarget(ctx context.Context, target string
 		}
 	}
 
-	// Probe 5: DNSSEC. A DO-bit DNSKEY query for the root is answerable by
-	// any validating resolver. An authoritative-only server refuses it, so
-	// both fields stay unset — "not determined", not "not enabled".
+	// An authoritative-only server refuses this, leaving both fields unset.
 	dnssecQuery := new(dns.Msg)
 	dnssecQuery.SetQuestion(".", dns.TypeDNSKEY)
 	dnssecQuery.SetEdns0(ednsUDPSize, true)
@@ -179,8 +136,6 @@ func (l *LibraryEnumerateDNS) EnumerateTarget(ctx context.Context, target string
 		detail.AuthenticatedData = &authenticatedData
 	}
 
-	// Probe 6: TCP/53. AXFR needs TCP, so the enumerate report records
-	// whether Pentest can reach it before it tries.
 	tcpQuery := new(dns.Msg)
 	tcpQuery.SetQuestion(".", dns.TypeNS)
 	if _, err := exchange(ctx, "tcp", addr, tcpQuery); err != nil {
@@ -195,9 +150,7 @@ func (l *LibraryEnumerateDNS) EnumerateTarget(ctx context.Context, target string
 	return &enumeratefern.EnumerateServiceDetails{EnumerateDnsDetails: detail}, errors
 }
 
-// exchange sends msg to addr over network and returns the response. Dials
-// through netdial so a SOCKS proxy carried on the context is honored for the
-// TCP probes.
+// exchange sends msg to addr, dialing through netdial to honor a SOCKS proxy.
 func exchange(ctx context.Context, network, addr string, msg *dns.Msg) (*dns.Msg, error) {
 	budget := queryBudget
 	if deadline, ok := ctx.Deadline(); ok {
@@ -227,9 +180,7 @@ func exchange(ctx context.Context, network, addr string, msg *dns.Msg) (*dns.Msg
 	return resp, nil
 }
 
-// chaosTXT sends a CHAOS-class TXT query and returns the first string of the
-// first TXT record, or "" when the server declines to answer. CHAOS queries
-// are sent without EDNS0 — some implementations drop the combination.
+// chaosTXT returns the first TXT string, or "" if the server declines.
 func chaosTXT(ctx context.Context, addr, name string, errors *[]string) string {
 	msg := new(dns.Msg)
 	msg.SetQuestion(name, dns.TypeTXT)
@@ -248,9 +199,7 @@ func chaosTXT(ctx context.Context, addr, name string, errors *[]string) string {
 	return ""
 }
 
-// absorbHeader records the response-header facts that every probe reveals.
-// Called for the first successful exchange only; later probes set different
-// flags (RD, DO) and their headers would describe a different question.
+// absorbHeader records header facts; call only for the first exchange.
 func absorbHeader(serverInfo *commonprotocolfern.DnsServerInfo, resp *dns.Msg) {
 	responseCode := dns.RcodeToString[resp.Rcode]
 	serverInfo.ResponseCode = &responseCode
@@ -260,9 +209,7 @@ func absorbHeader(serverInfo *commonprotocolfern.DnsServerInfo, resp *dns.Msg) {
 	serverInfo.RecursionAvailable = &recursionAvailable
 }
 
-// hasDNSSECRecords reports whether the response carries signing material,
-// which is what distinguishes a DNSSEC-aware server from one that merely
-// echoed the DO bit.
+// hasDNSSECRecords reports whether the response carries signing material.
 func hasDNSSECRecords(resp *dns.Msg) bool {
 	for _, section := range [][]dns.RR{resp.Answer, resp.Ns, resp.Extra} {
 		for _, rr := range section {
@@ -275,9 +222,7 @@ func hasDNSSECRecords(resp *dns.Msg) bool {
 	return false
 }
 
-// extractNSID returns the NSID payload as text. miekg hex-encodes the option
-// on unpack; most implementations put a readable host label in it, so decode
-// when the result is valid UTF-8 and fall back to the hex otherwise.
+// extractNSID returns the NSID payload as text; miekg hex-encodes it on unpack.
 func extractNSID(opt *dns.OPT) string {
 	for _, option := range opt.Option {
 		nsid, ok := option.(*dns.EDNS0_NSID)
@@ -293,13 +238,7 @@ func extractNSID(opt *dns.OPT) string {
 	return ""
 }
 
-// splitTarget parses a host:port target, defaulting to port 53 when the target
-// carries only a host. Ontology always sends host:port; operators invoking the
-// CLI directly frequently do not.
-//
-// A port that is present but unparseable is an error rather than a fallback to
-// 53: enumerating a different port than the one asked for, and attributing the
-// result to it, is worse than refusing the target.
+// splitTarget parses host:port, defaulting to 53 only when no port is given.
 func splitTarget(target string) (string, int, error) {
 	host, portStr, err := net.SplitHostPort(target)
 	if err != nil {
