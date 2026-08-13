@@ -76,9 +76,16 @@ func (l *LibraryEnumerateDNS) EnumerateTarget(ctx context.Context, target string
 	log := svc1log.FromContext(ctx)
 	log.Info("Starting DNS enumeration", svc1log.SafeParam("target", target))
 
-	host, port := splitTarget(target)
-	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	errors := []string{}
+
+	host, port, err := splitTarget(target)
+	if err != nil {
+		errMsg := err.Error()
+		return &enumeratefern.EnumerateServiceDetails{
+			EnumerateDnsDetails: &dnsfern.EnumerateDnsDetails{Target: target},
+		}, append(errors, errMsg)
+	}
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 
 	probeName := l.OpenResolverProbe
 	if probeName == "" {
@@ -286,17 +293,24 @@ func extractNSID(opt *dns.OPT) string {
 	return ""
 }
 
-// splitTarget parses a host:port target, defaulting to port 53 when the
-// target carries only a host. Ontology always sends host:port; operators
-// invoking the CLI directly frequently do not.
-func splitTarget(target string) (string, int) {
+// splitTarget parses a host:port target, defaulting to port 53 when the target
+// carries only a host. Ontology always sends host:port; operators invoking the
+// CLI directly frequently do not.
+//
+// A port that is present but unparseable is an error rather than a fallback to
+// 53: enumerating a different port than the one asked for, and attributing the
+// result to it, is worse than refusing the target.
+func splitTarget(target string) (string, int, error) {
 	host, portStr, err := net.SplitHostPort(target)
 	if err != nil {
-		return target, defaultPort
+		return target, defaultPort, nil
 	}
 	port, err := strconv.Atoi(portStr)
-	if err != nil || port <= 0 || port > 65535 {
-		return host, defaultPort
+	if err != nil {
+		return "", 0, fmt.Errorf("invalid port %q in target %q", portStr, target)
 	}
-	return host, port
+	if port <= 0 || port > 65535 {
+		return "", 0, fmt.Errorf("port %d out of range in target %q", port, target)
+	}
+	return host, port, nil
 }
