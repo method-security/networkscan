@@ -1,4 +1,32 @@
 types:
+  # Mirrors the set the ontology DnsRecord object models.
+  DnsRecordType:
+    enum:
+      - A
+      - AAAA
+      - CAA
+      - CNAME
+      - DS
+      - HTTPS
+      - MX
+      - NAPTR
+      - NS
+      - PTR
+      - SOA
+      - SRV
+      - SSHFP
+      - SVCB
+      - TLSA
+      - TXT
+      - UNKNOWN
+
+  DnsRecord:
+    properties:
+      name: string
+      ttl: integer
+      type: DnsRecordType
+      value: string
+
   # DNS Server Information
   DnsServerInfo:
     properties:

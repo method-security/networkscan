@@ -1,0 +1,18 @@
+imports:
+  dnsProtocol: ../../common/protocol/dns.yml
+types:
+  EnumerateDnsDetails:
+    properties:
+      target: string
+      port: integer
+      serverInfo: optional<dnsProtocol.DnsServerInfo>
+      openResolver: optional<boolean>
+      openResolverProbe: optional<string>
+      authenticatedData: optional<boolean>
+      nsid: optional<string>
+      tcpAvailable: optional<boolean>
+
+  # DNS-specific knobs for `enumerate service`.
+  DnsEnumerateConfig:
+    properties:
+      openResolverProbe: optional<string> # Off-zone name used to confirm recursion (default a.root-servers.net.)

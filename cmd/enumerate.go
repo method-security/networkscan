@@ -6,10 +6,13 @@ import (
 
 	// Generated
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
+	dnsfern "github.com/Method-Security/networkscan/generated/go/enumerate/dns"
 	vncfern "github.com/Method-Security/networkscan/generated/go/enumerate/vnc"
 
 	// Internal
 	enumerate "github.com/Method-Security/networkscan/internal/enumerate"
+	dnsenumerate "github.com/Method-Security/networkscan/internal/enumerate/dns"
+
 	// External
 	cobra "github.com/spf13/cobra"
 )
@@ -71,13 +74,20 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				return
 			}
 
+			dnsOpenResolverProbe, err := cmd.Flags().GetString("dns-open-resolver-probe")
+			if err != nil {
+				a.OutputSignal.AddError(err)
+				return
+			}
+
 			config := newEnumerateServiceConfig(EnumerateServiceCobraFlags{
-				Targets:           targets,
-				Service:           serviceEnum,
-				Timeout:           timeout,
-				Wordlist:          wordlist,
-				VncSkipScreenshot: vncSkipScreenshot,
-				VncPortRange:      vncPortRange,
+				Targets:              targets,
+				Service:              serviceEnum,
+				Timeout:              timeout,
+				Wordlist:             wordlist,
+				VncSkipScreenshot:    vncSkipScreenshot,
+				VncPortRange:         vncPortRange,
+				DnsOpenResolverProbe: dnsOpenResolverProbe,
 			})
 
 			// Generate the report
@@ -90,12 +100,14 @@ func (a *NetworkScan) InitEnumerateCommand() {
 		},
 	}
 	enumerateServiceCmd.Flags().StringSlice("targets", []string{}, "List of target addresses (IP:port or hostname:port) to enumerate")
-	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (ftp, grpc, ike, imap, ipmi, ldap, mongodb, mssql, mysql, pop3, postgres, rdp, redis, smb, smtp, snmp, socks, ssh, vnc)")
+	enumerateServiceCmd.Flags().String("service", "", "Service to enumerate (dns, ftp, grpc, ike, imap, ipmi, ldap, mongodb, mssql, mysql, pop3, postgres, rdp, redis, smb, smtp, snmp, socks, ssh, vnc)")
 	enumerateServiceCmd.Flags().Int("timeout", 30, "Timeout in seconds for enumerating each target")
 	enumerateServiceCmd.Flags().StringSlice("wordlist", []string{}, "Custom username wordlist for user enumeration (SMTP VRFY/EXPN/RCPT TO)")
 	// VNC-specific flags
 	enumerateServiceCmd.Flags().Bool("vnc-skip-screenshot", false, "Skip framebuffer screenshot capture even when None auth is offered (VNC only)")
 	enumerateServiceCmd.Flags().String("vnc-port-range", "5900-5910", "Port range to sweep when no explicit port is given (VNC only, e.g. '5900-5910')")
+	// DNS-specific flags
+	enumerateServiceCmd.Flags().String("dns-open-resolver-probe", "", fmt.Sprintf("Off-zone name used to confirm recursion (DNS only, default %s)", dnsenumerate.DefaultOpenResolverProbe))
 
 	// Mark Required Flags
 	_ = enumerateServiceCmd.MarkFlagRequired("targets")
@@ -113,12 +125,13 @@ func (a *NetworkScan) InitEnumerateCommand() {
 // belong on their own pentest tools (e.g. `pentest service imap`); the
 // enumerate stage is pre-auth fingerprinting only.
 type EnumerateServiceCobraFlags struct {
-	Targets           []string
-	Service           enumeratefern.SupportedServiceType
-	Timeout           int
-	Wordlist          []string
-	VncSkipScreenshot bool
-	VncPortRange      string
+	Targets              []string
+	Service              enumeratefern.SupportedServiceType
+	Timeout              int
+	Wordlist             []string
+	VncSkipScreenshot    bool
+	VncPortRange         string
+	DnsOpenResolverProbe string
 }
 
 // newEnumerateServiceConfig creates a new EnumerateServiceConfig from the flag struct.
@@ -139,6 +152,12 @@ func newEnumerateServiceConfig(flags EnumerateServiceCobraFlags) enumeratefern.E
 			vncCfg.PortRange = &flags.VncPortRange
 		}
 		config.VncConfig = vncCfg
+	}
+	// DNS-specific config
+	if flags.Service == enumeratefern.SupportedServiceTypeDns && flags.DnsOpenResolverProbe != "" {
+		config.DnsConfig = &dnsfern.DnsEnumerateConfig{
+			OpenResolverProbe: &flags.DnsOpenResolverProbe,
+		}
 	}
 	return config
 }

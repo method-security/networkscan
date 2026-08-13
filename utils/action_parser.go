@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	dnsfern "github.com/Method-Security/networkscan/generated/go/pentest/dns"
 	etcdfern "github.com/Method-Security/networkscan/generated/go/pentest/etcd"
 	ftpfern "github.com/Method-Security/networkscan/generated/go/pentest/ftp"
 	imapfern "github.com/Method-Security/networkscan/generated/go/pentest/imap"
@@ -318,6 +319,7 @@ var (
 	postgresParserInstance *PostgresActionParser
 	snmpParserInstance     *SNMPActionParser
 	rdpParserInstance      *RDPActionParser
+	dnsParserInstance      *DNSActionParser
 )
 
 // GetSMBParser returns the singleton SMB action parser
@@ -691,6 +693,52 @@ func (p *EtcdActionParser) GetValidActions() []string {
 }
 
 func (p *EtcdActionParser) ContainsAction(actions []etcdfern.PentestEtcdAction, target etcdfern.PentestEtcdAction) bool {
+	for _, action := range actions {
+		if action == target {
+			return true
+		}
+	}
+	return false
+}
+
+// DNSActionParser handles DNS-specific action parsing
+type DNSActionParser struct{}
+
+// GetDNSParser returns the singleton DNS action parser
+func GetDNSParser() *DNSActionParser {
+	if dnsParserInstance == nil {
+		dnsParserInstance = &DNSActionParser{}
+	}
+	return dnsParserInstance
+}
+
+func (p *DNSActionParser) ParseActions(actionStrings []string) ([]dnsfern.PentestDnsAction, error) {
+	var actions []dnsfern.PentestDnsAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			dnsAction, err := dnsfern.NewPentestDnsActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid DNS action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, dnsAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *DNSActionParser) GetValidActions() []string {
+	return []string{"ZONE_TRANSFER"}
+}
+
+func (p *DNSActionParser) ContainsAction(actions []dnsfern.PentestDnsAction, target dnsfern.PentestDnsAction) bool {
 	for _, action := range actions {
 		if action == target {
 			return true
