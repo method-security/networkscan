@@ -19,7 +19,7 @@ import (
 	// Internal
 	"github.com/Method-Security/networkscan/utils"
 	// External
-	"github.com/Mzack9999/gopacket/pcap"
+	"github.com/gopacket/gopacket/pcap"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	goflags "github.com/projectdiscovery/goflags"
 	gologger "github.com/projectdiscovery/gologger"

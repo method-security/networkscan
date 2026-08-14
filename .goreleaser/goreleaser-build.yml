@@ -12,9 +12,9 @@ builds:
   - id: build-linux-amd64
     main: .
     binary: networkscan
-    # Not static: a static binary cannot dlopen libpcap, silently breaking SYN capture.
     ldflags:
       - -s -w
+      - "-extldflags '-static -lm -ldl -lpthread'"
       - -X main.version={{.Version}}
     env:
       - CGO_ENABLED=1
@@ -27,9 +27,9 @@ builds:
   - id: build-linux-arm64
     main: .
     binary: networkscan
-    # See build-linux-amd64.
     ldflags:
       - -s -w
+      - "-extldflags '-static -lm -ldl -lpthread'"
       - -X main.version={{.Version}}
     env:
       - CGO_ENABLED=1

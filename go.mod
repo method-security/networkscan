@@ -4,11 +4,11 @@ go 1.26.5
 
 require (
 	github.com/Method-Security/pkg v0.1.1
-	github.com/Mzack9999/gopacket v0.0.0-20260327212258-d211b432c22b
 	github.com/RedTeamPentesting/adauth v0.5.4-0.20260511073005-3d18e8a5a687
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/google/uuid v1.6.0
+	github.com/gopacket/gopacket v1.2.0
 	github.com/gosnmp/gosnmp v1.44.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jfjallid/go-smb v0.11.0
@@ -25,7 +25,7 @@ require (
 	github.com/pkg/sftp v1.13.11
 	github.com/praetorian-inc/fingerprintx v1.1.19
 	github.com/projectdiscovery/goflags v0.1.75
-	github.com/projectdiscovery/naabu/v2 v2.6.1
+	github.com/projectdiscovery/naabu/v2 v2.5.0
 	github.com/projectdiscovery/nuclei/v3 v3.11.1
 	github.com/projectdiscovery/useragent v0.0.108
 	github.com/redis/go-redis/v9 v9.22.0
