@@ -1,10 +1,6 @@
 package runner
 
-import (
-	"time"
-
-	"github.com/projectdiscovery/naabu/v2/pkg/scan"
-)
+import "time"
 
 const (
 	DefaultPortTimeoutSynScan     = time.Second
@@ -16,9 +12,8 @@ const (
 	DefaultRetriesSynScan     = 3
 	DefaultRetriesConnectScan = 3
 
-	SynScan     = scan.TypeSyn
-	ConnectScan = scan.TypeConnect
-
+	SynScan             = "s"
+	ConnectScan         = "c"
 	DefautStatsInterval = 5
 
 	// DefaultThreadsNum is the default number of threads to use for the scan

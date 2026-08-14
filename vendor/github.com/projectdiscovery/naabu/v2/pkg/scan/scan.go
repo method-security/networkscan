@@ -92,10 +92,8 @@ type Scanner struct {
 	cdn                  *cdncheck.Client
 	tcpsequencer         *TCPSequencer
 	stream               bool
-	ScanType             string
 	ListenHandler        *ListenHandler
 	OnReceive            result.ResultFn
-	workersWg            sync.WaitGroup
 }
 
 // PkgSend is a TCP package
@@ -178,28 +176,24 @@ func NewScanner(options *Options) (*Scanner, error) {
 	}
 
 	scanner.stream = options.Stream
-
-	for {
-		handler, acquireErr := Acquire(options)
-		if acquireErr == nil {
-			scanner.ListenHandler = handler
-			break
-		}
-		if options.ScanType == TypeSyn {
+acquire:
+	if handler, err := Acquire(options); err != nil {
+		// automatically fallback to connect scan
+		if options.ScanType == "s" {
 			gologger.Info().Msgf("syn scan is not possible, falling back to connect scan")
-			options.ScanType = TypeConnect
-			continue
+			options.ScanType = "c"
+			goto acquire
 		}
-		return scanner, acquireErr
+		return scanner, err
+	} else {
+		scanner.ListenHandler = handler
 	}
 
-	scanner.ScanType = options.ScanType
 	return scanner, err
 }
 
 // Close the scanner and terminate all workers
 func (s *Scanner) Close() error {
-	s.workersWg.Wait()
 	s.ListenHandler.Busy = false
 	s.ListenHandler = nil
 
@@ -208,19 +202,9 @@ func (s *Scanner) Close() error {
 
 // StartWorkers of the scanner
 func (s *Scanner) StartWorkers(ctx context.Context) {
-	s.workersWg.Add(3)
-	go func() {
-		defer s.workersWg.Done()
-		s.ICMPResultWorker(ctx)
-	}()
-	go func() {
-		defer s.workersWg.Done()
-		s.TCPResultWorker(ctx)
-	}()
-	go func() {
-		defer s.workersWg.Done()
-		s.UDPResultWorker(ctx)
-	}()
+	go s.ICMPResultWorker(ctx)
+	go s.TCPResultWorker(ctx)
+	go s.UDPResultWorker(ctx)
 }
 
 // EnqueueICMP outgoing ICMP packets
