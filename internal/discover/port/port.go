@@ -188,15 +188,11 @@ func getPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) ([
 	switch config.ScanType {
 	case discoverfern.PortScanTypeSyn:
 		portscanOpts.ScanType = runner.SynScan
-		portscanOpts.Retries = runner.DefaultRetriesSynScan
-		portscanOpts.Timeout = runner.DefaultPortTimeoutSynScan
 		if err := assertCaptureAvailable(); err != nil {
 			return nil, err
 		}
 	case discoverfern.PortScanTypeConnect:
 		portscanOpts.ScanType = runner.ConnectScan
-		portscanOpts.Retries = runner.DefaultRetriesConnectScan
-		portscanOpts.Timeout = runner.DefaultPortTimeoutConnectScan
 	}
 
 	if config.Ports != nil {
