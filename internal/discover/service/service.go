@@ -418,7 +418,7 @@ func noEarlierFingerprintersPending(completed []bool, bestIndex int) bool {
 
 // fxToServiceDetails converts fingerprintx result to ServiceDetails
 func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
-	protocol, err := fxProtocolToProtocolType(result.Protocol)
+	protocol, err := FxProtocolToProtocolType(result.Protocol)
 	if err != nil {
 		return nil
 	}
@@ -473,7 +473,7 @@ func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 	return serviceDetails
 }
 
-func fxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) {
+func FxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) {
 	normalized := strings.ToUpper(strings.TrimSpace(protocolName))
 	switch normalized {
 	case "ORACLE":
@@ -483,7 +483,7 @@ func fxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) 
 	case "NETBIOS-NS":
 		normalized = "NETBIOS"
 	case "IPSEC":
-		// fingerprintx names its UDP 500 ISAKMP probe "IPsec"; IKE is the protocol on the wire.
+		// fingerprintx's "IPsec" plugin, upper-cased above, is a UDP 500 ISAKMP probe — IKE on the wire.
 		normalized = "IKE"
 	case "KAFKANEW", "KAFKAOLD", "KAFKANEWTLS", "KAFKAOLDTLS":
 		normalized = "KAFKA"

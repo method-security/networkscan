@@ -96,6 +96,13 @@ The tool follows a modular architecture with clear separation of concerns:
 - Mirror naming between `fern/definition/<stage>/<component>.yml`, `internal/<stage>/<component>.go`, and `cmd/<stage>.go`
 - Use subdirectories for complex components, flat files for simple ones
 
+### Test Layout
+
+- **Tests live in the top-level `tests/` tree, never beside the code.** Mirror the source path with `internal/` dropped: code in `internal/enumerate/smtp/helpers.go` is tested by `tests/enumerate/smtp/helpers_test.go`. Same convention as webscan.
+- Use an **external test package** — `package smtp_test`, importing the real package by its full module path.
+- That means only **exported** identifiers are reachable. Export what needs testing rather than moving the test back in-package; a `_test.go` file sitting in `internal/<stage>/<component>/` is the mistake this section exists to prevent.
+- `generated/**` is gitignored and its `*_test.go` files are Fern output — not the convention to copy.
+
 ### Fern Type Requirements
 - **MANDATORY**: Every CLI command with output must have a corresponding Fern report structure
 - **Three-Part Structure Pattern**: All commands must define:

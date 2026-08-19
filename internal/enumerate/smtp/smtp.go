@@ -60,7 +60,7 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	var conn net.Conn
 	// Try to connect to service
 	log.Debug("Attempting plain TCP connection to target", svc1log.SafeParam("target", target))
-	conn, err = tryTCPConnection(ctx, target)
+	conn, err = TryTCPConnection(ctx, target)
 	if err == nil {
 		tlsForce := false
 		detail.ForceTls = &tlsForce
