@@ -482,9 +482,6 @@ func FxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) 
 		normalized = "POSTGRESQL"
 	case "NETBIOS-NS":
 		normalized = "NETBIOS"
-	case "IPSEC":
-		// fingerprintx reports ProtoIPSEC ("ipsec") for its UDP 500 ISAKMP probe; IKE is what's on the wire.
-		normalized = "IKE"
 	case "KAFKANEW", "KAFKAOLD", "KAFKANEWTLS", "KAFKAOLDTLS":
 		normalized = "KAFKA"
 	case "MQTT3", "MQTT3TLS":

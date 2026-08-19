@@ -8,8 +8,6 @@ import (
 
 func TestFxProtocolToProtocolTypeAliases(t *testing.T) {
 	cases := map[string]string{
-		"IPsec":      "IKE",
-		"ipsec":      "IKE",
 		"oracle":     "ORACLEDB",
 		"postgres":   "POSTGRESQL",
 		"netbios-ns": "NETBIOS",
@@ -29,8 +27,11 @@ func TestFxProtocolToProtocolTypeAliases(t *testing.T) {
 	}
 }
 
+// "ipsec" is fingerprintx's UDP-500 probe, deliberately unsupported: our own ike plugin owns that port.
 func TestFxProtocolToProtocolTypeRejectsUnknown(t *testing.T) {
-	if _, err := service.FxProtocolToProtocolType("NOTAPROTOCOL"); err == nil {
-		t.Error("FxProtocolToProtocolType(\"NOTAPROTOCOL\") = nil error, want error")
+	for _, name := range []string{"NOTAPROTOCOL", "ipsec"} {
+		if _, err := service.FxProtocolToProtocolType(name); err == nil {
+			t.Errorf("FxProtocolToProtocolType(%q) = nil error, want error", name)
+		}
 	}
 }
