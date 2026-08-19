@@ -1,4 +1,4 @@
-package smtp_test
+package smtp
 
 import (
 	"bufio"
@@ -7,8 +7,6 @@ import (
 	"net"
 	"testing"
 	"time"
-
-	smtp "github.com/Method-Security/networkscan/internal/enumerate/smtp"
 )
 
 func listenerWriting(t *testing.T, payload string) net.Listener {
@@ -42,10 +40,10 @@ func TestTryTCPConnectionAcceptsAllReplyCodeGreetings(t *testing.T) {
 	for _, greeting := range greetings {
 		ln := listenerWriting(t, greeting)
 
-		conn, err := smtp.TryTCPConnection(context.Background(), ln.Addr().String())
+		conn, err := tryTCPConnection(context.Background(), ln.Addr().String())
 		if err != nil {
 			_ = ln.Close()
-			t.Errorf("TryTCPConnection with greeting %q: %v", greeting, err)
+			t.Errorf("tryTCPConnection with greeting %q: %v", greeting, err)
 			continue
 		}
 
@@ -65,12 +63,12 @@ func TestTryTCPConnectionRejectsTLSHandshake(t *testing.T) {
 	ln := listenerWriting(t, "\x16\x03\x01\x00\x9f")
 	defer func() { _ = ln.Close() }()
 
-	conn, err := smtp.TryTCPConnection(context.Background(), ln.Addr().String())
-	if !errors.Is(err, smtp.ErrImplicitTLSSuspected) {
+	conn, err := tryTCPConnection(context.Background(), ln.Addr().String())
+	if !errors.Is(err, errImplicitTLSSuspected) {
 		if conn != nil {
 			_ = conn.Close()
 		}
-		t.Fatalf("err = %v, want ErrImplicitTLSSuspected", err)
+		t.Fatalf("err = %v, want errImplicitTLSSuspected", err)
 	}
 }
 
@@ -79,9 +77,9 @@ func TestTryTCPConnectionKeepsSilentNonSmtpsPort(t *testing.T) {
 	ln := listenerWriting(t, "")
 	defer func() { _ = ln.Close() }()
 
-	conn, err := smtp.TryTCPConnection(context.Background(), ln.Addr().String())
+	conn, err := tryTCPConnection(context.Background(), ln.Addr().String())
 	if err != nil {
-		t.Fatalf("TryTCPConnection on silent non-465 port: %v, want nil", err)
+		t.Fatalf("tryTCPConnection on silent non-465 port: %v, want nil", err)
 	}
 	_ = conn.Close()
 }

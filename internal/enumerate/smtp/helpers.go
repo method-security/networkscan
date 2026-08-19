@@ -26,8 +26,7 @@ const implicitTLSPeekTimeout = 2 * time.Second
 // smtpsPort is the IANA-assigned port for SMTP over implicit TLS (RFC 8314).
 const smtpsPort = 465
 
-// ErrImplicitTLSSuspected reports that a plain dial succeeded but no SMTP greeting arrived.
-var ErrImplicitTLSSuspected = fmt.Errorf("no SMTP greeting on plain socket; implicit TLS suspected")
+var errImplicitTLSSuspected = fmt.Errorf("no SMTP greeting on plain socket; implicit TLS suspected")
 
 // Replays bytes the greeting peek pre-fetched; without it the caller's banner read loses them.
 type bufferedConn struct {
@@ -47,8 +46,8 @@ func isTimeout(err error) bool {
 	return ok && netErr.Timeout()
 }
 
-// TryTCPConnection peeks for a reply code so an implicit-TLS listener errors here rather than hanging the caller.
-func TryTCPConnection(ctx context.Context, target string) (net.Conn, error) {
+// Peeks for a reply code so an implicit-TLS listener errors here rather than hanging the caller.
+func tryTCPConnection(ctx context.Context, target string) (net.Conn, error) {
 	conn, err := netdial.DialContext(ctx, "tcp", target)
 	if err != nil {
 		return nil, err
@@ -65,11 +64,11 @@ func TryTCPConnection(ctx context.Context, target string) (net.Conn, error) {
 		// A tarpitting plain server and a silent TLS listener time out identically; only :465 disambiguates.
 		if portFromTarget(target) == smtpsPort {
 			_ = conn.Close()
-			return nil, ErrImplicitTLSSuspected
+			return nil, errImplicitTLSSuspected
 		}
 	default:
 		_ = conn.Close()
-		return nil, ErrImplicitTLSSuspected
+		return nil, errImplicitTLSSuspected
 	}
 
 	_ = conn.SetReadDeadline(time.Time{})

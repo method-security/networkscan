@@ -1,9 +1,7 @@
-package service_test
+package service
 
 import (
 	"testing"
-
-	service "github.com/Method-Security/networkscan/internal/discover/service"
 )
 
 func TestFxProtocolToProtocolTypeAliases(t *testing.T) {
@@ -16,13 +14,13 @@ func TestFxProtocolToProtocolTypeAliases(t *testing.T) {
 	}
 
 	for name, want := range cases {
-		got, err := service.FxProtocolToProtocolType(name)
+		got, err := fxProtocolToProtocolType(name)
 		if err != nil {
-			t.Errorf("FxProtocolToProtocolType(%q): %v", name, err)
+			t.Errorf("fxProtocolToProtocolType(%q): %v", name, err)
 			continue
 		}
 		if string(got) != want {
-			t.Errorf("FxProtocolToProtocolType(%q) = %q, want %q", name, got, want)
+			t.Errorf("fxProtocolToProtocolType(%q) = %q, want %q", name, got, want)
 		}
 	}
 }
@@ -30,8 +28,8 @@ func TestFxProtocolToProtocolTypeAliases(t *testing.T) {
 // "ipsec" is fingerprintx's UDP-500 probe, deliberately unsupported: our own ike plugin owns that port.
 func TestFxProtocolToProtocolTypeRejectsUnknown(t *testing.T) {
 	for _, name := range []string{"NOTAPROTOCOL", "ipsec"} {
-		if _, err := service.FxProtocolToProtocolType(name); err == nil {
-			t.Errorf("FxProtocolToProtocolType(%q) = nil error, want error", name)
+		if _, err := fxProtocolToProtocolType(name); err == nil {
+			t.Errorf("fxProtocolToProtocolType(%q) = nil error, want error", name)
 		}
 	}
 }

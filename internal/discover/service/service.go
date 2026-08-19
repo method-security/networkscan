@@ -418,7 +418,7 @@ func noEarlierFingerprintersPending(completed []bool, bestIndex int) bool {
 
 // fxToServiceDetails converts fingerprintx result to ServiceDetails
 func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
-	protocol, err := FxProtocolToProtocolType(result.Protocol)
+	protocol, err := fxProtocolToProtocolType(result.Protocol)
 	if err != nil {
 		return nil
 	}
@@ -473,7 +473,7 @@ func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 	return serviceDetails
 }
 
-func FxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) {
+func fxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) {
 	normalized := strings.ToUpper(strings.TrimSpace(protocolName))
 	switch normalized {
 	case "ORACLE":
