@@ -13,7 +13,7 @@ on:
         type: string
 
 env:
-  GO_VERSION: "1.26.5"
+  GO_VERSION: "1.26"
 
 jobs:
   # Build ARM64 using native GitHub ARM runner but inside Docker for Alpine compatibility
@@ -173,6 +173,7 @@ jobs:
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # ratchet:actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
+          check-latest: true
           cache: true
 
       - uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # ratchet:goreleaser/goreleaser-action@v7
@@ -250,6 +251,7 @@ jobs:
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # ratchet:actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
+          check-latest: true
           cache: true
 
       - name: Download Artifacts
