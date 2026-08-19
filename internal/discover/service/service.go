@@ -483,7 +483,7 @@ func FxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) 
 	case "NETBIOS-NS":
 		normalized = "NETBIOS"
 	case "IPSEC":
-		// fingerprintx's "IPsec" plugin, upper-cased above, is a UDP 500 ISAKMP probe — IKE on the wire.
+		// fingerprintx reports ProtoIPSEC ("ipsec") for its UDP 500 ISAKMP probe; IKE is what's on the wire.
 		normalized = "IKE"
 	case "KAFKANEW", "KAFKAOLD", "KAFKANEWTLS", "KAFKAOLDTLS":
 		normalized = "KAFKA"
