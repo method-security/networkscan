@@ -2,12 +2,15 @@ package smtp
 
 import (
 	// Standard
+	"bufio"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
 	netsmtp "net/smtp"
+	"strconv"
 	"strings"
+	"time"
 
 	// Generated
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
@@ -18,8 +21,69 @@ import (
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
+const implicitTLSPeekTimeout = 2 * time.Second
+
+// smtpsPort is the IANA-assigned port for SMTP over implicit TLS (RFC 8314).
+const smtpsPort = 465
+
+var errImplicitTLSSuspected = fmt.Errorf("no SMTP greeting on plain socket; implicit TLS suspected")
+
+// Replays bytes the greeting peek pre-fetched; without it the caller's banner read loses them.
+type bufferedConn struct {
+	net.Conn
+	r *bufio.Reader
+}
+
+func (c *bufferedConn) Read(b []byte) (int, error) {
+	return c.r.Read(b)
+}
+
+func isTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	netErr, ok := err.(net.Error)
+	return ok && netErr.Timeout()
+}
+
+// Peeks for the "220" greeting so an implicit-TLS listener errors here instead of hanging the caller.
 func tryTCPConnection(ctx context.Context, target string) (net.Conn, error) {
-	return netdial.DialContext(ctx, "tcp", target)
+	conn, err := netdial.DialContext(ctx, "tcp", target)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(implicitTLSPeekTimeout))
+	reader := bufio.NewReader(conn)
+	peek, peekErr := reader.Peek(1)
+
+	switch {
+	case peekErr == nil && len(peek) == 1 && peek[0] == '2':
+	case isTimeout(peekErr):
+		// A tarpitting plain server and a silent TLS listener time out identically; only :465 disambiguates.
+		if portFromTarget(target) == smtpsPort {
+			_ = conn.Close()
+			return nil, errImplicitTLSSuspected
+		}
+	default:
+		_ = conn.Close()
+		return nil, errImplicitTLSSuspected
+	}
+
+	_ = conn.SetReadDeadline(time.Time{})
+	return &bufferedConn{Conn: conn, r: reader}, nil
+}
+
+func portFromTarget(target string) int {
+	_, portStr, err := net.SplitHostPort(target)
+	if err != nil {
+		return 0
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return 0
+	}
+	return port
 }
 
 func tryTLSConnection(ctx context.Context, target string, hostname string) (net.Conn, error) {
