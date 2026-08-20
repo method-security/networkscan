@@ -44,7 +44,6 @@ types:
       - IMAPS
       - IPP
       - IPMI
-      - IPSEC
       - IRC
       - JAVARMI
       - JDWP
