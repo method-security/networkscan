@@ -83,3 +83,27 @@ func TestTryTCPConnectionKeepsSilentNonSmtpsPort(t *testing.T) {
 	}
 	_ = conn.Close()
 }
+
+// An explicit implicit-TLS hint must skip the greeting probe entirely.
+func TestImplicitTLSHintSkipsGreetingProbe(t *testing.T) {
+	ln := listenerWriting(t, "")
+	defer func() { _ = ln.Close() }()
+
+	yes := true
+	lib := &LibraryEnumerateSMTP{ImplicitTLS: &yes}
+
+	// EnumerateTarget takes its deadline from the caller; the engine wraps every call in one.
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, errs := lib.EnumerateTarget(ctx, ln.Addr().String())
+	elapsed := time.Since(start)
+
+	if len(errs) == 0 {
+		t.Error("want an error: the listener is silent and cannot complete a TLS handshake")
+	}
+	if elapsed >= implicitTLSPeekTimeout {
+		t.Errorf("took %v; the greeting peek should have been skipped entirely", elapsed)
+	}
+}

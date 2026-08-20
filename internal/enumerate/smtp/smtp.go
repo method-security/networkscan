@@ -22,7 +22,8 @@ import (
 
 // LibraryEnumerateSMTP implements NetworkApplicationLibrary for SMTP enumeration.
 type LibraryEnumerateSMTP struct {
-	Wordlist []string
+	Wordlist    []string
+	ImplicitTLS *bool
 }
 
 // EnumerateTarget Overview
@@ -60,7 +61,11 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	var conn net.Conn
 	// Try to connect to service
 	log.Debug("Attempting plain TCP connection to target", svc1log.SafeParam("target", target))
-	conn, err = tryTCPConnection(ctx, target)
+	if s.ImplicitTLS != nil && *s.ImplicitTLS {
+		conn, err = tryTLSConnection(ctx, target, hostname)
+	} else {
+		conn, err = tryTCPConnection(ctx, target)
+	}
 	if err == nil {
 		tlsForce := false
 		detail.ForceTls = &tlsForce
