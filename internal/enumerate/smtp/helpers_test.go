@@ -7,6 +7,8 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"github.com/Method-Security/networkscan/utils"
 )
 
 func listenerWriting(t *testing.T, payload string) net.Listener {
@@ -84,20 +86,18 @@ func TestTryTCPConnectionKeepsSilentNonSmtpsPort(t *testing.T) {
 	_ = conn.Close()
 }
 
-// An explicit implicit-TLS hint must skip the greeting probe entirely.
-func TestImplicitTLSHintSkipsGreetingProbe(t *testing.T) {
+// An smtps:// scheme must go straight to TLS rather than spending the greeting peek.
+func TestSmtpsSchemeSkipsGreetingProbe(t *testing.T) {
 	ln := listenerWriting(t, "")
 	defer func() { _ = ln.Close() }()
 
-	yes := true
-	lib := &LibraryEnumerateSMTP{ImplicitTLS: &yes}
-
+	lib := &LibraryEnumerateSMTP{}
 	// EnumerateTarget takes its deadline from the caller; the engine wraps every call in one.
 	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
-	_, errs := lib.EnumerateTarget(ctx, ln.Addr().String())
+	_, errs := lib.EnumerateTarget(ctx, "smtps://"+ln.Addr().String())
 	elapsed := time.Since(start)
 
 	if len(errs) == 0 {
@@ -105,5 +105,20 @@ func TestImplicitTLSHintSkipsGreetingProbe(t *testing.T) {
 	}
 	if elapsed >= implicitTLSPeekTimeout {
 		t.Errorf("took %v; the greeting peek should have been skipped entirely", elapsed)
+	}
+}
+
+func TestSplitTargetSchemeRoundTrip(t *testing.T) {
+	cases := map[string][2]string{
+		"smtps://h:465": {"smtps", "h:465"},
+		"smtp://h:25":   {"smtp", "h:25"},
+		"h:25":          {"", "h:25"},
+		"SMTPS://h:465": {"smtps", "h:465"},
+	}
+	for in, want := range cases {
+		scheme, rest := utils.SplitTargetScheme(in)
+		if scheme != want[0] || rest != want[1] {
+			t.Errorf("SplitTargetScheme(%q) = (%q, %q), want (%q, %q)", in, scheme, rest, want[0], want[1])
+		}
 	}
 }

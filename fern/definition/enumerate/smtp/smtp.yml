@@ -26,8 +26,3 @@ types:
       forceTLS: optional<boolean>
       allowsUnauthenticatedEmail: optional<boolean>
       enumeratedUsers: optional<list<SmtpEnumeratedUser>>
-
-  SmtpEnumerateConfig:
-    properties:
-      # Overrides greeting-probe TLS detection when the caller already knows the transport.
-      implicitTls: optional<boolean>

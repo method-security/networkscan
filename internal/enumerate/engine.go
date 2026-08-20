@@ -167,11 +167,7 @@ func getEngine(config enumeratefern.EnumerateServiceConfig) (NetworkApplicationE
 	case enumeratefern.SupportedServiceTypeFtp:
 		return NetworkApplicationEngine{Library: &ftp.LibraryEnumerateFTP{}}, nil
 	case enumeratefern.SupportedServiceTypeSmtp:
-		smtpLib := &smtp.LibraryEnumerateSMTP{Wordlist: config.Wordlist}
-		if config.SmtpConfig != nil {
-			smtpLib.ImplicitTLS = config.SmtpConfig.ImplicitTls
-		}
-		return NetworkApplicationEngine{Library: smtpLib}, nil
+		return NetworkApplicationEngine{Library: &smtp.LibraryEnumerateSMTP{Wordlist: config.Wordlist}}, nil
 	case enumeratefern.SupportedServiceTypeGrpc:
 		return NetworkApplicationEngine{Library: &grpc.LibraryEnumerateGRPC{}}, nil
 	case enumeratefern.SupportedServiceTypeSmb:

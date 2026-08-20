@@ -55,6 +55,14 @@ func ParsePort(portStr string) int {
 // ParseHostPort parses a target string into host and port components.
 // If no port is provided, uses the specified default port.
 // Returns the host and port as separate values.
+// SplitTargetScheme separates an optional scheme from a target, e.g. "ldaps://h:636" -> ("ldaps", "h:636").
+func SplitTargetScheme(target string) (string, string) {
+	if idx := strings.Index(target, "://"); idx >= 0 {
+		return strings.ToLower(target[:idx]), target[idx+3:]
+	}
+	return "", target
+}
+
 func ParseHostPort(target string, defaultPort int) (string, int) {
 	host, portStr, err := net.SplitHostPort(target)
 	port := defaultPort

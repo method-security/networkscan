@@ -78,7 +78,6 @@ types:
       wordlist: optional<list<string>>
       vncConfig: optional<vnc.VncEnumerateConfig>
       dnsConfig: optional<dns.DnsEnumerateConfig>
-      smtpConfig: optional<smtp.SmtpEnumerateConfig>
   # Final report
   EnumerateServiceReport:
     properties:

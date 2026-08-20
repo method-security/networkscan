@@ -7,7 +7,6 @@ import (
 	// Generated
 	enumeratefern "github.com/Method-Security/networkscan/generated/go/enumerate"
 	dnsfern "github.com/Method-Security/networkscan/generated/go/enumerate/dns"
-	smtpfern "github.com/Method-Security/networkscan/generated/go/enumerate/smtp"
 	vncfern "github.com/Method-Security/networkscan/generated/go/enumerate/vnc"
 
 	// Internal
@@ -75,16 +74,6 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				return
 			}
 
-			var smtpImplicitTls *bool
-			if cmd.Flags().Changed("smtp-implicit-tls") {
-				v, flagErr := cmd.Flags().GetBool("smtp-implicit-tls")
-				if flagErr != nil {
-					a.OutputSignal.AddError(flagErr)
-					return
-				}
-				smtpImplicitTls = &v
-			}
-
 			dnsOpenResolverProbe, err := cmd.Flags().GetString("dns-open-resolver-probe")
 			if err != nil {
 				a.OutputSignal.AddError(err)
@@ -99,7 +88,6 @@ func (a *NetworkScan) InitEnumerateCommand() {
 				VncSkipScreenshot:    vncSkipScreenshot,
 				VncPortRange:         vncPortRange,
 				DnsOpenResolverProbe: dnsOpenResolverProbe,
-				SmtpImplicitTls:      smtpImplicitTls,
 			})
 
 			// Generate the report
@@ -119,7 +107,6 @@ func (a *NetworkScan) InitEnumerateCommand() {
 	enumerateServiceCmd.Flags().Bool("vnc-skip-screenshot", false, "Skip framebuffer screenshot capture even when None auth is offered (VNC only)")
 	enumerateServiceCmd.Flags().String("vnc-port-range", "5900-5910", "Port range to sweep when no explicit port is given (VNC only, e.g. '5900-5910')")
 	// DNS-specific flags
-	enumerateServiceCmd.Flags().Bool("smtp-implicit-tls", false, "State the transport explicitly instead of probing for the greeting (SMTP only)")
 	enumerateServiceCmd.Flags().String("dns-open-resolver-probe", "", fmt.Sprintf("Off-zone name used to confirm recursion (DNS only, default %s)", dnsenumerate.DefaultOpenResolverProbe))
 
 	// Mark Required Flags
@@ -145,7 +132,6 @@ type EnumerateServiceCobraFlags struct {
 	VncSkipScreenshot    bool
 	VncPortRange         string
 	DnsOpenResolverProbe string
-	SmtpImplicitTls      *bool
 }
 
 // newEnumerateServiceConfig creates a new EnumerateServiceConfig from the flag struct.
@@ -166,12 +152,6 @@ func newEnumerateServiceConfig(flags EnumerateServiceCobraFlags) enumeratefern.E
 			vncCfg.PortRange = &flags.VncPortRange
 		}
 		config.VncConfig = vncCfg
-	}
-	// SMTP-specific config
-	if flags.Service == enumeratefern.SupportedServiceTypeSmtp && flags.SmtpImplicitTls != nil {
-		config.SmtpConfig = &smtpfern.SmtpEnumerateConfig{
-			ImplicitTls: flags.SmtpImplicitTls,
-		}
 	}
 	// DNS-specific config
 	if flags.Service == enumeratefern.SupportedServiceTypeDns && flags.DnsOpenResolverProbe != "" {
