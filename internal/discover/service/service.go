@@ -493,7 +493,7 @@ func fxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) 
 }
 
 // runUDPServiceDiscovery scans common UDP ports on the target host and fingerprints discovered services.
-// It uses custom UDP fingerprinters and fingerprintx UDP-only fingerprints.
+// It uses the custom UDP fingerprinters only; fingerprintx is not consulted on this path.
 // Each service is only probed on its well-known port(s) to avoid false positives.
 func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
