@@ -16,6 +16,8 @@ import (
 
 	// Internal
 	smtputil "github.com/Method-Security/networkscan/internal/protocol/smtp"
+	"github.com/Method-Security/networkscan/utils"
+
 	// External
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -47,6 +49,10 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 	errors := []string{}
 
 	// Get hostname for HELLO command and TLS
+	// An smtp:// or smtps:// scheme states the transport; bare targets fall back to the greeting probe.
+	scheme, target := utils.SplitTargetScheme(target)
+	detail.Target = target
+
 	hostname, _, err := net.SplitHostPort(target)
 	if err != nil {
 		errors = append(errors, fmt.Sprintf("invalid target format: %v", err))
@@ -59,8 +65,12 @@ func (s *LibraryEnumerateSMTP) EnumerateTarget(ctx context.Context, target strin
 
 	var conn net.Conn
 	// Try to connect to service
-	log.Debug("Attempting plain TCP connection to target", svc1log.SafeParam("target", target))
-	conn, err = tryTCPConnection(ctx, target)
+	log.Debug("Attempting connection to target", svc1log.SafeParam("target", target))
+	if scheme == "smtps" {
+		conn, err = tryTLSConnection(ctx, target, hostname)
+	} else {
+		conn, err = tryTCPConnection(ctx, target)
+	}
 	if err == nil {
 		tlsForce := false
 		detail.ForceTls = &tlsForce
