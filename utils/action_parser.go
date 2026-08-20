@@ -7,6 +7,7 @@ import (
 	dnsfern "github.com/Method-Security/networkscan/generated/go/pentest/dns"
 	etcdfern "github.com/Method-Security/networkscan/generated/go/pentest/etcd"
 	ftpfern "github.com/Method-Security/networkscan/generated/go/pentest/ftp"
+	ikefern "github.com/Method-Security/networkscan/generated/go/pentest/ike"
 	imapfern "github.com/Method-Security/networkscan/generated/go/pentest/imap"
 	ldapfern "github.com/Method-Security/networkscan/generated/go/pentest/ldap"
 	mongodbfern "github.com/Method-Security/networkscan/generated/go/pentest/mongodb"
@@ -183,6 +184,43 @@ func (p *LDAPActionParser) ContainsAction(actions []ldapfern.PentestLdapAction, 
 	return false
 }
 
+// IKEActionParser handles IKE-specific action parsing
+type IKEActionParser struct{}
+
+func (p *IKEActionParser) ParseActions(actionStrings []string) ([]ikefern.PentestIkeAction, error) {
+	var actions []ikefern.PentestIkeAction
+
+	for _, actionStr := range actionStrings {
+		parts := strings.Split(actionStr, ",")
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			upperPart := strings.ToUpper(part)
+			ikeAction, err := ikefern.NewPentestIkeActionFromString(upperPart)
+			if err != nil {
+				return nil, fmt.Errorf("invalid IKE action '%s': valid actions are %s", part, strings.Join(p.GetValidActions(), ","))
+			}
+			actions = append(actions, ikeAction)
+		}
+	}
+
+	return actions, nil
+}
+
+func (p *IKEActionParser) GetValidActions() []string {
+	return []string{"PSK_CAPTURE"}
+}
+
+// GetIKEParser returns the singleton IKE action parser
+func GetIKEParser() *IKEActionParser {
+	if ikeParserInstance == nil {
+		ikeParserInstance = &IKEActionParser{}
+	}
+	return ikeParserInstance
+}
+
 // MSRPCActionParser handles MSRPC-specific action parsing
 type MSRPCActionParser struct{}
 
@@ -307,6 +345,7 @@ var (
 	sshParserInstance      *SSHActionParser
 	telnetParserInstance   *TelnetActionParser
 	ldapParserInstance     *LDAPActionParser
+	ikeParserInstance      *IKEActionParser
 	msrpcParserInstance    *MSRPCActionParser
 	ftpParserInstance      *FTPActionParser
 	winrmParserInstance    *WinRMActionParser
