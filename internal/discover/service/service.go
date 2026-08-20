@@ -101,6 +101,7 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.ErlangEPMDFingerprinter{},      // Erlang Port Mapper Daemon
 	&localPlugins.ADBFingerprinter{},             // Android Debug Bridge (overlaps HP Data Protector on TCP/5555)
 	&localPlugins.RTMPFingerprinter{},            // RTMP
+	&localPlugins.SCCPFingerprinter{},            // Cisco SCCP/Skinny
 	&localPlugins.NNTPFingerprinter{},            // NNTP
 	&localPlugins.IRCFingerprinter{},             // IRC
 	&localPlugins.XMPPFingerprinter{},            // XMPP

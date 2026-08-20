@@ -91,6 +91,7 @@ types:
       - RTSP
       - S7COMM
       - SAPROUTER
+      - SCCP
       - SIP
       - SLP
       - SMB
