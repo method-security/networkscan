@@ -52,9 +52,28 @@ func ParsePort(portStr string) int {
 	return 0
 }
 
-// ParseHostPort parses a target string into host and port components.
-// If no port is provided, uses the specified default port.
-// Returns the host and port as separate values.
+const (
+	LdapPort                 = 389
+	LdapsPort                = 636
+	LdapGlobalCatalogTLSPort = 3269
+)
+
+// ResolveLDAPTarget resolves an LDAP target's host, port and transport. An ldap:// or ldaps://
+// scheme states the transport outright; a bare target falls back to the implicit-TLS ports.
+func ResolveLDAPTarget(target string) (string, int, bool) {
+	scheme, hostPort := SplitTargetScheme(target)
+	host, port := ParseHostPort(hostPort, LdapPort)
+
+	switch scheme {
+	case "ldaps":
+		return host, port, true
+	case "ldap":
+		return host, port, false
+	default:
+		return host, port, port == LdapsPort || port == LdapGlobalCatalogTLSPort
+	}
+}
+
 // SplitTargetScheme separates an optional scheme from a target, e.g. "ldaps://h:636" -> ("ldaps", "h:636").
 func SplitTargetScheme(target string) (string, string) {
 	if idx := strings.Index(target, "://"); idx >= 0 {
@@ -63,6 +82,7 @@ func SplitTargetScheme(target string) (string, string) {
 	return "", target
 }
 
+// ParseHostPort splits a target into host and port, falling back to defaultPort when none is given.
 func ParseHostPort(target string, defaultPort int) (string, int) {
 	host, portStr, err := net.SplitHostPort(target)
 	port := defaultPort

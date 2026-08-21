@@ -42,11 +42,11 @@ func (en *enumerateNegotiator) ChallengeResponse(chal []byte, user, hash string)
 }
 
 // extractServerInfoFromNTLMChallenge extracts server information via NTLM challenge during enumeration
-func (l *LibraryEnumerateLDAP) extractServerInfoFromNTLMChallenge(ctx context.Context, host string, port int, target string) *commonprotocolfern.LdapServerInfo {
+func (l *LibraryEnumerateLDAP) extractServerInfoFromNTLMChallenge(ctx context.Context, host string, port int, useTLS bool, target string) *commonprotocolfern.LdapServerInfo {
 	log := svc1log.FromContext(ctx)
 	log.Debug("Extracting LDAP server info via NTLM challenge for enumeration", svc1log.SafeParam("target", target))
 
-	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, false))
+	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, useTLS))
 	if err != nil {
 		log.Debug("Failed to connect to LDAP server for server info extraction", svc1log.SafeParam("error", err.Error()))
 		return nil
@@ -102,11 +102,11 @@ type authenticationState struct {
 }
 
 // testNullBind tests null bind (no credentials)
-func (l *LibraryEnumerateLDAP) testNullBind(ctx context.Context, host string, port int, target string) authTestResult {
+func (l *LibraryEnumerateLDAP) testNullBind(ctx context.Context, host string, port int, useTLS bool, target string) authTestResult {
 	log := svc1log.FromContext(ctx)
 	log.Debug("Testing LDAP null bind", svc1log.SafeParam("target", target))
 
-	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, false))
+	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, useTLS))
 	if err != nil {
 		log.Debug("Failed to connect to LDAP server", svc1log.SafeParam("error", err.Error()))
 		return authTestResult{
@@ -139,11 +139,11 @@ func (l *LibraryEnumerateLDAP) testNullBind(ctx context.Context, host string, po
 }
 
 // testAnonymousBind tests anonymous bind
-func (l *LibraryEnumerateLDAP) testAnonymousBind(ctx context.Context, host string, port int, target string) authTestResult {
+func (l *LibraryEnumerateLDAP) testAnonymousBind(ctx context.Context, host string, port int, useTLS bool, target string) authTestResult {
 	log := svc1log.FromContext(ctx)
 	log.Debug("Testing LDAP anonymous bind", svc1log.SafeParam("target", target))
 
-	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, false))
+	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, useTLS))
 	if err != nil {
 		log.Debug("Failed to connect to LDAP server", svc1log.SafeParam("error", err.Error()))
 		return authTestResult{
@@ -189,7 +189,7 @@ func (l *LibraryEnumerateLDAP) testAnonymousBind(ctx context.Context, host strin
 }
 
 // performAuthentication performs all authentication tests
-func (l *LibraryEnumerateLDAP) performAuthentication(ctx context.Context, host string, port int, target string) authenticationState {
+func (l *LibraryEnumerateLDAP) performAuthentication(ctx context.Context, host string, port int, useTLS bool, target string) authenticationState {
 	log := svc1log.FromContext(ctx)
 	log.Debug("Starting LDAP authentication testing", svc1log.SafeParam("target", target))
 
@@ -199,10 +199,10 @@ func (l *LibraryEnumerateLDAP) performAuthentication(ctx context.Context, host s
 	}
 
 	// Extract server info first using NTLM challenge
-	state.serverInfo = l.extractServerInfoFromNTLMChallenge(ctx, host, port, target)
+	state.serverInfo = l.extractServerInfoFromNTLMChallenge(ctx, host, port, useTLS, target)
 
 	// Test null bind
-	nullResult := l.testNullBind(ctx, host, port, target)
+	nullResult := l.testNullBind(ctx, host, port, useTLS, target)
 	if nullResult.success {
 		state.connectionSuccessful = true
 		state.nullBindAllowed = true
@@ -215,7 +215,7 @@ func (l *LibraryEnumerateLDAP) performAuthentication(ctx context.Context, host s
 
 	// Test anonymous bind if null bind failed
 	if !state.connectionSuccessful {
-		anonResult := l.testAnonymousBind(ctx, host, port, target)
+		anonResult := l.testAnonymousBind(ctx, host, port, useTLS, target)
 		if anonResult.success {
 			state.connectionSuccessful = true
 			state.anonymousAllowed = true
@@ -320,12 +320,12 @@ func (l *LibraryEnumerateLDAP) EnumerateTarget(ctx context.Context, target strin
 	log := svc1log.FromContext(ctx)
 	log.Info("Starting LDAP enumeration for target", svc1log.SafeParam("target", target))
 
-	host, port := utils.ParseHostPort(target, 389)
+	host, port, useTLS := utils.ResolveLDAPTarget(target)
 	// Set the actual connection target (ip:port)
 	details.Target = utils.FormatHostPort(host, port)
 
 	// Perform all authentication tests
-	authState := l.performAuthentication(ctx, host, port, target)
+	authState := l.performAuthentication(ctx, host, port, useTLS, target)
 
 	// If all connections failed, log the error
 	if !authState.connectionSuccessful {
