@@ -102,6 +102,7 @@ var customFingerprintModules = []Fingerprinter{
 	&localPlugins.ADBFingerprinter{},             // Android Debug Bridge (overlaps HP Data Protector on TCP/5555)
 	&localPlugins.RTMPFingerprinter{},            // RTMP
 	&localPlugins.SCCPFingerprinter{},            // Cisco SCCP/Skinny
+	&localPlugins.SOCKSFingerprinter{},           // SOCKS5 proxy
 	&localPlugins.NNTPFingerprinter{},            // NNTP
 	&localPlugins.IRCFingerprinter{},             // IRC
 	&localPlugins.XMPPFingerprinter{},            // XMPP
