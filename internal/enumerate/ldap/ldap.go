@@ -2,6 +2,7 @@ package ldap
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 
 	"github.com/Azure/go-ntlmssp"
@@ -16,6 +17,17 @@ import (
 
 // LibraryEnumerateLDAP implements NetworkApplicationLibrary for LDAP enumeration.
 type LibraryEnumerateLDAP struct{}
+
+// dialLDAP dials the target, wrapping the connection in TLS when the target is implicit-TLS.
+// Certificates go unverified: directories routinely present private-CA or self-signed certs, and
+// rejecting them would fail enumeration on exactly the hardened hosts we care about.
+func dialLDAP(host string, port int, useTLS bool) (*ldap.Conn, error) {
+	url := utils.FormatLDAPURL(host, port, useTLS)
+	if !useTLS {
+		return ldap.DialURL(url)
+	}
+	return ldap.DialURL(url, ldap.DialWithTLSConfig(&tls.Config{InsecureSkipVerify: true})) // #nosec G402
+}
 
 // enumerateNegotiator implements NTLM negotiation for server info extraction during enumeration
 type enumerateNegotiator struct {
@@ -46,7 +58,7 @@ func (l *LibraryEnumerateLDAP) extractServerInfoFromNTLMChallenge(ctx context.Co
 	log := svc1log.FromContext(ctx)
 	log.Debug("Extracting LDAP server info via NTLM challenge for enumeration", svc1log.SafeParam("target", target))
 
-	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, useTLS))
+	conn, err := dialLDAP(host, port, useTLS)
 	if err != nil {
 		log.Debug("Failed to connect to LDAP server for server info extraction", svc1log.SafeParam("error", err.Error()))
 		return nil
@@ -106,7 +118,7 @@ func (l *LibraryEnumerateLDAP) testNullBind(ctx context.Context, host string, po
 	log := svc1log.FromContext(ctx)
 	log.Debug("Testing LDAP null bind", svc1log.SafeParam("target", target))
 
-	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, useTLS))
+	conn, err := dialLDAP(host, port, useTLS)
 	if err != nil {
 		log.Debug("Failed to connect to LDAP server", svc1log.SafeParam("error", err.Error()))
 		return authTestResult{
@@ -143,7 +155,7 @@ func (l *LibraryEnumerateLDAP) testAnonymousBind(ctx context.Context, host strin
 	log := svc1log.FromContext(ctx)
 	log.Debug("Testing LDAP anonymous bind", svc1log.SafeParam("target", target))
 
-	conn, err := ldap.DialURL(utils.FormatLDAPURL(host, port, useTLS))
+	conn, err := dialLDAP(host, port, useTLS)
 	if err != nil {
 		log.Debug("Failed to connect to LDAP server", svc1log.SafeParam("error", err.Error()))
 		return authTestResult{
