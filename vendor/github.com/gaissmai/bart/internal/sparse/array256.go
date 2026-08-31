@@ -50,7 +50,7 @@ type Array256[T any] struct {
 }
 
 // Set panics. The bitset is internally coupled with Items[].
-// Use InsertAt or UpdateAt instead.
+// Use InsertAt to add or overwrite at index i.
 func (a *Array256[T]) Set(uint) {
 	panic("forbidden, use InsertAt")
 }
@@ -82,53 +82,10 @@ func (a *Array256[T]) Get(i uint8) (value T, ok bool) {
 
 // MustGet returns the value at index i without checking if it exists.
 //
-// Use only after ensuring that i is set (via Test()), otherwise the result
-// is undefined but will not panic. Acceptable in tight validated loops.
+// Use only after ensuring i is set (via Test(i)); otherwise it may return
+// an incorrect value or panic. Intended only for tight, validated loops.
 func (a *Array256[T]) MustGet(i uint8) T {
 	return a.Items[a.Rank(i)-1]
-}
-
-// UpdateAt or set the value at i via callback. The new value is returned
-// and true if the value was already present.
-
-// The callback receives:
-//   - the existing value (if present)
-//   - a boolean indicating whether i was already set
-//
-// It must return a new value which is inserted into the sparse array.
-//
-//	newVal, existed := a.UpdateAt(5, func(prev T, wasSet bool) T {
-//	    if wasSet { return modify(prev) }
-//	    return newEntry()
-//	})
-func (a *Array256[T]) UpdateAt(i uint8, cb func(T, bool) T) (newValue T, wasPresent bool) {
-	// if already set, get current value
-	var oldValue T
-
-	rank0 := a.Rank(i) - 1
-	if wasPresent = a.Test(i); wasPresent {
-		oldValue = a.Items[rank0]
-	}
-
-	// callback function to get updated or new value
-	newValue = cb(oldValue, wasPresent)
-
-	// already set, update and return value
-	if wasPresent {
-		a.Items[rank0] = newValue
-		return newValue, wasPresent
-	}
-
-	// insert into bitset ...
-	a.BitSet256.Set(i)
-
-	// Rank(i) is now one more
-	rank0++
-
-	// ... and insert value into slice
-	a.insertItem(rank0, newValue)
-
-	return newValue, wasPresent
 }
 
 // Len returns the number of items in sparse array.
@@ -178,7 +135,7 @@ func (a *Array256[T]) InsertAt(i uint8, value T) (exists bool) {
 // If i is not present, the zero value and false are returned.
 func (a *Array256[T]) DeleteAt(i uint8) (value T, exists bool) {
 	if a.Len() == 0 || !a.Test(i) {
-		return
+		return value, exists
 	}
 
 	rank0 := a.Rank(i) - 1
@@ -192,10 +149,6 @@ func (a *Array256[T]) DeleteAt(i uint8) (value T, exists bool) {
 
 	return value, true
 }
-
-// insertItem inserts the item at index i, shift the rest one pos right
-//
-// It panics if i is out of range.
 
 // insertItem inserts a new element at the given index position i in the Items slice,
 // shifting all following elements one position to the right to make space.

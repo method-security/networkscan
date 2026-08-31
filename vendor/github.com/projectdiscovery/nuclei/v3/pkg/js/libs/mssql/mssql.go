@@ -36,8 +36,9 @@ type (
 // const client = new mssql.MSSQLClient;
 // const connected = client.Connect('acme.com', 1433, 'username', 'password');
 // ```
-func (c *MSSQLClient) Connect(host string, port int, username, password string) (bool, error) {
-	return memoizedconnect(host, port, username, password, "master")
+func (c *MSSQLClient) Connect(ctx context.Context, host string, port int, username, password string) (bool, error) {
+	executionId := ctx.Value("executionId").(string)
+	return memoizedconnect(ctx, executionId, host, port, username, password, "master")
 }
 
 // ConnectWithDB connects to MS SQL database using given credentials and database name.
@@ -50,16 +51,17 @@ func (c *MSSQLClient) Connect(host string, port int, username, password string) 
 // const client = new mssql.MSSQLClient;
 // const connected = client.ConnectWithDB('acme.com', 1433, 'username', 'password', 'master');
 // ```
-func (c *MSSQLClient) ConnectWithDB(host string, port int, username, password, dbName string) (bool, error) {
-	return memoizedconnect(host, port, username, password, dbName)
+func (c *MSSQLClient) ConnectWithDB(ctx context.Context, host string, port int, username, password, dbName string) (bool, error) {
+	executionId := ctx.Value("executionId").(string)
+	return memoizedconnect(ctx, executionId, host, port, username, password, dbName)
 }
 
 // @memo
-func connect(host string, port int, username string, password string, dbName string) (bool, error) {
+func connect(ctx context.Context, executionId string, host string, port int, username string, password string, dbName string) (bool, error) {
 	if host == "" || port <= 0 {
 		return false, fmt.Errorf("invalid host or port")
 	}
-	if !protocolstate.IsHostAllowed(host) {
+	if !protocolstate.IsHostAllowed(executionId, host) {
 		// host is not valid according to network policy
 		return false, protocolstate.ErrHostDenied.Msgf(host)
 	}
@@ -77,10 +79,10 @@ func connect(host string, port int, username string, password string, dbName str
 		return false, err
 	}
 	defer func() {
-         _ = db.Close()
-       }()
+		_ = db.Close()
+	}()
 
-	_, err = db.Exec("select 1")
+	_, err = db.ExecContext(ctx, "select 1")
 	if err != nil {
 		switch {
 		case strings.Contains(err.Error(), "connect: connection refused"):
@@ -107,24 +109,30 @@ func connect(host string, port int, username string, password string, dbName str
 // const mssql = require('nuclei/mssql');
 // const isMssql = mssql.IsMssql('acme.com', 1433);
 // ```
-func (c *MSSQLClient) IsMssql(host string, port int) (bool, error) {
-	return memoizedisMssql(host, port)
+func (c *MSSQLClient) IsMssql(ctx context.Context, host string, port int) (bool, error) {
+	executionId := ctx.Value("executionId").(string)
+	return memoizedisMssql(ctx, executionId, host, port)
 }
 
 // @memo
-func isMssql(host string, port int) (bool, error) {
-	if !protocolstate.IsHostAllowed(host) {
+func isMssql(ctx context.Context, executionId string, host string, port int) (bool, error) {
+	if !protocolstate.IsHostAllowed(executionId, host) {
 		// host is not valid according to network policy
 		return false, protocolstate.ErrHostDenied.Msgf(host)
 	}
 
-	conn, err := protocolstate.Dialer.Dial(context.TODO(), "tcp", net.JoinHostPort(host, fmt.Sprintf("%d", port)))
+	dialer := protocolstate.GetDialersWithId(executionId)
+	if dialer == nil {
+		return false, fmt.Errorf("dialers not initialized for %s", executionId)
+	}
+
+	conn, err := dialer.Fastdialer.Dial(ctx, "tcp", net.JoinHostPort(host, fmt.Sprintf("%d", port)))
 	if err != nil {
 		return false, err
 	}
 	defer func() {
-         _ = conn.Close()
-       }()
+		_ = conn.Close()
+	}()
 
 	data, check, err := mssql.DetectMSSQL(conn, 5*time.Second)
 	if check && err != nil {
@@ -147,18 +155,19 @@ func isMssql(host string, port int) (bool, error) {
 // const result = client.ExecuteQuery('acme.com', 1433, 'username', 'password', 'master', 'SELECT @@version');
 // log(to_json(result));
 // ```
-func (c *MSSQLClient) ExecuteQuery(host string, port int, username, password, dbName, query string) (*utils.SQLResult, error) {
+func (c *MSSQLClient) ExecuteQuery(ctx context.Context, host string, port int, username, password, dbName, query string) (*utils.SQLResult, error) {
+	executionId := ctx.Value("executionId").(string)
 	if host == "" || port <= 0 {
 		return nil, fmt.Errorf("invalid host or port")
 	}
-	if !protocolstate.IsHostAllowed(host) {
+	if !protocolstate.IsHostAllowed(executionId, host) {
 		// host is not valid according to network policy
 		return nil, protocolstate.ErrHostDenied.Msgf(host)
 	}
 
 	target := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 
-	ok, err := c.IsMssql(host, port)
+	ok, err := c.IsMssql(ctx, host, port)
 	if err != nil {
 		return nil, err
 	}
@@ -177,13 +186,13 @@ func (c *MSSQLClient) ExecuteQuery(host string, port int, username, password, db
 		return nil, err
 	}
 	defer func() {
-         _ = db.Close()
-       }()
+		_ = db.Close()
+	}()
 
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(0)
 
-	rows, err := db.Query(query)
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}

@@ -136,7 +136,7 @@ func (rule *Rule) executePartComponentOnKV(input *ExecuteRuleInput, payload Valu
 				return qerr
 			}
 
-			// after building change back to original value to avoid repeating it in furthur requests
+			// after building change back to original value to avoid repeating it in further requests
 			if origKey != "" {
 				err = ruleComponent.SetValue(origKey, types.ToString(origValue)) // change back to previous value for temp
 				if err != nil {
@@ -159,10 +159,12 @@ func (rule *Rule) execWithInput(input *ExecuteRuleInput, httpReq *retryablehttp.
 	if _, err := strconv.Atoi(parameter); err == nil || (parameter == "" && parameterValue != "") {
 		actualParameter = parameterValue
 	}
-	// If the parameter is frequent, skip it if the option is enabled
-	if rule.options.FuzzParamsFrequency != nil {
+	// If the parameter is frequent, skip it if the option is enabled.
+	// Skip frequency check when parameter is empty (mode: multiple sends
+	// all values at once without a specific parameter name).
+	if rule.options.FuzzParamsFrequency != nil && actualParameter != "" {
 		if rule.options.FuzzParamsFrequency.IsParameterFrequent(
-			parameter,
+			actualParameter,
 			httpReq.String(),
 			rule.options.TemplateID,
 		) {

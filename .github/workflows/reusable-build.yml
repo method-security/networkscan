@@ -48,7 +48,10 @@ jobs:
 
       # Build ARM64 builder image natively (no QEMU needed)
       - name: Build ARM64 Builder Image
-        run: docker buildx build . --platform linux/arm64 --load --tag armbuilder -f Dockerfile.builder
+        run: >
+          docker buildx build . --platform linux/arm64 --load --tag armbuilder
+          -f Dockerfile.builder
+          --build-arg GO_VERSION=$(awk '/^go /{print $2}' go.mod)
 
       # Build inside the Alpine container to ensure library compatibility
       - name: Build ARM64 Binary in Alpine Container
@@ -101,7 +104,10 @@ jobs:
 
       # Build AMD64 builder image natively (no QEMU needed)
       - name: Build AMD64 Builder Image
-        run: docker buildx build . --platform linux/amd64 --load --tag amdbuilder -f Dockerfile.builder
+        run: >
+          docker buildx build . --platform linux/amd64 --load --tag amdbuilder
+          -f Dockerfile.builder
+          --build-arg GO_VERSION=$(awk '/^go /{print $2}' go.mod)
 
       # Build inside the Alpine container to ensure library compatibility
       - name: Build AMD64 Binary in Alpine Container

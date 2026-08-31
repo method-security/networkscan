@@ -11,18 +11,22 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"hash"
-	"html"
 	"io"
 	"math"
 	"net"
+	"os"
 	"reflect"
 	"regexp"
 	"sort"
@@ -33,7 +37,10 @@ import (
 	"github.com/Knetic/govaluate"
 	"github.com/Mzack9999/gcache"
 	"github.com/asaskevich/govalidator"
+	"github.com/brianvoe/gofakeit/v7"
+	"github.com/gosimple/slug"
 	"github.com/hashicorp/go-version"
+	"github.com/iangcarroll/cookiemonster/pkg/monster"
 	"github.com/kataras/jwt"
 	"github.com/logrusorgru/aurora"
 	"github.com/projectdiscovery/dsl/deserialization"
@@ -42,8 +49,11 @@ import (
 	"github.com/projectdiscovery/gologger"
 	"github.com/projectdiscovery/gostruct"
 	"github.com/projectdiscovery/mapcidr"
+	"github.com/projectdiscovery/utils/conn/connpool"
 	jarm "github.com/projectdiscovery/utils/crypto/jarm"
-	errors "github.com/projectdiscovery/utils/errors"
+	"github.com/projectdiscovery/utils/errkit"
+	hexutil "github.com/projectdiscovery/utils/hex"
+	"github.com/projectdiscovery/utils/html"
 	maputils "github.com/projectdiscovery/utils/maps"
 	randint "github.com/projectdiscovery/utils/rand"
 	stringsutil "github.com/projectdiscovery/utils/strings"
@@ -64,24 +74,51 @@ var (
 
 	// ErrParsingArg is error when parsing value of argument
 	// Use With Caution: Nuclei ignores this error in extractors(ref: https://github.com/projectdiscovery/nuclei/issues/3950)
-	ErrParsingArg = errors.New("error parsing argument value")
+	ErrParsingArg = errkit.New("error parsing argument value")
+
+	errDuplicateFunc = errors.New("duplicate function")
 
 	DefaultMaxDecompressionSize = int64(10 * 1024 * 1024) // 10MB
 	DefaultCacheSize            = 6144
 	resultCache                 = gcache.New[string, interface{}](DefaultCacheSize).Build()
+
+	// Initialize faker functions
+	faker = gofakeit.New(0)
 )
+
+// firstNonEmptyEnv returns the first non-empty environment variable value
+// from the provided list of keys (checked in order).
+func firstNonEmptyEnv(keys ...string) string {
+	for _, key := range keys {
+		if v := os.Getenv(key); v != "" {
+			return v
+		}
+	}
+	return ""
+}
 
 var PrintDebugCallback func(args ...interface{}) error
 
 var functions []dslFunction
+var fakerFunctions []dslFunction
 
 func AddFunction(function dslFunction) error {
 	for _, f := range functions {
 		if function.Name == f.Name {
-			return errors.New("duplicate helper function key defined")
+			return errkit.Wrapf(errDuplicateFunc, "duplicate helper function key: %q", f.Name)
 		}
 	}
 	functions = append(functions, function)
+	return nil
+}
+
+func addFakerFunction(function dslFunction) error {
+	for _, f := range functions {
+		if function.Name == f.Name {
+			return fmt.Errorf("%w: %q", errDuplicateFunc, f.Name)
+		}
+	}
+	fakerFunctions = append(fakerFunctions, function)
 	return nil
 }
 
@@ -144,15 +181,16 @@ func init() {
 		true,
 		func(args ...interface{}) (interface{}, error) {
 			argCount := len(args)
-			if argCount == 0 {
+			switch argCount {
+			case 0:
 				return nil, ErrInvalidDslFunction
-			} else if argCount == 1 {
+			case 1:
 				runes := []rune(toString(args[0]))
 				sort.Slice(runes, func(i int, j int) bool {
 					return runes[i] < runes[j]
 				})
 				return string(runes), nil
-			} else {
+			default:
 				tokens := make([]string, 0, argCount)
 				for _, arg := range args {
 					tokens = append(tokens, toString(arg))
@@ -205,9 +243,10 @@ func init() {
 		true,
 		func(args ...interface{}) (interface{}, error) {
 			argCount := len(args)
-			if argCount == 0 {
+			switch argCount {
+			case 0:
 				return nil, ErrInvalidDslFunction
-			} else if argCount == 1 {
+			case 1:
 				builder := &strings.Builder{}
 				visited := make(map[rune]struct{})
 				for _, i := range toString(args[0]) {
@@ -217,7 +256,7 @@ func init() {
 					}
 				}
 				return builder.String(), nil
-			} else {
+			default:
 				result := make([]string, 0, argCount)
 				visited := make(map[string]struct{})
 				for _, i := range args[0:] {
@@ -492,9 +531,25 @@ func init() {
 		}
 		return result.String(), nil
 	}))
-	MustAddFunction(NewWithPositionalArgs("hex_encode", 1, true, func(args ...interface{}) (interface{}, error) {
-		return hex.EncodeToString([]byte(toString(args[0]))), nil
-	}))
+	MustAddFunction(NewWithMultipleSignatures("hex_encode", []string{
+		"(data interface{}) interface{}",
+		"(data interface{}, optionalFormat string) interface{}"},
+		true,
+		func(args ...interface{}) (interface{}, error) {
+			if len(args) < 1 || len(args) > 2 {
+				return nil, ErrInvalidDslFunction
+			}
+
+			data := args[0]
+			if len(args) == 1 {
+				// Default behavior: standard hex format
+				return hexutil.Encode(data), nil
+			}
+
+			// Optional format parameter
+			format := toString(args[1])
+			return hexutil.Encode(data, format), nil
+		}))
 	MustAddFunction(NewWithPositionalArgs("hex_decode", 1, true, func(args ...interface{}) (interface{}, error) {
 		decodeString, err := hex.DecodeString(toString(args[0]))
 		return string(decodeString), err
@@ -520,9 +575,20 @@ func init() {
 		h.Write([]byte(data))
 		return hex.EncodeToString(h.Sum(nil)), nil
 	}))
-	MustAddFunction(NewWithPositionalArgs("html_escape", 1, true, func(args ...interface{}) (interface{}, error) {
-		return html.EscapeString(toString(args[0])), nil
-	}))
+	MustAddFunction(NewWithSingleSignature("html_escape",
+		"(s string, optionalConvertAllChars bool) string",
+		true,
+		func(args ...interface{}) (interface{}, error) {
+			s := toString(args[0])
+			if len(args) > 1 {
+				convertAllChars := toBool(args[1])
+				if convertAllChars {
+					return strToNumEntities(s), nil
+				}
+			}
+
+			return html.EscapeString(s), nil
+		}))
 	MustAddFunction(NewWithPositionalArgs("html_unescape", 1, true, func(args ...interface{}) (interface{}, error) {
 		return html.UnescapeString(toString(args[0])), nil
 	}))
@@ -540,7 +606,7 @@ func init() {
 	}))
 	MustAddFunction(NewWithPositionalArgs("mmh3", 1, true, func(args ...interface{}) (interface{}, error) {
 		hasher := murmur3.New32WithSeed(0)
-		hasher.Write([]byte(fmt.Sprint(args[0])))
+		hasher.Write([]byte(fmt.Sprint(args[0]))) //nolint
 		return fmt.Sprintf("%d", int32(hasher.Sum32())), nil
 	}))
 	MustAddFunction(NewWithPositionalArgs("contains", 2, true, func(args ...interface{}) (interface{}, error) {
@@ -646,16 +712,17 @@ func init() {
 		true,
 		func(arguments ...interface{}) (interface{}, error) {
 			argumentsSize := len(arguments)
-			if argumentsSize == 2 {
+			switch argumentsSize {
+			case 2:
 				input := toString(arguments[0])
 				separatorOrCount := toString(arguments[1])
 
 				count, err := strconv.Atoi(separatorOrCount)
 				if err != nil {
-					return strings.SplitN(input, separatorOrCount, -1), nil
+					return strings.Split(input, separatorOrCount), nil
 				}
 				return toChunks(input, count), nil
-			} else if argumentsSize == 3 {
+			case 3:
 				input := toString(arguments[0])
 				separator := toString(arguments[1])
 				count, err := strconv.Atoi(toString(arguments[2]))
@@ -663,7 +730,7 @@ func init() {
 					return nil, ErrInvalidDslFunction
 				}
 				return strings.SplitN(input, separator, count), nil
-			} else {
+			default:
 				return nil, ErrInvalidDslFunction
 			}
 		}))
@@ -673,25 +740,26 @@ func init() {
 		true,
 		func(arguments ...interface{}) (interface{}, error) {
 			argumentsSize := len(arguments)
-			if argumentsSize < 2 {
+			switch {
+			case argumentsSize < 2:
 				return nil, ErrInvalidDslFunction
-			} else if argumentsSize == 2 {
+			case argumentsSize == 2:
 				separator := toString(arguments[0])
 				elements, ok := arguments[1].([]string)
 
 				if !ok {
-					return nil, errors.New("cannot cast elements into string")
+					return nil, errkit.New("cannot cast elements into string")
 				}
 
 				return strings.Join(elements, separator), nil
-			} else {
+			default:
 				separator := toString(arguments[0])
 				elements := arguments[1:argumentsSize]
 
 				stringElements := make([]string, 0, argumentsSize)
 				for _, element := range elements {
 					if _, ok := element.([]string); ok {
-						return nil, errors.New("cannot use join on more than one slice element")
+						return nil, errkit.New("cannot use join on more than one slice element")
 					}
 
 					stringElements = append(stringElements, toString(element))
@@ -915,6 +983,14 @@ func init() {
 		data := deserialization.GenerateJavaGadget(gadget, cmd, encoding)
 		return data, nil
 	}))
+	MustAddFunction(NewWithPositionalArgs("generate_dotnet_gadget", 4, true, func(args ...interface{}) (interface{}, error) {
+		gadget := args[0].(string)
+		cmd := args[1].(string)
+		formatter := args[2].(string)
+		encoding := args[3].(string)
+		data := deserialization.GenerateDotNetGadget(gadget, cmd, formatter, encoding)
+		return data, nil
+	}))
 	MustAddFunction(NewWithSingleSignature("unix_time",
 		"(optionalSeconds uint) float64",
 		false,
@@ -982,7 +1058,7 @@ func init() {
 
 			firstParsed, parseErr := version.NewVersion(toString(args[0]))
 			if parseErr != nil {
-				return nil, errors.NewWithErr(ErrParsingArg).Wrap(parseErr)
+				return nil, errkit.Combine(ErrParsingArg, parseErr)
 			}
 
 			var versionConstraints []string
@@ -1013,11 +1089,11 @@ func init() {
 			bLen = int(floatVal)
 		}
 		if bLen == 0 {
-			return nil, errors.New("invalid padding length")
+			return nil, errkit.New("invalid padding length")
 		}
 		bByte := []byte(toString(args[1]))
 		if len(bByte) == 0 {
-			return nil, errors.New("invalid padding byte")
+			return nil, errkit.New("invalid padding byte")
 		}
 		bData := []byte(toString(args[0]))
 		dataLen := len(bData)
@@ -1027,7 +1103,7 @@ func init() {
 
 		padMode, ok := args[3].(string)
 		if !ok || (padMode != "prefix" && padMode != "suffix") {
-			return nil, errors.New("padding mode must be 'prefix' or 'suffix'")
+			return nil, errkit.New("padding mode must be 'prefix' or 'suffix'")
 		}
 
 		paddingLen := bLen - dataLen
@@ -1073,6 +1149,9 @@ func init() {
 	MustAddFunction(NewWithPositionalArgs("to_string", 1, true, func(args ...interface{}) (interface{}, error) {
 		return toString(args[0]), nil
 	}))
+	MustAddFunction(NewWithPositionalArgs("to_bool", 1, true, func(args ...interface{}) (interface{}, error) {
+		return toBool(args[0]), nil
+	}))
 	MustAddFunction(NewWithPositionalArgs("dec_to_hex", 1, true, func(args ...interface{}) (interface{}, error) {
 		if number, ok := args[0].(float64); ok {
 			hexNum := strconv.FormatInt(int64(number), 16)
@@ -1098,14 +1177,14 @@ func init() {
 			}
 			argStr := toString(args[0])
 			if len(argStr) == 0 {
-				return nil, errors.New("empty string")
+				return nil, errkit.New("empty string")
 			}
 			start, err := strconv.Atoi(toString(args[1]))
 			if err != nil {
-				return nil, errors.NewWithErr(err).Msgf("invalid start position")
+				return nil, errkit.Wrap(err, "invalid start position")
 			}
 			if start > len(argStr) {
-				return nil, errors.New("start position bigger than slice length")
+				return nil, errkit.New("start position bigger than slice length")
 			}
 			if len(args) == 2 {
 				return argStr[start:], nil
@@ -1113,16 +1192,16 @@ func init() {
 
 			end, err := strconv.Atoi(toString(args[2]))
 			if err != nil {
-				return nil, errors.New("invalid end position")
+				return nil, errkit.New("invalid end position")
 			}
 			if end < 0 {
-				return nil, errors.New("negative end position")
+				return nil, errkit.New("negative end position")
 			}
 			if end < start {
-				return nil, errors.New("end position before start")
+				return nil, errkit.New("end position before start")
 			}
 			if end > len(argStr) {
-				return nil, errors.New("end position bigger than slice length start")
+				return nil, errkit.New("end position bigger than slice length start")
 			}
 			return argStr[start:end], nil
 		}))
@@ -1389,6 +1468,15 @@ func init() {
 		if err != nil {
 			return nil, err
 		}
+		// pick the first available proxy from common env vars (case-insensitive)
+		proxy := firstNonEmptyEnv("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy")
+		if proxy != "" {
+			socks5Dialer, err := connpool.NewCreateSOCKS5Dialer(proxy)
+			if err != nil {
+				return nil, err
+			}
+			return jarm.HashWithDialer(socks5Dialer, hostname, port, 10)
+		}
 		return jarm.HashWithDialer(nil, hostname, port, 10)
 	}))
 
@@ -1429,10 +1517,107 @@ func init() {
 			}
 
 			return cases.Title(lang).String(s), nil
-		}))
+		},
+	))
+
+	MustAddFunction(NewWithSingleSignature("cookie_unsign",
+		"(s string) string", false,
+		func(args ...interface{}) (interface{}, error) {
+			argSize := len(args)
+			if argSize < 1 {
+				return nil, ErrInvalidDslFunction
+			}
+			s := toString(args[0])
+
+			wl := monster.NewWordlist()
+			if err := wl.LoadDefault(); err != nil {
+				return s, errors.New("could not load default wordlist")
+			}
+
+			c := monster.NewCookie(s)
+			if !c.Decode() {
+				return s, errors.New("could not decode cookie")
+			}
+
+			if cookie, ok := c.Unsign(wl, 100); ok {
+				return string(cookie), nil
+			}
+
+			return s, errors.New("could not unsign cookie")
+		},
+	))
+
+	MustAddFunction(NewWithPositionalArgs("gzip_mtime", 1, true, func(args ...interface{}) (interface{}, error) {
+		if len(args) == 0 {
+			return nil, ErrInvalidDslFunction
+		}
+
+		argData := toString(args[0])
+		readLimit := DefaultMaxDecompressionSize
+
+		reader, err := gzip.NewReader(io.LimitReader(strings.NewReader(argData), readLimit))
+		if err != nil {
+			return "", err
+		}
+
+		var mtime int64
+		if !reader.ModTime.IsZero() {
+			mtime = reader.ModTime.Unix()
+		}
+		_ = reader.Close()
+
+		return float64(mtime), nil
+	}))
+
+	MustAddFunction(NewWithPositionalArgs("rsa_encrypt",
+		2,
+		true,
+		func(args ...interface{}) (interface{}, error) {
+			if len(args) != 2 {
+				return nil, errors.New("rsa_encrypt expects 2 arguments: plaintext, pemPublicKey")
+			}
+
+			plaintext, ok1 := args[0].(string)
+			publicKeyPem, ok2 := args[1].(string)
+
+			if !ok1 || !ok2 {
+				return nil, errors.New("invalid arguments")
+			}
+
+			block, _ := pem.Decode([]byte(publicKeyPem))
+			if block == nil {
+				return nil, errors.New("invalid PEM format")
+			}
+
+			pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+			if err != nil {
+				return nil, err
+			}
+
+			rsaPub, ok := pub.(*rsa.PublicKey)
+			if !ok {
+				return nil, errors.New("not an RSA public key")
+			}
+
+			ciphertext, err := rsa.EncryptPKCS1v15(rand.Reader, rsaPub, []byte(plaintext))
+			if err != nil {
+				return nil, fmt.Errorf("RSA encryption failed: %w", err)
+			}
+			return base64.StdEncoding.EncodeToString(ciphertext), nil
+		}),
+	)
 
 	DefaultHelperFunctions = HelperFunctions()
 	FunctionNames = GetFunctionNames(DefaultHelperFunctions)
+}
+
+// Helper function to generate function signatures for faker functions
+func getFakerSignature(info gofakeit.Info) string {
+	var params []string
+	for _, p := range info.Params {
+		params = append(params, fmt.Sprintf("%s %s", p.Field, p.Type))
+	}
+	return fmt.Sprintf("(%s) %s", strings.Join(params, ", "), info.Output)
 }
 
 func NewWithSingleSignature(name, signature string, cacheable bool, logic govaluate.ExpressionFunction) dslFunction {
@@ -1460,6 +1645,80 @@ func NewWithPositionalArgs(name string, numberOfArgs int, cacheable bool, expr g
 	return function
 }
 
+// FakerFunctions returns the faker functions
+//
+// Note: It does not support backwards compatibility for function names
+func FakerFunctions() map[string]govaluate.ExpressionFunction {
+	funcs := make(map[string]govaluate.ExpressionFunction)
+	slug.CustomSub = map[string]string{" ": "_"}
+
+	for _, fInfo := range gofakeit.FuncLookups {
+		// NOTE(dwisiswant0): Skipping function because it not callable or the
+		// output is not printable.
+		hasSliceParam := false
+		for _, p := range fInfo.Params {
+			if strings.Contains(p.Type, "[]") {
+				hasSliceParam = true
+				break
+			}
+		}
+		if hasSliceParam {
+			continue
+		}
+		if strings.Contains(fInfo.Output, "map") {
+			continue
+		}
+
+		funcName := "rand_" + slug.Make(fInfo.Display)
+		fakerFunc := func(fInfo gofakeit.Info) func(args ...any) (any, error) {
+			return func(args ...any) (any, error) {
+				// Set function and params
+				// Copied from: https://github.com/brianvoe/gofakeit/blob/e7c55ca0031ef39bb7673deedfc9f04fc17d8072/cmd/gofakeit/gofakeit.go#L112
+				params := gofakeit.NewMapParams()
+				paramsLen := len(fInfo.Params)
+				argsLen := len(args)
+				if argsLen != paramsLen {
+					return nil, fmt.Errorf("expected %d arguments, got %d", paramsLen, argsLen)
+				}
+
+				if paramsLen > 0 {
+					for i := 0; i < argsLen; i++ {
+						if i == 0 {
+							continue
+						}
+
+						// Map argument to param field
+						if paramsLen >= i {
+							p := fInfo.Params[i-1]
+							arg := fmt.Sprintf("%v", args[i])
+							params.Add(p.Field, arg)
+						}
+					}
+				}
+
+				value, err := fInfo.Generate(faker, params, &fInfo)
+				if err != nil {
+					return "", fmt.Errorf("faker error: %w", err)
+				}
+
+				return value, nil
+			}
+		}
+
+		// Register the function with the DSL
+		f := fakerFunc(fInfo)
+		err := addFakerFunction(NewWithSingleSignature(
+			funcName, getFakerSignature(fInfo), false, f,
+		))
+		if err != nil && !errors.Is(err, errDuplicateFunc) {
+			panic(fmt.Errorf("%w (faker)", err))
+		}
+		funcs[funcName] = f
+	}
+
+	return funcs
+}
+
 // HelperFunctions returns the dsl helper functions
 func HelperFunctions() map[string]govaluate.ExpressionFunction {
 	helperFunctions := make(map[string]govaluate.ExpressionFunction)
@@ -1484,23 +1743,37 @@ func GetFunctionNames(heperFunctions map[string]govaluate.ExpressionFunction) []
 	return maputils.GetKeys(heperFunctions)
 }
 
+// GetPrintableDslFunctionSignatures returns the function signatures for the
+// default DSL functions
 func GetPrintableDslFunctionSignatures(noColor bool) string {
 	if noColor {
-		return aggregate(getDslFunctionSignatures())
+		return aggregate(getDslFunctionSignatures(functions))
 	}
-	return aggregate(colorizeDslFunctionSignatures())
+	return aggregate(colorizeDslFunctionSignatures(functions))
 }
 
-func getDslFunctionSignatures() []string {
+// GetPrintableFakerDslFunctionSignatures returns the function signatures for
+// the faker functions.
+//
+// Note: [FakerFunctions] must be called first to populate the functions
+// map with the faker functions.
+func GetPrintableFakerDslFunctionSignatures(noColor bool) string {
+	if noColor {
+		return aggregate(getDslFunctionSignatures(fakerFunctions))
+	}
+	return aggregate(colorizeDslFunctionSignatures(fakerFunctions))
+}
+
+func getDslFunctionSignatures(funcs []dslFunction) []string {
 	var result []string
-	for _, function := range functions {
-		result = append(result, function.GetSignatures()...)
+	for _, f := range funcs {
+		result = append(result, f.GetSignatures()...)
 	}
 	return result
 }
 
-func colorizeDslFunctionSignatures() []string {
-	signatures := getDslFunctionSignatures()
+func colorizeDslFunctionSignatures(funcs []dslFunction) []string {
+	signatures := getDslFunctionSignatures(funcs)
 
 	colorToOrange := func(value string) string {
 		return aurora.Index(208, value).String()

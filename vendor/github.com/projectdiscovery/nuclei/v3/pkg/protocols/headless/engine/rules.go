@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/proto"
+	"github.com/projectdiscovery/gologger"
 	"github.com/projectdiscovery/nuclei/v3/pkg/protocols/common/protocolstate"
 )
 
@@ -48,7 +49,9 @@ func (p *Page) routingRuleHandler(httpClient *http.Client) func(ctx *rod.Hijack)
 		}
 
 		// perform the request
-		_ = ctx.LoadResponse(httpClient, true)
+		if err := ctx.LoadResponse(httpClient, true); err != nil {
+			gologger.Verbose().Msgf("headless: failed to load response for %s: %s", ctx.Request.URL(), err)
+		}
 
 		if !p.options.DisableCookie {
 			// retrieve the updated cookies from the native http client and inject them into the shared cookie jar
@@ -88,7 +91,7 @@ func (p *Page) routingRuleHandler(httpClient *http.Client) func(ctx *rod.Hijack)
 		var rawResp strings.Builder
 		respPayloads := ctx.Response.Payload()
 		if respPayloads != nil {
-			rawResp.WriteString(fmt.Sprintf("HTTP/1.1 %d %s\n", respPayloads.ResponseCode, respPayloads.ResponsePhrase))
+			fmt.Fprintf(&rawResp, "HTTP/1.1 %d %s\n", respPayloads.ResponseCode, respPayloads.ResponsePhrase)
 			for _, header := range respPayloads.ResponseHeaders {
 				rawResp.WriteString(header.Name + ": " + header.Value + "\n")
 			}
@@ -110,7 +113,7 @@ func (p *Page) routingRuleHandlerNative(e *proto.FetchRequestPaused) error {
 	// ValidateNFailRequest validates if Local file access is enabled
 	// and local network access is enables if not it will fail the request
 	// that don't match the rules
-	if err := protocolstate.ValidateNFailRequest(p.page, e); err != nil {
+	if err := protocolstate.ValidateNFailRequest(p.options.Options, p.page, e); err != nil {
 		return err
 	}
 	body, _ := FetchGetResponseBody(p.page, e)
@@ -126,17 +129,17 @@ func (p *Page) routingRuleHandlerNative(e *proto.FetchRequestPaused) error {
 
 	// attempts to rebuild request
 	var rawReq strings.Builder
-	rawReq.WriteString(fmt.Sprintf("%s %s %s\n", e.Request.Method, e.Request.URL, "HTTP/1.1"))
+	fmt.Fprintf(&rawReq, "%s %s %s\n", e.Request.Method, e.Request.URL, "HTTP/1.1")
 	for _, header := range e.Request.Headers {
-		rawReq.WriteString(fmt.Sprintf("%s\n", header.String()))
+		fmt.Fprintf(&rawReq, "%s\n", header.String())
 	}
 	if e.Request.HasPostData {
-		rawReq.WriteString(fmt.Sprintf("\n%s\n", e.Request.PostData))
+		fmt.Fprintf(&rawReq, "\n%s\n", e.Request.PostData)
 	}
 
 	// attempts to rebuild the response
 	var rawResp strings.Builder
-	rawResp.WriteString(fmt.Sprintf("HTTP/1.1 %d %s\n", statusCode, e.ResponseStatusText))
+	fmt.Fprintf(&rawResp, "HTTP/1.1 %d %s\n", statusCode, e.ResponseStatusText)
 	for _, header := range e.ResponseHeaders {
 		rawResp.WriteString(header.Name + ": " + header.Value + "\n")
 	}

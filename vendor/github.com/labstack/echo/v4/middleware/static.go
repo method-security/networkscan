@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/internal/pathutil"
 	"github.com/labstack/gommon/bytes"
 )
 
@@ -170,10 +171,23 @@ func StaticWithConfig(config StaticConfig) echo.MiddlewareFunc {
 			if strings.HasSuffix(c.Path(), "*") { // When serving from a group, e.g. `/static*`.
 				p = c.Param("*")
 			}
+			// The router matched on the raw, still-encoded path, so an encoded path separator in
+			// the wildcard would only now become a real separator and resolve a file the matched
+			// route never authorized, bypassing route-level middleware. Reject it before unescaping
+			// (see echo.StaticDirectoryHandler).
+			if pathutil.HasEncodedPathSeparator(p) {
+				return echo.ErrNotFound
+			}
 			p, err = url.PathUnescape(p)
 			if err != nil {
 				return
 			}
+			// Security: We use path.Clean() (not filepath.Clean()) because:
+			// 1. HTTP URLs always use forward slashes, regardless of server OS
+			// 2. path.Clean() provides platform-independent behavior for URL paths
+			// 3. The "/" prefix forces absolute path interpretation, removing ".." components
+			// 4. Backslashes are treated as literal characters (not path separators), preventing traversal
+			// See static_windows.go for Go 1.20+ filepath.Clean compatibility notes
 			name := path.Join(config.Root, path.Clean("/"+p)) // "/"+ for security
 
 			if config.IgnoreBase {

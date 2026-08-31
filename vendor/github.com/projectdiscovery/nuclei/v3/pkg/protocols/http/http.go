@@ -13,6 +13,7 @@ import (
 
 	"github.com/projectdiscovery/fastdialer/fastdialer"
 	_ "github.com/projectdiscovery/nuclei/v3/pkg/fuzz/analyzers/time"
+	_ "github.com/projectdiscovery/nuclei/v3/pkg/fuzz/analyzers/xss"
 
 	"github.com/projectdiscovery/nuclei/v3/pkg/fuzz"
 	"github.com/projectdiscovery/nuclei/v3/pkg/fuzz/analyzers"
@@ -506,7 +507,7 @@ func (request *Request) Compile(options *protocols.ExecutorOptions) error {
 			stats.Increment(SetThreadToCountZero)
 			request.Threads = 0
 		} else {
-			// specifically for http requests high concurrency and and threads will lead to memory exausthion, hence reduce the maximum parallelism
+			// specifically for http requests high concurrency and threads will lead to memory exhaustion, hence reduce the maximum parallelism
 			if protocolstate.IsLowOnMemory() {
 				request.Threads = protocolstate.GuardThreadsOrDefault(request.Threads)
 			}
@@ -538,4 +539,14 @@ const (
 
 func init() {
 	stats.NewEntry(SetThreadToCountZero, "Setting thread count to 0 for %d templates, dynamic extractors are not supported with payloads yet")
+}
+
+// UpdateOptions replaces this request's options with a new copy
+func (r *Request) UpdateOptions(opts *protocols.ExecutorOptions) {
+	r.options.ApplyNewEngineOptions(opts)
+}
+
+// HasFuzzing indicates whether the request has fuzzing rules defined.
+func (request *Request) HasFuzzing() bool {
+	return len(request.Fuzzing) > 0
 }

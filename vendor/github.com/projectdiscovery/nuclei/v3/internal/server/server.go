@@ -112,7 +112,7 @@ func New(options *Options) (*DASTServer, error) {
 func NewStatsServer(fuzzStatsDB *stats.Tracker) (*DASTServer, error) {
 	server := &DASTServer{
 		nucleiExecutor: &nucleiExecutor{
-			executorOpts: protocols.ExecutorOptions{
+			executorOpts: &protocols.ExecutorOptions{
 				FuzzStatsDB: fuzzStatsDB,
 			},
 		},
@@ -185,7 +185,7 @@ func (s *DASTServer) Start() error {
 	return nil
 }
 
-// PostReuestsHandlerRequest is the request body for the /fuzz POST handler.
+// PostRequestsHandlerRequest is the request body for the /fuzz POST handler.
 type PostRequestsHandlerRequest struct {
 	RawHTTP string `json:"raw_http"`
 	URL     string `json:"url"`
