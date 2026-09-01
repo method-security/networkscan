@@ -120,7 +120,7 @@ types:
       host: string
       ip: string
       port: integer
-      tls: boolean
+      tls: optional<boolean>
       version: optional<string>
       transport: common.TransportType
       protocol: common.ProtocolType

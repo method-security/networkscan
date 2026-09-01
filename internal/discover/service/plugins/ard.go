@@ -127,7 +127,6 @@ func (ArdFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeArd,
 		Version:   version,

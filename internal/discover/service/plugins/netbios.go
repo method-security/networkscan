@@ -81,7 +81,6 @@ func (NetBIOSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeNetbios,
 		Version:   nil, // NetBIOS has no version field

@@ -86,7 +86,7 @@ func (KerberosFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       tlsUsed,
+		Tls:       helpers.BoolPtr(tlsUsed),
 		Transport: transport,
 		Protocol:  common.ProtocolTypeKerberos,
 		Version:   &version,

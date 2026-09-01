@@ -178,7 +178,6 @@ func buildCassandraResult(host string, ip net.IP, port int, response *cassandraS
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Version:   &version,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeCassandra,

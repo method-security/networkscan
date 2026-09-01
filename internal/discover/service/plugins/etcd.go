@@ -16,6 +16,7 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
 
 type EtcdFingerprinter struct{}
@@ -118,7 +119,7 @@ func buildEtcdServiceResult(host string, ip net.IP, port int, tlsEnabled bool, s
 		Host:      hostname,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       tlsEnabled,
+		Tls:       helpers.BoolPtr(tlsEnabled),
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeEtcd,
 		Metadata:  &discoverfern.ServiceMetadata{Etcd: serverInfo},

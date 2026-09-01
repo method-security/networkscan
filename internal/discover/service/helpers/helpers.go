@@ -20,7 +20,6 @@ func GenericResult(host string, ip net.IP, port int, transport common.TransportT
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: transport,
 		Protocol:  protocol,
 		Version:   &version,

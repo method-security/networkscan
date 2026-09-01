@@ -92,7 +92,6 @@ func (DHCPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeDhcp,
 		Version:   &version,

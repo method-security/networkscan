@@ -119,7 +119,6 @@ func (GesrtpFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeGesrtp,
 		Version:   version,

@@ -141,7 +141,6 @@ func buildOracleResult(host string, ip net.IP, port int, body string) *discoverf
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Version:   &version,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeOracledb,

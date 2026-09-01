@@ -118,7 +118,7 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       useTLS,
+		Tls:       helpers.BoolPtr(useTLS),
 		Transport: transport,
 		Protocol:  common.ProtocolTypeWinrm,
 		Version:   version,

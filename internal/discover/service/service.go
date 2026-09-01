@@ -58,6 +58,7 @@ type Fingerprinter interface {
 //   - 44818: Unitronics UniStream before generic EtherNet/IP
 var customFingerprintModules = []Fingerprinter{
 	&localPlugins.SSHFingerprinter{},             // SSH (Secure Shell)
+	&localPlugins.DNSTLSFingerprinter{},          // DNS over TLS
 	&localPlugins.EtcdFingerprinter{},            // etcd distributed key-value store; keep before generic gRPC
 	&localPlugins.RedisFingerprinter{},           // Redis key-value store
 	&localPlugins.MongoDBFingerprinter{},         // MongoDB driver manages its own connections
@@ -460,7 +461,7 @@ func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 		Host: result.Host,
 		Ip:   result.IP,
 		Port: result.Port,
-		Tls:  result.TLS,
+		Tls:  &result.TLS,
 		Transport: func() common.TransportType {
 			if transport, err := common.NewTransportTypeFromString(strings.ToUpper(result.Transport)); err == nil {
 				return transport

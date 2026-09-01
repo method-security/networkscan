@@ -130,7 +130,7 @@ func buildResult(host string, ip net.IP, port int, tlsUsed bool, statusStr strin
 		Host:    host,
 		Ip:      ip.String(),
 		Port:    port,
-		Tls:     tlsUsed,
+		Tls:     helpers.BoolPtr(tlsUsed),
 		Version: nil,
 		Transport: func() common.TransportType {
 			if transport == "TCPTLS" {

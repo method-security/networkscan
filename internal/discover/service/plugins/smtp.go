@@ -164,7 +164,6 @@ func buildSMTPResult(host string, ip net.IP, port int, banner, serverName, softw
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeSmtp,
 		Version:   &version,

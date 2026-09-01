@@ -111,7 +111,6 @@ func (UbiquitiFingerprinter) Detect(ctx context.Context, ip net.IP, port int, ho
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Version:   &deviceVersion,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeUbiquiti,
