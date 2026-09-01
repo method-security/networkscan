@@ -82,7 +82,6 @@ func redisDetailsFromResponse(host string, ip net.IP, port int, resp []byte) *di
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Version:   &version,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeRedis,

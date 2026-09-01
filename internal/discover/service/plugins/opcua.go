@@ -195,7 +195,6 @@ func buildOpcuaResult(host string, ip net.IP, port int, version, serverName, app
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeOpcua,
 		Version:   version,

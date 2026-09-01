@@ -109,7 +109,6 @@ func createSNMPResult(ip net.IP, port int, host string, versions []string, commu
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeSnmp,
 		Version:   &versionStr,

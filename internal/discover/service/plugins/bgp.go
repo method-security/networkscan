@@ -219,7 +219,6 @@ func createBGPServiceDetails(ip net.IP, port int, host, version, messageType str
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeBgp,
 		Version:   &version,

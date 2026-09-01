@@ -76,7 +76,7 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 			Host:      host,
 			Ip:        ip.String(),
 			Port:      port,
-			Tls:       proto.isTLS,
+			Tls:       boolPtr(proto.isTLS),
 			Version:   &server,
 			Transport: common.TransportTypeTcp,
 			Protocol:  protocol,

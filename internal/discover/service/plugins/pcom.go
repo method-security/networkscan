@@ -213,7 +213,6 @@ func parsePcomResponse(response string, ip net.IP, port int, host string) (*disc
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypePcom,
 	}
@@ -276,7 +275,6 @@ func createBasicPcomService(ip net.IP, port int, host string) *discoverfern.Serv
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypePcom,
 	}

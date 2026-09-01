@@ -118,7 +118,7 @@ func buildEtcdServiceResult(host string, ip net.IP, port int, tlsEnabled bool, s
 		Host:      hostname,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       tlsEnabled,
+		Tls:       boolPtr(tlsEnabled),
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeEtcd,
 		Metadata:  &discoverfern.ServiceMetadata{Etcd: serverInfo},

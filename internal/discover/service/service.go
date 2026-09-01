@@ -460,7 +460,7 @@ func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
 		Host: result.Host,
 		Ip:   result.IP,
 		Port: result.Port,
-		Tls:  result.TLS,
+		Tls:  &result.TLS,
 		Transport: func() common.TransportType {
 			if transport, err := common.NewTransportTypeFromString(strings.ToUpper(result.Transport)); err == nil {
 				return transport

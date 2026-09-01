@@ -97,7 +97,6 @@ func (NTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       false,
 		Transport: common.TransportTypeUdp,
 		Protocol:  common.ProtocolTypeNtp,
 		Version:   &version,

@@ -109,7 +109,7 @@ func detectFortiGateService(ctx context.Context, ip net.IP, port int, host strin
 			Host:      host,
 			Ip:        ip.String(),
 			Port:      port,
-			Tls:       true, // FGFM runs over SSL/TLS
+			Tls:       boolPtr(true), // FGFM runs over SSL/TLS
 			Transport: common.TransportTypeTcp,
 			Protocol:  common.ProtocolTypeFgfm,
 			Version:   &version,

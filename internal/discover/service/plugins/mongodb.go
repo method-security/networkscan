@@ -131,7 +131,7 @@ func buildMongoDBResult(host string, ip net.IP, port int, tlsEnabled bool, versi
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Tls:       tlsEnabled,
+		Tls:       boolPtr(tlsEnabled),
 		Version:   &version,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeMongodb,
