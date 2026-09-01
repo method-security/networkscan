@@ -3,6 +3,7 @@ package plugins
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 
@@ -20,13 +21,38 @@ func (DNSFingerprinter) Name() string { return "dns" }
 func (DNSFingerprinter) DefaultPorts() []int { return []int{53} }
 
 func (DNSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-
-	// Create DNS client with timeout
 	client := &dns.Client{
 		Net:     "udp",
 		Timeout: helpers.Timeout(timeout),
 	}
+	return detectDNS(ctx, client, ip, port, host, common.TransportTypeUdp, nil)
+}
+
+type DNSTLSFingerprinter struct{}
+
+func (DNSTLSFingerprinter) Name() string { return "dns-tls" }
+
+func (DNSTLSFingerprinter) DefaultPorts() []int { return []int{853} }
+
+func (DNSTLSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+	serverName := host
+	if serverName == "" {
+		serverName = ip.String()
+	}
+
+	client := &dns.Client{
+		Net:     "tcp-tls",
+		Timeout: helpers.Timeout(timeout),
+		TLSConfig: &tls.Config{
+			InsecureSkipVerify: true, //nolint:gosec
+			ServerName:         serverName,
+		},
+	}
+	return detectDNS(ctx, client, ip, port, host, common.TransportTypeTcptls, boolPtr(true))
+}
+
+func detectDNS(ctx context.Context, client *dns.Client, ip net.IP, port int, host string, transport common.TransportType, tlsEnabled *bool) (*discoverfern.ServiceDetails, error) {
+	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	// Create a DNS query for version.bind (CHAOS TXT record)
 	// This is commonly used to fingerprint DNS servers
@@ -35,12 +61,12 @@ func (DNSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	msg.Question[0].Qclass = dns.ClassCHAOS
 
 	// Send the query
-	resp, _, err := client.Exchange(msg, addr)
+	resp, _, err := client.ExchangeContext(ctx, msg, addr)
 	if err != nil {
 		// Try a standard query as fallback
 		msg = new(dns.Msg)
 		msg.SetQuestion(".", dns.TypeNS)
-		resp, _, err = client.Exchange(msg, addr)
+		resp, _, err = client.ExchangeContext(ctx, msg, addr)
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +118,8 @@ func (DNSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		Host:      host,
 		Ip:        ip.String(),
 		Port:      port,
-		Transport: common.TransportTypeUdp,
+		Tls:       tlsEnabled,
+		Transport: transport,
 		Protocol:  common.ProtocolTypeDns,
 		Version:   dnsVersion,
 		Metadata:  &discoverfern.ServiceMetadata{Dns: metadata},
