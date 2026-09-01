@@ -48,7 +48,7 @@ func (DNSTLSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 			ServerName:         serverName,
 		},
 	}
-	return detectDNS(ctx, client, ip, port, host, common.TransportTypeTcptls, boolPtr(true))
+	return detectDNS(ctx, client, ip, port, host, common.TransportTypeTcptls, helpers.BoolPtr(true))
 }
 
 func detectDNS(ctx context.Context, client *dns.Client, ip net.IP, port int, host string, transport common.TransportType, tlsEnabled *bool) (*discoverfern.ServiceDetails, error) {
