@@ -8,34 +8,40 @@ require (
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/google/uuid v1.6.0
-	github.com/gopacket/gopacket v1.6.1
+	github.com/gopacket/gopacket v1.7.1
 	github.com/gosnmp/gosnmp v1.44.0
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/jfjallid/go-smb v0.11.0
 	github.com/jfjallid/gokrb5/v8 v8.6.3
 	github.com/lib/pq v1.12.3
 	github.com/masterzen/winrm v0.0.0-20260407182533-5570be7f80cf
-	github.com/microsoft/go-mssqldb v1.10.0
+	github.com/microsoft/go-mssqldb v1.11.0
 	github.com/miekg/dns v1.1.73
-	github.com/oiweiwei/go-msrpc v1.2.18
+	github.com/oiweiwei/go-msrpc v1.5.4
 	github.com/oiweiwei/go-smb2.fork v1.0.2
-	github.com/oiweiwei/gokrb5.fork/v9 v9.0.6
+	github.com/oiweiwei/gokrb5.fork/v9 v9.0.7
 	github.com/palantir/pkg/datetime v1.4.0
-	github.com/palantir/witchcraft-go-logging v1.70.0
+	github.com/palantir/witchcraft-go-logging v1.73.0
 	github.com/pkg/sftp v1.13.11
 	github.com/praetorian-inc/fingerprintx v1.1.19
-	github.com/projectdiscovery/goflags v0.1.76
-	github.com/projectdiscovery/naabu/v2 v2.5.0
+	github.com/projectdiscovery/goflags v0.2.1
+	github.com/projectdiscovery/naabu/v2 v2.6.1
 	github.com/projectdiscovery/nuclei/v3 v3.11.1
 	github.com/projectdiscovery/useragent v0.0.109
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
-	go.mongodb.org/mongo-driver v1.17.9
-	golang.org/x/crypto v0.56.0
+	go.mongodb.org/mongo-driver v1.17.10
+	golang.org/x/crypto v0.57.0
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
+)
+
+require (
+	github.com/Mzack9999/gopacket v0.0.0-20260327212258-d211b432c22b // indirect
+	github.com/oiweiwei/go-math v1.0.0 // indirect
+	github.com/oiweiwei/go-oem v1.0.0 // indirect
 )
 
 require (
@@ -124,15 +130,15 @@ require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	git.mills.io/prologic/smtpd v0.0.0-20210710122116-a525b76c287a // indirect
 	github.com/42wim/httpsig v1.2.4 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1 // indirect
-	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.13.1 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.0 // indirect
+	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.4 // indirect
-	github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 // indirect
+	github.com/AzureAD/microsoft-authentication-library-for-go v1.7.2 // indirect
 	github.com/ChrisTrenkamp/goxpath v0.0.0-20210404020558-97928f7e12b6 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
-	github.com/PuerkitoBio/goquery v1.12.0 // indirect
+	github.com/PuerkitoBio/goquery v1.13.0 // indirect
 	github.com/STARRY-S/zip v0.2.3 // indirect
 	github.com/alecthomas/chroma v0.10.0 // indirect
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
@@ -389,9 +395,9 @@ require (
 	github.com/palantir/pkg/safeyaml v1.2.0 // indirect
 	github.com/palantir/pkg/transform v1.2.0 // indirect
 	github.com/palantir/pkg/uuid v1.3.0 // indirect
-	github.com/palantir/witchcraft-go-error v1.46.0 // indirect
-	github.com/palantir/witchcraft-go-params v1.42.0 // indirect
-	github.com/palantir/witchcraft-go-tracing v1.44.0 // indirect
+	github.com/palantir/witchcraft-go-error v1.48.0 // indirect
+	github.com/palantir/witchcraft-go-params v1.46.0 // indirect
+	github.com/palantir/witchcraft-go-tracing v1.47.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.29 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20260805114148-88456608a4f6 // indirect
@@ -402,7 +408,7 @@ require (
 	github.com/projectdiscovery/dnsx v1.2.3 // indirect
 	github.com/projectdiscovery/fastdialer v0.5.18 // indirect
 	github.com/projectdiscovery/freeport v0.0.7 // indirect
-	github.com/projectdiscovery/gologger v1.1.72
+	github.com/projectdiscovery/gologger v1.1.73
 	github.com/projectdiscovery/hmap v0.0.102 // indirect
 	github.com/projectdiscovery/ipranger v0.0.63 // indirect
 	github.com/projectdiscovery/machineid v0.0.0-20250715113114-c77eb3567582 // indirect
@@ -443,13 +449,13 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/exp v0.0.0-20260824195058-e88cd73687aa // indirect
-	golang.org/x/mod v0.40.0 // indirect
-	golang.org/x/net v0.58.0
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/net v0.59.0
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/term v0.46.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260831171406-18b4a7587f8a // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
