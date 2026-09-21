@@ -158,20 +158,24 @@ var udpFingerprinters = map[uint16]Fingerprinter{
 	44818: &localPlugins.EthernetIPUDPFingerprinter{}, // EtherNet/IP
 }
 
-// RunServiceFingerprint fingerprints the service at target:port.
-//  1. If UDP mode is enabled, scan common UDP ports on the target host.
-//  2. If stealth mode is enabled, use targeted fingerprinting for the specified service type.
-//  3. Otherwise, for TCP (port-priority system):
+// RunServiceFingerprint fingerprints services using the transport selected in
+// config. New callers should prefer RunTCPServiceFingerprint or
+// RunUDPServiceFingerprint directly.
+func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
+	if config.Udp != nil && *config.Udp {
+		return RunUDPServiceFingerprint(ctx, config)
+	}
+	return RunTCPServiceFingerprint(ctx, config)
+}
+
+// RunTCPServiceFingerprint fingerprints the TCP service at target:port.
+//  1. If stealth mode is enabled, use targeted fingerprinting for the specified service type.
+//  2. Otherwise, for TCP (port-priority system):
 //     Phase 1: Run custom fingerprinters ONLY if port matches their default ports
 //     Phase 2: Run fingerprintx (which has its own port priority)
 //     Phase 3: If nothing found, run custom fingerprinters on all ports (comprehensive fallback)
-func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
+func RunTCPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
-
-	// Check if UDP mode is enabled
-	if config.Udp != nil && *config.Udp {
-		return runUDPServiceDiscovery(ctx, config)
-	}
 
 	// Parse target to get host and port
 	host, port := utils.ParseHostPort(config.Target, 80) // Default to port 80 if no port specified
@@ -205,6 +209,11 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 
 	report.Result = &discoverfern.DiscoverServiceResult{Services: results}
 	return report, nil
+}
+
+// RunUDPServiceFingerprint scans common UDP ports on one or more target hosts.
+func RunUDPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
+	return runUDPServiceDiscovery(ctx, config)
 }
 
 type serviceTarget struct {

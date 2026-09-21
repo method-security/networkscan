@@ -145,41 +145,39 @@ Global Flags:
 
 ### Service
 
-Identify and fingerprint network services on a target host or specific port.
+Identify and fingerprint network services over TCP or UDP.
 
 #### TCP Service Discovery
 ```bash
-networkscan discover service --target 127.0.0.1:443
-networkscan discover service --target example.com:22
+networkscan discover service tcp --target 127.0.0.1:443
+networkscan discover service tcp --target example.com:22
 ```
 
 #### UDP Service Discovery
-Use UDP mode to discover common UDP services:
 ```bash
-networkscan discover service --target 192.168.1.1 --udp
+networkscan discover service udp --target 192.168.1.1
 ```
 
 #### Stealth Mode
 Use stealth mode for specific service fingerprinting:
 ```bash
-networkscan discover service --target 192.168.1.1:22 --service-type SSH
+networkscan discover service tcp --target 192.168.1.1:22 --service-type SSH
 ```
 
 #### Help Text
 ```bash
 networkscan discover service -h
-Identify and fingerprint network services on a target host or specific port. Use --udp to scan common UDP ports.
+Identify and fingerprint network services over TCP or UDP.
 
 Usage:
-  networkscan discover service [flags]
+  networkscan discover service [command]
+
+Available Commands:
+  tcp         Identify and fingerprint TCP services on a target host and port.
+  udp         Identify common UDP services on one or more target hosts.
 
 Flags:
-  -h, --help                 help for service
-      --threads int                Maximum concurrent target IPs and maximum custom service plugins per target (default 10)
-      --service-type string        Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
-      --target string              Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)
-      --timeout int                Timeout in seconds for each service fingerprinting attempt (default 30)
-      --udp                        Enable UDP service discovery mode (scans common UDP ports like DNS, NTP, SNMP, etc.)
+  -h, --help   help for service
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")

@@ -17,7 +17,7 @@ import (
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
 
-var runServiceFingerprintForValidation = discoverservice.RunServiceFingerprint
+var runServiceFingerprintForValidation = discoverservice.RunTCPServiceFingerprint
 
 // validatePortScan verifies that discovered ports actually have legitimate services running on them.
 //
@@ -82,7 +82,7 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 			for task := range taskChan {
 				log.Info("Validating port", svc1log.SafeParam("ip", task.socket.Ip), svc1log.SafeParam("port", task.port.Port))
 
-				// Use RunServiceFingerprint to check if there's a service on this port.
+				// Use TCP service fingerprinting to check if there's a service on this port.
 				targetStr := utils.FormatHostPort(task.socket.Ip, task.port.Port)
 				serviceConfig := discoverfern.DiscoverServiceConfig{
 					Target:  targetStr,
