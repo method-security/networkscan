@@ -444,7 +444,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	discoverServiceCmd.Flags().String("target", "", "Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)")
 	discoverServiceCmd.Flags().Int("timeout", defaultServiceFingerprintTimeout, "Timeout in seconds for each service fingerprinting attempt")
-	discoverServiceCmd.Flags().Int("threads", defaultServicePluginThreads, "Maximum number of custom service plugins to run concurrently per target")
+	discoverServiceCmd.Flags().Int("threads", defaultServicePluginThreads, "Maximum concurrent target IPs and maximum custom service plugins per target")
 	discoverServiceCmd.Flags().Bool("udp", false, "Enable UDP service discovery mode (scans common UDP ports like DNS, NTP, SNMP, etc.)")
 	discoverServiceCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
 

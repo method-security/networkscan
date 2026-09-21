@@ -38,7 +38,6 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 
 	var errorsMutex sync.Mutex
 	errors := []string{}
-	validatedSockets := []*discoverfern.SocketDetails{}
 
 	// Determine number of validation threads (use CPU cores if 0 or not specified)
 	maxThreads := runtime.NumCPU()
@@ -46,93 +45,107 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 		maxThreads = *config.ValidateThreads
 	}
 
+	if config.ValidateAttemptTimeout == nil {
+		defaultTimeout := 30
+		config.ValidateAttemptTimeout = &defaultTimeout
+	}
+
+	type validationTask struct {
+		socketIndex int
+		socket      *discoverfern.SocketDetails
+		port        *discoverfern.PortDetails
+	}
+
+	var taskCount int
 	for _, socket := range sockets {
+		if socket != nil {
+			taskCount += len(socket.Ports)
+		}
+	}
+	if taskCount == 0 {
+		return nil, errors
+	}
+
+	validatedPortsBySocket := make([][]*discoverfern.PortDetails, len(sockets))
+	var portsMutex sync.Mutex
+	taskChan := make(chan validationTask, taskCount)
+	var wg sync.WaitGroup
+
+	workerCount := maxThreads
+	if workerCount > taskCount {
+		workerCount = taskCount
+	}
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for task := range taskChan {
+				log.Info("Validating port", svc1log.SafeParam("ip", task.socket.Ip), svc1log.SafeParam("port", task.port.Port))
+
+				// Use RunServiceFingerprint to check if there's a service on this port.
+				targetStr := utils.FormatHostPort(task.socket.Ip, task.port.Port)
+				serviceConfig := discoverfern.DiscoverServiceConfig{
+					Target:  targetStr,
+					Timeout: *config.ValidateAttemptTimeout,
+					Threads: config.ValidatePluginThreads,
+				}
+
+				serviceReport, err := runServiceFingerprintForValidation(ctx, serviceConfig)
+				if err != nil {
+					// Don't fail validation on errors, just log them
+					errorsMutex.Lock()
+					errors = append(errors, err.Error())
+					errorsMutex.Unlock()
+					continue
+				}
+
+				// If we found any services on this port, check if they're real services or just CDN responses.
+				if serviceReport != nil && serviceReport.Result != nil && serviceReport.Result.Services != nil && len(serviceReport.Result.Services) > 0 {
+					hasValidService := false
+					for _, service := range serviceReport.Result.Services {
+						// Skip services that are only CDN responses
+						if !isCDNResponse(ctx, service) {
+							hasValidService = true
+							break
+						}
+					}
+
+					if hasValidService {
+						log.Info("Valid service detected", svc1log.SafeParam("ip", task.socket.Ip), svc1log.SafeParam("port", task.port.Port))
+						portsMutex.Lock()
+						validatedPortsBySocket[task.socketIndex] = append(validatedPortsBySocket[task.socketIndex], task.port)
+						portsMutex.Unlock()
+					} else {
+						log.Info("Only CDN responses detected, filtering out port", svc1log.SafeParam("ip", task.socket.Ip), svc1log.SafeParam("port", task.port.Port))
+					}
+				}
+			}
+		}()
+	}
+
+	for socketIndex, socket := range sockets {
 		if socket == nil || socket.Ports == nil {
 			continue
 		}
-
-		var portsMutex sync.Mutex
-		validatedPorts := []*discoverfern.PortDetails{}
-
-		// Create channel for work distribution
-		if config.ValidateAttemptTimeout == nil {
-			defaultTimeout := 30
-			config.ValidateAttemptTimeout = &defaultTimeout
-		}
-
-		portChan := make(chan *discoverfern.PortDetails, len(socket.Ports))
-		var wg sync.WaitGroup
-
-		// Start worker goroutines
-		for i := 0; i < maxThreads && i < len(socket.Ports); i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for port := range portChan {
-					log.Info("Validating port", svc1log.SafeParam("port", port.Port))
-
-					// Use RunServiceFingerprint to check if there's a service on this port
-					targetStr := utils.FormatHostPort(socket.Ip, port.Port)
-					serviceConfig := discoverfern.DiscoverServiceConfig{
-						Target:  targetStr,
-						Timeout: *config.ValidateAttemptTimeout,
-						Threads: config.ValidatePluginThreads,
-					}
-
-					serviceReport, err := runServiceFingerprintForValidation(ctx, serviceConfig)
-					if err != nil {
-						// Don't fail validation on errors, just log them
-						errorsMutex.Lock()
-						errors = append(errors, err.Error())
-						errorsMutex.Unlock()
-						continue
-					}
-
-					// If we found any services on this port, check if they're real services or just CDN responses
-					if serviceReport != nil && serviceReport.Result != nil && serviceReport.Result.Services != nil && len(serviceReport.Result.Services) > 0 {
-						hasValidService := false
-						for _, service := range serviceReport.Result.Services {
-							// Skip services that are only CDN responses
-							if !isCDNResponse(ctx, service) {
-								hasValidService = true
-								break
-							}
-						}
-
-						if hasValidService {
-							log.Info("Valid service detected", svc1log.SafeParam("port", port.Port))
-							// Valid service detected - keep this port
-							portsMutex.Lock()
-							validatedPorts = append(validatedPorts, port)
-							portsMutex.Unlock()
-						} else {
-							log.Info("Only CDN responses detected, filtering out port", svc1log.SafeParam("port", port.Port))
-						}
-					}
-				}
-			}()
-		}
-
-		// Send all ports to workers
 		for _, port := range socket.Ports {
 			if port != nil {
-				portChan <- port
+				taskChan <- validationTask{socketIndex: socketIndex, socket: socket, port: port}
 			}
 		}
-		close(portChan)
+	}
+	close(taskChan)
+	wg.Wait()
 
-		// Wait for all workers to complete
-		wg.Wait()
-
-		// Only include the socket if it has validated ports
-		if len(validatedPorts) > 0 {
-			validatedSocket := &discoverfern.SocketDetails{
-				Host:  socket.Host,
-				Ip:    socket.Ip,
-				Ports: validatedPorts,
-			}
-			validatedSockets = append(validatedSockets, validatedSocket)
+	validatedSockets := []*discoverfern.SocketDetails{}
+	for socketIndex, socket := range sockets {
+		if socket == nil || len(validatedPortsBySocket[socketIndex]) == 0 {
+			continue
 		}
+		validatedSockets = append(validatedSockets, &discoverfern.SocketDetails{
+			Host:  socket.Host,
+			Ip:    socket.Ip,
+			Ports: validatedPortsBySocket[socketIndex],
+		})
 	}
 
 	return validatedSockets, errors

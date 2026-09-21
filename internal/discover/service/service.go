@@ -9,7 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"strings"
-	"time"
+	"sync"
 
 	// Generated
 	"github.com/Method-Security/networkscan/generated/go/common"
@@ -167,7 +167,6 @@ var udpFingerprinters = map[uint16]Fingerprinter{
 //     Phase 3: If nothing found, run custom fingerprinters on all ports (comprehensive fallback)
 func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
-	var results []*discoverfern.ServiceDetails
 
 	// Check if UDP mode is enabled
 	if config.Udp != nil && *config.Udp {
@@ -177,16 +176,43 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 	// Parse target to get host and port
 	host, port := utils.ParseHostPort(config.Target, 80) // Default to port 80 if no port specified
 
-	ips, err := utils.GetIPs(host)
+	hostStrs, err := utils.ParseTargetHosts(host)
 	if err != nil {
 		report.Result = &discoverfern.DiscoverServiceResult{}
 		return report, err
+	}
+
+	var ips []net.IP
+	for _, hostStr := range hostStrs {
+		if ip := net.ParseIP(hostStr); ip != nil {
+			ips = append(ips, ip)
+		}
 	}
 
 	// Check if stealth mode is enabled
 	if config.Stealth != nil {
 		return RunStealthServiceFingerprint(ctx, config, ips)
 	}
+
+	resultsByIP := make([][]*discoverfern.ServiceDetails, len(ips))
+	errorsByIP := make([][]string, len(ips))
+	runTargetsParallel(ctx, ips, config.Threads, func(targetCtx context.Context, index int, ip net.IP) {
+		resultsByIP[index], errorsByIP[index] = runTCPServiceFingerprintForIP(targetCtx, config, host, port, ip)
+	})
+
+	var results []*discoverfern.ServiceDetails
+	for index := range ips {
+		results = append(results, resultsByIP[index]...)
+		report.Errors = append(report.Errors, errorsByIP[index]...)
+	}
+
+	report.Result = &discoverfern.DiscoverServiceResult{Services: results}
+	return report, nil
+}
+
+func runTCPServiceFingerprintForIP(ctx context.Context, config discoverfern.DiscoverServiceConfig, host string, port int, ip net.IP) ([]*discoverfern.ServiceDetails, []string) {
+	var results []*discoverfern.ServiceDetails
+	var errors []string
 
 	// Standard fingerprinting path
 	fingerprintConfig := scan.Config{
@@ -196,17 +222,85 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 		Verbose:        true,
 	}
 
-	for _, ip := range ips {
-		addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(port))
-		fingerprintTarget := plugins.Target{Address: addrPort, Host: host}
-		serviceFound := false
+	addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(port))
+	fingerprintTarget := plugins.Target{Address: addrPort, Host: host}
+	serviceFound := false
 
-		/* --- Phase 1: Run custom fingerprinters on default ports only ------- */
-		// Collect applicable fingerprinters for this port
-		var applicableFingerprinters []Fingerprinter
+	/* --- Phase 1: Run custom fingerprinters on default ports only ------- */
+	// Collect applicable fingerprinters for this port
+	var applicableFingerprinters []Fingerprinter
+	for _, fingerprinter := range customFingerprintModules {
+		defaultPorts := fingerprinter.DefaultPorts()
+		// Skip if this fingerprinter has port restrictions and current port doesn't match
+		if len(defaultPorts) > 0 {
+			portMatches := false
+			for _, p := range defaultPorts {
+				if p == port {
+					portMatches = true
+					break
+				}
+			}
+			if !portMatches {
+				continue
+			}
+		}
+		applicableFingerprinters = append(applicableFingerprinters, fingerprinter)
+	}
+
+	// Run applicable fingerprinters in parallel
+	if len(applicableFingerprinters) > 0 {
+		if detection := runFingerprintersParallel(ctx, applicableFingerprinters, ip, port, host, config.Timeout, config.Threads); detection != nil {
+			results = append(results, detection)
+			serviceFound = true
+		}
+	}
+
+	/* --- Phase 2: Run fingerprintx (has its own port priority) --------- */
+	if !serviceFound {
+		fxCtx, cancel := servicehelpers.Context(ctx, config.Timeout)
+
+		resultChan := make(chan *plugins.Service, 1)
+		errChan := make(chan error, 1)
+
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					errChan <- fmt.Errorf("fingerprintx panic: %v", r)
+				}
+			}()
+
+			result, err := fingerprintConfig.SimpleScanTarget(fingerprintTarget)
+			if err != nil {
+				errChan <- err
+				return
+			}
+			resultChan <- result
+		}()
+
+		select {
+		// fingerprintx timed out or context cancelled - move to Phase 3.
+		case <-fxCtx.Done():
+		case fxResult := <-resultChan:
+			if fxResult != nil && fxResult.Protocol != "" {
+				if details := fxToServiceDetails(fxResult); details != nil {
+					results = append(results, details)
+					serviceFound = true
+				}
+			}
+		case err := <-errChan:
+			// fingerprintx failed - continue to Phase 3
+			_ = err
+		}
+		cancel()
+	}
+
+	/* --- Phase 3: Run custom fingerprinters on all ports (fallback) ---- */
+	if !serviceFound {
+		// Collect fingerprinters we haven't tried yet
+		var fallbackFingerprinters []Fingerprinter
 		for _, fingerprinter := range customFingerprintModules {
 			defaultPorts := fingerprinter.DefaultPorts()
-			// Skip if this fingerprinter has port restrictions and current port doesn't match
+			// Skip if we already tried this fingerprinter in phase 1
 			if len(defaultPorts) > 0 {
 				portMatches := false
 				for _, p := range defaultPorts {
@@ -215,99 +309,28 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 						break
 					}
 				}
-				if !portMatches {
-					continue
+				if portMatches {
+					continue // Already tried in phase 1
 				}
 			}
-			applicableFingerprinters = append(applicableFingerprinters, fingerprinter)
+			fallbackFingerprinters = append(fallbackFingerprinters, fingerprinter)
 		}
 
-		// Run applicable fingerprinters in parallel
-		if len(applicableFingerprinters) > 0 {
-			if detection := runFingerprintersParallel(ctx, applicableFingerprinters, ip, port, host, config.Timeout, config.Threads); detection != nil {
+		// Run fallback fingerprinters in parallel
+		if len(fallbackFingerprinters) > 0 {
+			if detection := runFingerprintersParallel(ctx, fallbackFingerprinters, ip, port, host, config.Timeout, config.Threads); detection != nil {
 				results = append(results, detection)
 				serviceFound = true
 			}
 		}
-
-		/* --- Phase 2: Run fingerprintx (has its own port priority) --------- */
-		if !serviceFound {
-			fxCtx, cancel := servicehelpers.Context(ctx, config.Timeout)
-
-			resultChan := make(chan *plugins.Service, 1)
-			errChan := make(chan error, 1)
-
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						errChan <- fmt.Errorf("fingerprintx panic: %v", r)
-					}
-				}()
-
-				result, err := fingerprintConfig.SimpleScanTarget(fingerprintTarget)
-				if err != nil {
-					errChan <- err
-					return
-				}
-				resultChan <- result
-			}()
-
-			select {
-			// fingerprintx timed out or context cancelled - move to Phase 3.
-			case <-fxCtx.Done():
-			case fxResult := <-resultChan:
-				if fxResult != nil && fxResult.Protocol != "" {
-					if details := fxToServiceDetails(fxResult); details != nil {
-						results = append(results, details)
-						serviceFound = true
-					}
-				}
-			case err := <-errChan:
-				// fingerprintx failed - continue to Phase 3
-				_ = err
-			}
-			cancel()
-		}
-
-		/* --- Phase 3: Run custom fingerprinters on all ports (fallback) ---- */
-		if !serviceFound {
-			// Collect fingerprinters we haven't tried yet
-			var fallbackFingerprinters []Fingerprinter
-			for _, fingerprinter := range customFingerprintModules {
-				defaultPorts := fingerprinter.DefaultPorts()
-				// Skip if we already tried this fingerprinter in phase 1
-				if len(defaultPorts) > 0 {
-					portMatches := false
-					for _, p := range defaultPorts {
-						if p == port {
-							portMatches = true
-							break
-						}
-					}
-					if portMatches {
-						continue // Already tried in phase 1
-					}
-				}
-				fallbackFingerprinters = append(fallbackFingerprinters, fingerprinter)
-			}
-
-			// Run fallback fingerprinters in parallel
-			if len(fallbackFingerprinters) > 0 {
-				if detection := runFingerprintersParallel(ctx, fallbackFingerprinters, ip, port, host, config.Timeout, config.Threads); detection != nil {
-					results = append(results, detection)
-					serviceFound = true
-				}
-			}
-		}
-
-		/* --- No service found ---------------------------------------------- */
-		if !serviceFound {
-			report.Errors = append(report.Errors, fmt.Sprintf("no service found on ip address: %s and port: %d", ip, port))
-		}
 	}
 
-	report.Result = &discoverfern.DiscoverServiceResult{Services: results}
-	return report, nil
+	/* --- No service found ---------------------------------------------- */
+	if !serviceFound {
+		errors = append(errors, fmt.Sprintf("no service found on ip address: %s and port: %d", ip, port))
+	}
+
+	return results, errors
 }
 
 type fingerprinterResult struct {
@@ -345,13 +368,16 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 				return
 			}
 
+			pluginCtx, cancel := servicehelpers.Context(probeCtx, timeout)
+			defer cancel()
+
 			select {
-			case <-probeCtx.Done():
+			case <-pluginCtx.Done():
 				return
 			default:
 			}
 
-			detection, err := fingerprinter.Detect(probeCtx, ip, port, host, timeout)
+			detection, err := fingerprinter.Detect(pluginCtx, ip, port, host, timeout)
 			if err == nil && detection != nil {
 				result.details = detection
 			}
@@ -361,13 +387,6 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 	completed := make([]bool, len(fingerprinters))
 	bestIndex := len(fingerprinters)
 	var best *discoverfern.ServiceDetails
-	var timeoutC <-chan time.Time
-	var timer *time.Timer
-	if servicehelpers.HasTimeout(timeout) {
-		timer = time.NewTimer(servicehelpers.Timeout(timeout))
-		defer timer.Stop()
-		timeoutC = timer.C
-	}
 
 	for completedCount := 0; completedCount < len(fingerprinters); {
 		select {
@@ -381,12 +400,6 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 			// A match is final only after all earlier registry entries have
 			// completed; an earlier entry may be a more-specific overlap.
 			if best != nil && noEarlierFingerprintersPending(completed, bestIndex) {
-				return best
-			}
-		case <-timeoutC:
-			cancel()
-			timeoutC = nil
-			if best == nil || noEarlierFingerprintersPending(completed, bestIndex) {
 				return best
 			}
 		case <-ctx.Done():
@@ -408,6 +421,31 @@ func effectivePluginThreads(configured int, total int) int {
 		return total
 	}
 	return configured
+}
+
+func runTargetsParallel[T any](ctx context.Context, targets []T, threads int, run func(context.Context, int, T)) {
+	if len(targets) == 0 {
+		return
+	}
+
+	sem := make(chan struct{}, effectivePluginThreads(threads, len(targets)))
+	var wg sync.WaitGroup
+	for index, target := range targets {
+		wg.Add(1)
+		go func(index int, target T) {
+			defer wg.Done()
+
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				return
+			}
+
+			run(ctx, index, target)
+		}(index, target)
+	}
+	wg.Wait()
 }
 
 func noEarlierFingerprintersPending(completed []bool, bestIndex int) bool {
@@ -500,7 +538,6 @@ func fxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) 
 // Each service is only probed on its well-known port(s) to avoid false positives.
 func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
-	var results []*discoverfern.ServiceDetails
 
 	// Parse target to get host (should be just IP, hostname, or CIDR)
 	host := config.Target
@@ -522,75 +559,14 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 		ips = append(ips, net.ParseIP(h))
 	}
 
-	// Scan each IP
-	for _, ip := range ips {
-		ipStr := ip.String()
+	resultsByIP := make([][]*discoverfern.ServiceDetails, len(ips))
+	runTargetsParallel(ctx, ips, config.Threads, func(targetCtx context.Context, index int, ip net.IP) {
+		resultsByIP[index] = runUDPServiceDiscoveryForIP(targetCtx, config, ip)
+	})
 
-		// Collect all UDP fingerprinters with their ports.
-		type udpFingerprintTask struct {
-			port   int
-			detect func() (*discoverfern.ServiceDetails, error)
-		}
-		var tasks []udpFingerprintTask
-		for port, fingerprinter := range udpFingerprinters {
-			port := int(port)
-			fingerprinter := fingerprinter
-			tasks = append(tasks, udpFingerprintTask{
-				port: port,
-				detect: func() (*discoverfern.ServiceDetails, error) {
-					return fingerprinter.Detect(ctx, ip, port, ipStr, config.Timeout)
-				},
-			})
-		}
-
-		// Run all UDP fingerprinters in parallel
-		resultChan := make(chan *discoverfern.ServiceDetails, len(tasks))
-		doneChan := make(chan struct{}, len(tasks))
-		sem := make(chan struct{}, effectivePluginThreads(config.Threads, len(tasks)))
-
-		for _, task := range tasks {
-			go func(t udpFingerprintTask) {
-				defer func() {
-					doneChan <- struct{}{}
-				}()
-
-				select {
-				case sem <- struct{}{}:
-					defer func() { <-sem }()
-				case <-ctx.Done():
-					return
-				}
-
-				detection, err := t.detect()
-				if err == nil && detection != nil {
-					select {
-					case resultChan <- detection:
-					case <-ctx.Done():
-					}
-				}
-			}(task)
-		}
-
-		// Collect results - wait for all fingerprinters to complete or timeout
-		// Each fingerprinter has its own timeout, so we give extra time for all to finish
-		var overallTimeout <-chan time.Time
-		if servicehelpers.HasTimeout(config.Timeout) {
-			overallTimeout = time.After(servicehelpers.Timeout(config.Timeout) + 2*time.Second)
-		}
-		completedTasks := 0
-	collectLoop:
-		for completedTasks < len(tasks) {
-			select {
-			case detection := <-resultChan:
-				results = append(results, detection)
-			case <-doneChan:
-				completedTasks++
-			case <-overallTimeout:
-				break collectLoop
-			case <-ctx.Done():
-				break collectLoop
-			}
-		}
+	var results []*discoverfern.ServiceDetails
+	for index := range ips {
+		results = append(results, resultsByIP[index]...)
 	}
 
 	if len(results) == 0 {
@@ -599,4 +575,69 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 
 	report.Result = &discoverfern.DiscoverServiceResult{Services: results}
 	return report, nil
+}
+
+func runUDPServiceDiscoveryForIP(ctx context.Context, config discoverfern.DiscoverServiceConfig, ip net.IP) []*discoverfern.ServiceDetails {
+	ipStr := ip.String()
+
+	type udpFingerprintTask struct {
+		port   int
+		detect func(context.Context) (*discoverfern.ServiceDetails, error)
+	}
+	var tasks []udpFingerprintTask
+	for port, fingerprinter := range udpFingerprinters {
+		port := int(port)
+		fingerprinter := fingerprinter
+		tasks = append(tasks, udpFingerprintTask{
+			port: port,
+			detect: func(pluginCtx context.Context) (*discoverfern.ServiceDetails, error) {
+				return fingerprinter.Detect(pluginCtx, ip, port, ipStr, config.Timeout)
+			},
+		})
+	}
+
+	resultChan := make(chan *discoverfern.ServiceDetails, len(tasks))
+	doneChan := make(chan struct{}, len(tasks))
+	sem := make(chan struct{}, effectivePluginThreads(config.Threads, len(tasks)))
+
+	for _, task := range tasks {
+		go func(t udpFingerprintTask) {
+			defer func() {
+				doneChan <- struct{}{}
+			}()
+
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				return
+			}
+
+			pluginCtx, cancel := servicehelpers.Context(ctx, config.Timeout)
+			defer cancel()
+
+			detection, err := t.detect(pluginCtx)
+			if err == nil && detection != nil {
+				select {
+				case resultChan <- detection:
+				case <-ctx.Done():
+				}
+			}
+		}(task)
+	}
+
+	var results []*discoverfern.ServiceDetails
+	completedTasks := 0
+	for completedTasks < len(tasks) {
+		select {
+		case detection := <-resultChan:
+			results = append(results, detection)
+		case <-doneChan:
+			completedTasks++
+		case <-ctx.Done():
+			return results
+		}
+	}
+
+	return results
 }

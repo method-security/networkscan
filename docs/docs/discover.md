@@ -175,7 +175,7 @@ Usage:
 
 Flags:
   -h, --help                 help for service
-      --threads int                Maximum number of custom service plugins to run concurrently per target (default 8)
+      --threads int                Maximum concurrent target IPs and maximum custom service plugins per target (default 8)
       --service-type string        Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
       --target string              Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)
       --timeout int                Timeout in seconds for each service fingerprinting attempt (default 20)

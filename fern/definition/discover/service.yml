@@ -133,7 +133,7 @@ types:
     properties:
       target: string # Format: IP:port or hostname:port for TCP, IP or hostname for UDP mode
       timeout: integer
-      threads: integer # Maximum number of custom service plugins to run concurrently per target
+      threads: integer # Maximum concurrent target IPs and maximum custom service plugins per target
       stealth: optional<ServiceStealthConfig>
       udp: optional<boolean> # Enable UDP service discovery mode (scans common UDP ports)
   # Final report
