@@ -97,6 +97,23 @@ func (r *resultFingerprinter) Detect(_ context.Context, _ net.IP, port int, _ st
 	return &discoverfern.ServiceDetails{Port: port}, nil
 }
 
+type stubbornFingerprinter struct {
+	release <-chan struct{}
+}
+
+func (s *stubbornFingerprinter) Name() string {
+	return "stubborn"
+}
+
+func (s *stubbornFingerprinter) DefaultPorts() []int {
+	return nil
+}
+
+func (s *stubbornFingerprinter) Detect(_ context.Context, _ net.IP, _ int, _ string, _ int) (*discoverfern.ServiceDetails, error) {
+	<-s.release
+	return nil, nil
+}
+
 func TestRunFingerprintersParallelTimeoutIsPerPlugin(t *testing.T) {
 	detection := runFingerprintersParallel(
 		context.Background(),
@@ -110,6 +127,29 @@ func TestRunFingerprintersParallelTimeoutIsPerPlugin(t *testing.T) {
 
 	if detection == nil || detection.Port != 443 {
 		t.Fatalf("detection = %#v, want queued plugin result", detection)
+	}
+}
+
+func TestRunFingerprintersParallelTimeoutDoesNotBlockOnStubbornPlugin(t *testing.T) {
+	release := make(chan struct{})
+	defer close(release)
+
+	start := time.Now()
+	detection := runFingerprintersParallel(
+		context.Background(),
+		[]Fingerprinter{&stubbornFingerprinter{release: release}, &resultFingerprinter{}},
+		net.ParseIP("192.0.2.1"),
+		443,
+		"192.0.2.1",
+		1,
+		1,
+	)
+
+	if detection == nil || detection.Port != 443 {
+		t.Fatalf("detection = %#v, want queued plugin result", detection)
+	}
+	if elapsed := time.Since(start); elapsed > 2500*time.Millisecond {
+		t.Fatalf("elapsed = %s, want stubborn plugin timeout to release worker", elapsed)
 	}
 }
 
@@ -150,5 +190,30 @@ func TestRunUDPServiceDiscoveryThreadsTargetsAndPlugins(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("UDP discovery did not complete after releasing probes")
+	}
+}
+
+func TestRunUDPServiceDiscoveryTimeoutDoesNotBlockOnStubbornPlugin(t *testing.T) {
+	originalFingerprinters := udpFingerprinters
+	defer func() { udpFingerprinters = originalFingerprinters }()
+
+	release := make(chan struct{})
+	defer close(release)
+	udpFingerprinters = map[uint16]Fingerprinter{
+		53:  &stubbornFingerprinter{release: release},
+		123: &resultFingerprinter{},
+	}
+
+	start := time.Now()
+	results := runUDPServiceDiscoveryForIP(context.Background(), discoverfern.DiscoverServiceConfig{
+		Timeout: 1,
+		Threads: 1,
+	}, net.ParseIP("192.0.2.1"))
+
+	if len(results) != 1 || results[0].Port != 123 {
+		t.Fatalf("results = %#v, want UDP result after stubborn plugin timeout", results)
+	}
+	if elapsed := time.Since(start); elapsed > 2500*time.Millisecond {
+		t.Fatalf("elapsed = %s, want stubborn UDP plugin timeout to release worker", elapsed)
 	}
 }

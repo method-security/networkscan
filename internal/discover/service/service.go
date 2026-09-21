@@ -338,6 +338,43 @@ type fingerprinterResult struct {
 	details *discoverfern.ServiceDetails
 }
 
+type fingerprinterAttemptResult struct {
+	details *discoverfern.ServiceDetails
+	err     error
+}
+
+// runFingerprinterAttempt stops waiting when the attempt timeout expires, even
+// if the plugin does not return promptly after its context is cancelled.
+func runFingerprinterAttempt(ctx context.Context, timeout int, detect func(context.Context) (*discoverfern.ServiceDetails, error)) (*discoverfern.ServiceDetails, error) {
+	pluginCtx, cancel := servicehelpers.Context(ctx, timeout)
+	defer cancel()
+
+	select {
+	case <-pluginCtx.Done():
+		return nil, pluginCtx.Err()
+	default:
+	}
+
+	resultChan := make(chan fingerprinterAttemptResult, 1)
+	go func() {
+		result := fingerprinterAttemptResult{}
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				result.err = fmt.Errorf("fingerprinter panic: %v", recovered)
+			}
+			resultChan <- result
+		}()
+		result.details, result.err = detect(pluginCtx)
+	}()
+
+	select {
+	case result := <-resultChan:
+		return result.details, result.err
+	case <-pluginCtx.Done():
+		return nil, pluginCtx.Err()
+	}
+}
+
 // runFingerprintersParallel runs multiple fingerprinters concurrently and returns
 // the highest-priority successful detection based on registry order.
 func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprinter, ip net.IP, port int, host string, timeout int, threads int) *discoverfern.ServiceDetails {
@@ -368,16 +405,9 @@ func runFingerprintersParallel(ctx context.Context, fingerprinters []Fingerprint
 				return
 			}
 
-			pluginCtx, cancel := servicehelpers.Context(probeCtx, timeout)
-			defer cancel()
-
-			select {
-			case <-pluginCtx.Done():
-				return
-			default:
-			}
-
-			detection, err := fingerprinter.Detect(pluginCtx, ip, port, host, timeout)
+			detection, err := runFingerprinterAttempt(probeCtx, timeout, func(pluginCtx context.Context) (*discoverfern.ServiceDetails, error) {
+				return fingerprinter.Detect(pluginCtx, ip, port, host, timeout)
+			})
 			if err == nil && detection != nil {
 				result.details = detection
 			}
@@ -613,10 +643,7 @@ func runUDPServiceDiscoveryForIP(ctx context.Context, config discoverfern.Discov
 				return
 			}
 
-			pluginCtx, cancel := servicehelpers.Context(ctx, config.Timeout)
-			defer cancel()
-
-			detection, err := t.detect(pluginCtx)
+			detection, err := runFingerprinterAttempt(ctx, config.Timeout, t.detect)
 			if err == nil && detection != nil {
 				select {
 				case resultChan <- detection:
