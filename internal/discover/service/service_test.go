@@ -153,6 +153,22 @@ func TestRunFingerprintersParallelTimeoutDoesNotBlockOnStubbornPlugin(t *testing
 	}
 }
 
+func TestParseServiceTargetsUsesPerIPHostForExpandedTargets(t *testing.T) {
+	targets, err := parseServiceTargets("10.0.0.0/30")
+	if err != nil {
+		t.Fatalf("parseServiceTargets returned error: %v", err)
+	}
+
+	if len(targets) != 4 {
+		t.Fatalf("target count = %d, want 4", len(targets))
+	}
+	for _, target := range targets {
+		if target.host != target.ip.String() {
+			t.Fatalf("target host = %q for ip %q, want per-IP host", target.host, target.ip)
+		}
+	}
+}
+
 func TestRunUDPServiceDiscoveryThreadsTargetsAndPlugins(t *testing.T) {
 	originalFingerprinters := udpFingerprinters
 	defer func() { udpFingerprinters = originalFingerprinters }()
@@ -190,6 +206,25 @@ func TestRunUDPServiceDiscoveryThreadsTargetsAndPlugins(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("UDP discovery did not complete after releasing probes")
+	}
+}
+
+func TestRunUDPServiceDiscoveryCollectsEveryDetection(t *testing.T) {
+	originalFingerprinters := udpFingerprinters
+	defer func() { udpFingerprinters = originalFingerprinters }()
+
+	udpFingerprinters = make(map[uint16]Fingerprinter, 64)
+	for port := uint16(1); port <= 64; port++ {
+		udpFingerprinters[port] = &resultFingerprinter{}
+	}
+
+	results := runUDPServiceDiscoveryForIP(context.Background(), discoverfern.DiscoverServiceConfig{
+		Timeout: 1,
+		Threads: 64,
+	}, net.ParseIP("10.0.0.1"))
+
+	if len(results) != len(udpFingerprinters) {
+		t.Fatalf("result count = %d, want %d", len(results), len(udpFingerprinters))
 	}
 }
 

@@ -3,6 +3,7 @@ package utils
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"math/rand"
 	"net"
@@ -146,6 +147,26 @@ func parseTargetInternal(target string, trackMapping bool) ([]string, map[string
 		ipToHostname = make(map[string]string)
 	}
 
+	if strings.Contains(target, ",") {
+		var hosts []string
+		for _, part := range strings.Split(target, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				return nil, nil, fmt.Errorf("invalid target list: %s", target)
+			}
+
+			partHosts, partMapping, err := parseTargetInternal(part, trackMapping)
+			if err != nil {
+				return nil, nil, err
+			}
+			hosts = append(hosts, partHosts...)
+			for ip, hostname := range partMapping {
+				ipToHostname[ip] = hostname
+			}
+		}
+		return hosts, ipToHostname, nil
+	}
+
 	if strings.Contains(target, "/") {
 		// CIDR range (e.g., 192.168.1.0/24)
 		return expandCIDR(target)
@@ -196,11 +217,14 @@ func isIPRange(target string) bool {
 // expandIPRange handles IP ranges like 192.168.1.1-192.168.1.10
 func expandIPRange(target string) ([]string, map[string]string, error) {
 	parts := strings.Split(target, "-")
-	startIP := net.ParseIP(strings.TrimSpace(parts[0]))
-	endIP := net.ParseIP(strings.TrimSpace(parts[1]))
+	startIP := net.ParseIP(strings.TrimSpace(parts[0])).To16()
+	endIP := net.ParseIP(strings.TrimSpace(parts[1])).To16()
+	if bytes.Compare(startIP, endIP) > 0 {
+		return nil, nil, fmt.Errorf("invalid IP range: %s", target)
+	}
 
 	var hosts []string
-	for ip := make(net.IP, len(startIP)); copy(ip, startIP) > 0; IncIP(ip) {
+	for ip := append(net.IP(nil), startIP...); ; IncIP(ip) {
 		hosts = append(hosts, ip.String())
 		if ip.Equal(endIP) {
 			break

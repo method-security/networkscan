@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -18,6 +19,26 @@ func TestParseTargetHostsIncludesCIDREndpoints(t *testing.T) {
 	}
 	if hosts[len(hosts)-1] != "10.0.0.15" {
 		t.Fatalf("last host = %q, want %q", hosts[len(hosts)-1], "10.0.0.15")
+	}
+}
+
+func TestParseTargetHostsCommaDelimitedTargets(t *testing.T) {
+	hosts, err := ParseTargetHosts("10.0.0.1, 10.0.0.4/30,10.0.0.9-10.0.0.10")
+	if err != nil {
+		t.Fatalf("ParseTargetHosts returned error: %v", err)
+	}
+
+	want := []string{
+		"10.0.0.1",
+		"10.0.0.4",
+		"10.0.0.5",
+		"10.0.0.6",
+		"10.0.0.7",
+		"10.0.0.9",
+		"10.0.0.10",
+	}
+	if !reflect.DeepEqual(hosts, want) {
+		t.Fatalf("hosts = %#v, want %#v", hosts, want)
 	}
 }
 

@@ -176,38 +176,62 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 	// Parse target to get host and port
 	host, port := utils.ParseHostPort(config.Target, 80) // Default to port 80 if no port specified
 
-	hostStrs, err := utils.ParseTargetHosts(host)
+	targets, err := parseServiceTargets(host)
 	if err != nil {
 		report.Result = &discoverfern.DiscoverServiceResult{}
 		return report, err
 	}
 
-	var ips []net.IP
-	for _, hostStr := range hostStrs {
-		if ip := net.ParseIP(hostStr); ip != nil {
-			ips = append(ips, ip)
-		}
-	}
-
 	// Check if stealth mode is enabled
 	if config.Stealth != nil {
+		ips := make([]net.IP, 0, len(targets))
+		for _, target := range targets {
+			ips = append(ips, target.ip)
+		}
 		return RunStealthServiceFingerprint(ctx, config, ips)
 	}
 
-	resultsByIP := make([][]*discoverfern.ServiceDetails, len(ips))
-	errorsByIP := make([][]string, len(ips))
-	runTargetsParallel(ctx, ips, config.Threads, func(targetCtx context.Context, index int, ip net.IP) {
-		resultsByIP[index], errorsByIP[index] = runTCPServiceFingerprintForIP(targetCtx, config, host, port, ip)
+	resultsByIP := make([][]*discoverfern.ServiceDetails, len(targets))
+	errorsByIP := make([][]string, len(targets))
+	runTargetsParallel(ctx, targets, config.Threads, func(targetCtx context.Context, index int, target serviceTarget) {
+		resultsByIP[index], errorsByIP[index] = runTCPServiceFingerprintForIP(targetCtx, config, target.host, port, target.ip)
 	})
 
 	var results []*discoverfern.ServiceDetails
-	for index := range ips {
+	for index := range targets {
 		results = append(results, resultsByIP[index]...)
 		report.Errors = append(report.Errors, errorsByIP[index]...)
 	}
 
 	report.Result = &discoverfern.DiscoverServiceResult{Services: results}
 	return report, nil
+}
+
+type serviceTarget struct {
+	ip   net.IP
+	host string
+}
+
+func parseServiceTargets(target string) ([]serviceTarget, error) {
+	hostStrs, ipToHostname, err := utils.ParseTargetHostsWithMapping(target)
+	if err != nil {
+		return nil, err
+	}
+
+	targets := make([]serviceTarget, 0, len(hostStrs))
+	for _, hostStr := range hostStrs {
+		ip := net.ParseIP(hostStr)
+		if ip == nil {
+			continue
+		}
+
+		fingerprintHost := hostStr
+		if hostname, ok := ipToHostname[hostStr]; ok {
+			fingerprintHost = hostname
+		}
+		targets = append(targets, serviceTarget{ip: ip, host: fingerprintHost})
+	}
+	return targets, nil
 }
 
 func runTCPServiceFingerprintForIP(ctx context.Context, config discoverfern.DiscoverServiceConfig, host string, port int, ip net.IP) ([]*discoverfern.ServiceDetails, []string) {
@@ -576,26 +600,20 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 		host, _, _ = net.SplitHostPort(host)
 	}
 
-	// Use ParseTargetHosts to handle CIDR notation, IP ranges, and hostnames
-	hostStrs, err := utils.ParseTargetHosts(host)
+	targets, err := parseServiceTargets(host)
 	if err != nil {
 		report.Result = &discoverfern.DiscoverServiceResult{}
 		report.Errors = append(report.Errors, fmt.Sprintf("failed to resolve target %s: %v", host, err))
 		return report, nil
 	}
 
-	var ips []net.IP
-	for _, h := range hostStrs {
-		ips = append(ips, net.ParseIP(h))
-	}
-
-	resultsByIP := make([][]*discoverfern.ServiceDetails, len(ips))
-	runTargetsParallel(ctx, ips, config.Threads, func(targetCtx context.Context, index int, ip net.IP) {
-		resultsByIP[index] = runUDPServiceDiscoveryForIP(targetCtx, config, ip)
+	resultsByIP := make([][]*discoverfern.ServiceDetails, len(targets))
+	runTargetsParallel(ctx, targets, config.Threads, func(targetCtx context.Context, index int, target serviceTarget) {
+		resultsByIP[index] = runUDPServiceDiscoveryForIP(targetCtx, config, target.ip)
 	})
 
 	var results []*discoverfern.ServiceDetails
-	for index := range ips {
+	for index := range targets {
 		results = append(results, resultsByIP[index]...)
 	}
 
@@ -627,13 +645,13 @@ func runUDPServiceDiscoveryForIP(ctx context.Context, config discoverfern.Discov
 	}
 
 	resultChan := make(chan *discoverfern.ServiceDetails, len(tasks))
-	doneChan := make(chan struct{}, len(tasks))
 	sem := make(chan struct{}, effectivePluginThreads(config.Threads, len(tasks)))
 
 	for _, task := range tasks {
 		go func(t udpFingerprintTask) {
+			var detection *discoverfern.ServiceDetails
 			defer func() {
-				doneChan <- struct{}{}
+				resultChan <- detection
 			}()
 
 			select {
@@ -643,24 +661,20 @@ func runUDPServiceDiscoveryForIP(ctx context.Context, config discoverfern.Discov
 				return
 			}
 
-			detection, err := runFingerprinterAttempt(ctx, config.Timeout, t.detect)
-			if err == nil && detection != nil {
-				select {
-				case resultChan <- detection:
-				case <-ctx.Done():
-				}
+			result, err := runFingerprinterAttempt(ctx, config.Timeout, t.detect)
+			if err == nil {
+				detection = result
 			}
 		}(task)
 	}
 
 	var results []*discoverfern.ServiceDetails
-	completedTasks := 0
-	for completedTasks < len(tasks) {
+	for completedTasks := 0; completedTasks < len(tasks); completedTasks++ {
 		select {
 		case detection := <-resultChan:
-			results = append(results, detection)
-		case <-doneChan:
-			completedTasks++
+			if detection != nil {
+				results = append(results, detection)
+			}
 		case <-ctx.Done():
 			return results
 		}
