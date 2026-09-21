@@ -21,10 +21,10 @@ import (
 )
 
 const (
-	defaultServiceFingerprintTimeout = 20
-	defaultServicePluginThreads      = 8
+	defaultServiceFingerprintTimeout = 30
+	defaultServicePluginThreads      = 10
 	defaultCustomPluginThreads       = 1
-	defaultValidatePluginThreads     = 8
+	defaultValidatePluginThreads     = 10
 )
 
 // InitDiscoverCommand initializes the discover command and its subcommands (host, os, port, service, tls).
