@@ -97,6 +97,20 @@ func (r *resultFingerprinter) Detect(_ context.Context, _ net.IP, port int, _ st
 	return &discoverfern.ServiceDetails{Port: port}, nil
 }
 
+type hostResultFingerprinter struct{}
+
+func (h *hostResultFingerprinter) Name() string {
+	return "host-result"
+}
+
+func (h *hostResultFingerprinter) DefaultPorts() []int {
+	return nil
+}
+
+func (h *hostResultFingerprinter) Detect(_ context.Context, _ net.IP, port int, host string, _ int) (*discoverfern.ServiceDetails, error) {
+	return &discoverfern.ServiceDetails{Host: host, Port: port}, nil
+}
+
 type stubbornFingerprinter struct {
 	release <-chan struct{}
 }
@@ -243,10 +257,28 @@ func TestRunUDPServiceDiscoveryCollectsEveryDetection(t *testing.T) {
 	results := runUDPServiceDiscoveryForIP(context.Background(), discoverfern.DiscoverServiceConfig{
 		Timeout: 1,
 		Threads: 64,
-	}, net.ParseIP("10.0.0.1"))
+	}, net.ParseIP("10.0.0.1"), "10.0.0.1")
 
 	if len(results) != len(udpFingerprinters) {
 		t.Fatalf("result count = %d, want %d", len(results), len(udpFingerprinters))
+	}
+}
+
+func TestRunUDPServiceDiscoveryForIPPreservesFingerprintHost(t *testing.T) {
+	originalFingerprinters := udpFingerprinters
+	defer func() { udpFingerprinters = originalFingerprinters }()
+
+	udpFingerprinters = map[uint16]Fingerprinter{
+		53: &hostResultFingerprinter{},
+	}
+
+	results := runUDPServiceDiscoveryForIP(context.Background(), discoverfern.DiscoverServiceConfig{
+		Timeout: 1,
+		Threads: 1,
+	}, net.ParseIP("10.0.0.1"), "dns.internal")
+
+	if len(results) != 1 || results[0].Host != "dns.internal" {
+		t.Fatalf("results = %#v, want preserved UDP fingerprint host", results)
 	}
 }
 
@@ -265,7 +297,7 @@ func TestRunUDPServiceDiscoveryTimeoutDoesNotBlockOnStubbornPlugin(t *testing.T)
 	results := runUDPServiceDiscoveryForIP(context.Background(), discoverfern.DiscoverServiceConfig{
 		Timeout: 1,
 		Threads: 1,
-	}, net.ParseIP("10.0.0.1"))
+	}, net.ParseIP("10.0.0.1"), "10.0.0.1")
 
 	if len(results) != 1 || results[0].Port != 123 {
 		t.Fatalf("results = %#v, want UDP result after stubborn plugin timeout", results)

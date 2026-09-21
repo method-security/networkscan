@@ -645,7 +645,7 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 
 	resultsByIP := make([][]*discoverfern.ServiceDetails, len(targets))
 	runTargetsParallel(ctx, targets, config.Threads, func(targetCtx context.Context, index int, target serviceTarget) {
-		resultsByIP[index] = runUDPServiceDiscoveryForIP(targetCtx, config, target.ip)
+		resultsByIP[index] = runUDPServiceDiscoveryForIP(targetCtx, config, target.ip, target.host)
 	})
 
 	var results []*discoverfern.ServiceDetails
@@ -661,9 +661,7 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 	return report, nil
 }
 
-func runUDPServiceDiscoveryForIP(ctx context.Context, config discoverfern.DiscoverServiceConfig, ip net.IP) []*discoverfern.ServiceDetails {
-	ipStr := ip.String()
-
+func runUDPServiceDiscoveryForIP(ctx context.Context, config discoverfern.DiscoverServiceConfig, ip net.IP, host string) []*discoverfern.ServiceDetails {
 	type udpFingerprintTask struct {
 		port   int
 		detect func(context.Context) (*discoverfern.ServiceDetails, error)
@@ -675,7 +673,7 @@ func runUDPServiceDiscoveryForIP(ctx context.Context, config discoverfern.Discov
 		tasks = append(tasks, udpFingerprintTask{
 			port: port,
 			detect: func(pluginCtx context.Context) (*discoverfern.ServiceDetails, error) {
-				return fingerprinter.Detect(pluginCtx, ip, port, ipStr, config.Timeout)
+				return fingerprinter.Detect(pluginCtx, ip, port, host, config.Timeout)
 			},
 		})
 	}
