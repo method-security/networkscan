@@ -10,28 +10,14 @@ import (
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	// Plugins
 	"github.com/Method-Security/networkscan/internal/discover/service/plugins"
-	// Utilities
-	"github.com/Method-Security/networkscan/utils"
 )
 
-// RunStealthServiceFingerprint performs targeted service fingerprinting for a specific service type
-func RunStealthServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig, ips []net.IP) (*discoverfern.DiscoverServiceReport, error) {
+// runStealthServiceFingerprintTargets performs targeted service fingerprinting for a specific service type.
+func runStealthServiceFingerprintTargets(ctx context.Context, config discoverfern.DiscoverServiceConfig, targets []serviceTarget) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
 	var results []*discoverfern.ServiceDetails
 
-	// Parse target to get host and port - require explicit port for stealth mode
-	host, portStr, err := net.SplitHostPort(config.Target)
-	if err != nil {
-		report.Errors = append(report.Errors, "stealth mode requires explicit port specification (use format host:port)")
-		return report, nil
-	}
-	port := utils.ParsePort(portStr)
-	if port == 0 {
-		report.Errors = append(report.Errors, fmt.Sprintf("invalid port specified: %s", portStr))
-		return report, nil
-	}
-
-	for _, ip := range ips {
+	for _, target := range targets {
 		var detection *discoverfern.ServiceDetails
 		var err error
 
@@ -59,9 +45,9 @@ func RunStealthServiceFingerprint(ctx context.Context, config discoverfern.Disco
 		}
 
 		// Use the fingerprinter to detect the service
-		detection, err = fingerprinter.Detect(ctx, ip, port, host, config.Timeout)
+		detection, err = fingerprinter.Detect(ctx, target.ip, target.port, target.host, config.Timeout)
 		if err != nil {
-			report.Errors = append(report.Errors, fmt.Sprintf("%s(%s:%d): %v", config.Stealth.ServiceType, ip, port, err))
+			report.Errors = append(report.Errors, fmt.Sprintf("%s(%s:%d): %v", config.Stealth.ServiceType, target.ip, target.port, err))
 			continue
 		}
 
@@ -69,7 +55,7 @@ func RunStealthServiceFingerprint(ctx context.Context, config discoverfern.Disco
 			results = append(results, detection)
 		} else {
 			// No service found for this specific service type
-			report.Errors = append(report.Errors, fmt.Sprintf("no %s service found on %s:%d", config.Stealth.ServiceType, ip, port))
+			report.Errors = append(report.Errors, fmt.Sprintf("no %s service found on %s:%d", config.Stealth.ServiceType, target.ip, target.port))
 		}
 	}
 

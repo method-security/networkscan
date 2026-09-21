@@ -169,6 +169,28 @@ func TestParseServiceTargetsUsesPerIPHostForExpandedTargets(t *testing.T) {
 	}
 }
 
+func TestParseTCPServiceTargetsSupportsMultiplePorts(t *testing.T) {
+	targets, err := parseTCPServiceTargets([]string{"10.0.0.1:22", "10.0.0.4/30:443"})
+	if err != nil {
+		t.Fatalf("parseTCPServiceTargets returned error: %v", err)
+	}
+
+	if len(targets) != 5 {
+		t.Fatalf("target count = %d, want 5", len(targets))
+	}
+	if targets[0].host != "10.0.0.1" || targets[0].port != 22 {
+		t.Fatalf("first target = %#v, want 10.0.0.1:22", targets[0])
+	}
+	for _, target := range targets[1:] {
+		if target.port != 443 {
+			t.Fatalf("expanded target port = %d, want 443", target.port)
+		}
+		if target.host != target.ip.String() {
+			t.Fatalf("expanded target host = %q for ip %q, want per-IP host", target.host, target.ip)
+		}
+	}
+}
+
 func TestRunUDPServiceDiscoveryThreadsTargetsAndPlugins(t *testing.T) {
 	originalFingerprinters := udpFingerprinters
 	defer func() { udpFingerprinters = originalFingerprinters }()
@@ -186,7 +208,7 @@ func TestRunUDPServiceDiscoveryThreadsTargetsAndPlugins(t *testing.T) {
 	go func() {
 		defer close(done)
 		_, _ = runUDPServiceDiscovery(context.Background(), discoverfern.DiscoverServiceConfig{
-			Target:  "10.0.0.0/30",
+			Targets: []string{"10.0.0.0/30"},
 			Timeout: -1,
 			Threads: 2,
 			Udp:     &udp,

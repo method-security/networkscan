@@ -52,8 +52,8 @@ networkscan discover host --target 192.168.1.0/24
 networkscan discover host --target 192.168.1.0/24 --sleep 2 --jitter 10 --reverse-lookup
 networkscan discover port --target scanme.sh --top-ports 100
 networkscan discover port --target scanme.sh --ports 22,80,443 --validate
-networkscan discover service tcp --target scanme.sh:22
-networkscan discover service udp --target 192.168.1.1
+networkscan discover service tcp --targets scanme.sh:22
+networkscan discover service udp --targets 192.168.1.1
 networkscan discover tls --targets scanme.sh:443,example.com:443
 networkscan discover domain --target 192.168.1.1
 

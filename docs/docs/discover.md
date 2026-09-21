@@ -149,19 +149,19 @@ Identify and fingerprint network services over TCP or UDP.
 
 #### TCP Service Discovery
 ```bash
-networkscan discover service tcp --target 127.0.0.1:443
-networkscan discover service tcp --target example.com:22
+networkscan discover service tcp --targets 127.0.0.1:443
+networkscan discover service tcp --targets example.com:22,10.0.0.0/28:443
 ```
 
 #### UDP Service Discovery
 ```bash
-networkscan discover service udp --target 192.168.1.1
+networkscan discover service udp --targets 192.168.1.1,10.0.0.0/28
 ```
 
 #### Stealth Mode
 Use stealth mode for specific service fingerprinting:
 ```bash
-networkscan discover service tcp --target 192.168.1.1:22 --service-type SSH
+networkscan discover service tcp --targets 192.168.1.1:22 --service-type SSH
 ```
 
 #### Help Text

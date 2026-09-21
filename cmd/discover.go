@@ -381,9 +381,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.runDiscoverServiceCommand(cmd, false)
 		},
 	}
-	addDiscoverServiceCommonFlags(discoverServiceTCPCmd, "Target address (IP:port or hostname:port)")
+	addDiscoverServiceCommonFlags(discoverServiceTCPCmd, "Target addresses (IP:port or hostname:port)")
 	discoverServiceTCPCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
-	_ = discoverServiceTCPCmd.MarkFlagRequired("target")
+	_ = discoverServiceTCPCmd.MarkFlagRequired("targets")
 
 	discoverServiceUDPCmd := &cobra.Command{
 		Use:   "udp",
@@ -393,8 +393,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.runDiscoverServiceCommand(cmd, true)
 		},
 	}
-	addDiscoverServiceCommonFlags(discoverServiceUDPCmd, "Target IP address, hostname, CIDR range, IP range, or comma-delimited list")
-	_ = discoverServiceUDPCmd.MarkFlagRequired("target")
+	addDiscoverServiceCommonFlags(discoverServiceUDPCmd, "Target IP addresses, hostnames, CIDR ranges, or IP ranges")
+	_ = discoverServiceUDPCmd.MarkFlagRequired("targets")
 
 	discoverServiceCmd.AddCommand(discoverServiceTCPCmd)
 	discoverServiceCmd.AddCommand(discoverServiceUDPCmd)
@@ -572,13 +572,13 @@ func (a *NetworkScan) InitDiscoverCommand() {
 }
 
 func addDiscoverServiceCommonFlags(cmd *cobra.Command, targetHelp string) {
-	cmd.Flags().String("target", "", targetHelp)
+	cmd.Flags().StringSlice("targets", []string{}, targetHelp)
 	cmd.Flags().Int("timeout", 30, "Timeout in seconds for each service fingerprinting attempt")
 	cmd.Flags().Int("threads", 10, "Maximum concurrent target IPs and maximum custom service plugins per target")
 }
 
 func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
-	target, err := cmd.Flags().GetString("target")
+	targets, err := cmd.Flags().GetStringSlice("targets")
 	if err != nil {
 		a.OutputSignal.AddError(err)
 		return
@@ -596,14 +596,16 @@ func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
 
 	serviceType := ""
 	if !udp {
-		if !strings.Contains(target, ":") {
-			a.OutputSignal.AddError(fmt.Errorf("target must include port for TCP service discovery (e.g., %s:80)", target))
-			return
-		}
-		_, port := utils.ParseHostPort(target, 0)
-		if port == 0 {
-			a.OutputSignal.AddError(fmt.Errorf("target must include a valid port for TCP service discovery (e.g., %s:80)", target))
-			return
+		for _, target := range targets {
+			if !strings.Contains(target, ":") {
+				a.OutputSignal.AddError(fmt.Errorf("target must include port for TCP service discovery (e.g., %s:80)", target))
+				return
+			}
+			_, port := utils.ParseHostPort(target, 0)
+			if port == 0 {
+				a.OutputSignal.AddError(fmt.Errorf("target must include a valid port for TCP service discovery (e.g., %s:80)", target))
+				return
+			}
 		}
 
 		serviceType, err = cmd.Flags().GetString("service-type")
@@ -613,7 +615,7 @@ func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
 		}
 	}
 
-	config, err := getDiscoverServiceConfig(target, timeout, serviceType, udp, threads)
+	config, err := getDiscoverServiceConfig(targets, timeout, serviceType, udp, threads)
 	if err != nil {
 		a.OutputSignal.AddError(err)
 		return
@@ -705,10 +707,10 @@ func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops 
 }
 
 // getDiscoverServiceConfig creates a configuration for service fingerprinting with the provided parameters.
-// It sets up the target (in IP:port format for TCP, or just IP for UDP), timeout, UDP mode, and stealth-specific options.
-func getDiscoverServiceConfig(target string, timeout int, serviceType string, udp bool, threads int) (discoverfern.DiscoverServiceConfig, error) {
+// It sets up targets (in IP:port format for TCP, or host-only for UDP), timeout, UDP mode, and stealth-specific options.
+func getDiscoverServiceConfig(targets []string, timeout int, serviceType string, udp bool, threads int) (discoverfern.DiscoverServiceConfig, error) {
 	config := discoverfern.DiscoverServiceConfig{
-		Target:  target,
+		Targets: targets,
 		Timeout: timeout,
 		Threads: normalizeCustomPluginThreads(threads),
 	}

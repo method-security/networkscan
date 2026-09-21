@@ -177,10 +177,21 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 func RunTCPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
 
-	// Parse target to get host and port
-	host, port := utils.ParseHostPort(config.Target, 80) // Default to port 80 if no port specified
+	if config.Stealth != nil {
+		for _, target := range config.Targets {
+			_, portStr, err := net.SplitHostPort(target)
+			if err != nil {
+				report.Errors = append(report.Errors, "stealth mode requires explicit port specification (use format host:port)")
+				return report, nil
+			}
+			if utils.ParsePort(portStr) == 0 {
+				report.Errors = append(report.Errors, fmt.Sprintf("invalid port specified: %s", portStr))
+				return report, nil
+			}
+		}
+	}
 
-	targets, err := parseServiceTargets(host)
+	targets, err := parseTCPServiceTargets(config.Targets)
 	if err != nil {
 		report.Result = &discoverfern.DiscoverServiceResult{}
 		return report, err
@@ -188,17 +199,13 @@ func RunTCPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverS
 
 	// Check if stealth mode is enabled
 	if config.Stealth != nil {
-		ips := make([]net.IP, 0, len(targets))
-		for _, target := range targets {
-			ips = append(ips, target.ip)
-		}
-		return RunStealthServiceFingerprint(ctx, config, ips)
+		return runStealthServiceFingerprintTargets(ctx, config, targets)
 	}
 
 	resultsByIP := make([][]*discoverfern.ServiceDetails, len(targets))
 	errorsByIP := make([][]string, len(targets))
 	runTargetsParallel(ctx, targets, config.Threads, func(targetCtx context.Context, index int, target serviceTarget) {
-		resultsByIP[index], errorsByIP[index] = runTCPServiceFingerprintForIP(targetCtx, config, target.host, port, target.ip)
+		resultsByIP[index], errorsByIP[index] = runTCPServiceFingerprintForIP(targetCtx, config, target.host, target.port, target.ip)
 	})
 
 	var results []*discoverfern.ServiceDetails
@@ -219,6 +226,7 @@ func RunUDPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverS
 type serviceTarget struct {
 	ip   net.IP
 	host string
+	port int
 }
 
 func parseServiceTargets(target string) ([]serviceTarget, error) {
@@ -241,6 +249,22 @@ func parseServiceTargets(target string) ([]serviceTarget, error) {
 		targets = append(targets, serviceTarget{ip: ip, host: fingerprintHost})
 	}
 	return targets, nil
+}
+
+func parseTCPServiceTargets(targets []string) ([]serviceTarget, error) {
+	var expandedTargets []serviceTarget
+	for _, target := range targets {
+		host, port := utils.ParseHostPort(target, 80)
+		targetsForHost, err := parseServiceTargets(host)
+		if err != nil {
+			return nil, err
+		}
+		for _, targetForHost := range targetsForHost {
+			targetForHost.port = port
+			expandedTargets = append(expandedTargets, targetForHost)
+		}
+	}
+	return expandedTargets, nil
 }
 
 func runTCPServiceFingerprintForIP(ctx context.Context, config discoverfern.DiscoverServiceConfig, host string, port int, ip net.IP) ([]*discoverfern.ServiceDetails, []string) {
@@ -602,18 +626,21 @@ func fxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) 
 func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
 
-	// Parse target to get host (should be just IP, hostname, or CIDR)
-	host := config.Target
-	// Strip port if someone accidentally included it
-	if strings.Contains(host, ":") {
-		host, _, _ = net.SplitHostPort(host)
-	}
+	var targets []serviceTarget
+	for _, rawTarget := range config.Targets {
+		host := rawTarget
+		// Strip port if someone accidentally included it
+		if strings.Contains(host, ":") {
+			host, _, _ = net.SplitHostPort(host)
+		}
 
-	targets, err := parseServiceTargets(host)
-	if err != nil {
-		report.Result = &discoverfern.DiscoverServiceResult{}
-		report.Errors = append(report.Errors, fmt.Sprintf("failed to resolve target %s: %v", host, err))
-		return report, nil
+		targetsForHost, err := parseServiceTargets(host)
+		if err != nil {
+			report.Result = &discoverfern.DiscoverServiceResult{}
+			report.Errors = append(report.Errors, fmt.Sprintf("failed to resolve target %s: %v", host, err))
+			return report, nil
+		}
+		targets = append(targets, targetsForHost...)
 	}
 
 	resultsByIP := make([][]*discoverfern.ServiceDetails, len(targets))
@@ -627,7 +654,7 @@ func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverSer
 	}
 
 	if len(results) == 0 {
-		report.Errors = append(report.Errors, fmt.Sprintf("no UDP services found on %s", host))
+		report.Errors = append(report.Errors, fmt.Sprintf("no UDP services found on %s", strings.Join(config.Targets, ",")))
 	}
 
 	report.Result = &discoverfern.DiscoverServiceResult{Services: results}
