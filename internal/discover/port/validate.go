@@ -85,9 +85,10 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 				// Use TCP service fingerprinting to check if there's a service on this port.
 				targetStr := utils.FormatHostPort(task.socket.Ip, task.port.Port)
 				serviceConfig := discoverfern.DiscoverServiceConfig{
-					Targets: []string{targetStr},
-					Timeout: *config.ValidateAttemptTimeout,
-					Threads: config.ValidatePluginThreads,
+					Targets:       []string{targetStr},
+					Timeout:       *config.ValidateAttemptTimeout,
+					Threads:       1,
+					PluginThreads: config.ValidatePluginThreads,
 				}
 
 				serviceReport, err := runServiceFingerprintForValidation(ctx, serviceConfig)

@@ -574,7 +574,8 @@ func (a *NetworkScan) InitDiscoverCommand() {
 func addDiscoverServiceCommonFlags(cmd *cobra.Command, targetHelp string) {
 	cmd.Flags().StringSlice("targets", []string{}, targetHelp)
 	cmd.Flags().Int("timeout", 30, "Timeout in seconds for each service fingerprinting attempt")
-	cmd.Flags().Int("threads", 10, "Maximum concurrent target IPs and maximum custom service plugins per target")
+	cmd.Flags().Int("threads", 10, "Maximum concurrent target IPs")
+	cmd.Flags().Int("plugin-threads", 10, "Maximum custom service plugins to run concurrently per target")
 }
 
 func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
@@ -589,6 +590,11 @@ func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
 		return
 	}
 	threads, err := cmd.Flags().GetInt("threads")
+	if err != nil {
+		a.OutputSignal.AddError(err)
+		return
+	}
+	pluginThreads, err := cmd.Flags().GetInt("plugin-threads")
 	if err != nil {
 		a.OutputSignal.AddError(err)
 		return
@@ -615,7 +621,7 @@ func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
 		}
 	}
 
-	config, err := getDiscoverServiceConfig(targets, timeout, serviceType, udp, threads)
+	config, err := getDiscoverServiceConfig(targets, timeout, serviceType, udp, threads, pluginThreads)
 	if err != nil {
 		a.OutputSignal.AddError(err)
 		return
@@ -643,7 +649,7 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 		Ports:                 &ports,
 		TopPorts:              &topPorts,
 		PacketsPerSecond:      packetsPerSecond,
-		ValidatePluginThreads: normalizeCustomPluginThreads(validatePluginThreads),
+		ValidatePluginThreads: normalizeThreads(validatePluginThreads),
 	}
 
 	if sleep > 0 || jitter > 0 {
@@ -708,11 +714,12 @@ func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops 
 
 // getDiscoverServiceConfig creates a configuration for service fingerprinting with the provided parameters.
 // It sets up targets (in IP:port format for TCP, or host-only for UDP), timeout, UDP mode, and stealth-specific options.
-func getDiscoverServiceConfig(targets []string, timeout int, serviceType string, udp bool, threads int) (discoverfern.DiscoverServiceConfig, error) {
+func getDiscoverServiceConfig(targets []string, timeout int, serviceType string, udp bool, threads int, pluginThreads int) (discoverfern.DiscoverServiceConfig, error) {
 	config := discoverfern.DiscoverServiceConfig{
-		Targets: targets,
-		Timeout: timeout,
-		Threads: normalizeCustomPluginThreads(threads),
+		Targets:       targets,
+		Timeout:       timeout,
+		Threads:       normalizeThreads(threads),
+		PluginThreads: normalizeThreads(pluginThreads),
 	}
 	if udp {
 		config.Udp = &udp
@@ -730,7 +737,7 @@ func getDiscoverServiceConfig(targets []string, timeout int, serviceType string,
 	return config, nil
 }
 
-func normalizeCustomPluginThreads(threads int) int {
+func normalizeThreads(threads int) int {
 	if threads <= 0 {
 		return 1
 	}

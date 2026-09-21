@@ -222,10 +222,11 @@ func TestRunUDPServiceDiscoveryThreadsTargetsAndPlugins(t *testing.T) {
 	go func() {
 		defer close(done)
 		_, _ = runUDPServiceDiscovery(context.Background(), discoverfern.DiscoverServiceConfig{
-			Targets: []string{"10.0.0.0/30"},
-			Timeout: -1,
-			Threads: 2,
-			Udp:     &udp,
+			Targets:       []string{"10.0.0.0/30"},
+			Timeout:       -1,
+			Threads:       2,
+			PluginThreads: 2,
+			Udp:           &udp,
 		})
 	}()
 
@@ -235,6 +236,53 @@ func TestRunUDPServiceDiscoveryThreadsTargetsAndPlugins(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatalf("received %d of 4 concurrent starts", i)
 		}
+	}
+
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("UDP discovery did not complete after releasing probes")
+	}
+}
+
+func TestRunUDPServiceDiscoverySeparatesTargetAndPluginThreads(t *testing.T) {
+	originalFingerprinters := udpFingerprinters
+	defer func() { udpFingerprinters = originalFingerprinters }()
+
+	started := make(chan string, 8)
+	release := make(chan struct{})
+	fingerprinter := &blockingFingerprinter{started: started, release: release}
+	udpFingerprinters = map[uint16]Fingerprinter{
+		53:  fingerprinter,
+		123: fingerprinter,
+	}
+
+	udp := true
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = runUDPServiceDiscovery(context.Background(), discoverfern.DiscoverServiceConfig{
+			Targets:       []string{"10.0.0.0/30"},
+			Timeout:       -1,
+			Threads:       2,
+			PluginThreads: 1,
+			Udp:           &udp,
+		})
+	}()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatalf("received %d of 2 concurrent starts", i)
+		}
+	}
+
+	select {
+	case start := <-started:
+		t.Fatalf("unexpected third probe before release: %s", start)
+	case <-time.After(100 * time.Millisecond):
 	}
 
 	close(release)
@@ -255,8 +303,8 @@ func TestRunUDPServiceDiscoveryCollectsEveryDetection(t *testing.T) {
 	}
 
 	results := runUDPServiceDiscoveryForIP(context.Background(), discoverfern.DiscoverServiceConfig{
-		Timeout: 1,
-		Threads: 64,
+		Timeout:       1,
+		PluginThreads: 64,
 	}, net.ParseIP("10.0.0.1"), "10.0.0.1")
 
 	if len(results) != len(udpFingerprinters) {
@@ -273,8 +321,8 @@ func TestRunUDPServiceDiscoveryForIPPreservesFingerprintHost(t *testing.T) {
 	}
 
 	results := runUDPServiceDiscoveryForIP(context.Background(), discoverfern.DiscoverServiceConfig{
-		Timeout: 1,
-		Threads: 1,
+		Timeout:       1,
+		PluginThreads: 1,
 	}, net.ParseIP("10.0.0.1"), "dns.internal")
 
 	if len(results) != 1 || results[0].Host != "dns.internal" {
@@ -295,8 +343,8 @@ func TestRunUDPServiceDiscoveryTimeoutDoesNotBlockOnStubbornPlugin(t *testing.T)
 
 	start := time.Now()
 	results := runUDPServiceDiscoveryForIP(context.Background(), discoverfern.DiscoverServiceConfig{
-		Timeout: 1,
-		Threads: 1,
+		Timeout:       1,
+		PluginThreads: 1,
 	}, net.ParseIP("10.0.0.1"), "10.0.0.1")
 
 	if len(results) != 1 || results[0].Port != 123 {

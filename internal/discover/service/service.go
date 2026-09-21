@@ -306,7 +306,7 @@ func runTCPServiceFingerprintForIP(ctx context.Context, config discoverfern.Disc
 
 	// Run applicable fingerprinters in parallel
 	if len(applicableFingerprinters) > 0 {
-		if detection := runFingerprintersParallel(ctx, applicableFingerprinters, ip, port, host, config.Timeout, config.Threads); detection != nil {
+		if detection := runFingerprintersParallel(ctx, applicableFingerprinters, ip, port, host, config.Timeout, config.PluginThreads); detection != nil {
 			results = append(results, detection)
 			serviceFound = true
 		}
@@ -375,7 +375,7 @@ func runTCPServiceFingerprintForIP(ctx context.Context, config discoverfern.Disc
 
 		// Run fallback fingerprinters in parallel
 		if len(fallbackFingerprinters) > 0 {
-			if detection := runFingerprintersParallel(ctx, fallbackFingerprinters, ip, port, host, config.Timeout, config.Threads); detection != nil {
+			if detection := runFingerprintersParallel(ctx, fallbackFingerprinters, ip, port, host, config.Timeout, config.PluginThreads); detection != nil {
 				results = append(results, detection)
 				serviceFound = true
 			}
@@ -679,7 +679,7 @@ func runUDPServiceDiscoveryForIP(ctx context.Context, config discoverfern.Discov
 	}
 
 	resultChan := make(chan *discoverfern.ServiceDetails, len(tasks))
-	sem := make(chan struct{}, effectivePluginThreads(config.Threads, len(tasks)))
+	sem := make(chan struct{}, effectivePluginThreads(config.PluginThreads, len(tasks)))
 
 	for _, task := range tasks {
 		go func(t udpFingerprintTask) {
