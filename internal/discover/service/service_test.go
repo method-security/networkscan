@@ -118,9 +118,9 @@ func TestRunFingerprintersParallelTimeoutIsPerPlugin(t *testing.T) {
 	detection := runFingerprintersParallel(
 		context.Background(),
 		[]Fingerprinter{&timeoutFingerprinter{}, &resultFingerprinter{}},
-		net.ParseIP("192.0.2.1"),
+		net.ParseIP("10.0.0.1"),
 		443,
-		"192.0.2.1",
+		"10.0.0.1",
 		1,
 		1,
 	)
@@ -138,9 +138,9 @@ func TestRunFingerprintersParallelTimeoutDoesNotBlockOnStubbornPlugin(t *testing
 	detection := runFingerprintersParallel(
 		context.Background(),
 		[]Fingerprinter{&stubbornFingerprinter{release: release}, &resultFingerprinter{}},
-		net.ParseIP("192.0.2.1"),
+		net.ParseIP("10.0.0.1"),
 		443,
-		"192.0.2.1",
+		"10.0.0.1",
 		1,
 		1,
 	)
@@ -170,7 +170,7 @@ func TestRunUDPServiceDiscoveryThreadsTargetsAndPlugins(t *testing.T) {
 	go func() {
 		defer close(done)
 		_, _ = runUDPServiceDiscovery(context.Background(), discoverfern.DiscoverServiceConfig{
-			Target:  "192.0.2.0/30",
+			Target:  "10.0.0.0/30",
 			Timeout: -1,
 			Threads: 2,
 			Udp:     &udp,
@@ -208,7 +208,7 @@ func TestRunUDPServiceDiscoveryTimeoutDoesNotBlockOnStubbornPlugin(t *testing.T)
 	results := runUDPServiceDiscoveryForIP(context.Background(), discoverfern.DiscoverServiceConfig{
 		Timeout: 1,
 		Threads: 1,
-	}, net.ParseIP("192.0.2.1"))
+	}, net.ParseIP("10.0.0.1"))
 
 	if len(results) != 1 || results[0].Port != 123 {
 		t.Fatalf("results = %#v, want UDP result after stubborn plugin timeout", results)

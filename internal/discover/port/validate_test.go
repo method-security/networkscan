@@ -54,8 +54,8 @@ func TestValidatePortScanThreadsAcrossSockets(t *testing.T) {
 			ValidateThreads:        &validateThreads,
 			ValidateAttemptTimeout: &validateAttemptTimeout,
 		}, []*discoverfern.SocketDetails{
-			{Ip: "192.0.2.1", Ports: []*discoverfern.PortDetails{{Port: 80}}},
-			{Ip: "192.0.2.2", Ports: []*discoverfern.PortDetails{{Port: 443}}},
+			{Ip: "10.0.0.1", Ports: []*discoverfern.PortDetails{{Port: 80}}},
+			{Ip: "10.0.0.2", Ports: []*discoverfern.PortDetails{{Port: 443}}},
 		})
 		done <- validated
 	}()
