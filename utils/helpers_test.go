@@ -4,6 +4,23 @@ import (
 	"testing"
 )
 
+func TestParseTargetHostsIncludesCIDREndpoints(t *testing.T) {
+	hosts, err := ParseTargetHosts("192.0.2.0/28")
+	if err != nil {
+		t.Fatalf("ParseTargetHosts returned error: %v", err)
+	}
+
+	if len(hosts) != 16 {
+		t.Fatalf("host count = %d, want 16", len(hosts))
+	}
+	if hosts[0] != "192.0.2.0" {
+		t.Fatalf("first host = %q, want %q", hosts[0], "192.0.2.0")
+	}
+	if hosts[len(hosts)-1] != "192.0.2.15" {
+		t.Fatalf("last host = %q, want %q", hosts[len(hosts)-1], "192.0.2.15")
+	}
+}
+
 func TestResolveLDAPTarget(t *testing.T) {
 	cases := []struct {
 		target string
