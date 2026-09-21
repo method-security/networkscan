@@ -20,13 +20,6 @@ import (
 	cobra "github.com/spf13/cobra"
 )
 
-const (
-	defaultServiceFingerprintTimeout = 20
-	defaultServicePluginThreads      = 8
-	defaultCustomPluginThreads       = 1
-	defaultValidatePluginThreads     = 8
-)
-
 // InitDiscoverCommand initializes the discover command and its subcommands (host, os, port, service, tls).
 // Each subcommand implements a specific network discovery functionality.
 func (a *NetworkScan) InitDiscoverCommand() {
@@ -237,9 +230,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	discoverPortCmd.Flags().String("scan-type", "SYN", "Port scan type: SYN (default, requires root) or CONNECT")
 	discoverPortCmd.Flags().Int("packets-per-second", 1000, "Packets per second to send (default: 1000)")
 	discoverPortCmd.Flags().Bool("validate", false, "Validate open ports by using service detection techniques")
-	discoverPortCmd.Flags().Int("validate-attempt-timeout", defaultServiceFingerprintTimeout, "Timeout in seconds for each service detection attempt")
+	discoverPortCmd.Flags().Int("validate-attempt-timeout", 30, "Timeout in seconds for each service detection attempt")
 	discoverPortCmd.Flags().Int("validate-threads", 0, "Number of concurrent threads to use during service detection")
-	discoverPortCmd.Flags().Int("validate-plugin-threads", defaultValidatePluginThreads, "Maximum number of custom service plugins to run concurrently per port during validation")
+	discoverPortCmd.Flags().Int("validate-plugin-threads", 10, "Maximum number of custom service plugins to run concurrently per port during validation")
 	discoverPortCmd.Flags().Int("max-open-ports-validation-threshold", 50, "Trigger validation warning when more than this many ports are open (default: 50)")
 	discoverPortCmd.Flags().Int("sleep", 0, "Sleep delay in seconds between port scans for stealth scan (stealth mode enabled when sleep > 0)")
 	discoverPortCmd.Flags().Int("jitter", 0, "Jitter percentage (0-100) to randomize sleep delay for stealth scan")
@@ -373,83 +366,38 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverRouteCmd)
 
-	// Service Command
+	// Service Commands
 	discoverServiceCmd := &cobra.Command{
 		Use:   "service",
-		Short: "Identify and fingerprint network services on a target host or specific port.",
-		Long:  `Identify and fingerprint network services on a target host or specific port. Use --udp to scan common UDP ports.`,
+		Short: "Identify and fingerprint network services over TCP or UDP.",
+		Long:  `Identify and fingerprint network services over TCP or UDP.`,
+	}
+
+	discoverServiceTCPCmd := &cobra.Command{
+		Use:   "tcp",
+		Short: "Identify and fingerprint TCP services on a target host and port.",
+		Long:  `Identify and fingerprint TCP services on a target host and port.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			target, err := cmd.Flags().GetString("target")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			timeout, err := cmd.Flags().GetInt("timeout")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-
-			// UDP mode flag
-			udp, err := cmd.Flags().GetBool("udp")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-
-			// Validate target format based on UDP mode
-			if !udp {
-				// For TCP mode, target must include a port (IP:port or hostname:port)
-				if !strings.Contains(target, ":") {
-					a.OutputSignal.AddError(fmt.Errorf("target must include port for TCP mode (e.g., %s:80). Use --udp flag for UDP service discovery", target))
-					return
-				}
-				// Use existing utility to validate the target format
-				_, port := utils.ParseHostPort(target, 0)
-				if port == 0 {
-					a.OutputSignal.AddError(fmt.Errorf("target must include a valid port for TCP mode (e.g., %s:80). Use --udp flag for UDP service discovery", target))
-					return
-				}
-			}
-
-			// Stealth flags
-			serviceType, err := cmd.Flags().GetString("service-type")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-
-			// Threads flag
-			threads, err := cmd.Flags().GetInt("threads")
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-
-			// Set Config
-			config, err := getDiscoverServiceConfig(target, timeout, serviceType, udp, threads)
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-
-			// Generate the report
-			report, err := discoverservice.RunServiceFingerprint(cmd.Context(), config)
-			if err != nil {
-				a.OutputSignal.AddError(err)
-				return
-			}
-			a.OutputSignal.Content = report
+			a.runDiscoverServiceCommand(cmd, false)
 		},
 	}
-	discoverServiceCmd.Flags().String("target", "", "Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)")
-	discoverServiceCmd.Flags().Int("timeout", defaultServiceFingerprintTimeout, "Timeout in seconds for each service fingerprinting attempt")
-	discoverServiceCmd.Flags().Int("threads", defaultServicePluginThreads, "Maximum number of custom service plugins to run concurrently per target")
-	discoverServiceCmd.Flags().Bool("udp", false, "Enable UDP service discovery mode (scans common UDP ports like DNS, NTP, SNMP, etc.)")
-	discoverServiceCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
+	addDiscoverServiceCommonFlags(discoverServiceTCPCmd, "Target addresses (IP:port or hostname:port)")
+	discoverServiceTCPCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
+	_ = discoverServiceTCPCmd.MarkFlagRequired("targets")
 
-	// Mark Required Flags
-	_ = discoverServiceCmd.MarkFlagRequired("target")
+	discoverServiceUDPCmd := &cobra.Command{
+		Use:   "udp",
+		Short: "Identify common UDP services on one or more target hosts.",
+		Long:  `Identify common UDP services on one or more target hosts.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			a.runDiscoverServiceCommand(cmd, true)
+		},
+	}
+	addDiscoverServiceCommonFlags(discoverServiceUDPCmd, "Target IP addresses, hostnames, CIDR ranges, or IP ranges")
+	_ = discoverServiceUDPCmd.MarkFlagRequired("targets")
+
+	discoverServiceCmd.AddCommand(discoverServiceTCPCmd)
+	discoverServiceCmd.AddCommand(discoverServiceUDPCmd)
 
 	// Add Command to 'Discover' Command
 	discoverCmd.AddCommand(discoverServiceCmd)
@@ -623,6 +571,75 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	a.RootCmd.AddCommand(discoverCmd)
 }
 
+func addDiscoverServiceCommonFlags(cmd *cobra.Command, targetHelp string) {
+	cmd.Flags().StringSlice("targets", []string{}, targetHelp)
+	cmd.Flags().Int("timeout", 30, "Timeout in seconds for each service fingerprinting attempt")
+	cmd.Flags().Int("threads", 10, "Maximum concurrent target IPs")
+	cmd.Flags().Int("plugin-threads", 10, "Maximum custom service plugins to run concurrently per target")
+}
+
+func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
+	targets, err := cmd.Flags().GetStringSlice("targets")
+	if err != nil {
+		a.OutputSignal.AddError(err)
+		return
+	}
+	timeout, err := cmd.Flags().GetInt("timeout")
+	if err != nil {
+		a.OutputSignal.AddError(err)
+		return
+	}
+	threads, err := cmd.Flags().GetInt("threads")
+	if err != nil {
+		a.OutputSignal.AddError(err)
+		return
+	}
+	pluginThreads, err := cmd.Flags().GetInt("plugin-threads")
+	if err != nil {
+		a.OutputSignal.AddError(err)
+		return
+	}
+
+	serviceType := ""
+	if !udp {
+		for _, target := range targets {
+			if !strings.Contains(target, ":") {
+				a.OutputSignal.AddError(fmt.Errorf("target must include port for TCP service discovery (e.g., %s:80)", target))
+				return
+			}
+			_, port := utils.ParseHostPort(target, 0)
+			if port == 0 {
+				a.OutputSignal.AddError(fmt.Errorf("target must include a valid port for TCP service discovery (e.g., %s:80)", target))
+				return
+			}
+		}
+
+		serviceType, err = cmd.Flags().GetString("service-type")
+		if err != nil {
+			a.OutputSignal.AddError(err)
+			return
+		}
+	}
+
+	config, err := getDiscoverServiceConfig(targets, timeout, serviceType, udp, threads, pluginThreads)
+	if err != nil {
+		a.OutputSignal.AddError(err)
+		return
+	}
+
+	var report *discoverfern.DiscoverServiceReport
+	if udp {
+		report, err = discoverservice.RunUDPServiceFingerprint(cmd.Context(), config)
+	} else {
+		report, err = discoverservice.RunTCPServiceFingerprint(cmd.Context(), config)
+	}
+	if err != nil {
+		a.OutputSignal.AddError(err)
+		return
+	}
+	a.OutputSignal.Content = report
+}
+
 // getDiscoverPortConfig creates a configuration for port scanning with the provided parameters.
 // It handles both specific port ranges and top ports scanning modes.
 func getDiscoverPortConfig(target string, ports string, topPorts string, threads int, packetsPerSecond int, scanType discoverfern.PortScanType, validate bool, validateAttemptTimeout *int, validateThreads *int, validatePluginThreads int, maxOpenPortsValidationThreshold *int, sleep int, jitter int) discoverfern.DiscoverPortConfig {
@@ -632,7 +649,7 @@ func getDiscoverPortConfig(target string, ports string, topPorts string, threads
 		Ports:                 &ports,
 		TopPorts:              &topPorts,
 		PacketsPerSecond:      packetsPerSecond,
-		ValidatePluginThreads: normalizeCustomPluginThreads(validatePluginThreads),
+		ValidatePluginThreads: normalizeThreads(validatePluginThreads),
 	}
 
 	if sleep > 0 || jitter > 0 {
@@ -696,12 +713,13 @@ func getDiscoverRouteConfig(targets []string, hostIP string, excludeTimeoutHops 
 }
 
 // getDiscoverServiceConfig creates a configuration for service fingerprinting with the provided parameters.
-// It sets up the target (in IP:port format for TCP, or just IP for UDP), timeout, UDP mode, and stealth-specific options.
-func getDiscoverServiceConfig(target string, timeout int, serviceType string, udp bool, threads int) (discoverfern.DiscoverServiceConfig, error) {
+// It sets up targets (in IP:port format for TCP, or host-only for UDP), timeout, UDP mode, and stealth-specific options.
+func getDiscoverServiceConfig(targets []string, timeout int, serviceType string, udp bool, threads int, pluginThreads int) (discoverfern.DiscoverServiceConfig, error) {
 	config := discoverfern.DiscoverServiceConfig{
-		Target:  target,
-		Timeout: timeout,
-		Threads: normalizeCustomPluginThreads(threads),
+		Targets:       targets,
+		Timeout:       timeout,
+		Threads:       normalizeThreads(threads),
+		PluginThreads: normalizeThreads(pluginThreads),
 	}
 	if udp {
 		config.Udp = &udp
@@ -719,9 +737,9 @@ func getDiscoverServiceConfig(target string, timeout int, serviceType string, ud
 	return config, nil
 }
 
-func normalizeCustomPluginThreads(threads int) int {
+func normalizeThreads(threads int) int {
 	if threads <= 0 {
-		return defaultCustomPluginThreads
+		return 1
 	}
 	return threads
 }

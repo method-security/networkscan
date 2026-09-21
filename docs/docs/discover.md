@@ -131,8 +131,8 @@ Flags:
       --threads int                     Number of concurrent threads to use during port scanning (default 25)
       --top-ports string                Scan the top N most common TCP ports (options: full, 100, 1000)
       --validate                                    Validate open ports by using service detection techniques
-      --validate-attempt-timeout int               Timeout in seconds for each service detection attempt (default 20)
-      --validate-plugin-threads int                Maximum number of custom service plugins to run concurrently per port during validation (default 8)
+      --validate-attempt-timeout int               Timeout in seconds for each service detection attempt (default 30)
+      --validate-plugin-threads int                Maximum number of custom service plugins to run concurrently per port during validation (default 10)
       --validate-threads int                       Number of concurrent threads to use during service detection
       --max-open-ports-validation-threshold int    Trigger validation warning when more than this many ports are open (default 50)
 
@@ -145,41 +145,39 @@ Global Flags:
 
 ### Service
 
-Identify and fingerprint network services on a target host or specific port.
+Identify and fingerprint network services over TCP or UDP.
 
 #### TCP Service Discovery
 ```bash
-networkscan discover service --target 127.0.0.1:443
-networkscan discover service --target example.com:22
+networkscan discover service tcp --targets 127.0.0.1:443
+networkscan discover service tcp --targets example.com:22,10.0.0.0/28:443
 ```
 
 #### UDP Service Discovery
-Use UDP mode to discover common UDP services:
 ```bash
-networkscan discover service --target 192.168.1.1 --udp
+networkscan discover service udp --targets 192.168.1.1,10.0.0.0/28
 ```
 
 #### Stealth Mode
 Use stealth mode for specific service fingerprinting:
 ```bash
-networkscan discover service --target 192.168.1.1:22 --service-type SSH
+networkscan discover service tcp --targets 192.168.1.1:22 --service-type SSH
 ```
 
 #### Help Text
 ```bash
 networkscan discover service -h
-Identify and fingerprint network services on a target host or specific port. Use --udp to scan common UDP ports.
+Identify and fingerprint network services over TCP or UDP.
 
 Usage:
-  networkscan discover service [flags]
+  networkscan discover service [command]
+
+Available Commands:
+  tcp         Identify and fingerprint TCP services on a target host and port.
+  udp         Identify common UDP services on one or more target hosts.
 
 Flags:
-  -h, --help                 help for service
-      --threads int                Maximum number of custom service plugins to run concurrently per target (default 8)
-      --service-type string        Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
-      --target string              Target address (IP:port or hostname:port for TCP, IP or hostname for UDP mode)
-      --timeout int                Timeout in seconds for each service fingerprinting attempt (default 20)
-      --udp                        Enable UDP service discovery mode (scans common UDP ports like DNS, NTP, SNMP, etc.)
+  -h, --help   help for service
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
