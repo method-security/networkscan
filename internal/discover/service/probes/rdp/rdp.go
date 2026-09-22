@@ -166,7 +166,6 @@ func DetectRDP(conn net.Conn, timeout time.Duration) (string, bool, error) {
 	return "", true, &utils.InvalidResponseError{Service: RDP}
 }
 func DetectRDPAuth(conn net.Conn, timeout time.Duration) (*probe.ServiceRDP, bool, error) {
-	info := probe.ServiceRDP{}
 
 	NegotiatePacket := []byte{
 		0x30, 0x37, 0xA0, 0x03, 0x02, 0x01, 0x60, 0xA1, 0x30, 0x30, 0x2E, 0x30, 0x2C, 0xA0, 0x2A, 0x04, 0x28,
@@ -192,6 +191,11 @@ func DetectRDPAuth(conn net.Conn, timeout time.Duration) (*probe.ServiceRDP, boo
 	if err != nil {
 		return nil, false, err
 	}
+	return parseRDPAuth(response)
+}
+
+func parseRDPAuth(response []byte) (*probe.ServiceRDP, bool, error) {
+	info := probe.ServiceRDP{}
 
 	type NTLMChallenge struct {
 		Signature              [8]byte
@@ -219,7 +223,7 @@ func DetectRDPAuth(conn net.Conn, timeout time.Duration) (*probe.ServiceRDP, boo
 	var responseData NTLMChallenge
 	response = response[challengeStartOffset:]
 	responseBuf := bytes.NewBuffer(response)
-	err = binary.Read(responseBuf, binary.LittleEndian, &responseData)
+	err := binary.Read(responseBuf, binary.LittleEndian, &responseData)
 	if err != nil {
 		return nil, false, err
 	}
@@ -248,63 +252,52 @@ func DetectRDPAuth(conn net.Conn, timeout time.Duration) (*probe.ServiceRDP, boo
 
 	targetNameLen := int(responseData.TargetNameLen)
 	if targetNameLen > 0 {
+		if uint64(responseData.TargetNameBufferOffset)+uint64(targetNameLen) > uint64(len(response)) {
+			return nil, false, fmt.Errorf("invalid TargetName buffer")
+		}
 		startIdx := int(responseData.TargetNameBufferOffset)
 		endIdx := startIdx + targetNameLen
 		targetName := strings.ReplaceAll(string(response[startIdx:endIdx]), "\x00", "")
 		info.TargetName = targetName
 	}
 
-	AvIDMap := map[uint16]string{
-		1: "NetBIOSComputerName",
-		2: "NetBIOSDomainName",
-		3: "FQDN",
-		4: "DNSDomainName",
-		5: "DNSTreeName",
-	}
-
-	type AVPair struct {
-		AvID  uint16
-		AvLen uint16
-	}
-	var avPairLen = 4
 	targetInfoLen := int(responseData.TargetInfoLen)
 	if targetInfoLen > 0 {
+		if uint64(responseData.TargetInfoBufferOffset)+uint64(targetInfoLen) > uint64(len(response)) {
+			return nil, false, fmt.Errorf("invalid TargetInfo buffer")
+		}
 		startIdx := int(responseData.TargetInfoBufferOffset)
-		if startIdx+targetInfoLen > len(response) {
-			return &info, true, fmt.Errorf("Invalid TargetInfoLen value")
-		}
-		var avPair AVPair
-		avPairBuf := bytes.NewBuffer(response[startIdx : startIdx+avPairLen])
-		err = binary.Read(avPairBuf, binary.LittleEndian, &avPair)
-		if err != nil {
-			return &info, true, err
-		}
-		currIdx := startIdx
-		for avPair.AvID != 0 {
-			if field, exists := AvIDMap[avPair.AvID]; exists {
-				value := strings.ReplaceAll(string(response[currIdx+avPairLen:currIdx+avPairLen+int(avPair.AvLen)]), "\x00", "")
-				switch field {
-				case "netbiosComputerName":
-					info.NetBIOSComputerName = value
-				case "netbiosDomainName":
-					info.NetBIOSDomainName = value
-				case "dnsComputerName":
-					info.DNSComputerName = value
-				case "dnsDomainName":
-					info.DNSDomainName = value
-				case "forestName":
-					info.ForestName = value
+		pairs := response[startIdx : startIdx+targetInfoLen]
+		for {
+			if len(pairs) < 4 {
+				return nil, false, fmt.Errorf("truncated AV_PAIR header or missing terminator")
+			}
+			id := binary.LittleEndian.Uint16(pairs)
+			length := int(binary.LittleEndian.Uint16(pairs[2:]))
+			pairs = pairs[4:]
+			if length > len(pairs) {
+				return nil, false, fmt.Errorf("truncated AV_PAIR value")
+			}
+			if id == 0 {
+				if length != 0 {
+					return nil, false, fmt.Errorf("invalid AV_PAIR terminator")
 				}
+				break
 			}
-			currIdx += avPairLen + int(avPair.AvLen)
-			if currIdx+avPairLen > startIdx+targetInfoLen {
-				return &info, true, fmt.Errorf("Invalid AV_PAIR list")
+			value := strings.ReplaceAll(string(pairs[:length]), "\x00", "")
+			switch id {
+			case 1:
+				info.NetBIOSComputerName = value
+			case 2:
+				info.NetBIOSDomainName = value
+			case 3:
+				info.DNSComputerName = value
+			case 4:
+				info.DNSDomainName = value
+			case 5:
+				info.ForestName = value
 			}
-			avPairBuf = bytes.NewBuffer(response[currIdx : currIdx+avPairLen])
-			err = binary.Read(avPairBuf, binary.LittleEndian, &avPair)
-			if err != nil {
-				return &info, true, err
-			}
+			pairs = pairs[length:]
 		}
 	}
 

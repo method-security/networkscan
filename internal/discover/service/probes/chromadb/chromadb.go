@@ -5,13 +5,18 @@
 package chromadb
 
 import (
+	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	probe "github.com/Method-Security/networkscan/internal/discover/service/probes/probe"
 	utils "github.com/Method-Security/networkscan/internal/discover/service/probes/wireio"
 )
@@ -73,34 +78,53 @@ func parseChromaDBHeartbeat(response []byte) (bool, int64) {
 // may fail if the endpoint is unavailable, authentication is required, or response is malformed.
 //
 // Parameters:
-//   - conn: Network connection to the target service
 //   - target: Target information for service creation
 //   - timeout: Timeout duration for network operations
+//   - secure: Whether to negotiate TLS on the new connection
 //
 // Returns:
 //   - string: Version string (empty if unavailable)
 //   - error: Error details if version extraction failed (non-fatal)
-func getChromaDBVersion(conn net.Conn, target probe.Target, timeout time.Duration) (string, error) {
+func getChromaDBVersion(target probe.Target, timeout time.Duration, secure bool) (string, error) {
+	ctx := target.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := helpers.ContextDuration(ctx, timeout)
+	defer cancel()
+	// The heartbeat requests Connection: close; enrichment needs a fresh socket,
+	// still governed by the original plugin context and proxy-aware dialer.
+	conn, err := helpers.DialDuration(ctx, "tcp", target.Address.String(), timeout)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = conn.Close() }()
+	if secure {
+		tlsConn := tls.Client(conn, &tls.Config{InsecureSkipVerify: true, ServerName: target.Host})
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			return "", err
+		}
+		conn = tlsConn
+	}
 
 	host := net.JoinHostPort(target.Host, fmt.Sprintf("%d", target.Address.Port()))
 
 	request := buildChromaDBHTTPRequest("/api/v1/version", host)
 
-	response, err := utils.SendRecv(conn, []byte(request), timeout)
+	jsonBody, err := readChromaDBResponse(conn, request, timeout)
 	if err != nil {
 		return "", err
 	}
 
-	if len(response) == 0 {
-		return "", nil
-	}
-
-	jsonBody := extractHTTPBody(response)
 	if len(jsonBody) == 0 {
 		return "", nil
 	}
 
 	// Parse JSON response
+	var versionString string
+	if err := json.Unmarshal(jsonBody, &versionString); err == nil {
+		return cleanChromaDBVersion(versionString), nil
+	}
 	var versionResp chromadbVersionResponse
 	if err := json.Unmarshal(jsonBody, &versionResp); err != nil {
 		return "", nil
@@ -109,6 +133,29 @@ func getChromaDBVersion(conn net.Conn, target probe.Target, timeout time.Duratio
 	version := cleanChromaDBVersion(versionResp.Version)
 
 	return version, nil
+}
+
+func readChromaDBResponse(conn net.Conn, request string, timeout time.Duration) ([]byte, error) {
+	if err := utils.Send(conn, []byte(request), timeout); err != nil {
+		return nil, err
+	}
+	if err := helpers.SetReadDeadlineDuration(conn, timeout); err != nil {
+		return nil, err
+	}
+	response, err := http.ReadResponse(bufio.NewReader(io.LimitReader(conn, 2<<20)), nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ChromaDB HTTP status %d", response.StatusCode)
+	}
+	const maxBodyBytes = 1 << 20
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxBodyBytes+1))
+	if len(body) > maxBodyBytes {
+		return nil, fmt.Errorf("ChromaDB response exceeds size limit")
+	}
+	return body, err
 }
 
 // cleanChromaDBVersion removes pre-release suffixes and commit hashes from version strings.
@@ -225,23 +272,21 @@ func detectChromaDB(conn net.Conn, target probe.Target, timeout time.Duration, t
 
 	request := buildChromaDBHTTPRequest("/api/v1/heartbeat", host)
 
-	response, err := utils.SendRecv(conn, []byte(request), timeout)
+	jsonBody, err := readChromaDBResponse(conn, request, timeout)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(response) == 0 {
+	if len(jsonBody) == 0 {
 		return nil, nil
 	}
-
-	jsonBody := extractHTTPBody(response)
 
 	detected, _ := parseChromaDBHeartbeat(jsonBody)
 	if !detected {
 		return nil, nil
 	}
 
-	version, _ := getChromaDBVersion(conn, target, timeout)
+	version, _ := getChromaDBVersion(target, timeout, tls)
 
 	cpe := buildChromaDBCPE(version)
 	payload := probe.ServiceChromaDB{

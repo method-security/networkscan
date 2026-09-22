@@ -167,7 +167,7 @@ type ServiceTelnet struct {
 func (e ServiceTelnet) Type() string { return ProtoTelnet }
 
 type ServiceRedis struct {
-	AuthRequired bool     `json:"authRequired:"`
+	AuthRequired bool     `json:"authRequired"`
 	CPEs         []string `json:"cpes,omitempty"`
 }
 

@@ -30,6 +30,9 @@ func (p *SMTPPlugin) PortPriority(port uint16) bool {
 	return port == 25 || port == 587 || port == 465 || port == 2525
 }
 func handleSMTPConn(response []byte) (bool, bool) {
+	if len(response) < 3 {
+		return false, false
+	}
 
 	validResponses := []string{"220", "421", "500", "501", "554"}
 	isSMTP := false
@@ -48,6 +51,9 @@ func handleSMTPConn(response []byte) (bool, bool) {
 	return isSMTP, isSMTPErr
 }
 func handleSMTPHelo(response []byte) (bool, bool) {
+	if len(response) < 3 {
+		return false, false
+	}
 
 	validResponses := []string{"250", "421", "500", "501", "502", "504", "550"}
 	isSMTP := false
