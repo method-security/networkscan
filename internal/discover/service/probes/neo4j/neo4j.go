@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	probe "github.com/Method-Security/networkscan/internal/discover/service/probes/probe"
 	utils "github.com/Method-Security/networkscan/internal/discover/service/probes/wireio"
 )
@@ -390,7 +391,7 @@ func recvExact(conn net.Conn, n int, timeout time.Duration) ([]byte, error) {
 	buf := make([]byte, n)
 	read := 0
 	for read < n {
-		if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+		if err := helpers.SetReadDeadlineDuration(conn, timeout); err != nil {
 			return []byte{}, &utils.ReadTimeoutError{WrappedError: err}
 		}
 		m, err := conn.Read(buf[read:])
@@ -454,7 +455,7 @@ func recvBoltMessageRaw(conn net.Conn, timeout time.Duration) ([]byte, error) {
 			}
 		}
 
-		if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+		if err := helpers.SetReadDeadlineDuration(conn, timeout); err != nil {
 			return []byte{}, &utils.ReadTimeoutError{WrappedError: err}
 		}
 		n, err := conn.Read(tmp)
