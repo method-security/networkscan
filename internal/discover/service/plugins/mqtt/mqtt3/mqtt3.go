@@ -6,6 +6,8 @@ package mqtt3
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -27,14 +29,14 @@ func testConnectRequest(conn net.Conn, requestBytes []byte, timeout time.Duratio
 		return false, err
 	}
 	if len(response) == 0 {
-		return true, &utils.ServerNotEnable{}
+		return true, errors.New("service unavailable")
 	}
 
 	if len(response) == 4 && response[0] == 0x20 && response[1] == 2 && response[2] <= 1 && response[3] <= 5 {
 
 		return true, nil
 	}
-	return true, &utils.InvalidResponseError{Service: MQTT}
+	return true, fmt.Errorf("%s: invalid response", MQTT)
 }
 func (p *MQTT3Plugin) Run(conn net.Conn, timeout time.Duration, target helpers.Endpoint) (*discover.ServiceDetails, error) {
 	return Run(conn, timeout, false, target)

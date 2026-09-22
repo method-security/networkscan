@@ -211,18 +211,16 @@ func packstreamTinyString(s string) []byte {
 // Returns (selected version, true, nil) if the server chose one of our proposals.
 func checkBoltHandshakeResponse(response []byte, proposals []uint32) (uint32, bool, error) {
 	if len(response) < 4 {
-		return 0, false, &utils.InvalidResponseErrorInfo{
-			Service: NEO4J,
-			Info:    "response too short for Bolt handshake",
-		}
+		return 0, false, fmt.Errorf("%s: invalid response: %s", NEO4J,
+			"response too short for Bolt handshake")
+
 	}
 
 	version := binary.BigEndian.Uint32(response[0:4])
 	if version == 0 {
-		return 0, false, &utils.InvalidResponseErrorInfo{
-			Service: NEO4J,
-			Info:    "server rejected all proposed Bolt versions",
-		}
+		return 0, false, fmt.Errorf("%s: invalid response: %s", NEO4J,
+			"server rejected all proposed Bolt versions")
+
 	}
 
 	offered := make(map[uint32]struct{}, len(proposals))
@@ -230,10 +228,9 @@ func checkBoltHandshakeResponse(response []byte, proposals []uint32) (uint32, bo
 		offered[v] = struct{}{}
 	}
 	if _, ok := offered[version]; !ok {
-		return version, false, &utils.InvalidResponseErrorInfo{
-			Service: NEO4J,
-			Info:    fmt.Sprintf("server selected unoffered Bolt version: %08x", version),
-		}
+		return version, false, fmt.Errorf("%s: invalid response: %s", NEO4J,
+			fmt.Sprintf("server selected unoffered Bolt version: %08x", version))
+
 	}
 
 	return version, true, nil
@@ -248,18 +245,16 @@ func parseHelloResponse(response []byte) (string, bool, error) {
 		return "", false, err
 	}
 	if len(body) < 2 {
-		return "", false, &utils.InvalidResponseErrorInfo{
-			Service: NEO4J,
-			Info:    "response body too short",
-		}
+		return "", false, fmt.Errorf("%s: invalid response: %s", NEO4J,
+			"response body too short")
+
 	}
 
 	marker := body[0]
 	if marker != 0xB1 {
-		return "", false, &utils.InvalidResponseErrorInfo{
-			Service: NEO4J,
-			Info:    fmt.Sprintf("unexpected structure marker: %02x", marker),
-		}
+		return "", false, fmt.Errorf("%s: invalid response: %s", NEO4J,
+			fmt.Sprintf("unexpected structure marker: %02x", marker))
+
 	}
 
 	signature := body[1]
@@ -270,10 +265,9 @@ func parseHelloResponse(response []byte) (string, bool, error) {
 		return "", false, nil
 	}
 	if signature != SUCCESS_SIGNATURE {
-		return "", false, &utils.InvalidResponseErrorInfo{
-			Service: NEO4J,
-			Info:    fmt.Sprintf("unexpected response signature: %02x", signature),
-		}
+		return "", false, fmt.Errorf("%s: invalid response: %s", NEO4J,
+			fmt.Sprintf("unexpected response signature: %02x", signature))
+
 	}
 
 	serverStr := extractServerField(body[2:])
@@ -344,20 +338,18 @@ func extractServerField(data []byte) string {
 // dechunkBoltMessage reassembles a chunked Bolt message into a single body.
 func dechunkBoltMessage(response []byte) ([]byte, error) {
 	if len(response) < 4 {
-		return nil, &utils.InvalidResponseErrorInfo{
-			Service: NEO4J,
-			Info:    "response too short for chunked message",
-		}
+		return nil, fmt.Errorf("%s: invalid response: %s", NEO4J,
+			"response too short for chunked message")
+
 	}
 
 	body := make([]byte, 0, len(response))
 	pos := 0
 	for {
 		if pos+2 > len(response) {
-			return nil, &utils.InvalidResponseErrorInfo{
-				Service: NEO4J,
-				Info:    "truncated chunk header",
-			}
+			return nil, fmt.Errorf("%s: invalid response: %s", NEO4J,
+				"truncated chunk header")
+
 		}
 
 		chunkLen := int(binary.BigEndian.Uint16(response[pos : pos+2]))
@@ -367,10 +359,9 @@ func dechunkBoltMessage(response []byte) ([]byte, error) {
 			break
 		}
 		if pos+chunkLen > len(response) {
-			return nil, &utils.InvalidResponseErrorInfo{
-				Service: NEO4J,
-				Info:    "chunk length exceeds response size",
-			}
+			return nil, fmt.Errorf("%s: invalid response: %s", NEO4J,
+				"chunk length exceeds response size")
+
 		}
 
 		body = append(body, response[pos:pos+chunkLen]...)
@@ -378,10 +369,9 @@ func dechunkBoltMessage(response []byte) ([]byte, error) {
 	}
 
 	if len(body) == 0 {
-		return nil, &utils.InvalidResponseErrorInfo{
-			Service: NEO4J,
-			Info:    "empty chunked message body",
-		}
+		return nil, fmt.Errorf("%s: invalid response: %s", NEO4J,
+			"empty chunked message body")
+
 	}
 	return body, nil
 }
@@ -393,7 +383,7 @@ func recvExact(conn net.Conn, n int, timeout time.Duration) ([]byte, error) {
 	read := 0
 	for read < n {
 		if err := helpers.SetReadDeadlineDuration(conn, timeout); err != nil {
-			return []byte{}, &utils.ReadTimeoutError{WrappedError: err}
+			return []byte{}, fmt.Errorf("set read deadline: %w", err)
 		}
 		m, err := conn.Read(buf[read:])
 
@@ -450,14 +440,13 @@ func recvBoltMessageRaw(conn net.Conn, timeout time.Duration) ([]byte, error) {
 		}
 
 		if len(raw) >= maxMessageBytes {
-			return []byte{}, &utils.InvalidResponseErrorInfo{
-				Service: NEO4J,
-				Info:    "bolt message exceeds maximum size",
-			}
+			return []byte{}, fmt.Errorf("%s: invalid response: %s", NEO4J,
+				"bolt message exceeds maximum size")
+
 		}
 
 		if err := helpers.SetReadDeadlineDuration(conn, timeout); err != nil {
-			return []byte{}, &utils.ReadTimeoutError{WrappedError: err}
+			return []byte{}, fmt.Errorf("set read deadline: %w", err)
 		}
 		n, err := conn.Read(tmp)
 		if err != nil {

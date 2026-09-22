@@ -7,6 +7,7 @@ package telnet
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"net"
 	"time"
 
@@ -217,7 +218,7 @@ var TelnetOptionsMap = map[byte]bool{
 
 func isTelnet(telnet []byte) error {
 	msgLength := len(telnet)
-	matchError := &utils.InvalidResponseError{Service: TELNET}
+	matchError := fmt.Errorf("%s: invalid response", TELNET)
 
 	if msgLength == 0 || msgLength == 1 {
 

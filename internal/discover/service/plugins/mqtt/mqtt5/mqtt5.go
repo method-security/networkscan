@@ -6,6 +6,8 @@ package mqtt5
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -27,14 +29,14 @@ func testConnectRequest(conn net.Conn, requestBytes []byte, timeout time.Duratio
 		return false, err
 	}
 	if len(response) == 0 {
-		return true, &utils.ServerNotEnable{}
+		return true, errors.New("service unavailable")
 	}
 
 	if len(response) >= 5 && response[0] == 0x20 && int(response[1]) == len(response)-2 && response[2] <= 1 {
 
 		return true, nil
 	}
-	return true, &utils.InvalidResponseError{Service: MQTT}
+	return true, fmt.Errorf("%s: invalid response", MQTT)
 }
 func (p *MQTT5Plugin) Run(conn net.Conn, timeout time.Duration, target helpers.Endpoint) (*discover.ServiceDetails, error) {
 	return Run(conn, timeout, false, target)

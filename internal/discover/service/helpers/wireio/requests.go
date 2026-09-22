@@ -28,20 +28,14 @@ import (
 func Send(conn net.Conn, data []byte, timeout time.Duration) error {
 	err := helpers.SetWriteDeadlineDuration(conn, timeout)
 	if err != nil {
-		return &WriteTimeoutError{WrappedError: err}
+		return fmt.Errorf("set write deadline: %w", err)
 	}
 	length, err := conn.Write(data)
 	if err != nil {
-		return &WriteError{WrappedError: err}
+		return fmt.Errorf("write probe: %w", err)
 	}
 	if length < len(data) {
-		return &WriteError{
-			WrappedError: fmt.Errorf(
-				"Failed to write all bytes (%d bytes written, %d bytes expected)",
-				length,
-				len(data),
-			),
-		}
+		return fmt.Errorf("write probe: wrote %d of %d bytes", length, len(data))
 	}
 	return nil
 }
@@ -50,7 +44,7 @@ func Recv(conn net.Conn, timeout time.Duration) ([]byte, error) {
 	response := make([]byte, 4096)
 	err := helpers.SetReadDeadlineDuration(conn, timeout)
 	if err != nil {
-		return []byte{}, &ReadTimeoutError{WrappedError: err}
+		return []byte{}, fmt.Errorf("set read deadline: %w", err)
 	}
 	length, err := conn.Read(response)
 	if length > 0 {
@@ -62,10 +56,7 @@ func Recv(conn net.Conn, timeout time.Duration) ([]byte, error) {
 			errors.Is(err, syscall.ECONNREFUSED) { // timeout error or connection refused
 			return []byte{}, nil
 		}
-		return response[:length], &ReadError{
-			Info:         hex.EncodeToString(response[:length]),
-			WrappedError: err,
-		}
+		return response[:length], fmt.Errorf("read probe (data %s): %w", hex.EncodeToString(response[:length]), err)
 	}
 	return response[:length], nil
 }

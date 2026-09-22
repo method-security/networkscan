@@ -7,6 +7,7 @@ package sybase
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
@@ -166,7 +167,7 @@ func DetectSybase(conn net.Conn, timeout time.Duration) (Data, bool, error) {
 	}
 
 	if len(response) == 0 {
-		return Data{}, false, &utils.ServerNotEnable{}
+		return Data{}, false, errors.New("service unavailable")
 	}
 
 	if err := validateTDSResponse(response); err != nil {
@@ -191,53 +192,46 @@ func DetectSybase(conn net.Conn, timeout time.Duration) (Data, bool, error) {
 func validateTDSResponse(response []byte) error {
 
 	if len(response) < 8 {
-		return &utils.InvalidResponseErrorInfo{
-			Service: SYBASE,
-			Info:    "response too short for TDS packet header",
-		}
+		return fmt.Errorf("%s: invalid response: %s", SYBASE,
+			"response too short for TDS packet header")
+
 	}
 
 	if response[0] != 0x04 {
-		return &utils.InvalidResponseErrorInfo{
-			Service: SYBASE,
-			Info:    "packet type should be 0x04 (tabular response)",
-		}
+		return fmt.Errorf("%s: invalid response: %s", SYBASE,
+			"packet type should be 0x04 (tabular response)")
+
 	}
 
 	if response[1] != 0x01 {
-		return &utils.InvalidResponseErrorInfo{
-			Service: SYBASE,
-			Info:    "packet status should be 0x01 (EOM)",
-		}
+		return fmt.Errorf("%s: invalid response: %s", SYBASE,
+			"packet status should be 0x01 (EOM)")
+
 	}
 
 	packetLength := int(binary.BigEndian.Uint16(response[2:4]))
 	if len(response) != packetLength {
-		return &utils.InvalidResponseErrorInfo{
-			Service: SYBASE,
-			Info:    fmt.Sprintf("packet length mismatch: declared %d, actual %d", packetLength, len(response)),
-		}
+		return fmt.Errorf("%s: invalid response: %s", SYBASE,
+			fmt.Sprintf("packet length mismatch: declared %d, actual %d", packetLength, len(response)))
+
 	}
 
 	if response[4] != 0x00 || response[5] != 0x00 {
-		return &utils.InvalidResponseErrorInfo{
-			Service: SYBASE,
-			Info:    "SPID should be zero in pre-login response",
-		}
+		return fmt.Errorf("%s: invalid response: %s", SYBASE,
+			"SPID should be zero in pre-login response")
+
 	}
 
 	if response[6] != 0x01 {
-		return &utils.InvalidResponseErrorInfo{
-			Service: SYBASE,
-			Info:    "PacketID should be 1",
-		}
+		return fmt.Errorf("%s: invalid response: %s", SYBASE,
+			"PacketID should be 1")
+
 	}
 
 	if response[7] != 0x00 {
-		return &utils.InvalidResponseErrorInfo{
-			Service: SYBASE,
-			Info:    "Window should be zero",
-		}
+		return fmt.Errorf("%s: invalid response: %s", SYBASE,
+			"Window should be zero")
+
 	}
 
 	return nil
@@ -252,10 +246,9 @@ func parseTDSOptionTokens(response []byte) ([]OptionToken, error) {
 	for position < len(response) && response[position] != TERMINATOR {
 
 		if position+5 > len(response) {
-			return nil, &utils.InvalidResponseErrorInfo{
-				Service: SYBASE,
-				Info:    "truncated option token",
-			}
+			return nil, fmt.Errorf("%s: invalid response: %s", SYBASE,
+				"truncated option token")
+
 		}
 
 		plOptionToken := uint32(response[position])
@@ -269,10 +262,9 @@ func parseTDSOptionTokens(response []byte) ([]OptionToken, error) {
 			dataEnd := dataStart + plOptionLength
 
 			if dataEnd > uint32(len(response)) {
-				return nil, &utils.InvalidResponseErrorInfo{
-					Service: SYBASE,
-					Info:    "option token data extends beyond packet",
-				}
+				return nil, fmt.Errorf("%s: invalid response: %s", SYBASE,
+					"option token data extends beyond packet")
+
 			}
 
 			plOptionData = response[dataStart:dataEnd]
@@ -289,17 +281,15 @@ func parseTDSOptionTokens(response []byte) ([]OptionToken, error) {
 	}
 
 	if position >= len(response) || response[position] != TERMINATOR {
-		return nil, &utils.InvalidResponseErrorInfo{
-			Service: SYBASE,
-			Info:    "option token list not terminated by 0xFF",
-		}
+		return nil, fmt.Errorf("%s: invalid response: %s", SYBASE,
+			"option token list not terminated by 0xFF")
+
 	}
 
 	if len(optionTokens) < 1 {
-		return nil, &utils.InvalidResponseErrorInfo{
-			Service: SYBASE,
-			Info:    "no option tokens found, VERSION is required",
-		}
+		return nil, fmt.Errorf("%s: invalid response: %s", SYBASE,
+			"no option tokens found, VERSION is required")
+
 	}
 
 	return optionTokens, nil

@@ -62,43 +62,38 @@ const NegotiateProtocolVersion = 0x76
 func parseParameterStatus(msg []byte) (string, string, error) {
 
 	if len(msg) < 7 {
-		return "", "", &utils.InvalidResponseErrorInfo{
-			Service: POSTGRES,
-			Info:    "ParameterStatus message too short",
-		}
+		return "", "", fmt.Errorf("%s: invalid response: %s", POSTGRES,
+			"ParameterStatus message too short")
+
 	}
 
 	if msg[0] != 0x53 {
-		return "", "", &utils.InvalidResponseErrorInfo{
-			Service: POSTGRES,
-			Info:    fmt.Sprintf("expected ParameterStatus type 'S' (0x53), got 0x%02x", msg[0]),
-		}
+		return "", "", fmt.Errorf("%s: invalid response: %s", POSTGRES,
+			fmt.Sprintf("expected ParameterStatus type 'S' (0x53), got 0x%02x", msg[0]))
+
 	}
 
 	nameStart := 5
 	nameEnd := bytes.IndexByte(msg[nameStart:], 0)
 	if nameEnd == -1 {
-		return "", "", &utils.InvalidResponseErrorInfo{
-			Service: POSTGRES,
-			Info:    "parameter name missing null terminator",
-		}
+		return "", "", fmt.Errorf("%s: invalid response: %s", POSTGRES,
+			"parameter name missing null terminator")
+
 	}
 	name := string(msg[nameStart : nameStart+nameEnd])
 
 	valueStart := nameStart + nameEnd + 1
 	if valueStart >= len(msg) {
-		return "", "", &utils.InvalidResponseErrorInfo{
-			Service: POSTGRES,
-			Info:    "message truncated before parameter value",
-		}
+		return "", "", fmt.Errorf("%s: invalid response: %s", POSTGRES,
+			"message truncated before parameter value")
+
 	}
 
 	valueEnd := bytes.IndexByte(msg[valueStart:], 0)
 	if valueEnd == -1 {
-		return "", "", &utils.InvalidResponseErrorInfo{
-			Service: POSTGRES,
-			Info:    "parameter value missing null terminator",
-		}
+		return "", "", fmt.Errorf("%s: invalid response: %s", POSTGRES,
+			"parameter value missing null terminator")
+
 	}
 	value := string(msg[valueStart : valueStart+valueEnd])
 

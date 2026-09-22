@@ -60,7 +60,7 @@ func (p *Plugin) Run(conn net.Conn, timeout time.Duration, target helpers.Endpoi
 	}
 	_, err := rand.Read(InitialConnectionPackage[8:20])
 	if err != nil {
-		return nil, &utils.RandomizeError{Message: "transaction ID"}
+		return nil, fmt.Errorf("generate %s: random source failed", "transaction ID")
 	}
 	TransactionID := hex.EncodeToString(InitialConnectionPackage[8:20])
 
@@ -108,11 +108,11 @@ func (p *Plugin) Run(conn net.Conn, timeout time.Duration, target helpers.Endpoi
 }
 func parseResponse(response []byte) (map[string]any, error) {
 	if len(response) < MessageHeaderLength {
-		return nil, &utils.InvalidResponseErrorInfo{Service: STUN, Info: "truncated message header"}
+		return nil, fmt.Errorf("%s: invalid response: %s", STUN, "truncated message header")
 	}
 	messageLength := int(binary.BigEndian.Uint16(response[2:4]))
 	if messageLength%4 != 0 || messageLength != len(response)-MessageHeaderLength {
-		return nil, &utils.InvalidResponseErrorInfo{Service: STUN, Info: "invalid message length"}
+		return nil, fmt.Errorf("%s: invalid response: %s", STUN, "invalid message length")
 	}
 	attrInfo := make(map[string]any)
 	idx := MessageHeaderLength
@@ -120,10 +120,9 @@ func parseResponse(response []byte) (map[string]any, error) {
 	for idx < length {
 
 		if idx+4 > length {
-			return nil, &utils.InvalidResponseErrorInfo{
-				Service: STUN,
-				Info:    "invalid attribute T/L header",
-			}
+			return nil, fmt.Errorf("%s: invalid response: %s", STUN,
+				"invalid attribute T/L header")
+
 		}
 		attrType, attrLen := (int(response[idx])<<8)+int(response[idx+1]),
 			(int(response[idx+2])<<8)+int(response[idx+3])
@@ -135,10 +134,9 @@ func parseResponse(response []byte) (map[string]any, error) {
 		// Attribute lengths exclude padding; the next attribute starts on a 4-byte boundary.
 		paddedLen := (attrLen + 3) &^ 3
 		if paddedLen > length-idx {
-			return nil, &utils.InvalidResponseErrorInfo{
-				Service: STUN,
-				Info:    "invalid attribute length",
-			}
+			return nil, fmt.Errorf("%s: invalid response: %s", STUN,
+				"invalid attribute length")
+
 		}
 		attrValue := response[idx : idx+attrLen]
 		idx += paddedLen

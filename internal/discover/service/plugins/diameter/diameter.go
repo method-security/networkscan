@@ -188,40 +188,35 @@ func encodeUnsigned32(value uint32) []byte {
 func validateCEA(response []byte) error {
 
 	if len(response) < 60 {
-		return &utils.InvalidResponseErrorInfo{
-			Service: DIAMETER,
-			Info:    "response too short for valid CEA",
-		}
+		return fmt.Errorf("%s: invalid response: %s", DIAMETER,
+			"response too short for valid CEA")
+
 	}
 
 	if response[0] != DIAMETER_VERSION {
-		return &utils.InvalidResponseErrorInfo{
-			Service: DIAMETER,
-			Info:    fmt.Sprintf("invalid version: %d, expected 1", response[0]),
-		}
+		return fmt.Errorf("%s: invalid response: %s", DIAMETER,
+			fmt.Sprintf("invalid version: %d, expected 1", response[0]))
+
 	}
 
 	msgLength := (uint32(response[1]) << 16) | (uint32(response[2]) << 8) | uint32(response[3])
 	if len(response) < int(msgLength) {
-		return &utils.InvalidResponseErrorInfo{
-			Service: DIAMETER,
-			Info:    fmt.Sprintf("incomplete response: got %d bytes, expected %d", len(response), msgLength),
-		}
+		return fmt.Errorf("%s: invalid response: %s", DIAMETER,
+			fmt.Sprintf("incomplete response: got %d bytes, expected %d", len(response), msgLength))
+
 	}
 
 	commandCode := (uint32(response[5]) << 16) | (uint32(response[6]) << 8) | uint32(response[7])
 	if commandCode != CER_COMMAND_CODE {
-		return &utils.InvalidResponseErrorInfo{
-			Service: DIAMETER,
-			Info:    fmt.Sprintf("invalid command code: %d, expected 257", commandCode),
-		}
+		return fmt.Errorf("%s: invalid response: %s", DIAMETER,
+			fmt.Sprintf("invalid command code: %d, expected 257", commandCode))
+
 	}
 
 	if response[4]&R_BIT != 0 {
-		return &utils.InvalidResponseErrorInfo{
-			Service: DIAMETER,
-			Info:    "R-bit set in CEA (expected answer, not request)",
-		}
+		return fmt.Errorf("%s: invalid response: %s", DIAMETER,
+			"R-bit set in CEA (expected answer, not request)")
+
 	}
 
 	return nil

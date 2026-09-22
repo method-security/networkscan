@@ -63,10 +63,9 @@ func (p *FirebirdPlugin) Run(conn net.Conn, timeout time.Duration, target helper
 	case opAccept, opCondAccept, opAcceptData:
 
 		if len(response) < 16 {
-			return nil, &utils.InvalidResponseErrorInfo{
-				Service: FIREBIRD,
-				Info:    "op_accept response truncated (< 16 bytes)",
-			}
+			return nil, fmt.Errorf("%s: invalid response: %s", FIREBIRD,
+				"op_accept response truncated (< 16 bytes)")
+
 		}
 
 		protocolVersion := int32(binary.BigEndian.Uint32(response[4:8]))

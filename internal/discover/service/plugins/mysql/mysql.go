@@ -109,10 +109,9 @@ func (p *MYSQLPlugin) Priority() int {
 func CheckErrorMessagePacket(response []byte) (string, int, error) {
 
 	if len(response) < 8 {
-		return "", 0, &utils.InvalidResponseErrorInfo{
-			Service: MYSQL,
-			Info:    "packet is too small for an error message packet",
-		}
+		return "", 0, fmt.Errorf("%s: invalid response: %s", MYSQL,
+			"packet is too small for an error message packet")
+
 	}
 
 	packetLength := int(
@@ -129,31 +128,28 @@ func CheckErrorMessagePacket(response []byte) (string, int, error) {
 	actualResponseLength := len(response) - 4
 
 	if packetLength != actualResponseLength {
-		return "", 0, &utils.InvalidResponseErrorInfo{
-			Service: MYSQL,
-			Info:    "packet length does not match length of the response from the server",
-		}
+		return "", 0, fmt.Errorf("%s: invalid response: %s", MYSQL,
+			"packet length does not match length of the response from the server")
+
 	}
 
 	header := int(response[4])
 	if header != 0xff {
-		return "", 0, &utils.InvalidResponseErrorInfo{
-			Service: MYSQL,
-			Info:    "packet has an invalid header for an error message packet",
-		}
+		return "", 0, fmt.Errorf("%s: invalid response: %s", MYSQL,
+			"packet has an invalid header for an error message packet")
+
 	}
 
 	errorCode := int(uint32(response[5]) | uint32(response[6])<<8)
 	if errorCode < 1000 || errorCode > 2000 {
-		return "", errorCode, &utils.InvalidResponseErrorInfo{
-			Service: MYSQL,
-			Info:    "packet has an invalid error code",
-		}
+		return "", errorCode, fmt.Errorf("%s: invalid response: %s", MYSQL,
+			"packet has an invalid error code")
+
 	}
 
 	errorStr, err := readEOFTerminatedASCIIString(response, 7)
 	if err != nil {
-		return "", errorCode, &utils.InvalidResponseErrorInfo{Service: MYSQL, Info: err.Error()}
+		return "", errorCode, fmt.Errorf("%s: invalid response: %s", MYSQL, err.Error())
 	}
 
 	return errorStr, errorCode, nil
@@ -164,10 +160,9 @@ func CheckErrorMessagePacket(response []byte) (string, int, error) {
 func CheckInitialHandshakePacket(response []byte) (string, error) {
 
 	if len(response) < 35 {
-		return "", &utils.InvalidResponseErrorInfo{
-			Service: MYSQL,
-			Info:    "packet length is too small for an initial handshake packet",
-		}
+		return "", fmt.Errorf("%s: invalid response: %s", MYSQL,
+			"packet length is too small for an initial handshake packet")
+
 	}
 
 	packetLength := int(
@@ -184,43 +179,38 @@ func CheckInitialHandshakePacket(response []byte) (string, error) {
 	version := int(response[4])
 
 	if packetLength < 25 || packetLength > 4096 {
-		return "", &utils.InvalidResponseErrorInfo{
-			Service: MYSQL,
-			Info:    "packet length doesn't make sense for the MySQL handshake packet",
-		}
+		return "", fmt.Errorf("%s: invalid response: %s", MYSQL,
+			"packet length doesn't make sense for the MySQL handshake packet")
+
 	}
 
 	if version != 10 {
-		return "", &utils.InvalidResponseErrorInfo{
-			Service: MYSQL,
-			Info:    "packet has an invalid version",
-		}
+		return "", fmt.Errorf("%s: invalid response: %s", MYSQL,
+			"packet has an invalid version")
+
 	}
 
 	mysqlVersionStr, position, err := readNullTerminatedASCIIString(response, 5)
 	if err != nil {
-		return "", &utils.InvalidResponseErrorInfo{
-			Service: MYSQL,
-			Info:    "unable to read null-terminated ASCII version string, err: " + err.Error(),
-		}
+		return "", fmt.Errorf("%s: invalid response: %s", MYSQL,
+			"unable to read null-terminated ASCII version string, err: "+err.Error())
+
 	}
 
 	fillerPos := position + 13
 	if fillerPos >= len(response) {
-		return "", &utils.InvalidResponseErrorInfo{
-			Service: MYSQL,
-			Info:    "buffer is too small to be a valid initial handshake packet",
-		}
+		return "", fmt.Errorf("%s: invalid response: %s", MYSQL,
+			"buffer is too small to be a valid initial handshake packet")
+
 	}
 
 	if response[fillerPos] != 0x00 {
-		return "", &utils.InvalidResponseErrorInfo{
-			Service: MYSQL,
-			Info: fmt.Sprintf(
+		return "", fmt.Errorf("%s: invalid response: %s", MYSQL,
+			fmt.Sprintf(
 				"expected filler byte at ths position to be zero got: %d",
 				response[fillerPos],
-			),
-		}
+			))
+
 	}
 
 	return mysqlVersionStr, nil
@@ -327,15 +317,14 @@ func readNullTerminatedASCIIString(buffer []byte, startPosition int) (string, in
 			endPosition = position
 			break
 		} else {
-			return "", 0, &utils.InvalidResponseErrorInfo{Service: MYSQL, Info: "encountered invalid ASCII character"}
+			return "", 0, fmt.Errorf("%s: invalid response: %s", MYSQL, "encountered invalid ASCII character")
 		}
 	}
 
 	if !success {
-		return "", 0, &utils.InvalidResponseErrorInfo{
-			Service: MYSQL,
-			Info:    "hit the end of the buffer without encountering a null terminator",
-		}
+		return "", 0, fmt.Errorf("%s: invalid response: %s", MYSQL,
+			"hit the end of the buffer without encountering a null terminator")
+
 	}
 
 	return string(characters), endPosition, nil
@@ -350,7 +339,7 @@ func readEOFTerminatedASCIIString(buffer []byte, startPosition int) (string, err
 		if buffer[position] >= 0x20 && buffer[position] <= 0x7E {
 			characters = append(characters, buffer[position])
 		} else {
-			return "", &utils.InvalidResponseErrorInfo{Service: MYSQL, Info: "encountered invalid ASCII character"}
+			return "", fmt.Errorf("%s: invalid response: %s", MYSQL, "encountered invalid ASCII character")
 		}
 	}
 

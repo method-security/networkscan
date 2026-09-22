@@ -6,6 +6,8 @@ package pop3
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -33,7 +35,7 @@ func DetectPOP3(conn net.Conn, timeout time.Duration, tls bool) (string, bool, e
 		return "", false, err
 	}
 	if len(initialResponse) == 0 {
-		return "", true, &utils.ServerNotEnable{}
+		return "", true, errors.New("service unavailable")
 	}
 
 	errResponse, err := utils.SendRecv(conn, []byte("Not a command \r\n"), timeout)
@@ -41,7 +43,7 @@ func DetectPOP3(conn net.Conn, timeout time.Duration, tls bool) (string, bool, e
 		return "", false, err
 	}
 	if len(errResponse) == 0 {
-		return "", true, &utils.ServerNotEnable{}
+		return "", true, errors.New("service unavailable")
 	}
 
 	isPOP3 := false
@@ -53,15 +55,13 @@ func DetectPOP3(conn net.Conn, timeout time.Duration, tls bool) (string, bool, e
 	if !isPOP3 {
 
 		if tls {
-			return "", true, &utils.InvalidResponseErrorInfo{
-				Service: POP3S,
-				Info:    "did not get expected banner for POP3S",
-			}
+			return "", true, fmt.Errorf("%s: invalid response: %s", POP3S,
+				"did not get expected banner for POP3S")
+
 		}
-		return "", true, &utils.InvalidResponseErrorInfo{
-			Service: POP3,
-			Info:    "did not get expected banner for POP3",
-		}
+		return "", true, fmt.Errorf("%s: invalid response: %s", POP3,
+			"did not get expected banner for POP3")
+
 	}
 
 	return strings.TrimSpace(string(initialResponse[3:])), true, nil

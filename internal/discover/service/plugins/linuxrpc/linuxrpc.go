@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -62,11 +63,11 @@ func DetectRPCInfoService(conn net.Conn, lookupResponse *ServiceRPC, timeout tim
 		return false, err
 	}
 	if len(response) == 0 {
-		return true, &utils.ServerNotEnable{}
+		return true, errors.New("service unavailable")
 	}
 
 	if !bytes.Contains(response, callResponseSignature) {
-		return true, &utils.InvalidResponseError{Service: RPC}
+		return true, fmt.Errorf("%s: invalid response", RPC)
 	}
 
 	response, err = utils.SendRecv(conn, dumpPacket, timeout)
@@ -74,7 +75,7 @@ func DetectRPCInfoService(conn net.Conn, lookupResponse *ServiceRPC, timeout tim
 		return false, err
 	}
 	if len(response) == 0 {
-		return true, &utils.ServerNotEnable{}
+		return true, errors.New("service unavailable")
 	}
 
 	return true, parseRPCInfo(response, lookupResponse)

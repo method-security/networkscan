@@ -6,6 +6,7 @@ package mssql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -122,57 +123,50 @@ func DetectMSSQL(conn net.Conn, timeout time.Duration) (Data, bool, error) {
 		return Data{}, false, err
 	}
 	if len(response) == 0 {
-		return Data{}, true, &utils.ServerNotEnable{}
+		return Data{}, true, errors.New("service unavailable")
 	}
 
 	if len(response) < 8 {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: MSSQL,
-			Info:    "response is too short to be a valid TDS packet header",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+			"response is too short to be a valid TDS packet header")
+
 	}
 
 	if response[0] != 0x04 {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: MSSQL,
-			Info:    "type should be set to tabular result for a valid TDS packet",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+			"type should be set to tabular result for a valid TDS packet")
+
 	}
 
 	if response[1] != 0x01 {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: MSSQL,
-			Info:    "expect a status of one (end of message) for tabular result packet",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+			"expect a status of one (end of message) for tabular result packet")
+
 	}
 
 	packetLength := int(uint32(response[3]) | uint32(response[2])<<8)
 	if len(response) != packetLength {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: MSSQL,
-			Info:    "packet length does not match length read",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+			"packet length does not match length read")
+
 	}
 
 	if response[4] != 0x00 || response[5] != 0x00 {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: MSSQL,
-			Info:    "value for SPID should always be zero",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+			"value for SPID should always be zero")
+
 	}
 
 	if response[6] != 0x01 {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: MSSQL,
-			Info:    "value for packet id should always be one",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+			"value for packet id should always be one")
+
 	}
 
 	if response[7] != 0x00 {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: MSSQL,
-			Info:    "value for window should always be zero",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+			"value for window should always be zero")
+
 	}
 
 	position := 8
@@ -188,9 +182,8 @@ func DetectMSSQL(conn net.Conn, timeout time.Duration) (Data, bool, error) {
 			if plOffset+plOptionLength < uint32(len(response)) {
 				plOptionData = response[plOffset+8 : plOffset+8+plOptionLength]
 			} else {
-				return Data{}, true, &utils.InvalidResponseErrorInfo{
-					Service: MSSQL,
-					Info:    "server returned an invalid PLOffset or PLOptionLength"}
+				return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+					"server returned an invalid PLOffset or PLOptionLength")
 			}
 		}
 
@@ -206,31 +199,27 @@ func DetectMSSQL(conn net.Conn, timeout time.Duration) (Data, bool, error) {
 	}
 
 	if response[position] != 0xFF {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: MSSQL,
-			Info:    "list of option tokens should be terminated by 0xff",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+			"list of option tokens should be terminated by 0xff")
+
 	}
 
 	if len(optionTokens) < 1 {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: MSSQL,
-			Info:    "there should be at least one option token since VERSION is required",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+			"there should be at least one option token since VERSION is required")
+
 	}
 
 	if optionTokens[0].PLOptionToken != 0x00 {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: MSSQL,
-			Info:    "TDS requires VERSION to be the first PLOptionToken value",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+			"TDS requires VERSION to be the first PLOptionToken value")
+
 	}
 
 	if optionTokens[0].PLOptionLength != 0x06 {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: MSSQL,
-			Info:    "version field should be fixed bytes",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", MSSQL,
+			"version field should be fixed bytes")
+
 	}
 
 	MajorVersion := optionTokens[0].PLOptionData[0]

@@ -108,7 +108,7 @@ func detectSMPP(conn net.Conn, timeout time.Duration) (bool, []byte, error) {
 		return true, bindResponse, nil
 	}
 
-	return false, nil, &utils.InvalidResponseError{Service: SMPP}
+	return false, nil, fmt.Errorf("%s: invalid response", SMPP)
 }
 
 // enrichSMPP performs Phase 2 enrichment using bind_transceiver

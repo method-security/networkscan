@@ -119,33 +119,29 @@ func buildEXCSAT() []byte {
 func checkDDMResponse(response []byte, expectedCodepoint uint16) (bool, error) {
 
 	if len(response) < MIN_DDM_LEN {
-		return false, &utils.InvalidResponseErrorInfo{
-			Service: DB2,
-			Info:    fmt.Sprintf("response too short: got %d bytes, need at least %d", len(response), MIN_DDM_LEN),
-		}
+		return false, fmt.Errorf("%s: invalid response: %s", DB2,
+			fmt.Sprintf("response too short: got %d bytes, need at least %d", len(response), MIN_DDM_LEN))
+
 	}
 
 	if response[2] != DDM_MAGIC {
-		return false, &utils.InvalidResponseErrorInfo{
-			Service: DB2,
-			Info:    fmt.Sprintf("invalid DDM magic byte: expected 0x%02X, got 0x%02X", DDM_MAGIC, response[2]),
-		}
+		return false, fmt.Errorf("%s: invalid response: %s", DB2,
+			fmt.Sprintf("invalid DDM magic byte: expected 0x%02X, got 0x%02X", DDM_MAGIC, response[2]))
+
 	}
 
 	declaredLen := binary.BigEndian.Uint16(response[0:2])
 	if declaredLen < MIN_DDM_LEN || int(declaredLen) > len(response) {
-		return false, &utils.InvalidResponseErrorInfo{
-			Service: DB2,
-			Info:    fmt.Sprintf("invalid message length: declared %d, actual %d", declaredLen, len(response)),
-		}
+		return false, fmt.Errorf("%s: invalid response: %s", DB2,
+			fmt.Sprintf("invalid message length: declared %d, actual %d", declaredLen, len(response)))
+
 	}
 
 	codepoint := binary.BigEndian.Uint16(response[4:6])
 	if codepoint != expectedCodepoint {
-		return false, &utils.InvalidResponseErrorInfo{
-			Service: DB2,
-			Info:    fmt.Sprintf("unexpected codepoint: expected 0x%04X, got 0x%04X", expectedCodepoint, codepoint),
-		}
+		return false, fmt.Errorf("%s: invalid response: %s", DB2,
+			fmt.Sprintf("unexpected codepoint: expected 0x%04X, got 0x%04X", expectedCodepoint, codepoint))
+
 	}
 
 	return true, nil
@@ -417,7 +413,7 @@ func DetectDB2(conn net.Conn, timeout time.Duration) (db2Metadata, bool, error) 
 	}
 
 	if len(response) == 0 {
-		return db2Metadata{}, false, &utils.InvalidResponseError{Service: DB2}
+		return db2Metadata{}, false, fmt.Errorf("%s: invalid response", DB2)
 	}
 
 	isValid, err := checkDDMResponse(response, EXCSATRD)

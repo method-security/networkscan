@@ -7,6 +7,7 @@ package kafkanew
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"math"
 	"net"
 	"time"
@@ -162,7 +163,7 @@ func checkAPIVersions(conn net.Conn, timeout time.Duration) (bool, error) {
 		return false, err
 	}
 	if len(response) < 8 {
-		return true, &utils.ServerNotEnable{}
+		return true, errors.New("service unavailable")
 	}
 
 	responseLength := binary.BigEndian.Uint32(response[0:4])

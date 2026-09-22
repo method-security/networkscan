@@ -8,6 +8,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"math"
 	"math/big"
 	"net"
@@ -121,7 +123,7 @@ func genRandomString(length int) (string, error) {
 	for i := 0; i < length; i++ {
 		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
 		if err != nil {
-			return "", &utils.RandomizeError{Message: "KafkaRandomString"}
+			return "", fmt.Errorf("generate %s: random source failed", "KafkaRandomString")
 		}
 		str[i] = charset[num.Int64()]
 	}
@@ -164,7 +166,7 @@ func checkMetadataQuery(conn net.Conn, timeout time.Duration) (bool, error) {
 		return false, err
 	}
 	if len(response) == 0 {
-		return true, &utils.ServerNotEnable{}
+		return true, errors.New("service unavailable")
 	}
 
 	responseLength := binary.BigEndian.Uint32(response[0:4])

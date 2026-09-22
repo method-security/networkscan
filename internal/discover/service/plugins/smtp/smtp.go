@@ -7,6 +7,8 @@ package smtp
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -87,12 +89,12 @@ func DetectSMTP(conn net.Conn, tls bool, timeout time.Duration) (Data, bool, err
 		return Data{}, false, err
 	}
 	if len(response) == 0 {
-		return Data{}, true, &utils.ServerNotEnable{}
+		return Data{}, true, errors.New("service unavailable")
 	}
 
 	isSMTP, smtpError := handleSMTPConn(response)
 	if !isSMTP && !smtpError {
-		return Data{}, true, &utils.InvalidResponseError{Service: protocol}
+		return Data{}, true, fmt.Errorf("%s: invalid response", protocol)
 	}
 
 	banner := make([]byte, len(response))
@@ -104,15 +106,14 @@ func DetectSMTP(conn net.Conn, tls bool, timeout time.Duration) (Data, bool, err
 		return Data{}, false, err
 	}
 	if len(response) == 0 {
-		return Data{}, true, &utils.ServerNotEnable{}
+		return Data{}, true, errors.New("service unavailable")
 	}
 
 	isSMTP, smtpError = handleSMTPHelo(response)
 	if !isSMTP {
-		return Data{}, true, &utils.InvalidResponseErrorInfo{
-			Service: protocol,
-			Info:    "invalid SMTP Helo response",
-		}
+		return Data{}, true, fmt.Errorf("%s: invalid response: %s", protocol,
+			"invalid SMTP Helo response")
+
 	}
 
 	if smtpError {
@@ -132,7 +133,7 @@ func DetectSMTP(conn net.Conn, tls bool, timeout time.Duration) (Data, bool, err
 		return data, true, nil
 	}
 
-	return Data{}, true, &utils.InvalidResponseError{Service: protocol}
+	return Data{}, true, fmt.Errorf("%s: invalid response", protocol)
 }
 func (p *SMTPPlugin) Run(conn net.Conn, timeout time.Duration, target helpers.Endpoint) (*discover.ServiceDetails, error) {
 	data, check, err := DetectSMTP(conn, false, timeout)

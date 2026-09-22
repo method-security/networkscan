@@ -6,6 +6,7 @@ package vnc
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
@@ -33,24 +34,21 @@ const VNC = "VNC"
 func checkVNC(data []byte) (string, error) {
 	msgLength := len(data)
 	if msgLength != 12 {
-		return "", &utils.InvalidResponseErrorInfo{
-			Service: VNC,
-			Info:    "incorrect message length",
-		}
+		return "", fmt.Errorf("%s: invalid response: %s", VNC,
+			"incorrect message length")
+
 	}
 
 	if data[0] != 0x52 || data[1] != 0x46 || data[2] != 0x42 {
-		return "", &utils.InvalidResponseErrorInfo{
-			Service: VNC,
-			Info:    "invalid RFB preamble",
-		}
+		return "", fmt.Errorf("%s: invalid response: %s", VNC,
+			"invalid RFB preamble")
+
 	}
 
 	if data[7] != 0x2e || data[11] != 0x0a {
-		return "", &utils.InvalidResponseErrorInfo{
-			Service: VNC,
-			Info:    "missing ProtocolVersion characters",
-		}
+		return "", fmt.Errorf("%s: invalid response: %s", VNC,
+			"missing ProtocolVersion characters")
+
 	}
 
 	return string(data[4:11]), nil

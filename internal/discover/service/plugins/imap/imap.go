@@ -6,6 +6,8 @@ package imap
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -66,13 +68,13 @@ func checkCapability(conn net.Conn, timeout time.Duration) (bool, error) {
 		return false, err
 	}
 	if len(response) == 0 {
-		return true, &utils.ServerNotEnable{}
+		return true, errors.New("service unavailable")
 	}
 
 	srvResponses := strings.Split(string(response), "\r\n")
 
 	if len(srvResponses) < 2 {
-		return true, &utils.InvalidResponseError{Service: IMAP}
+		return true, fmt.Errorf("%s: invalid response", IMAP)
 	}
 
 	capData := strings.ToUpper(srvResponses[0])
@@ -84,13 +86,13 @@ func checkCapability(conn net.Conn, timeout time.Duration) (bool, error) {
 			return false, err
 		}
 		if len(response) == 0 {
-			return true, &utils.ServerNotEnable{}
+			return true, errors.New("service unavailable")
 		}
 		status = string(response)
 	}
 
 	if !strings.HasPrefix(capData, "* CAPABILITY") || !strings.HasPrefix(status, tag) {
-		return true, &utils.InvalidResponseErrorInfo{Service: IMAP, Info: "missing capability info"}
+		return true, fmt.Errorf("%s: invalid response: %s", IMAP, "missing capability info")
 	}
 
 	return false, nil
@@ -102,14 +104,13 @@ func DetectIMAP(conn net.Conn, timeout time.Duration) (string, bool, error) {
 		return "", false, err
 	}
 	if len(response) == 0 {
-		return "", true, &utils.ServerNotEnable{}
+		return "", true, errors.New("service unavailable")
 	}
 
 	if !checkGreeting(response) {
-		return "", true, &utils.InvalidResponseErrorInfo{
-			Service: IMAP,
-			Info:    "did not receive expected imap greeting banner",
-		}
+		return "", true, fmt.Errorf("%s: invalid response: %s", IMAP,
+			"did not receive expected imap greeting banner")
+
 	}
 	check, err := checkCapability(conn, timeout)
 	return strings.TrimSpace(string(response)), check, err

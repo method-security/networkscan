@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"fmt"
 	"net"
 	"time"
 
@@ -58,7 +59,7 @@ func (p *MODBUSPlugin) Run(conn net.Conn, timeout time.Duration, target helpers.
 	transactionID := make([]byte, 2)
 	_, err := rand.Read(transactionID)
 	if err != nil {
-		return nil, &utils.RandomizeError{Message: "Transaction ID"}
+		return nil, fmt.Errorf("generate %s: random source failed", "Transaction ID")
 	}
 
 	requestBytes := []byte{

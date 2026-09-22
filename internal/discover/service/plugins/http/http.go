@@ -18,7 +18,6 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
-	utils "github.com/Method-Security/networkscan/internal/discover/service/helpers/wireio"
 	wappalyzer "github.com/projectdiscovery/wappalyzergo"
 )
 
@@ -67,7 +66,7 @@ func (p *HTTPPlugin) Run(conn net.Conn, timeout time.Duration, target helpers.En
 		if errors.Is(err, syscall.ECONNREFUSED) {
 			return nil, nil
 		}
-		return nil, &utils.RequestError{Message: err.Error()}
+		return nil, fmt.Errorf("request failed: %s", err.Error())
 	}
 
 	if target.Host != "" {
@@ -89,7 +88,7 @@ func (p *HTTPPlugin) Run(conn net.Conn, timeout time.Duration, target helpers.En
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, &utils.RequestError{Message: err.Error()}
+		return nil, fmt.Errorf("request failed: %s", err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -123,7 +122,7 @@ func (p *HTTPSPlugin) Run(
 		if errors.Is(err, syscall.ECONNREFUSED) {
 			return nil, nil
 		}
-		return nil, &utils.RequestError{Message: err.Error()}
+		return nil, fmt.Errorf("request failed: %s", err.Error())
 	}
 
 	if target.Host != "" {
@@ -145,7 +144,7 @@ func (p *HTTPSPlugin) Run(
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, &utils.RequestError{Message: err.Error()}
+		return nil, fmt.Errorf("request failed: %s", err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
 

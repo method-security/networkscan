@@ -7,6 +7,7 @@ package openvpn
 import (
 	"context"
 	"crypto/rand"
+	"fmt"
 	"net"
 	"reflect"
 	"time"
@@ -38,7 +39,7 @@ func (p *Plugin) Run(conn net.Conn, timeout time.Duration, target helpers.Endpoi
 		InitialConnectionPackage[1 : 1+SessionIDLength],
 	)
 	if err != nil {
-		return nil, &utils.RandomizeError{Message: "session ID"}
+		return nil, fmt.Errorf("generate %s: random source failed", "session ID")
 	}
 
 	response, err := utils.SendRecv(conn, InitialConnectionPackage, timeout)

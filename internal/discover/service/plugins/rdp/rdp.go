@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -153,7 +154,7 @@ func DetectRDP(conn net.Conn, timeout time.Duration) (string, bool, error) {
 		return "", false, err
 	}
 	if len(response) == 0 {
-		return "", true, &utils.ServerNotEnable{}
+		return "", true, errors.New("service unavailable")
 	}
 
 	isRDP := checkRDP(response)
@@ -166,7 +167,7 @@ func DetectRDP(conn net.Conn, timeout time.Duration) (string, bool, error) {
 
 		return fingerprint, true, nil
 	}
-	return "", true, &utils.InvalidResponseError{Service: RDP}
+	return "", true, fmt.Errorf("%s: invalid response", RDP)
 }
 func DetectRDPAuth(conn net.Conn, timeout time.Duration) (*ServiceRDP, bool, error) {
 

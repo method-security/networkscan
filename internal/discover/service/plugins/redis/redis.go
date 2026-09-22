@@ -38,10 +38,9 @@ func checkRedis(data []byte) (Info, error) {
 
 	msgLength := len(data)
 	if msgLength < 7 {
-		return Info{}, &utils.InvalidResponseErrorInfo{
-			Service: REDIS,
-			Info:    "too short of a response",
-		}
+		return Info{}, fmt.Errorf("%s: invalid response: %s", REDIS,
+			"too short of a response")
+
 	}
 
 	if msgLength == 7 {
@@ -49,16 +48,14 @@ func checkRedis(data []byte) (Info, error) {
 
 			return Info{AuthRequired: false}, nil
 		}
-		return Info{}, &utils.InvalidResponseErrorInfo{
-			Service: REDIS,
-			Info:    "invalid PONG response",
-		}
+		return Info{}, fmt.Errorf("%s: invalid response: %s", REDIS,
+			"invalid PONG response")
+
 	}
 	if !bytes.Equal(data[:7], noauth[:]) {
-		return Info{}, &utils.InvalidResponseErrorInfo{
-			Service: REDIS,
-			Info:    "invalid Error response",
-		}
+		return Info{}, fmt.Errorf("%s: invalid response: %s", REDIS,
+			"invalid Error response")
+
 	}
 
 	return Info{AuthRequired: true}, nil

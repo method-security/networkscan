@@ -16,7 +16,6 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
-	utils "github.com/Method-Security/networkscan/internal/discover/service/helpers/wireio"
 )
 
 // PINECONEPlugin detects Pinecone Vector Database instances.
@@ -71,7 +70,7 @@ func (p *PINECONEPlugin) Run(conn net.Conn, timeout time.Duration, target helper
 		if errors.Is(err, syscall.ECONNREFUSED) {
 			return nil, nil
 		}
-		return nil, &utils.RequestError{Message: err.Error()}
+		return nil, fmt.Errorf("request failed: %s", err.Error())
 	}
 
 	if target.Host != "" {
@@ -94,7 +93,7 @@ func (p *PINECONEPlugin) Run(conn net.Conn, timeout time.Duration, target helper
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, &utils.RequestError{Message: err.Error()}
+		return nil, fmt.Errorf("request failed: %s", err.Error())
 	}
 	defer func() { _ = resp.Body.Close() }()
 

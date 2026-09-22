@@ -58,7 +58,7 @@ func detectElasticsearch(conn net.Conn, timeout time.Duration) (string, bool, er
 		return "", false, err
 	}
 	if len(response) == 0 {
-		return "", false, &utils.InvalidResponseError{Service: ELASTICSEARCH}
+		return "", false, fmt.Errorf("%s: invalid response", ELASTICSEARCH)
 	}
 
 	responseStr := string(response)
@@ -70,7 +70,7 @@ func detectElasticsearch(conn net.Conn, timeout time.Duration) (string, bool, er
 
 	bodyStart := strings.Index(responseStr, "\r\n\r\n")
 	if bodyStart == -1 {
-		return "", false, &utils.InvalidResponseError{Service: ELASTICSEARCH}
+		return "", false, fmt.Errorf("%s: invalid response", ELASTICSEARCH)
 	}
 	jsonBody := responseStr[bodyStart+4:]
 

@@ -19,7 +19,6 @@ import (
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
-	utils "github.com/Method-Security/networkscan/internal/discover/service/helpers/wireio"
 )
 
 type KubernetesPlugin struct{}
@@ -149,37 +148,32 @@ func checkKubernetesVersion(data []byte) (VersionInfo, error) {
 
 	err := json.Unmarshal(data, &versionInfo)
 	if err != nil {
-		return VersionInfo{}, &utils.InvalidResponseErrorInfo{
-			Service: KUBERNETES,
-			Info:    "invalid JSON response",
-		}
+		return VersionInfo{}, fmt.Errorf("%s: invalid response: %s", KUBERNETES,
+			"invalid JSON response")
+
 	}
 
 	if versionInfo.Major == "" {
-		return VersionInfo{}, &utils.InvalidResponseErrorInfo{
-			Service: KUBERNETES,
-			Info:    "missing major field",
-		}
+		return VersionInfo{}, fmt.Errorf("%s: invalid response: %s", KUBERNETES,
+			"missing major field")
+
 	}
 	if versionInfo.Minor == "" {
-		return VersionInfo{}, &utils.InvalidResponseErrorInfo{
-			Service: KUBERNETES,
-			Info:    "missing minor field",
-		}
+		return VersionInfo{}, fmt.Errorf("%s: invalid response: %s", KUBERNETES,
+			"missing minor field")
+
 	}
 	if versionInfo.GitVersion == "" {
-		return VersionInfo{}, &utils.InvalidResponseErrorInfo{
-			Service: KUBERNETES,
-			Info:    "missing gitVersion field",
-		}
+		return VersionInfo{}, fmt.Errorf("%s: invalid response: %s", KUBERNETES,
+			"missing gitVersion field")
+
 	}
 
 	gitVersionRegex := regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+`)
 	if !gitVersionRegex.MatchString(versionInfo.GitVersion) {
-		return VersionInfo{}, &utils.InvalidResponseErrorInfo{
-			Service: KUBERNETES,
-			Info:    "invalid gitVersion format",
-		}
+		return VersionInfo{}, fmt.Errorf("%s: invalid response: %s", KUBERNETES,
+			"invalid gitVersion format")
+
 	}
 
 	return versionInfo, nil
