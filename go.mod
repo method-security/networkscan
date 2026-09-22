@@ -23,7 +23,6 @@ require (
 	github.com/palantir/pkg/datetime v1.4.0
 	github.com/palantir/witchcraft-go-logging v1.70.0
 	github.com/pkg/sftp v1.13.11
-	github.com/praetorian-inc/fingerprintx v1.1.19
 	github.com/projectdiscovery/goflags v0.1.76
 	github.com/projectdiscovery/naabu/v2 v2.5.0
 	github.com/projectdiscovery/nuclei/v3 v3.11.1
@@ -37,6 +36,9 @@ require (
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.12
 )
+
+// Nuclei's JavaScript protocol helpers still require this; service discovery does not.
+require github.com/praetorian-inc/fingerprintx v1.1.19 // indirect
 
 require (
 	carvel.dev/ytt v0.52.2 // indirect
@@ -413,7 +415,7 @@ require (
 	github.com/projectdiscovery/retryablehttp-go v1.3.24 // indirect
 	github.com/projectdiscovery/uncover v1.2.1 // indirect
 	github.com/projectdiscovery/utils v0.11.2 // indirect
-	github.com/projectdiscovery/wappalyzergo v0.2.96 // indirect
+	github.com/projectdiscovery/wappalyzergo v0.2.96
 	github.com/rbetts/go-ntlm v0.0.0-20130522135510-f22198915663
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	github.com/remeh/sizedwaitgroup v1.0.0 // indirect

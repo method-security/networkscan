@@ -1754,47 +1754,16 @@ github.com/power-devops/perfstat
 ## explicit; go 1.22
 github.com/praetorian-inc/fingerprintx/pkg/plugins
 github.com/praetorian-inc/fingerprintx/pkg/plugins/pluginutils
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/dhcp
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/dns
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/echo
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/ftp
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/http
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/imap
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/ipmi
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/ipsec
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/javarmi
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/jdwp
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/kafka/kafkaNew
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/kafka/kafkaOld
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/ldap
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/linuxrpc
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/modbus
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/mongodb
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/mqtt/mqtt3
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/mqtt/mqtt5
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/mssql
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/mysql
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/netbios
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/ntp
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/openvpn
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/oracledb
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/pop3
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/postgresql
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/rdp
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/redis
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/rsync
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/rtsp
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/smb
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/smtp
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/snmp
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/snpp
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/ssh
-github.com/praetorian-inc/fingerprintx/pkg/plugins/services/stun
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/telnet
 github.com/praetorian-inc/fingerprintx/pkg/plugins/services/vnc
-github.com/praetorian-inc/fingerprintx/pkg/scan
-github.com/praetorian-inc/fingerprintx/third_party/cryptolib/ssh
-github.com/praetorian-inc/fingerprintx/third_party/cryptolib/ssh/internal/bcrypt_pbkdf
 # github.com/projectdiscovery/asnmap v1.1.1
 ## explicit; go 1.21
 github.com/projectdiscovery/asnmap/libs
@@ -2768,7 +2737,6 @@ golang.org/x/crypto/openpgp/s2k
 golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
-golang.org/x/crypto/poly1305
 golang.org/x/crypto/ripemd160
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3

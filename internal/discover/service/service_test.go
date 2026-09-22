@@ -4,40 +4,55 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
-func TestFxProtocolToProtocolTypeAliases(t *testing.T) {
-	cases := map[string]string{
-		"oracle":     "ORACLEDB",
-		"postgres":   "POSTGRESQL",
-		"netbios-ns": "NETBIOS",
-		"kafkaNew":   "KAFKA",
-		"ssh":        "SSH",
+func TestTCPBatchDiscoversNativeHTTPAndVNCOnNonDefaultPorts(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Server", "networkscan-test")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	for name, want := range cases {
-		got, err := fxProtocolToProtocolType(name)
-		if err != nil {
-			t.Errorf("fxProtocolToProtocolType(%q): %v", name, err)
-			continue
+	defer func() { _ = listener.Close() }()
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer func() { _ = conn.Close() }()
+				_ = conn.SetDeadline(time.Now().Add(time.Second))
+				_, _ = conn.Write([]byte("RFB 003.008\n"))
+			}()
 		}
-		if string(got) != want {
-			t.Errorf("fxProtocolToProtocolType(%q) = %q, want %q", name, got, want)
-		}
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	// Leave room for the HTTP analyzer's first-use initialization under -race.
+	report, err := RunTCPServiceFingerprint(ctx, discoverfern.DiscoverServiceConfig{Targets: []string{server.Listener.Addr().String(), listener.Addr().String()}, Timeout: 3, Threads: 2, PluginThreads: 16})
+	if err != nil || report.Result == nil || len(report.Result.Services) != 2 {
+		t.Fatalf("report=%#v err=%v", report, err)
 	}
-}
-
-// "ipsec" is fingerprintx's UDP-500 probe, deliberately unsupported: our own ike plugin owns that port.
-func TestFxProtocolToProtocolTypeRejectsUnknown(t *testing.T) {
-	for _, name := range []string{"NOTAPROTOCOL", "ipsec"} {
-		if _, err := fxProtocolToProtocolType(name); err == nil {
-			t.Errorf("fxProtocolToProtocolType(%q) = nil error, want error", name)
-		}
+	if report.Result.Services[0].Protocol != "HTTP" || report.Result.Services[1].Protocol != "VNC" {
+		t.Fatalf("wrong protocols: %s, %s", report.Result.Services[0].Protocol, report.Result.Services[1].Protocol)
 	}
+	if len(report.Errors) > 0 {
+		t.Fatalf("errors=%v", report.Errors)
+	}
+	_ = listener.Close()
+	<-stopped
 }
 
 type blockingFingerprinter struct {
