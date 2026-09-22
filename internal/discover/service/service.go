@@ -11,19 +11,10 @@ import (
 
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-	"github.com/Method-Security/networkscan/internal/discover/service/probes"
-
 	// Internal
 	servicehelpers "github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	// Utilities
 	"github.com/Method-Security/networkscan/utils"
-)
-
-type Fingerprinter = probes.Fingerprinter
-
-var (
-	customFingerprintModules = probes.TCP()
-	udpFingerprinters        = probes.UDP()
 )
 
 // RunServiceFingerprint fingerprints services using the transport selected in

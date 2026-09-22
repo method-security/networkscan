@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,70 @@ import (
 
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
+
+func TestMQTTRegistryPluginsEmitNativeProtocols(t *testing.T) {
+	for _, tc := range []struct {
+		name, protocol string
+		ack            []byte
+	}{
+		{"mqtt3", "MQTT3", []byte{0x20, 2, 0, 0}},
+		{"mqtt5", "MQTT5", []byte{0x20, 3, 0, 0, 0}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var plugin Fingerprinter
+			for _, p := range customFingerprintModules {
+				if p.Name() == tc.name {
+					plugin = p
+					break
+				}
+			}
+			if plugin == nil {
+				t.Fatal("plugin not registered")
+			}
+			listener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = listener.Close() }()
+			done := make(chan error, 1)
+			go func() {
+				conn, err := listener.Accept()
+				if err != nil {
+					done <- err
+					return
+				}
+				defer func() { _ = conn.Close() }()
+				_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+				header := make([]byte, 2)
+				if _, err := io.ReadFull(conn, header); err != nil {
+					done <- err
+					return
+				}
+				if _, err := io.ReadFull(conn, make([]byte, int(header[1]))); err != nil {
+					done <- err
+					return
+				}
+				_, err = conn.Write(tc.ack)
+				done <- err
+			}()
+			result, err := plugin.Detect(context.Background(), net.ParseIP("127.0.0.1"), listener.Addr().(*net.TCPAddr).Port, "mqtt.test", 1)
+			if err != nil || result == nil {
+				t.Fatalf("detection = %+v, %v", result, err)
+			}
+			if string(result.Protocol) != tc.protocol || result.Host != "mqtt.test" {
+				t.Fatalf("incorrect metadata: %+v", result)
+			}
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("MQTT server did not finish")
+			}
+		})
+	}
+}
 
 func TestTCPBatchDiscoversNativeHTTPAndVNCOnNonDefaultPorts(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
