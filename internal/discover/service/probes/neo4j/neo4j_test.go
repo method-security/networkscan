@@ -1,6 +1,3 @@
-// Copyright 2022 Praetorian Security, Inc.
-// SPDX-License-Identifier: Apache-2.0
-// Protocol tests adapted for networkscan.
 package neo4j
 
 import (
@@ -46,7 +43,7 @@ func TestBuildHelloMessage(t *testing.T) {
 	assert.Equal(t, byte(HELLO_SIGNATURE), msg[3], "HELLO signature")
 
 	assert.True(t, bytes.Contains(msg, []byte("user_agent")), "must contain user_agent key")
-	assert.True(t, bytes.Contains(msg, []byte("networkscan")), "must contain fingerprintx user agent")
+	assert.True(t, bytes.Contains(msg, []byte("networkscan")), "must contain networkscan user agent")
 }
 func TestBuildLogonMessage(t *testing.T) {
 	msg := buildLogonMessage()

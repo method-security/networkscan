@@ -37,9 +37,6 @@ require (
 	google.golang.org/protobuf v1.36.12
 )
 
-// Nuclei's JavaScript protocol helpers still require this; service discovery does not.
-require github.com/praetorian-inc/fingerprintx v1.1.19 // indirect
-
 require (
 	carvel.dev/ytt v0.52.2 // indirect
 	github.com/FalconOpsLLC/goexec v0.3.0 // indirect
@@ -95,6 +92,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/petermattis/goid v0.0.0-20260820044319-269ab09b5261 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
+	github.com/praetorian-inc/fingerprintx v1.1.19 // indirect
 	github.com/projectdiscovery/goja v0.0.0-20260618133720-acb73e419534 // indirect
 	github.com/projectdiscovery/goja_nodejs v0.0.0-20260828073336-835cbae9b74d // indirect
 	github.com/projectdiscovery/govaluate v0.0.0-20260729205521-4c61bf19382e // indirect

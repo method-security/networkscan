@@ -1,6 +1,3 @@
-// Copyright 2022 Praetorian Security, Inc.
-// SPDX-License-Identifier: Apache-2.0
-// Protocol tests adapted for networkscan.
 package pinecone
 
 import (
