@@ -7,6 +7,7 @@ package stun
 import (
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"hash/crc32"
@@ -104,6 +105,13 @@ func (p *Plugin) Run(conn net.Conn, timeout time.Duration, target probe.Target) 
 	return probe.Result(target, payload, false, "", probe.UDP), nil
 }
 func parseResponse(response []byte) (map[string]any, error) {
+	if len(response) < MessageHeaderLength {
+		return nil, &utils.InvalidResponseErrorInfo{Service: STUN, Info: "truncated message header"}
+	}
+	messageLength := int(binary.BigEndian.Uint16(response[2:4]))
+	if messageLength%4 != 0 || messageLength != len(response)-MessageHeaderLength {
+		return nil, &utils.InvalidResponseErrorInfo{Service: STUN, Info: "invalid message length"}
+	}
 	attrInfo := make(map[string]any)
 	idx := MessageHeaderLength
 	length := len(response)
@@ -111,7 +119,7 @@ func parseResponse(response []byte) (map[string]any, error) {
 
 		if idx+4 > length {
 			return nil, &utils.InvalidResponseErrorInfo{
-				Service: "OpenVPN",
+				Service: STUN,
 				Info:    "invalid attribute T/L header",
 			}
 		}
@@ -122,14 +130,16 @@ func parseResponse(response []byte) (map[string]any, error) {
 			continue
 		}
 
-		if idx+attrLen > length {
+		// Attribute lengths exclude padding; the next attribute starts on a 4-byte boundary.
+		paddedLen := (attrLen + 3) &^ 3
+		if paddedLen > length-idx {
 			return nil, &utils.InvalidResponseErrorInfo{
-				Service: "OpenVPN",
+				Service: STUN,
 				Info:    "invalid attribute length",
 			}
 		}
 		attrValue := response[idx : idx+attrLen]
-		idx += attrLen
+		idx += paddedLen
 		var attrValueStr string
 		attrName, exists := ATTRIBUTES[uint32(attrType)]
 		if exists {
