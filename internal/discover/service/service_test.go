@@ -369,3 +369,184 @@ func TestRunUDPServiceDiscoveryTimeoutDoesNotBlockOnStubbornPlugin(t *testing.T)
 		t.Fatalf("elapsed = %s, want stubborn UDP plugin timeout to release worker", elapsed)
 	}
 }
+
+// This inventory preserves plugin order and port mappings from before registration was centralized.
+func TestTCPPluginRegistry(t *testing.T) {
+	want := []string{
+		"*plugins.SSHFingerprinter|ssh|[22 2222]",
+		"*plugins.DNSTCPFingerprinter|dns-tcp|[53]",
+		"*plugins.DNSTLSFingerprinter|dns-tls|[853]",
+		"*plugins.EtcdFingerprinter|etcd|[2379]",
+		"*plugins.RedisFingerprinter|redis|[6379 6380 26379]",
+		"*plugins.MongoDBFingerprinter|mongodb|[27017]",
+		"*plugins.CassandraFingerprinter|cassandra|[9042]",
+		"*plugins.BGPFingerprinter|bgp|[179]",
+		"*plugins.DCERPCFingerprinter|dcerpc|[135]",
+		"*plugins.IPPFingerprinter|ipp|[631]",
+		"*plugins.WinRMFingerprinter|winrm|[5985 5986]",
+		"*plugins.KerberosFingerprinter|kerberos|[88]",
+		"*plugins.SMBFingerprinter|smb|[445 139]",
+		"*plugins.FortiGateFingerprinter|fortigate-fgfm|[541]",
+		"*plugins.PcworxFingerprinter|pcworx|[1962]",
+		"*plugins.OpcuaFingerprinter|opcua|[4840]",
+		"*plugins.X11Fingerprinter|x11|[6000 6001 6002 6003 6004 6005 6006 6007 6008 6009 6010 6011 6012 6013 6014 6015 6016 6017 6018 6019 6020 6021 6022 6023 6024 6025 6026 6027 6028 6029 6030 6031 6032 6033 6034 6035 6036 6037 6038 6039 6040 6041 6042 6043 6044 6045 6046 6047 6048 6049 6050 6051 6052 6053 6054 6055 6056 6057 6058 6059 6060 6061 6062 6063]",
+		"*plugins.PcomFingerprinter|pcom|[20256]",
+		"*plugins.Iec104Fingerprinter|iec104|[2404]",
+		"*plugins.GesrtpFingerprinter|gesrtp|[18245 18246]",
+		"*plugins.FinsFingerprinter|fins|[9600]",
+		"*plugins.AtgFingerprinter|atg|[10001]",
+		"*plugins.ArdFingerprinter|ard|[3283 5900]",
+		"*plugins.PptpFingerprinter|pptp|[1723]",
+		"*plugins.MsmqFingerprinter|msmq|[1801 2103 2105]",
+		"*plugins.S7CommFingerprinter|s7comm|[102]",
+		"*plugins.MmsFingerprinter|mms|[102]",
+		"*plugins.HartFingerprinter|hart|[5094 20004]",
+		"*plugins.FoxFingerprinter|fox|[1911 4911]",
+		"*plugins.MemcachedFingerprinter|memcached|[11211]",
+		"*plugins.UnistreamFingerprinter|unistream|[44818]",
+		"*plugins.EthernetIPFingerprinter|ethernetip|[44818]",
+		"*plugins.OracleFingerprinter|oracle|[1521 1522 1525]",
+		"*plugins.SMTPFingerprinter|smtp|[25 587 2525 8025]",
+		"*plugins.JMXFingerprinter|jmx|[1099 7676 8686 9010 9011 9076 9119 9611 9999 7199 7091]",
+		"*plugins.JavaRMIFingerprinter|java-rmi|[1099]",
+		"*plugins.AJP13Fingerprinter|ajp13|[8009]",
+		"*plugins.GrpcFingerprinter|grpc|[]",
+		"*plugins.WebLogicT3Fingerprinter|weblogic-t3|[7001 7002]",
+		"*plugins.ZooKeeperFingerprinter|zookeeper|[2181]",
+		"*plugins.AMQPFingerprinter|amqp|[5672]",
+		"*plugins.NATSFingerprinter|nats|[4222]",
+		"*plugins.BeanstalkdFingerprinter|beanstalkd|[11300]",
+		"*plugins.ErlangEPMDFingerprinter|erlang-epmd|[4369]",
+		"*plugins.ADBFingerprinter|adb|[5555]",
+		"*plugins.RTMPFingerprinter|rtmp|[1935]",
+		"*plugins.SCCPFingerprinter|sccp|[2000]",
+		"*plugins.SOCKSFingerprinter|socks|[1080 1081 9050 9150]",
+		"*plugins.NNTPFingerprinter|nntp|[119 563]",
+		"*plugins.IRCFingerprinter|irc|[6660 6667 6697]",
+		"*plugins.XMPPFingerprinter|xmpp|[5222 5269]",
+		"*plugins.IdentFingerprinter|ident|[113]",
+		"*plugins.GopherFingerprinter|gopher|[70]",
+		"*plugins.AFPFingerprinter|afp|[548]",
+		"*plugins.GitDaemonFingerprinter|git-daemon|[9418]",
+		"*plugins.FingerFingerprinter|finger|[79]",
+		"*plugins.WhoisFingerprinter|whois|[43]",
+		"*plugins.VMwareAuthdFingerprinter|vmware-authd|[902]",
+		"*plugins.PoppassdFingerprinter|poppassd|[106]",
+		"*plugins.JetDirectFingerprinter|jetdirect|[9100]",
+		"*plugins.LPDFingerprinter|lpd|[515]",
+		"*plugins.RloginFingerprinter|rlogin|[513]",
+		"*plugins.DubboFingerprinter|dubbo|[20880]",
+		"*plugins.TarantoolFingerprinter|tarantool|[3301]",
+		"*plugins.DNP3Fingerprinter|dnp3|[20000]",
+		"*plugins.MELSECFingerprinter|melsec|[5000 5001 5006 5007 20000]",
+		"*plugins.CodesysFingerprinter|codesys|[1200 1210 1211 1217 1740 1741 1742 1743 11740]",
+		"*plugins.BeckhoffADSFingerprinter|beckhoff-ads|[48898]",
+		"*plugins.SAPRouterFingerprinter|saprouter|[3299]",
+		"*plugins.NDMPFingerprinter|ndmp|[10000]",
+		"*plugins.HPDataProtectorFingerprinter|hpdataprotector|[5555 5556 12328 16400]",
+		"*plugins.NFSFingerprinter|nfs|[2049]",
+		"*plugins.WinboxFingerprinter|winbox|[8291]",
+		"*neo4j.NEO4JPlugin|neo4j|[7687]",
+		"*neo4j.NEO4JTLSPlugin|neo4j|[7687]",
+		"*echo.EchoPlugin|echo|[7]",
+		"*telnet.TELNETPlugin|telnet|[23]",
+		"*ftp.FTPPlugin|ftp|[21]",
+		"*snpp.SNPPPlugin|snpp|[444]",
+		"*kubernetes.KubernetesPlugin|kubernetes|[6443]",
+		"*chromadb.ChromaDBPlugin|chromadb|[8000]",
+		"*milvus.MilvusPlugin|milvus|[19530]",
+		"*pinecone.PINECONEPlugin|pinecone|[443]",
+		"*chromadb.ChromaDBTLSPlugin|chromadb|[8000]",
+		"*milvus.MilvusMetricsPlugin|milvus-metrics|[9091]",
+		"*smpp.SMPPPlugin|smpp|[2775 2776]",
+		"*diameter.DIAMETERPlugin|diameter|[3868]",
+		"*smtp.TLSPlugin|smtps|[465]",
+		"*rdp.RDPPlugin|rdp|[3389]",
+		"*rdp.TLSPlugin|rdp|[3389]",
+		"*firebird.FirebirdPlugin|firebird|[3050]",
+		"*couchdb.COUCHDBPlugin|couchdb|[5984]",
+		"*elasticsearch.ElasticsearchPlugin|elasticsearch|[9200]",
+		"*influxdb.InfluxDBPlugin|influxdb|[8086]",
+		"*couchdb.COUCHDBTLSPlugin|couchdb|[6984]",
+		"*pop3.POP3Plugin|pop3|[110]",
+		"*db2.DB2Plugin|db2|[446 50000]",
+		"*pop3.TLSPlugin|pop3s|[995]",
+		"*mysql.MYSQLPlugin|MySQL|[3306]",
+		"*mssql.MSSQLPlugin|mssql|[1433]",
+		"*sybase.SybasePlugin|sybase|[5000]",
+		"*ldap.LDAPPlugin|ldap|[389]",
+		"*ldap.TLSPlugin|ldaps|[636]",
+		"*imap.TLSPlugin|imaps|[993]",
+		"*imap.IMAPPlugin|imap|[143]",
+		"*kafkanew.Plugin|kafkaNew|[9092]",
+		"*kafkanew.TLSPlugin|KafkaNewTLS|[9093]",
+		"*kafkaold.Plugin|kafkaOld|[9092]",
+		"*kafkaold.TLSPlugin|KafkaOldTLS|[9093]",
+		"*vnc.VNCPlugin|VNC|[5900]",
+		"*linuxrpc.RPCPlugin|RPC|[111]",
+		"*modbus.MODBUSPlugin|modbus|[502]",
+		"*redis.REDISTLSPlugin|redis|[6380]",
+		"*jdwp.JDWPPlugin|jdwp|[3999 5000 5005 8000 8453 8787 8788 9001 18000]",
+		"*mqtt3.MQTT3Plugin|mqtt3|[1883]",
+		"*mqtt3.TLSPlugin|mqtt3tls|[8883]",
+		"*mqtt5.MQTT5Plugin|mqtt5|[1883]",
+		"*mqtt5.TLSPlugin|mqtt5tls|[8883]",
+		"*rsync.RSYNCPlugin|rsync|[873]",
+		"*postgres.POSTGRESPlugin|postgres|[5432]",
+		"*rtsp.RTSPPlugin|rtsp|[554]",
+		"*http.HTTPPlugin|http|[80 3000 4567 5000 8000 8001 8080 8081 8888 9001 9080 9090 9100]",
+		"*http.HTTPSPlugin|https|[443 8443 9443]",
+	}
+	if len(customFingerprintModules) != len(want) {
+		t.Fatalf("TCP plugin count = %d, want %d", len(customFingerprintModules), len(want))
+	}
+	for i, p := range customFingerprintModules {
+		got := fmt.Sprintf("%T|%s|%v", p, p.Name(), p.DefaultPorts())
+		if got != want[i] {
+			t.Errorf("TCP plugin %d = %q, want %q", i, got, want[i])
+		}
+	}
+}
+
+func TestUDPPluginRegistry(t *testing.T) {
+	want := map[uint16]string{
+		53:    "*plugins.DNSFingerprinter|dns|[53]",
+		67:    "*plugins.DHCPFingerprinter|dhcp|[67]",
+		69:    "*plugins.TFTPFingerprinter|tftp|[69]",
+		123:   "*plugins.NTPFingerprinter|ntp|[123]",
+		137:   "*plugins.NetBIOSFingerprinter|netbios-ns|[137]",
+		161:   "*plugins.SNMPFingerprinter|snmp|[161 162]",
+		162:   "*plugins.SNMPFingerprinter|snmp|[161 162]",
+		177:   "*plugins.XdmcpFingerprinter|xdmcp|[177]",
+		427:   "*plugins.SlpFingerprinter|slp|[427]",
+		500:   "*plugins.IKEFingerprinter|ike|[500 4500]",
+		623:   "*plugins.IPMIFingerprinter|ipmi|[623]",
+		1194:  "*openvpn.Plugin|OpenVPN|[1194]",
+		1812:  "*plugins.RADIUSFingerprinter|radius|[1812]",
+		1900:  "*plugins.SSDPFingerprinter|ssdp|[1900]",
+		2049:  "*plugins.NFSUDPFingerprinter|nfs-udp|[2049]",
+		3478:  "*stun.Plugin|stun|[3478]",
+		3702:  "*plugins.WSDiscoveryFingerprinter|ws-discovery|[3702]",
+		4500:  "*plugins.IKEFingerprinter|ike|[500 4500]",
+		5060:  "*plugins.SIPFingerprinter|sip|[5060]",
+		5683:  "*plugins.CoAPFingerprinter|coap|[5683]",
+		10001: "*plugins.UbiquitiFingerprinter|ubiquiti|[10001]",
+		20000: "*plugins.DNP3UDPFingerprinter|dnp3-udp|[20000]",
+		44818: "*plugins.EthernetIPUDPFingerprinter|ethernetip-udp|[44818]",
+		47808: "*plugins.BACnetFingerprinter|bacnet|[47808]",
+	}
+	if len(udpFingerprinters) != len(want) {
+		t.Fatalf("UDP port count = %d, want %d", len(udpFingerprinters), len(want))
+	}
+	for port, expected := range want {
+		p, ok := udpFingerprinters[port]
+		if !ok {
+			t.Errorf("missing UDP port %d", port)
+			continue
+		}
+		got := fmt.Sprintf("%T|%s|%v", p, p.Name(), p.DefaultPorts())
+		if got != expected {
+			t.Errorf("UDP port %d = %q, want %q", port, got, expected)
+		}
+	}
+}

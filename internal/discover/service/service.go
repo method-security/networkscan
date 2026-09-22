@@ -12,156 +12,19 @@ import (
 	// Generated
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/Method-Security/networkscan/internal/discover/service/probes"
-	"github.com/Method-Security/networkscan/internal/discover/service/probes/openvpn"
-	"github.com/Method-Security/networkscan/internal/discover/service/probes/stun"
 
-	// Custom fingerprinters
-	localPlugins "github.com/Method-Security/networkscan/internal/discover/service/plugins"
 	// Internal
 	servicehelpers "github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	// Utilities
 	"github.com/Method-Security/networkscan/utils"
 )
 
-/* -------------------------------------------------------------------------- */
-/*  Custom-fingerprinter interface & registry                                 */
-/* -------------------------------------------------------------------------- */
+type Fingerprinter = probes.Fingerprinter
 
-// Fingerprinter detects **one** specific application protocol (gRPC, MQTT, …).
-// On match: (*ServiceDetails, nil)
-// On "not mine": (nil, nil)
-// On fatal error: (nil, err)
-type Fingerprinter interface {
-	Name() string
-	Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error)
-	// DefaultPorts returns the list of default ports for this service
-	// Empty list means the service can run on any port (no port restrictions)
-	DefaultPorts() []int
-}
-
-// Custom fingerprinters for protocols that need specialized detection.
-// Order is semantic priority: earlier entries win when multiple probes match
-// the same endpoint. Keep more-specific fingerprints before generic/container
-// protocols and document intentional default-port overlaps inline.
-//
-// Current TCP overlap groups:
-//   - 102: S7Comm before MMS
-//   - 1099: JMX before Java RMI
-//   - 5555: ADB and HP Data Protector
-//   - 20000: DNP3 and MELSEC MC
-//   - 44818: Unitronics UniStream before generic EtherNet/IP
-var customFingerprintModules = appendProtocolProbes([]Fingerprinter{
-	&localPlugins.SSHFingerprinter{},             // SSH (Secure Shell)
-	&localPlugins.DNSTCPFingerprinter{},          // DNS over TCP
-	&localPlugins.DNSTLSFingerprinter{},          // DNS over TLS
-	&localPlugins.EtcdFingerprinter{},            // etcd distributed key-value store; keep before generic gRPC
-	&localPlugins.RedisFingerprinter{},           // Redis key-value store
-	&localPlugins.MongoDBFingerprinter{},         // MongoDB driver manages its own connections
-	&localPlugins.CassandraFingerprinter{},       // Cassandra native protocol
-	&localPlugins.BGPFingerprinter{},             // BGP protocol detection
-	&localPlugins.DCERPCFingerprinter{},          // Windows DCE/RPC
-	&localPlugins.IPPFingerprinter{},             // Internet Printing Protocol
-	&localPlugins.WinRMFingerprinter{},           // Windows Remote Management
-	&localPlugins.KerberosFingerprinter{},        // Kerberos (Kerberos 5),
-	&localPlugins.SMBFingerprinter{},             // SMB (Server Message Block),
-	&localPlugins.FortiGateFingerprinter{},       // FortiGate FGFM (FortiGate to FortiManager),
-	&localPlugins.PcworxFingerprinter{},          // PCWORX (Phoenix Contact PLCs)
-	&localPlugins.OpcuaFingerprinter{},           // OPC UA (OPC Unified Architecture)
-	&localPlugins.X11Fingerprinter{},             // X11 (X Window System)
-	&localPlugins.PcomFingerprinter{},            // Unitronics PCOM (PLC Communication)
-	&localPlugins.Iec104Fingerprinter{},          // IEC 60870-5-104 (SCADA protocol)
-	&localPlugins.GesrtpFingerprinter{},          // GE SRTP (Service Request Transport Protocol)
-	&localPlugins.FinsFingerprinter{},            // FINS (Omron PLC)
-	&localPlugins.AtgFingerprinter{},             // ATG (Automatic Tank Gauging)
-	&localPlugins.ArdFingerprinter{},             // ARD (Apple Remote Desktop)
-	&localPlugins.PptpFingerprinter{},            // PPTP (Point-to-Point Tunneling Protocol)
-	&localPlugins.MsmqFingerprinter{},            // MSMQ (Microsoft Message Queuing)
-	&localPlugins.S7CommFingerprinter{},          // Siemens S7comm (more specific TCP/102 PLC probe)
-	&localPlugins.MmsFingerprinter{},             // MMS fallback for TCP/102 ISO-on-TPKT
-	&localPlugins.HartFingerprinter{},            // HART-IP (Highway Addressable Remote Transducer)
-	&localPlugins.FoxFingerprinter{},             // FOX (Tridium Niagara Framework)
-	&localPlugins.MemcachedFingerprinter{},       // MEMCACHED
-	&localPlugins.UnistreamFingerprinter{},       // Unitronics UniStream (more specific EtherNet/IP device match)
-	&localPlugins.EthernetIPFingerprinter{},      // Generic EtherNet/IP/CIP fallback for TCP/44818
-	&localPlugins.OracleFingerprinter{},          // Oracle TNS Listener
-	&localPlugins.SMTPFingerprinter{},            // SMTP (Simple Mail Transfer Protocol)
-	&localPlugins.JMXFingerprinter{},             // JMX over RMI; keep before generic Java RMI
-	&localPlugins.JavaRMIFingerprinter{},         // Java RMI Registry
-	&localPlugins.AJP13Fingerprinter{},           // Apache JServ Protocol
-	&localPlugins.GrpcFingerprinter{},            // gRPC can run on any port
-	&localPlugins.WebLogicT3Fingerprinter{},      // WebLogic T3
-	&localPlugins.ZooKeeperFingerprinter{},       // ZooKeeper
-	&localPlugins.AMQPFingerprinter{},            // AMQP
-	&localPlugins.NATSFingerprinter{},            // NATS
-	&localPlugins.BeanstalkdFingerprinter{},      // beanstalkd
-	&localPlugins.ErlangEPMDFingerprinter{},      // Erlang Port Mapper Daemon
-	&localPlugins.ADBFingerprinter{},             // Android Debug Bridge (overlaps HP Data Protector on TCP/5555)
-	&localPlugins.RTMPFingerprinter{},            // RTMP
-	&localPlugins.SCCPFingerprinter{},            // Cisco SCCP/Skinny
-	&localPlugins.SOCKSFingerprinter{},           // SOCKS5 proxy
-	&localPlugins.NNTPFingerprinter{},            // NNTP
-	&localPlugins.IRCFingerprinter{},             // IRC
-	&localPlugins.XMPPFingerprinter{},            // XMPP
-	&localPlugins.IdentFingerprinter{},           // Ident/Auth
-	&localPlugins.GopherFingerprinter{},          // Gopher
-	&localPlugins.AFPFingerprinter{},             // Apple Filing Protocol
-	&localPlugins.GitDaemonFingerprinter{},       // Git daemon
-	&localPlugins.FingerFingerprinter{},          // Finger
-	&localPlugins.WhoisFingerprinter{},           // WHOIS
-	&localPlugins.VMwareAuthdFingerprinter{},     // VMware Authentication Daemon
-	&localPlugins.PoppassdFingerprinter{},        // poppassd
-	&localPlugins.JetDirectFingerprinter{},       // JetDirect/PJL
-	&localPlugins.LPDFingerprinter{},             // Line Printer Daemon
-	&localPlugins.RloginFingerprinter{},          // rlogin
-	&localPlugins.DubboFingerprinter{},           // Apache Dubbo
-	&localPlugins.TarantoolFingerprinter{},       // Tarantool
-	&localPlugins.DNP3Fingerprinter{},            // DNP3 (overlaps MELSEC MC on TCP/20000; protocol-specific probe)
-	&localPlugins.MELSECFingerprinter{},          // Mitsubishi MELSEC MC
-	&localPlugins.CodesysFingerprinter{},         // CODESYS
-	&localPlugins.BeckhoffADSFingerprinter{},     // Beckhoff ADS/TwinCAT
-	&localPlugins.SAPRouterFingerprinter{},       // SAProuter
-	&localPlugins.NDMPFingerprinter{},            // Network Data Management Protocol
-	&localPlugins.HPDataProtectorFingerprinter{}, // HP Data Protector OmniInet (overlaps ADB on TCP/5555)
-	&localPlugins.NFSFingerprinter{},             // Network File System
-	&localPlugins.WinboxFingerprinter{},          // MikroTik Winbox (TCP/8291) service fingerprinter
-})
-
-// appendProtocolProbes preserves existing specific probes ahead of generic fallbacks.
-func appendProtocolProbes(existing []Fingerprinter) []Fingerprinter {
-	for _, p := range probes.TCP() {
-		existing = append(existing, p)
-	}
-	return existing
-}
-
-// UDP fingerprinters mapped to their specific ports
-// Each UDP service is only probed on its well-known port(s)
-var udpFingerprinters = map[uint16]Fingerprinter{
-	1194:  &openvpn.Plugin{},
-	3478:  &stun.Plugin{},
-	53:    &localPlugins.DNSFingerprinter{},           // DNS
-	67:    &localPlugins.DHCPFingerprinter{},          // DHCP Server
-	69:    &localPlugins.TFTPFingerprinter{},          // TFTP (Trivial File Transfer Protocol)
-	123:   &localPlugins.NTPFingerprinter{},           // NTP
-	137:   &localPlugins.NetBIOSFingerprinter{},       // NetBIOS Name Service
-	161:   &localPlugins.SNMPFingerprinter{},          // SNMP
-	162:   &localPlugins.SNMPFingerprinter{},          // SNMP Trap
-	177:   &localPlugins.XdmcpFingerprinter{},         // XDMCP (X Display Manager Control Protocol)
-	427:   &localPlugins.SlpFingerprinter{},           // SLP (Service Location Protocol)
-	500:   &localPlugins.IKEFingerprinter{},           // IKE (Internet Key Exchange)
-	623:   &localPlugins.IPMIFingerprinter{},          // IPMI (Intelligent Platform Management Interface)
-	1900:  &localPlugins.SSDPFingerprinter{},          // SSDP (Simple Service Discovery Protocol)
-	2049:  &localPlugins.NFSUDPFingerprinter{},        // NFS
-	4500:  &localPlugins.IKEFingerprinter{},           // IKE NAT-T (NAT Traversal)
-	5060:  &localPlugins.SIPFingerprinter{},           // SIP (Session Initiation Protocol)
-	10001: &localPlugins.UbiquitiFingerprinter{},      // Ubiquiti Discovery Protocol
-	47808: &localPlugins.BACnetFingerprinter{},        // BACnet/IP
-	5683:  &localPlugins.CoAPFingerprinter{},          // CoAP
-	1812:  &localPlugins.RADIUSFingerprinter{},        // RADIUS
-	3702:  &localPlugins.WSDiscoveryFingerprinter{},   // WS-Discovery
-	20000: &localPlugins.DNP3UDPFingerprinter{},       // DNP3
-	44818: &localPlugins.EthernetIPUDPFingerprinter{}, // EtherNet/IP
-}
+var (
+	customFingerprintModules = probes.TCP()
+	udpFingerprinters        = probes.UDP()
+)
 
 // RunServiceFingerprint fingerprints services using the transport selected in
 // config. New callers should prefer RunTCPServiceFingerprint or
