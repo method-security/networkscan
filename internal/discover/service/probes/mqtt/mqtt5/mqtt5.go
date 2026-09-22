@@ -1,6 +1,6 @@
 // Copyright 2022 Praetorian Security, Inc.
 // SPDX-License-Identifier: Apache-2.0
-// Adapted for networkscan; see ../NOTICE.md.
+// Adapted from fingerprintx for networkscan; see the repository root LICENSE.
 
 package mqtt5
 
