@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,7 +21,6 @@ const productBodyLimit = 1 << 20
 
 // Each probe owns a transport so connections never escape the attempt's context.
 type productHTTP struct {
-	client    *http.Client
 	base      url.URL
 	transport *http.Transport
 }
@@ -39,15 +37,18 @@ func newProductHTTP(ip net.IP, port int, host string, timeout int, secure bool) 
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return helpers.TCPConn(ctx, ip, port, timeout)
 		},
-		TLSClientConfig:        &tls.Config{ServerName: host, InsecureSkipVerify: true}, //nolint:gosec // Discovery includes self-signed services.
+		TLSClientConfig:        helpers.DiscoveryTLSConfig(host),
 		MaxResponseHeaderBytes: 64 << 10,
 		DisableKeepAlives:      true,
 	}
-	return &productHTTP{transport: t, base: url.URL{Scheme: scheme, Host: net.JoinHostPort(host, strconv.Itoa(port))}, client: &http.Client{
-		Transport: t,
-		// Discovery reports the original endpoint, including redirects, without following them.
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}}
+	authority := net.JoinHostPort(host, strconv.Itoa(port))
+	if (!secure && port == 80) || (secure && port == 443) {
+		authority = host
+		if strings.Contains(host, ":") {
+			authority = "[" + host + "]"
+		}
+	}
+	return &productHTTP{transport: t, base: url.URL{Scheme: scheme, Host: authority}}
 }
 
 func (p *productHTTP) get(ctx context.Context, path string) (*http.Response, []byte, error) {
@@ -58,7 +59,9 @@ func (p *productHTTP) get(ctx context.Context, path string) (*http.Response, []b
 		return nil, nil, err
 	}
 	req.Header.Set("User-Agent", "networkscan")
-	r, err := p.client.Do(req)
+	// RoundTrip preserves valid responses even when Location is malformed;
+	// discovery never follows redirects to another endpoint.
+	r, err := p.transport.RoundTrip(req)
 	if err != nil {
 		return nil, nil, err
 	}

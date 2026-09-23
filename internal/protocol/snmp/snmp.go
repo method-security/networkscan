@@ -2,6 +2,7 @@
 package snmp
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -47,11 +48,24 @@ var SystemOIDs = []string{
 // TrySNMPv3Discovery attempts SNMPv3 engine discovery.
 // Returns engine info, system description (if available), and error.
 func TrySNMPv3Discovery(ip net.IP, port uint16, timeout int) (*SNMPv3EngineInfo, string, error) {
+	return trySNMPv3Discovery(context.Background(), ip, port, time.Duration(timeout)*time.Second)
+}
+
+// TrySNMPv3DiscoveryContext bounds the entire discovery exchange, including retries.
+func TrySNMPv3DiscoveryContext(ctx context.Context, ip net.IP, port uint16, timeout time.Duration) (*SNMPv3EngineInfo, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	// Retain two retries within the check budget, rather than adding time to it.
+	return trySNMPv3Discovery(ctx, ip, port, timeout/3)
+}
+
+func trySNMPv3Discovery(ctx context.Context, ip net.IP, port uint16, timeout time.Duration) (*SNMPv3EngineInfo, string, error) {
 	g := &gosnmp.GoSNMP{
+		Context:       ctx,
 		Target:        ip.String(),
 		Port:          port,
 		Version:       gosnmp.Version3,
-		Timeout:       time.Duration(timeout) * time.Second,
+		Timeout:       timeout,
 		Retries:       2,
 		Transport:     "udp",
 		SecurityModel: gosnmp.UserSecurityModel,
@@ -69,6 +83,9 @@ func TrySNMPv3Discovery(ip net.IP, port uint16, timeout int) (*SNMPv3EngineInfo,
 		return nil, "", err
 	}
 	defer func() { _ = g.Close() }()
+	conn := g.Conn
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 
 	result, getErr := g.Get([]string{"1.3.6.1.2.1.1.1.0"})
 
@@ -103,12 +120,24 @@ func TrySNMPv3Discovery(ip net.IP, port uint16, timeout int) (*SNMPv3EngineInfo,
 // TrySNMPCommunityCheck tests if an SNMP community string works.
 // Returns success status, system info, and error.
 func TrySNMPCommunityCheck(ip net.IP, port uint16, timeout int, community string, version gosnmp.SnmpVersion) (bool, *SNMPSystemInfo, error) {
+	return trySNMPCommunityCheck(context.Background(), ip, port, time.Duration(timeout)*time.Second, community, version)
+}
+
+// TrySNMPCommunityCheckContext bounds connection setup and the complete request.
+func TrySNMPCommunityCheckContext(ctx context.Context, ip net.IP, port uint16, timeout time.Duration, community string, version gosnmp.SnmpVersion) (bool, *SNMPSystemInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return trySNMPCommunityCheck(ctx, ip, port, timeout, community, version)
+}
+
+func trySNMPCommunityCheck(ctx context.Context, ip net.IP, port uint16, timeout time.Duration, community string, version gosnmp.SnmpVersion) (bool, *SNMPSystemInfo, error) {
 	g := &gosnmp.GoSNMP{
+		Context:   ctx,
 		Target:    ip.String(),
 		Port:      port,
 		Community: community,
 		Version:   version,
-		Timeout:   time.Duration(timeout) * time.Second,
+		Timeout:   timeout,
 		Retries:   0,
 		Transport: "udp",
 	}
@@ -118,6 +147,9 @@ func TrySNMPCommunityCheck(ip net.IP, port uint16, timeout int, community string
 		return false, nil, err
 	}
 	defer func() { _ = g.Close() }()
+	conn := g.Conn
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 
 	result, err := g.Get(SystemOIDs)
 	if err != nil {

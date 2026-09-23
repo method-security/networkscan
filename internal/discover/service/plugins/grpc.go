@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -42,7 +43,12 @@ func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 
 	/* ---- try plaintext first --------------------------------------------- */
-	conn, tlsUsed, err := dial(timeoutCtx, addr, timeoutDuration, false)
+	// Reserve part of the shared deadline for TLS when plaintext cannot connect.
+	dialBudget := timeoutDuration
+	if deadline, ok := timeoutCtx.Deadline(); ok {
+		dialBudget = time.Until(deadline)
+	}
+	conn, tlsUsed, err := dial(timeoutCtx, addr, dialBudget/2, false)
 	if err != nil {
 		/* ---- fallback to opportunistic TLS -------------------------------- */
 		conn, tlsUsed, err = dial(timeoutCtx, addr, timeoutDuration, true)
@@ -68,11 +74,18 @@ func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		MessageRequest: &reflectionpb.ServerReflectionRequest_ListServices{
 			ListServices: "*",
 		},
-	}); err != nil {
+	}); err != nil && err != io.EOF {
 		return nil, nil // send failed
 	}
 
 	resp, err := refClient.Recv()
+	// The transport exposes content-type only after validating it as gRPC.
+	// Trailers-only responses (including disabled reflection) put it in Trailer.
+	grpcResponse := false
+	if err != nil {
+		headers, _ := refClient.Header()
+		grpcResponse = len(headers.Get("content-type")) > 0 || len(refClient.Trailer().Get("content-type")) > 0
+	}
 
 	/* ---- evaluate outcome ------------------------------------------------- */
 	switch {
@@ -81,7 +94,7 @@ func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		return buildResult(host, ip, port, tlsUsed, "LIST_OK"), nil
 
 	//   2. gRPC status UNIMPLEMENTED → still gRPC (reflection disabled)
-	case err != nil && status.Code(err) == codes.Unimplemented:
+	case err != nil && status.Code(err) == codes.Unimplemented && grpcResponse:
 		return buildResult(host, ip, port, tlsUsed, "UNIMPLEMENTED"), nil
 
 	//   otherwise → not gRPC

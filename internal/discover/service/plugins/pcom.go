@@ -1,16 +1,19 @@
-// Package plugins provides Unitronics PCOM service fingerprinting
 package plugins
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
-	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 )
@@ -21,388 +24,100 @@ func (PcomFingerprinter) Name() string { return "pcom" }
 
 func (PcomFingerprinter) DefaultPorts() []int { return []int{20256} }
 
-// Precompiled regexes for optional metadata extraction.
-var (
-	reModel     = regexp.MustCompile(`Model:\s*([^\r\n]+)`)
-	rePlcName   = regexp.MustCompile(`PLC Name:\s*([^\r\n]+)`)
-	reOSVersion = regexp.MustCompile(`OS Version:\s*([^\r\n]+)`)
-)
-
-// Detect attempts to identify a Unitronics PCOM service using progressive detection.
-func (PcomFingerprinter) Detect(
-	ctx context.Context,
-	ip net.IP,
-	port int,
-	host string,
-	timeout int,
-) (*discoverfern.ServiceDetails, error) {
-	timeoutDur := helpers.Timeout(timeout)
-
-	// Try multiple PCOM detection strategies in order of likelihood
-	strategies := []func(context.Context, net.IP, int, string, time.Duration) (*discoverfern.ServiceDetails, error){
-		tryPcomASCIIVariants,
-		tryPcomBinaryVariants,
-		tryPcomTCPHeader,
-		tryPcomConnectionTest,
-	}
-
-	for _, strategy := range strategies {
-		if result, err := strategy(ctx, ip, port, host, timeoutDur); err == nil && result != nil {
-			return result, nil
+func (PcomFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+	ctx, cancel := helpers.Context(ctx, timeout)
+	defer cancel()
+	var lastErr error
+	// Native Ethernet framing first, then raw ASCII for serial-over-TCP bridges.
+	for _, framed := range []bool{true, false} {
+		attemptCtx := ctx
+		stop := func() {}
+		if deadline, ok := ctx.Deadline(); ok && framed {
+			attemptCtx, stop = context.WithTimeout(ctx, time.Until(deadline)/2)
+		}
+		lastErr = exchangePcomID(attemptCtx, ip, port, framed)
+		stop()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if lastErr == nil {
+			// ID layouts vary by controller; do not infer model/version from unit IDs.
+			return &discoverfern.ServiceDetails{
+				Host: host, Ip: ip.String(), Port: port,
+				Transport: common.TransportTypeTcp, Protocol: common.ProtocolTypePcom,
+			}, nil
 		}
 	}
-
-	return nil, fmt.Errorf("no PCOM service detected")
+	return nil, fmt.Errorf("no valid PCOM ID response: %w", lastErr)
 }
 
-// tryPcomASCIIVariants tests multiple ASCII PCOM command variants
-func tryPcomASCIIVariants(ctx context.Context, ip net.IP, port int, host string, timeout time.Duration) (*discoverfern.ServiceDetails, error) {
-	asciiCommands := [][]byte{
-		[]byte("/01ID00\r"), // Standard ID request
-		[]byte("/00ID01\r"), // Unit 0 ID request
-		[]byte("/01UG00\r"), // Get Unit ID
-		[]byte("/00UG01\r"), // Get Unit ID (unit 0)
-		[]byte("/01GF00\r"), // Get PLC Version
-		[]byte("/00GF01\r"), // Get PLC Version (unit 0)
-	}
-
-	for _, cmd := range asciiCommands {
-		if result, err := testPcomCommand(ctx, ip, port, host, timeout, cmd); err == nil {
-			return result, nil
-		}
-	}
-
-	return nil, fmt.Errorf("no ASCII PCOM response")
-}
-
-// tryPcomBinaryVariants tests multiple binary PCOM command variants
-func tryPcomBinaryVariants(ctx context.Context, ip net.IP, port int, host string, timeout time.Duration) (*discoverfern.ServiceDetails, error) {
-	binaryCommands := [][]byte{
-		// Get PLC Name (0x0C) with PCOM/TCP header
-		{0x00, 0x01, 0x00, 0x00, 0x00, 0x08, 0x01, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x0D, 0x00},
-		// Read Memory (0x01) with PCOM/TCP header
-		{0x00, 0x01, 0x00, 0x00, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00},
-		// Simple binary probe without TCP header
-		{0x01, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x0D, 0x00},
-		{0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00},
-	}
-
-	for _, cmd := range binaryCommands {
-		if result, err := testPcomCommand(ctx, ip, port, host, timeout, cmd); err == nil {
-			return result, nil
-		}
-	}
-
-	return nil, fmt.Errorf("no binary PCOM response")
-}
-
-// tryPcomTCPHeader tests PCOM/TCP header format
-func tryPcomTCPHeader(ctx context.Context, ip net.IP, port int, host string, timeout time.Duration) (*discoverfern.ServiceDetails, error) {
-	tcpHeaderCommands := [][]byte{
-		{0x00, 0x01, 0x00, 0x00, 0x00, 0x08, 0x01, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x0D, 0x00},
-		{0x12, 0x34, 0x00, 0x00, 0x00, 0x08, 0x01, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x0D, 0x00},
-		{0x00, 0x01, 0x00, 0x00, 0x00, 0x06, 0x01, 0x0C, 0x0D, 0x00},
-	}
-
-	for _, cmd := range tcpHeaderCommands {
-		if result, err := testPcomCommand(ctx, ip, port, host, timeout, cmd); err == nil {
-			return result, nil
-		}
-	}
-
-	return nil, fmt.Errorf("no PCOM/TCP response")
-}
-
-// tryPcomConnectionTest performs a basic connection test
-func tryPcomConnectionTest(ctx context.Context, ip net.IP, port int, host string, timeout time.Duration) (*discoverfern.ServiceDetails, error) {
-	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-
-	conn, err := helpers.DialDuration(ctx, "tcp", addr, timeout)
+func exchangePcomID(ctx context.Context, ip net.IP, port int, framed bool) error {
+	conn, err := helpers.TCPConn(ctx, ip, port, -1)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() { _ = conn.Close() }()
-
-	_ = helpers.SetReadDeadlineDuration(conn, timeout)
-	buffer := make([]byte, 1024)
-
-	// Try reading with a short timeout
-	_ = conn.SetReadDeadline(time.Now().Add(time.Second))
-	n, _ := conn.Read(buffer)
-
-	if n > 0 {
-		response := string(buffer[:n])
-		if !isFalsePositive(response, buffer[:n]) {
-			if port == 20256 && hasValidPcomIndicators(response, buffer[:n]) {
-				return createBasicPcomService(ip, port, host), nil
-			}
+	// Unit 00 addresses the directly connected PLC. ED is its ID request checksum.
+	request := []byte("/00IDED\r")
+	header := make([]byte, 6)
+	if framed {
+		if _, err := rand.Read(header[:2]); err != nil {
+			return err
 		}
-	} else {
-		// No immediate response, but successful connection on port 20256 might indicate PCOM
-		// Only accept empty responses as PCOM indicators on the default PCOM port
-		if port == 20256 {
-			return createBasicPcomService(ip, port, host), nil
-		}
+		header[2] = 101
+		binary.LittleEndian.PutUint16(header[4:], uint16(len(request)))
+		request = append(header, request...)
 	}
-
-	return nil, fmt.Errorf("no PCOM indicators found")
-}
-
-// testPcomCommand tests a specific PCOM command and analyzes the response
-func testPcomCommand(ctx context.Context, ip net.IP, port int, host string, timeout time.Duration, command []byte) (*discoverfern.ServiceDetails, error) {
-	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-
-	conn, err := helpers.DialDuration(ctx, "tcp", addr, timeout)
+	if _, err := io.Copy(conn, bytes.NewReader(request)); err != nil {
+		return err
+	}
+	response, err := readPcomID(conn, header, framed)
 	if err != nil {
+		return err
+	}
+	return validatePcomID(response)
+}
+
+func readPcomID(r io.Reader, requestHeader []byte, framed bool) ([]byte, error) {
+	const maxReply = 1024
+	if !framed {
+		return bufio.NewReaderSize(io.LimitReader(r, maxReply), maxReply).ReadSlice('\r')
+	}
+	header := make([]byte, 6)
+	if _, err := io.ReadFull(r, header); err != nil {
 		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
-
-	_ = helpers.SetDeadlineDuration(conn, timeout)
-
-	// Send command
-	if _, err := conn.Write(command); err != nil {
-		return nil, err
+	if !bytes.Equal(header[:4], requestHeader[:4]) {
+		return nil, fmt.Errorf("PCOM transaction or protocol mismatch")
 	}
-
-	// Read response
-	buffer := make([]byte, 1024)
-	n, err := conn.Read(buffer)
-	if err != nil {
-		return nil, err
+	n := int(binary.LittleEndian.Uint16(header[4:]))
+	if n < 10 || n > maxReply {
+		return nil, fmt.Errorf("invalid PCOM ID length: %d", n)
 	}
-
-	response := string(buffer[:n])
-
-	// Check for false positives first
-	if isFalsePositive(response, buffer[:n]) {
-		return nil, fmt.Errorf("detected non-PCOM service")
-	}
-
-	// Analyze response for PCOM patterns
-	if isPcomResponse(response, buffer[:n]) {
-		return parsePcomResponse(response, ip, port, host)
-	}
-
-	return nil, fmt.Errorf("no valid PCOM response")
+	body := make([]byte, n)
+	_, err := io.ReadFull(r, body)
+	return body, err
 }
 
-// isPcomResponse checks if response matches PCOM protocol patterns
-func isPcomResponse(response string, rawResponse []byte) bool {
-	// ASCII PCOM response pattern: /A<data><CR>
-	if len(response) >= 2 && response[0] == '/' && response[1] == 'A' {
-		return true
+func validatePcomID(b []byte) error {
+	if len(b) < 10 || !bytes.HasPrefix(b, []byte("/A00ID")) || b[len(b)-1] != '\r' {
+		return fmt.Errorf("invalid PCOM ID response framing")
 	}
-
-	// Binary PCOM response patterns
-	if len(rawResponse) >= 4 && isPcomBinaryResponse(rawResponse) {
-		return true
+	dataEnd := len(b) - 3
+	if strings.TrimSpace(string(b[6:dataEnd])) == "" {
+		return fmt.Errorf("empty PCOM identity")
 	}
-
-	// Specific binary patterns that indicate PCOM (excluding empty response check)
-	if hasValidPcomIndicators(response, rawResponse) {
-		return true
-	}
-
-	return false
-}
-
-// All the helper functions from the original (parsePcomResponse, isFalsePositive, etc.)
-func parsePcomResponse(response string, ip net.IP, port int, host string) (*discoverfern.ServiceDetails, error) {
-	metadata := &discoverfern.ServiceDetails{
-		Host:      host,
-		Ip:        ip.String(),
-		Port:      port,
-		Transport: common.TransportTypeTcp,
-		Protocol:  common.ProtocolTypePcom,
-	}
-
-	if len(response) > 3 && response[0] == '/' && response[1] == 'A' {
-		dataSection := response[2 : len(response)-1]
-
-		pcomInfo := &protocol.PcomServerInfo{}
-		extracted := false
-
-		if match := reModel.FindStringSubmatch(response); len(match) > 1 {
-			pcomInfo.PlcModel = &match[1]
-			extracted = true
+	var checksum byte
+	// The response start marker is /A; neither byte participates in the checksum.
+	for _, c := range b[2:dataEnd] {
+		if c < 32 || c > 126 {
+			return fmt.Errorf("non-ASCII PCOM identity")
 		}
-
-		if match := rePlcName.FindStringSubmatch(response); len(match) > 1 {
-			pcomInfo.PlcName = &match[1]
-			extracted = true
-		}
-
-		if match := reOSVersion.FindStringSubmatch(response); len(match) > 1 {
-			pcomInfo.FirmwareVersion = &match[1]
-			extracted = true
-		}
-
-		if len(dataSection) >= 8 {
-			modelCode := dataSection[:2]
-			if modelName := mapModelCode(modelCode); modelName != "" {
-				pcomInfo.PlcModel = &modelName
-				extracted = true
-			}
-
-			if len(dataSection) > 4 {
-				version := dataSection[2:6]
-				pcomInfo.Version = &version
-				extracted = true
-			}
-		}
-
-		if extracted {
-			metadata.Metadata = &discoverfern.ServiceMetadata{Pcom: pcomInfo}
-		}
+		checksum += c
 	}
-
-	return metadata, nil
-}
-
-func isPcomBinaryResponse(response []byte) bool {
-	if len(response) < 4 {
-		return false
+	var expected [1]byte
+	if _, err := hex.Decode(expected[:], b[dataEnd:dataEnd+2]); err != nil || expected[0] != checksum {
+		return fmt.Errorf("invalid PCOM ID checksum")
 	}
-
-	return (response[0] == 0x2F && response[1] == 0x41) ||
-		(response[0] == 0x00 && response[1] == 0x00) ||
-		(len(response) >= 6 && response[4] == 0x81)
-}
-
-func createBasicPcomService(ip net.IP, port int, host string) *discoverfern.ServiceDetails {
-	return &discoverfern.ServiceDetails{
-		Host:      host,
-		Ip:        ip.String(),
-		Port:      port,
-		Transport: common.TransportTypeTcp,
-		Protocol:  common.ProtocolTypePcom,
-	}
-}
-
-func mapModelCode(code string) string {
-	modelMap := map[string]string{
-		"01": "Vision 120", "02": "Vision 230", "03": "Vision 280", "04": "Vision 290",
-		"05": "Vision 350", "06": "Vision 430", "07": "Vision 530", "08": "Vision 570",
-		"09": "Vision 1040", "0A": "Vision 1210", "0B": "Samba 35", "0C": "Samba 43",
-		"0D": "Jazz 2", "0E": "M90", "0F": "M91", "10": "UniStream 5",
-		"11": "UniStream 7", "12": "UniStream 10", "13": "UniStream 15",
-	}
-
-	if name, exists := modelMap[code]; exists {
-		return name
-	}
-	return ""
-}
-
-func isFalsePositive(response string, rawResponse []byte) bool {
-	if len(response) == 0 && len(rawResponse) == 0 {
-		return false
-	}
-
-	// MySQL server errors
-	if contains(response, "Host ") && contains(response, "is not allowed to connect to this MySQL server") {
-		return true
-	}
-	if contains(response, "mysql_native_password") || contains(response, "Mysql Version:") {
-		return true
-	}
-
-	// HTTP responses
-	if contains(response, "HTTP/1.") && (contains(response, "400") || contains(response, "404") || contains(response, "500") || contains(response, "408") || contains(response, "200")) {
-		return true
-	}
-	if contains(response, "Server: nginx") || contains(response, "Server: Apache") || contains(response, "Server: Tomcat") || contains(response, "Server: Tengine") {
-		return true
-	}
-
-	// HTML content
-	if contains(response, "<html>") || contains(response, "<!DOCTYPE") || contains(response, "<title>") {
-		return true
-	}
-
-	// SSH, FTP, SMTP, Telnet
-	if contains(response, "SSH-2.0-") || (contains(response, "220 ") && contains(response, "FTP server")) {
-		return true
-	}
-	if contains(response, "220 ") && contains(response, "SMTP") {
-		return true
-	}
-	if contains(response, "Telnet") || contains(response, "connection() already keep alive") {
-		return true
-	}
-
-	// TLS/SSL responses (binary)
-	if len(rawResponse) >= 3 {
-		// TLS Alert: 0x15 0x03 0x01-0x04
-		if rawResponse[0] == 0x15 && rawResponse[1] == 0x03 {
-			return true
-		}
-		// TLS Handshake: 0x16 0x03 0x01-0x04
-		if rawResponse[0] == 0x16 && rawResponse[1] == 0x03 {
-			return true
-		}
-		// TLS Change Cipher: 0x14 0x03
-		if rawResponse[0] == 0x14 && rawResponse[1] == 0x03 {
-			return true
-		}
-		// TLS Application Data: 0x17 0x03
-		if rawResponse[0] == 0x17 && rawResponse[1] == 0x03 {
-			return true
-		}
-	}
-
-	// DCERPC/MSRPC responses (Windows RPC Endpoint Mapper on port 135, 139, etc.)
-	// DCERPC version 5 responses: 0x05 0x00-0x01 [packet_type]
-	if len(rawResponse) >= 3 && rawResponse[0] == 0x05 {
-		// Check if second byte is reasonable version minor (0x00 or 0x01)
-		if rawResponse[1] <= 0x01 {
-			// Check if third byte is a valid DCERPC packet type
-			packetType := rawResponse[2]
-			// Common DCERPC packet types: 0x00-0x13
-			// 0x00=Request, 0x02=Response, 0x0b=Bind, 0x0c=Bind_ack, 0x0d=Bind_nak, etc.
-			if packetType <= 0x13 {
-				return true
-			}
-		}
-	}
-
-	// Other false positives
-	if contains(response, "Bad Request") || contains(response, "Internal Server Error") {
-		return true
-	}
-
-	if len(response) > 8 && response[:4] == "HTTP" {
-		return true
-	}
-
-	return false
-}
-
-func hasValidPcomIndicators(response string, binaryResponse []byte) bool {
-	// NOTE: Empty response check moved to caller context where port is available
-	// Empty responses should ONLY be considered valid PCOM indicators on port 20256
-
-	// Check for specific PCOM binary patterns only
-	// These are known PCOM protocol signatures
-	if len(binaryResponse) >= 6 {
-		// PCOM protocol-specific patterns
-		if (binaryResponse[0] == 0x02 && binaryResponse[1] == 0x09) ||
-			(binaryResponse[0] == 0x00 && binaryResponse[1] == 0x5B) {
-			return true
-		}
-	}
-
-	// PCOM ASCII response pattern: /A<data><CR>
-	if len(response) >= 2 && response[0] == '/' && response[1] == 'A' {
-		return true
-	}
-
-	return false
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) &&
-		(s == substr ||
-			strings.Contains(strings.ToLower(s), strings.ToLower(substr)))
+	return nil
 }

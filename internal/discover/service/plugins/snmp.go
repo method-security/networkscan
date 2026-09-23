@@ -5,10 +5,12 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+	"github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	snmplib "github.com/Method-Security/networkscan/internal/protocol/snmp"
 	"github.com/gosnmp/gosnmp"
 )
@@ -24,10 +26,10 @@ func (SNMPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		return nil, fmt.Errorf("port %d out of range", port)
 	}
 	snmpPort := uint16(port)
-
-	fingerprintTimeout := 1
-	if timeout < fingerprintTimeout {
-		fingerprintTimeout = timeout
+	ctx, cancel := helpers.Context(ctx, timeout)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	var allVersions []string
@@ -35,12 +37,7 @@ func (SNMPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	var v3Info *snmplib.SNMPv3EngineInfo
 	var sysInfo *snmplib.SNMPSystemInfo
 
-	// Try SNMPv3 discovery FIRST (use at least 2 seconds for discovery round-trip)
-	v3Timeout := fingerprintTimeout
-	if v3Timeout < 2 {
-		v3Timeout = 2
-	}
-	if v3InfoResult, sysDescr, err := snmplib.TrySNMPv3Discovery(ip, snmpPort, v3Timeout); err == nil && v3InfoResult != nil {
+	if v3InfoResult, sysDescr, err := snmplib.TrySNMPv3DiscoveryContext(ctx, ip, snmpPort, snmpCheckBudget(ctx, 5, 2*time.Second)); err == nil && v3InfoResult != nil {
 		allVersions = append(allVersions, "SNMPv3")
 		v3Info = v3InfoResult
 		if sysDescr != "" && sysInfo == nil {
@@ -49,11 +46,6 @@ func (SNMPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 
 	// Try v1/v2c with community strings
-	communityTimeout := fingerprintTimeout / 2
-	if communityTimeout < 1 {
-		communityTimeout = 1
-	}
-
 	type versionTest struct {
 		version     gosnmp.SnmpVersion
 		versionName string
@@ -64,11 +56,14 @@ func (SNMPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 	communities := []string{"public", "private"}
 	workingCommunities := make(map[string]bool)
+	remainingChecks := len(versionTests) * len(communities)
 
 	for _, vt := range versionTests {
 		versionWorks := false
 		for _, community := range communities {
-			success, sysInfoResult, err := snmplib.TrySNMPCommunityCheck(ip, snmpPort, communityTimeout, community, vt.version)
+			budget := snmpCheckBudget(ctx, remainingChecks, time.Second)
+			remainingChecks--
+			success, sysInfoResult, err := snmplib.TrySNMPCommunityCheckContext(ctx, ip, snmpPort, budget, community, vt.version)
 			if err == nil && success {
 				versionWorks = true
 				if !workingCommunities[community] {
@@ -85,11 +80,23 @@ func (SNMPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if len(allVersions) > 0 {
 		return createSNMPResult(ip, port, host, allVersions, allCommunities, v3Info, sysInfo), nil
 	}
 
 	return nil, fmt.Errorf("no SNMP response")
+}
+
+func snmpCheckBudget(ctx context.Context, remainingChecks int, limit time.Duration) time.Duration {
+	if deadline, ok := ctx.Deadline(); ok {
+		// Share the remaining attempt across pending checks and result delivery,
+		// so optional metadata cannot consume the outer plugin deadline.
+		return min(limit, time.Until(deadline)/time.Duration(remainingChecks+1))
+	}
+	return limit
 }
 
 // createSNMPResult creates a ServiceDetails result combining all detected SNMP versions

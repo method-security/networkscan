@@ -2,9 +2,12 @@
 package plugins
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"strings"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
@@ -54,10 +57,15 @@ func (SSDPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		return nil, err
 	}
 
-	responseStr := string(response[:n])
-
-	// Check for SSDP response signature
-	if !strings.HasPrefix(responseStr, "HTTP/1.1") {
+	parsed, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(response[:n])), nil)
+	if err != nil {
+		return nil, fmt.Errorf("invalid SSDP response: %w", err)
+	}
+	defer func() { _ = parsed.Body.Close() }()
+	if parsed.Proto != "HTTP/1.1" || parsed.StatusCode != http.StatusOK ||
+		strings.TrimSpace(parsed.Header.Get("ST")) == "" ||
+		strings.TrimSpace(parsed.Header.Get("USN")) == "" ||
+		strings.TrimSpace(parsed.Header.Get("LOCATION")) == "" {
 		return nil, fmt.Errorf("not an SSDP response")
 	}
 
@@ -65,35 +73,18 @@ func (SSDPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	metadata := &protocol.SsdpServerInfo{}
 	var version *string
 
-	// Parse response headers
-	lines := strings.Split(responseStr, "\r\n")
-	if len(lines) > 0 {
-		status := lines[0]
-		metadata.Status = &status
-	}
-
-	for _, line := range lines[1:] {
-		if line == "" {
-			break
-		}
-		if strings.HasPrefix(strings.ToUpper(line), "SERVER:") {
-			server := strings.TrimSpace(line[7:])
-			version = &server
-			metadata.Server = &server
-		} else if strings.HasPrefix(strings.ToUpper(line), "LOCATION:") {
-			location := strings.TrimSpace(line[9:])
-			metadata.Location = &location
-		} else if strings.HasPrefix(strings.ToUpper(line), "ST:") {
-			st := strings.TrimSpace(line[3:])
-			metadata.ServiceType = &st
-		} else if strings.HasPrefix(strings.ToUpper(line), "USN:") {
-			usn := strings.TrimSpace(line[4:])
-			metadata.Usn = &usn
-		} else if strings.HasPrefix(strings.ToUpper(line), "CACHE-CONTROL:") {
-			cacheControl := strings.TrimSpace(line[14:])
-			metadata.CacheControl = &cacheControl
+	status := parsed.Proto + " " + parsed.Status
+	metadata.Status = &status
+	for name, field := range map[string]**string{
+		"SERVER": &metadata.Server, "LOCATION": &metadata.Location,
+		"ST": &metadata.ServiceType, "USN": &metadata.Usn,
+		"CACHE-CONTROL": &metadata.CacheControl,
+	} {
+		if value := parsed.Header.Get(name); value != "" {
+			*field = &value
 		}
 	}
+	version = metadata.Server
 
 	result := &discoverfern.ServiceDetails{
 		Host:      host,

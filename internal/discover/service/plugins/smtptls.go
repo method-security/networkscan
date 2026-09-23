@@ -33,7 +33,7 @@ func (SMTPTLSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 		return nil, err
 	}
 	r := bufio.NewReaderSize(io.LimitReader(tlsConn, 65536), 4096)
-	code, banner, err := readFTPReply(r)
+	code, banner, err := readSMTPReply(r)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func (SMTPTLSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 	if _, err = io.WriteString(tlsConn, "EHLO scanner.local\r\n"); err != nil {
 		return nil, err
 	}
-	code, response, err := readFTPReply(r)
+	code, response, err := readSMTPReply(r)
 	if err != nil {
 		return nil, err
 	}
@@ -54,17 +54,14 @@ func (SMTPTLSFingerprinter) Detect(ctx context.Context, ip net.IP, port int, hos
 		if _, err = io.WriteString(tlsConn, "HELO scanner.local\r\n"); err != nil {
 			return nil, err
 		}
-		code, response, err = readFTPReply(r)
+		code, response, err = readSMTPReply(r)
 		if err != nil || code != 250 {
 			return nil, fmt.Errorf("SMTP HELO failed: %v", err)
 		}
 	}
 	var auth, extensions []string
 	for i, line := range strings.Split(response, "\n") {
-		if len(line) < 4 || !strings.HasPrefix(line, "250") {
-			return nil, fmt.Errorf("invalid SMTP reply continuation")
-		}
-		if i == 0 {
+		if i == 0 || len(line) < 4 {
 			continue
 		}
 		ext := line[4:]
