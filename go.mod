@@ -356,7 +356,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 // indirect
 	github.com/fatih/color v1.19.0 // indirect
-	github.com/go-asn1-ber/asn1-ber v1.5.8 // indirect
+	github.com/go-asn1-ber/asn1-ber v1.5.8
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/go-github/v30 v30.1.0 // indirect
@@ -449,7 +449,7 @@ require (
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/text v0.41.0
 	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260831171406-18b4a7587f8a // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

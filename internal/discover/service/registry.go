@@ -6,45 +6,6 @@ import (
 
 	discover "github.com/Method-Security/networkscan/generated/go/discover"
 	localPlugins "github.com/Method-Security/networkscan/internal/discover/service/plugins"
-	chromadb "github.com/Method-Security/networkscan/internal/discover/service/plugins/chromadb"
-	couchdb "github.com/Method-Security/networkscan/internal/discover/service/plugins/couchdb"
-	db2 "github.com/Method-Security/networkscan/internal/discover/service/plugins/db2"
-	diameter "github.com/Method-Security/networkscan/internal/discover/service/plugins/diameter"
-	echo "github.com/Method-Security/networkscan/internal/discover/service/plugins/echo"
-	elasticsearch "github.com/Method-Security/networkscan/internal/discover/service/plugins/elasticsearch"
-	firebird "github.com/Method-Security/networkscan/internal/discover/service/plugins/firebird"
-	ftp "github.com/Method-Security/networkscan/internal/discover/service/plugins/ftp"
-	http "github.com/Method-Security/networkscan/internal/discover/service/plugins/http"
-	imap "github.com/Method-Security/networkscan/internal/discover/service/plugins/imap"
-	influxdb "github.com/Method-Security/networkscan/internal/discover/service/plugins/influxdb"
-	jdwp "github.com/Method-Security/networkscan/internal/discover/service/plugins/jdwp"
-	kafkaNew "github.com/Method-Security/networkscan/internal/discover/service/plugins/kafka/kafkaNew"
-	kafkaOld "github.com/Method-Security/networkscan/internal/discover/service/plugins/kafka/kafkaOld"
-	kubernetes "github.com/Method-Security/networkscan/internal/discover/service/plugins/kubernetes"
-	ldap "github.com/Method-Security/networkscan/internal/discover/service/plugins/ldap"
-	linuxrpc "github.com/Method-Security/networkscan/internal/discover/service/plugins/linuxrpc"
-	milvus "github.com/Method-Security/networkscan/internal/discover/service/plugins/milvus"
-	modbus "github.com/Method-Security/networkscan/internal/discover/service/plugins/modbus"
-	mqtt3 "github.com/Method-Security/networkscan/internal/discover/service/plugins/mqtt/mqtt3"
-	mqtt5 "github.com/Method-Security/networkscan/internal/discover/service/plugins/mqtt/mqtt5"
-	mssql "github.com/Method-Security/networkscan/internal/discover/service/plugins/mssql"
-	mysql "github.com/Method-Security/networkscan/internal/discover/service/plugins/mysql"
-	neo4j "github.com/Method-Security/networkscan/internal/discover/service/plugins/neo4j"
-	openvpn "github.com/Method-Security/networkscan/internal/discover/service/plugins/openvpn"
-	pinecone "github.com/Method-Security/networkscan/internal/discover/service/plugins/pinecone"
-	pop3 "github.com/Method-Security/networkscan/internal/discover/service/plugins/pop3"
-	postgresql "github.com/Method-Security/networkscan/internal/discover/service/plugins/postgresql"
-	rdp "github.com/Method-Security/networkscan/internal/discover/service/plugins/rdp"
-	redis "github.com/Method-Security/networkscan/internal/discover/service/plugins/redis"
-	rsync "github.com/Method-Security/networkscan/internal/discover/service/plugins/rsync"
-	rtsp "github.com/Method-Security/networkscan/internal/discover/service/plugins/rtsp"
-	smpp "github.com/Method-Security/networkscan/internal/discover/service/plugins/smpp"
-	smtp "github.com/Method-Security/networkscan/internal/discover/service/plugins/smtp"
-	snpp "github.com/Method-Security/networkscan/internal/discover/service/plugins/snpp"
-	stun "github.com/Method-Security/networkscan/internal/discover/service/plugins/stun"
-	sybase "github.com/Method-Security/networkscan/internal/discover/service/plugins/sybase"
-	telnet "github.com/Method-Security/networkscan/internal/discover/service/plugins/telnet"
-	vnc "github.com/Method-Security/networkscan/internal/discover/service/plugins/vnc"
 )
 
 // Fingerprinter detects one application protocol at an endpoint.
@@ -133,56 +94,56 @@ func tcpPlugins() []Fingerprinter {
 		&localPlugins.HPDataProtectorFingerprinter{},
 		&localPlugins.NFSFingerprinter{},
 		&localPlugins.WinboxFingerprinter{},
-		&neo4j.NEO4JPlugin{},
-		&neo4j.NEO4JTLSPlugin{},
-		&echo.EchoPlugin{},
-		&telnet.TELNETPlugin{},
-		&ftp.FTPPlugin{},
-		&snpp.SNPPPlugin{},
-		&kubernetes.KubernetesPlugin{},
-		&chromadb.ChromaDBPlugin{},
-		&milvus.MilvusPlugin{},
-		&pinecone.PINECONEPlugin{},
-		&chromadb.ChromaDBTLSPlugin{},
-		&milvus.MilvusMetricsPlugin{},
-		&smpp.SMPPPlugin{},
-		&diameter.DIAMETERPlugin{},
-		&smtp.TLSPlugin{},
-		&rdp.RDPPlugin{},
-		&rdp.TLSPlugin{},
-		&firebird.FirebirdPlugin{},
-		&couchdb.COUCHDBPlugin{},
-		&elasticsearch.ElasticsearchPlugin{},
-		&influxdb.InfluxDBPlugin{},
-		&couchdb.COUCHDBTLSPlugin{},
-		&pop3.POP3Plugin{},
-		&db2.DB2Plugin{},
-		&pop3.TLSPlugin{},
-		&mysql.MYSQLPlugin{},
-		&mssql.MSSQLPlugin{},
-		&sybase.SybasePlugin{},
-		&ldap.LDAPPlugin{},
-		&ldap.TLSPlugin{},
-		&imap.TLSPlugin{},
-		&imap.IMAPPlugin{},
-		&kafkaNew.Plugin{},
-		&kafkaNew.TLSPlugin{},
-		&kafkaOld.Plugin{},
-		&kafkaOld.TLSPlugin{},
-		&vnc.VNCPlugin{},
-		&linuxrpc.RPCPlugin{},
-		&modbus.MODBUSPlugin{},
-		&redis.REDISTLSPlugin{},
-		&jdwp.JDWPPlugin{},
-		&mqtt3.MQTT3Plugin{},
-		&mqtt3.TLSPlugin{},
-		&mqtt5.MQTT5Plugin{},
-		&mqtt5.TLSPlugin{},
-		&rsync.RSYNCPlugin{},
-		&postgresql.POSTGRESPlugin{},
-		&rtsp.RTSPPlugin{},
-		&http.HTTPPlugin{},
-		&http.HTTPSPlugin{},
+		&localPlugins.Neo4jFingerprinter{},
+		&localPlugins.Neo4jTLSFingerprinter{},
+		&localPlugins.EchoFingerprinter{},
+		&localPlugins.TelnetFingerprinter{},
+		&localPlugins.FTPFingerprinter{},
+		&localPlugins.SNPPFingerprinter{},
+		&localPlugins.KubernetesFingerprinter{},
+		&localPlugins.ChromaDBFingerprinter{},
+		&localPlugins.MilvusFingerprinter{},
+		&localPlugins.PineconeFingerprinter{},
+		&localPlugins.ChromaDBTLSFingerprinter{},
+		&localPlugins.MilvusMetricsFingerprinter{},
+		&localPlugins.SMPPFingerprinter{},
+		&localPlugins.DiameterFingerprinter{},
+		&localPlugins.SMTPTLSFingerprinter{},
+		&localPlugins.RDPFingerprinter{},
+		&localPlugins.RDPTLSFingerprinter{},
+		&localPlugins.FirebirdFingerprinter{},
+		&localPlugins.CouchDBFingerprinter{},
+		&localPlugins.ElasticsearchFingerprinter{},
+		&localPlugins.InfluxDBFingerprinter{},
+		&localPlugins.CouchDBTLSFingerprinter{},
+		&localPlugins.POP3Fingerprinter{},
+		&localPlugins.DB2Fingerprinter{},
+		&localPlugins.POP3TLSFingerprinter{},
+		&localPlugins.MySQLFingerprinter{},
+		&localPlugins.MSSQLFingerprinter{},
+		&localPlugins.SybaseFingerprinter{},
+		&localPlugins.LDAPDiscoveryFingerprinter{},
+		&localPlugins.LDAPTLSFingerprinter{},
+		&localPlugins.IMAPTLSFingerprinter{},
+		&localPlugins.IMAPFingerprinter{},
+		&localPlugins.KafkaNewFingerprinter{},
+		&localPlugins.KafkaNewTLSFingerprinter{},
+		&localPlugins.KafkaOldFingerprinter{},
+		&localPlugins.KafkaOldTLSFingerprinter{},
+		&localPlugins.VNCFingerprinter{},
+		&localPlugins.RPCFingerprinter{},
+		&localPlugins.ModbusFingerprinter{},
+		&localPlugins.RedisTLSFingerprinter{},
+		&localPlugins.JDWPFingerprinter{},
+		&localPlugins.MQTT3Fingerprinter{},
+		&localPlugins.MQTT3TLSFingerprinter{},
+		&localPlugins.MQTT5Fingerprinter{},
+		&localPlugins.MQTT5TLSFingerprinter{},
+		&localPlugins.RsyncFingerprinter{},
+		&localPlugins.PostgresFingerprinter{},
+		&localPlugins.RTSPFingerprinter{},
+		&localPlugins.HTTPDiscoveryFingerprinter{},
+		&localPlugins.HTTPSFingerprinter{},
 	}
 }
 
@@ -200,11 +161,11 @@ func udpPlugins() map[uint16]Fingerprinter {
 		427:   &localPlugins.SlpFingerprinter{},
 		500:   &localPlugins.IKEFingerprinter{},
 		623:   &localPlugins.IPMIFingerprinter{},
-		1194:  &openvpn.Plugin{},
+		1194:  &localPlugins.OpenVPNFingerprinter{},
 		1812:  &localPlugins.RADIUSFingerprinter{},
 		1900:  &localPlugins.SSDPFingerprinter{},
 		2049:  &localPlugins.NFSUDPFingerprinter{},
-		3478:  &stun.Plugin{},
+		3478:  &localPlugins.STUNFingerprinter{},
 		3702:  &localPlugins.WSDiscoveryFingerprinter{},
 		4500:  &localPlugins.IKEFingerprinter{},
 		5060:  &localPlugins.SIPFingerprinter{},
