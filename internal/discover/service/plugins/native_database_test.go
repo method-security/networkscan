@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -292,6 +293,63 @@ func TestNativeDatabaseLoopback(t *testing.T) {
 			}
 			if tt.kind == "redis" && (result.Tls == nil || !*result.Tls) {
 				t.Error("TLS signal absent")
+			}
+		})
+	}
+}
+
+func TestNativeMySQLTLSCapability(t *testing.T) {
+	for _, name := range []string{"supported", "unsupported", "short-v10", "legacy-v9", "error"} {
+		t.Run(name, func(t *testing.T) {
+			body := bytes.Clone(nativeDatabaseMySQL()[4:])
+			p := bytes.IndexByte(body[1:], 0) + 2
+			var want *bool
+			switch name {
+			case "supported", "short-v10":
+				supported := true
+				want = &supported
+				if name == "short-v10" {
+					body = body[:p+15]
+				}
+			case "unsupported":
+				supported := false
+				want = &supported
+				caps := binary.LittleEndian.Uint16(body[p+13:])
+				binary.LittleEndian.PutUint16(body[p+13:], caps&^0x0800)
+			case "legacy-v9":
+				body = append([]byte{9}, []byte("3.20-local\x00\x01\x00\x00\x0012345678\x00")...)
+			case "error":
+				body = append([]byte{255, 0x15, 4}, []byte("Access denied")...)
+			}
+			packet := append([]byte{byte(len(body)), byte(len(body) >> 8), 0, 0}, body...)
+			ip, port := nativeDatabaseListener(t, false, func(c net.Conn) {
+				_, _ = c.Write(packet)
+				var b [1]byte
+				if n, err := c.Read(b[:]); n != 0 || err != io.EOF {
+					t.Errorf("greeting probe sent data: n=%d err=%v", n, err)
+				}
+			})
+			result, err := (MySQLFingerprinter{}).Detect(context.Background(), ip, port, "mysql.test", 2)
+			if err != nil || result == nil {
+				t.Fatalf("detection: result=%v err=%v", result, err)
+			}
+			if !reflect.DeepEqual(result.Tls, want) {
+				t.Fatalf("TLS capability: got %v want %v", result.Tls, want)
+			}
+			encoded, err := json.Marshal(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(encoded, &fields); err != nil {
+				t.Fatal(err)
+			}
+			if want == nil {
+				if _, ok := fields["tls"]; ok {
+					t.Fatalf("unknown TLS capability was serialized: %s", encoded)
+				}
+			} else if string(fields["tls"]) != fmt.Sprint(*want) {
+				t.Fatalf("missing or incorrect top-level tls: %s", encoded)
 			}
 		})
 	}

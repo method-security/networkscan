@@ -46,7 +46,12 @@ func (MySQLFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host 
 	if err != nil {
 		return nil, err
 	}
-	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeMysql, "mysql", version, meta), nil
+	result := helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeMysql, "mysql", version, meta)
+	// Match enumeration's advertised TLS capability, not encryption of the greeting.
+	if supported, ok := meta["tlsSupported"]; ok {
+		result.Tls = helpers.BoolPtr(supported == "true")
+	}
+	return result, nil
 }
 
 func mysqlGreeting(b []byte) (string, map[string]string, error) {
