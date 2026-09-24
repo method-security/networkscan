@@ -466,7 +466,7 @@ func marshalObjectIdentifier(oid string) ([]byte, error) {
 	// This ratio holds at base-128 boundaries; smaller values use more chars per byte
 	out := make([]byte, 0, oidLength/2)
 
-	oidBase := 0
+	var firstArc int64
 	i := 0
 	for j := 0; j < oidLength; {
 		if oid[j] == '.' {
@@ -481,24 +481,30 @@ func marshalObjectIdentifier(oid string) ([]byte, error) {
 			}
 			val *= 10
 			val += ch
+			// Bounding each sub-identifier here also keeps the int64
+			// accumulator from wrapping on absurdly long digit runs
+			if val > MaxObjectSubIdentifierValue {
+				return nil, fmt.Errorf("unable to marshal OID: Value out of range")
+			}
 			j++
 		}
 		switch i {
 		case 0:
-			if val > 6 {
+			if val > 2 {
 				return nil, fmt.Errorf("unable to marshal OID: Invalid object identifier")
 			}
-			oidBase = int(val * 40)
+			firstArc = val
 		case 1:
-			if val >= 40 {
+			// First sub-identifier encodes arc1 and arc2 as (arc1*40 + arc2)
+			// in base 128; arc2 <= 39 when arc1 < 2 (X.690 8.19)
+			if firstArc < 2 && val >= 40 {
 				return nil, fmt.Errorf("unable to marshal OID: Invalid object identifier")
 			}
-			oidBase += int(val)
-			out = append(out, byte(oidBase))
-		default:
-			if val > MaxObjectSubIdentifierValue {
+			if val > MaxObjectSubIdentifierValue-80 {
 				return nil, fmt.Errorf("unable to marshal OID: Value out of range")
 			}
+			out = appendBase128Int(out, firstArc*40+val)
+		default:
 			out = appendBase128Int(out, val)
 		}
 		i++
@@ -686,7 +692,8 @@ func parseLength(bytes []byte) (int, int, error) {
 // that are assigned in a hierarchy.
 func parseObjectIdentifier(src []byte) (string, error) {
 	if len(src) == 0 {
-		return "", ErrInvalidOidLength
+		// net-snmp decodes a zero-length encoded OID as ".0.0"
+		return ".0.0", nil
 	}
 
 	// Worst-case: first byte expands to 5 chars (".2.39"), rest to 4 chars (".127")

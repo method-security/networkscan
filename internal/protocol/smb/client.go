@@ -13,7 +13,6 @@ import (
 	"github.com/jfjallid/go-smb/gss"
 	"github.com/jfjallid/go-smb/ntlmssp"
 	gosmb "github.com/jfjallid/go-smb/smb"
-	"github.com/jfjallid/go-smb/smb/encoder"
 	"github.com/jfjallid/go-smb/spnego"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 )
@@ -42,8 +41,7 @@ func (c *CapturingNTLM) InitSecContext(inputToken []byte) ([]byte, error) {
 	if len(inputToken) > 0 {
 		// Try to parse as SPNEGO first
 		var resp gss.NegTokenResp
-		var meta encoder.Metadata
-		if err := resp.UnmarshalBinary(inputToken, &meta); err == nil && len(resp.ResponseToken) > 0 {
+		if err := resp.UnmarshalBinary(inputToken); err == nil && len(resp.ResponseToken) > 0 {
 			// Store the raw challenge data for unified processing
 			c.LastChallengeData = resp.ResponseToken
 		} else {
@@ -60,7 +58,7 @@ func (c *CapturingNTLM) InitSecContext(inputToken []byte) ([]byte, error) {
 		// Try to parse the challenge for validation
 		if len(c.LastChallengeData) > 0 {
 			ch := ntlmssp.NewChallenge()
-			if err := encoder.Unmarshal(c.LastChallengeData, &ch); err == nil {
+			if err := ch.UnmarshalBinary(c.LastChallengeData); err == nil {
 				c.LastChallenge = &ch
 			}
 		}
@@ -74,8 +72,7 @@ func (c *ChallengeOnlyNTLM) InitSecContext(inputToken []byte) ([]byte, error) {
 	if len(inputToken) > 0 && !c.challengeReceived {
 		// Try to parse as SPNEGO first
 		var resp gss.NegTokenResp
-		var meta encoder.Metadata
-		if err := resp.UnmarshalBinary(inputToken, &meta); err == nil && len(resp.ResponseToken) > 0 {
+		if err := resp.UnmarshalBinary(inputToken); err == nil && len(resp.ResponseToken) > 0 {
 			// Store the raw challenge data for unified processing
 			c.LastChallengeData = resp.ResponseToken
 			c.challengeReceived = true
@@ -94,7 +91,7 @@ func (c *ChallengeOnlyNTLM) InitSecContext(inputToken []byte) ([]byte, error) {
 		// Try to parse the challenge for validation
 		if len(c.LastChallengeData) > 0 {
 			ch := ntlmssp.NewChallenge()
-			if err := encoder.Unmarshal(c.LastChallengeData, &ch); err == nil {
+			if err := ch.UnmarshalBinary(c.LastChallengeData); err == nil {
 				c.LastChallenge = &ch
 			}
 		}
@@ -279,10 +276,10 @@ func (c *Client) ConnectWithContext(ctx context.Context) error {
 
 	// Create SMB connection options (matching go-secdump defaults)
 	options := gosmb.Options{
-		Host:              c.Host,
-		Port:              c.Port,
-		DialTimeout:       c.Timeout,
-		DisableEncryption: false, // Allow encryption (key fix)
+		Host:        c.Host,
+		Port:        c.Port,
+		DialTimeout: c.Timeout,
+		Encryption:  gosmb.EncryptionServerDirected, // Preserve the pre-v0.12 encryption policy.
 		// Remove workstation name that might be filtered
 	}
 

@@ -12,7 +12,7 @@ import (
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	"github.com/jfjallid/go-smb/dcerpc/msrrp"
 	gosmb "github.com/jfjallid/go-smb/smb"
-	"github.com/jfjallid/go-smb/smb/encoder"
+	"github.com/jfjallid/go-smb/smb/unicode"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"golang.org/x/crypto/md4"
 )
@@ -354,7 +354,7 @@ func parseSecret(rpccon *msrrp.RPCCon, base []byte, name string, secretItem []by
 	result = &PrintableLSASecret{}
 	result.secretType = "[*] " + name
 	if strings.HasPrefix(upperName, "_SC_") {
-		secretDecoded, err2 := encoder.FromUnicodeString(secretItem)
+		secretDecoded, err2 := unicode.FromUnicodeString(secretItem)
 		if err2 != nil {
 			err = err2
 			return
@@ -371,7 +371,7 @@ func parseSecret(rpccon *msrrp.RPCCon, base []byte, name string, secretItem []by
 		secret = fmt.Sprintf("%s: %s", svcUser, secretDecoded)
 		result.secrets = append(result.secrets, secret)
 	} else if strings.HasPrefix(upperName, "ASPNET_WP_PASSWORD") {
-		secretDecoded, err2 := encoder.FromUnicodeString(secretItem)
+		secretDecoded, err2 := unicode.FromUnicodeString(secretItem)
 		if err2 != nil {
 			err = err2
 			return
@@ -421,7 +421,7 @@ func parseSecret(rpccon *msrrp.RPCCon, base []byte, name string, secretItem []by
 		secret = fmt.Sprintf("NL$KM: 0x%x", secretItem[:16])
 		result.secrets = append(result.secrets, secret)
 	} else if strings.HasPrefix(upperName, "CACHEDDEFAULTPASSWORD") {
-		secretDecoded, err2 := encoder.FromUnicodeString(secretItem)
+		secretDecoded, err2 := unicode.FromUnicodeString(secretItem)
 		if err2 != nil {
 			err = err2
 			return
@@ -620,12 +620,12 @@ func GetCachedHashes(rpccon *msrrp.RPCCon, base []byte, modifyDacl bool) (result
 			}
 			encHash := plaintext[:0x10]
 			plaintext = plaintext[0x48:]
-			userName, err := encoder.FromUnicodeString(plaintext[:nlRecord.UserLength])
+			userName, err := unicode.FromUnicodeString(plaintext[:nlRecord.UserLength])
 			if err != nil {
 				continue
 			}
 			plaintext = plaintext[int(padDWORD(uint64(nlRecord.UserLength)))+int(padDWORD(uint64(nlRecord.DomainNameLength))):]
-			domainLong, err := encoder.FromUnicodeString(plaintext[:int(padDWORD(uint64(nlRecord.DNSDomainNameLength)))])
+			domainLong, err := unicode.FromUnicodeString(plaintext[:int(padDWORD(uint64(nlRecord.DNSDomainNameLength)))])
 			if err != nil {
 				continue
 			}

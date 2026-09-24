@@ -55,32 +55,60 @@ func (dec *Decoder) readConformantVaryingString(def *[]deferedPtr) (string, erro
 func (dec *Decoder) readStringsArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
 	d, _ := sliceDimensions(v.Type())
 	ndrTag := parseTags(tag)
-	var m []int
-	//var ms int
-	if ndrTag.HasValue(TagConformant) {
-		for i := 0; i < d; i++ {
-			m = append(m, int(dec.precedingMax()))
+	conformant := ndrTag.HasValue(TagConformant)
+	varying := ndrTag.HasValue(TagVarying)
+	elemTag := reflect.StructTag(subStringArrayTag)
+
+	// A conformant-only array carries no offset/actual count of its own: the
+	// hoisted max count is the element count. Only a varying array has that
+	// metadata inline. The elements are varying strings either way.
+	if conformant && !varying {
+		if err := dec.fillConformantArray(v, elemTag, def); err != nil {
+			return fmt.Errorf("could not read conformant string array: %w", err)
 		}
-		//common max size
-		_ = dec.precedingMax()
-		//ms = int(n)
+		// The common max that applies to every string in the array is queued
+		// after the array's own dimensions, so it is claimed last.
+		if _, err := dec.precedingMax(); err != nil {
+			return err
+		}
+		return nil
 	}
-	tag = reflect.StructTag(subStringArrayTag)
-	err := dec.fillVaryingArray(v, tag, def)
-	if err != nil {
-		return fmt.Errorf("could not read string array: %v", err)
+
+	if conformant {
+		// The per-dimension maxima and the common per-string maximum are
+		// consumed here; the varying metadata read below sizes the array.
+		for i := 0; i < d; i++ {
+			if _, err := dec.precedingMax(); err != nil {
+				return err
+			}
+		}
+		if _, err := dec.precedingMax(); err != nil {
+			return err
+		}
+	}
+	if err := dec.fillVaryingArray(v, elemTag, def); err != nil {
+		return fmt.Errorf("could not read string array: %w", err)
 	}
 	return nil
 }
 
 func (enc *Encoder) writeStringsArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
 	// Conformant max values (array dimensions + common string max) are already
-	// written by process()/conformantScan(). Just write the varying array with
-	// subStringArrayTag so each element is encoded as a varying string.
-	tag = reflect.StructTag(subStringArrayTag)
-	err := enc.writeVaryingArray(v, tag, def)
-	if err != nil {
-		return fmt.Errorf("could not write string array: %v", err)
+	// written by process()/conformantScan(). What remains is the array body,
+	// with each element encoded as a varying string.
+	ndrTag := parseTags(tag)
+	elemTag := reflect.StructTag(subStringArrayTag)
+
+	// Only a varying array carries an inline offset/actual count. Emitting one
+	// for a conformant-only array described it on the wire as conformant+varying.
+	if ndrTag.HasValue(TagConformant) && !ndrTag.HasValue(TagVarying) {
+		if err := enc.writeConformantArray(v, elemTag, def); err != nil {
+			return fmt.Errorf("could not write conformant string array: %w", err)
+		}
+		return nil
+	}
+	if err := enc.writeVaryingArray(v, elemTag, def); err != nil {
+		return fmt.Errorf("could not write string array: %w", err)
 	}
 	return nil
 }
@@ -122,7 +150,7 @@ func (enc *Encoder) ToUnicode(input string) []byte {
 }
 
 // writeVaryingString writes the inline varying-string representation:
-// offset (0) + actual_count + UTF-16LE data + 4-byte alignment pad. Used for
+// offset (0) + actual_count + UTF-16LE data. Used for
 // both varying and conformant+varying strings — the conformant max_count is
 // hoisted to the enclosing struct by scanConformantArrays and is not written
 // inline here.
@@ -130,14 +158,17 @@ func (enc *Encoder) writeVaryingString(s string) error {
 	unc := enc.ToUnicode(s)
 	actualLen := uint32(len(unc) / 2)
 	if err := enc.writeUint32(uint32(0)); err != nil { // offset
-		return fmt.Errorf("could not write string offset: %v", err)
+		return fmt.Errorf("could not write string offset: %w", err)
 	}
 	if err := enc.writeUint32(actualLen); err != nil { // actual count
-		return fmt.Errorf("could not write string actual count: %v", err)
+		return fmt.Errorf("could not write string actual count: %w", err)
 	}
 	if err := binary.Write(enc.w, enc.ch.Endianness, unc); err != nil {
-		return fmt.Errorf("could not write string data: %v", err)
+		return fmt.Errorf("could not write string data: %w", err)
 	}
-	enc.ensureAlignment(SizeUint32)
+	// No trailing padding: C706 aligns each primitive as it is written, so any
+	// gap belongs to whatever comes next. Emitting it here both diverged from
+	// the wire format and desynchronised the decoder, which never consumed it,
+	// for any string followed by a field of alignment less than 4.
 	return nil
 }

@@ -6,6 +6,16 @@ To add a new scan to networkscan, providing new enumeration capabilities to secu
 
 ## Setting up your development environment
 
+Install the Go version declared in `go.mod`, a C compiler, and libpcap development headers before building. The scanner uses CGO. Some discovery modes also require nmap and elevated privileges. Prefer CONNECT scans for unprivileged local testing.
+
+Generate the ignored Go SDK before compiling or updating dependencies. Install the Fern CLI with `npm install -g fern-api`, authenticate Fern for the organization if required, then run:
+
+```bash
+fern generate --group local --retry-rate-limited
+```
+
+The CLI and generator versions are configured in `fern/fern.config.json` and `fern/generators.yml`. Generated files under `generated/` are not committed; CI generates them before building and testing.
+
 If you've just cloned networkscan for the first time, welcome to the community! We use Palantir's [godel](https://github.com/palantir/godel) to streamline local development and [goreleaser](https://goreleaser.com/) to handle the heavy lifting on the release process.
 
 To get started with godel, you can run
@@ -15,6 +25,24 @@ To get started with godel, you can run
 ```
 
 This will run a number of checks for us, including linters, tests, and license checks. We run this command as part of our CI pipeline to ensure the codebase is consistently passing tests.
+
+## Updating dependencies
+
+Go dependencies are vendored. After updating `go.mod`, run `go mod tidy`, `go mod vendor`, and `./godelw verify`; commit the corresponding `go.sum` and `vendor/` changes together. Keep `github.com/projectdiscovery/naabu/v2` at `v2.5.0` unless its upgrade is explicitly approved, and check compatibility constraints before removing existing pins or replacements.
+
+Use releases compatible with the Go toolchain in `go.mod`. The Nuclei/Rod dependency tree currently constrains `goimpacket`, `go-msrpc`, `fetchup`, `got`, `zgrab2`, and `zcrypto`; upgrading these past their compatible versions requires upstream integration changes. Some older indirect module paths also cannot move to their latest tags because those tags declare different module paths. Do not edit vendored source to bypass these constraints.
+
+Run the race-enabled suite with `go test -race -count=1 ./...`. To include the 1,000 controlled service-discovery cases, use `NETWORKSCAN_BATCH_VALIDATION=1 go test -race -count=1 ./internal/discover/service/...`.
+
+## Building documentation
+
+Use an isolated Python environment and the same strict build as CI:
+
+```bash
+python3 -m venv /tmp/networkscan-docs-venv
+/tmp/networkscan-docs-venv/bin/pip install -r docs/build/requirements.txt
+/tmp/networkscan-docs-venv/bin/mkdocs build --strict
+```
 
 ## Building the CLI
 

@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jfjallid/go-smb/smb/encoder"
+	"github.com/jfjallid/go-smb/smb/unicode"
 )
 
 // Server is the acceptor side of an NTLMSSP exchange. It parses an inbound
@@ -54,7 +54,7 @@ func (s *Server) AcceptNegotiate(neg []byte) ([]byte, error) {
 		return nil, fmt.Errorf("ntlmssp: AcceptNegotiate: not an NTLMSSP message")
 	}
 	hdr := Header{}
-	if err := encoder.Unmarshal(neg[:12], &hdr); err != nil {
+	if err := hdr.UnmarshalBinary(neg[:12]); err != nil {
 		return nil, fmt.Errorf("ntlmssp: AcceptNegotiate: header decode: %w", err)
 	}
 	if hdr.MessageType != TypeNtLmNegotiate {
@@ -62,7 +62,7 @@ func (s *Server) AcceptNegotiate(neg []byte) ([]byte, error) {
 	}
 
 	parsed := &Negotiate{}
-	if err := encoder.Unmarshal(neg, parsed); err != nil {
+	if err := parsed.UnmarshalBinary(neg); err != nil {
 		return nil, fmt.Errorf("ntlmssp: AcceptNegotiate: decode Negotiate: %w", err)
 	}
 	s.Negotiate = parsed
@@ -92,7 +92,7 @@ func (s *Server) AcceptNegotiate(neg []byte) ([]byte, error) {
 
 	// TargetName (NetBIOS server name) — Windows servers always populate this.
 	if s.TargetName != "" {
-		chall.TargetName = encoder.ToUnicode(s.TargetName)
+		chall.TargetName = unicode.ToUnicode(s.TargetName)
 	}
 
 	// TargetInfo: a sequence of AVPairs providing identity / time stamps.
@@ -100,17 +100,26 @@ func (s *Server) AcceptNegotiate(neg []byte) ([]byte, error) {
 	addAv := func(id uint16, val []byte) {
 		avs = append(avs, AvPair{AvID: id, AvLen: uint16(len(val)), Value: val})
 	}
-	if s.NetBIOSDomain != "" {
-		addAv(MsvAvNbDomainName, encoder.ToUnicode(s.NetBIOSDomain))
+	// Windows rejects a CHALLENGE whose TargetInfo lacks the domain/DNS pairs.
+	// Every real SMB server fills these in; a workgroup server uses its own name for
+	// all four. Fall back to NetBIOSName rather than omitting the pair. Keep the
+	// order MsvAvNbDomainName before MsvAvNbComputerName — that is what Windows
+	// servers emit.
+	//NOTE Might want to introduce a way to explicitly skip them if so desired
+	nbDomain := orDefaultStr(s.NetBIOSDomain, s.NetBIOSName)
+	dnsDomain := orDefaultStr(s.DnsDomainName, s.NetBIOSName)
+	dnsComputer := orDefaultStr(s.DnsComputerName, s.NetBIOSName)
+	if nbDomain != "" {
+		addAv(MsvAvNbDomainName, unicode.ToUnicode(nbDomain))
 	}
 	if s.NetBIOSName != "" {
-		addAv(MsvAvNbComputerName, encoder.ToUnicode(s.NetBIOSName))
+		addAv(MsvAvNbComputerName, unicode.ToUnicode(s.NetBIOSName))
 	}
-	if s.DnsDomainName != "" {
-		addAv(MsvAvDnsDomainName, encoder.ToUnicode(s.DnsDomainName))
+	if dnsDomain != "" {
+		addAv(MsvAvDnsDomainName, unicode.ToUnicode(dnsDomain))
 	}
-	if s.DnsComputerName != "" {
-		addAv(MsvAvDnsComputerName, encoder.ToUnicode(s.DnsComputerName))
+	if dnsComputer != "" {
+		addAv(MsvAvDnsComputerName, unicode.ToUnicode(dnsComputer))
 	}
 	tsBuf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(tsBuf, ConvertToFileTime(time.Now()))
@@ -126,7 +135,7 @@ func (s *Server) AcceptNegotiate(neg []byte) ([]byte, error) {
 		uint64(19041)<<16 |
 		uint64(NTLMSSP_REVISION_W2K3)<<56
 
-	out, err := encoder.Marshal(chall)
+	out, err := chall.MarshalBinary()
 	if err != nil {
 		return nil, fmt.Errorf("ntlmssp: AcceptNegotiate: marshal Challenge: %w", err)
 	}
@@ -143,7 +152,7 @@ func (s *Server) AcceptAuthenticate(auth []byte) (*Authenticate, error) {
 		return nil, fmt.Errorf("ntlmssp: AcceptAuthenticate: not an NTLMSSP message")
 	}
 	hdr := Header{}
-	if err := encoder.Unmarshal(auth[:12], &hdr); err != nil {
+	if err := hdr.UnmarshalBinary(auth[:12]); err != nil {
 		return nil, fmt.Errorf("ntlmssp: AcceptAuthenticate: header decode: %w", err)
 	}
 	if hdr.MessageType != TypeNtLmAuthenticate {
@@ -151,7 +160,7 @@ func (s *Server) AcceptAuthenticate(auth []byte) (*Authenticate, error) {
 	}
 
 	parsed := &Authenticate{}
-	if err := encoder.Unmarshal(auth, parsed); err != nil {
+	if err := parsed.UnmarshalBinary(auth); err != nil {
 		return nil, fmt.Errorf("ntlmssp: AcceptAuthenticate: decode Authenticate: %w", err)
 	}
 	s.Authenticate = parsed
@@ -220,7 +229,10 @@ const supportedClientFlags uint32 = FlgNegUnicode |
 	FlgNegRequestTarget |
 	FlgNegSign |
 	FlgNegSeal |
-	FlgNegLmKey |
+	// FlgNegLmKey deliberately NOT inherited: MS-NLMP §2.2.2.5 makes LM_KEY and
+	// EXTENDED_SESSIONSECURITY mutually exclusive, and mandatoryServerFlags
+	// always asserts EXTENDED_SESSIONSECURITY. Windows clients request both, so
+	// inheriting LM_KEY would emit a spec-violating CHALLENGE.
 	FlgNegNtLm |
 	FlgNegAlwaysSign |
 	FlgNegExtendedSessionSecurity |
@@ -237,6 +249,14 @@ const mandatoryServerFlags uint32 = FlgNegRequestTarget |
 	FlgNegNtLm |
 	FlgNegExtendedSessionSecurity |
 	FlgNegVersion
+
+// orDefaultStr returns v when it is non-empty, otherwise def.
+func orDefaultStr(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
+}
 
 // silence unused-import warning when only some symbols are exported.
 var _ = bytes.Equal

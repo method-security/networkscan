@@ -14,36 +14,38 @@
 // files.
 //
 // Basic usage:
-//   question := &bootstrap.Question{
-//     RegistryType: bootstrap.DNS,
-//     Query: "example.cz",
-//   }
 //
-//   b := &bootstrap.Client{}
+//	question := &bootstrap.Question{
+//	  RegistryType: bootstrap.DNS,
+//	  Query: "example.cz",
+//	}
 //
-//   var answer *bootstrap.Answer
-//   answer, err := b.Lookup(question)
+//	b := &bootstrap.Client{}
 //
-//   if err == nil {
-//     for _, url := range answer.URLs {
-//       fmt.Println(url)
-//     }
-//   }
+//	var answer *bootstrap.Answer
+//	answer, err := b.Lookup(question)
+//
+//	if err == nil {
+//	  for _, url := range answer.URLs {
+//	    fmt.Println(url)
+//	  }
+//	}
 //
 // Download and list the contents of the DNS Service Registry:
-//   b := &bootstrap.Client{}
 //
-//   // Before you can use a Registry, you need to download it first.
-//   err := b.Download(bootstrap.DNS) // Downloads https://data.iana.org/rdap/dns.json.
+//	b := &bootstrap.Client{}
 //
-//   if err == nil {
-//     var dns *DNSRegistry = b.DNS()
+//	// Before you can use a Registry, you need to download it first.
+//	err := b.Download(bootstrap.DNS) // Downloads https://data.iana.org/rdap/dns.json.
 //
-//     // Print TLDs with RDAP service.
-//     for tld, _ := range dns.File().Entries {
-//       fmt.Println(tld)
-//     }
-//   }
+//	if err == nil {
+//	  var dns *DNSRegistry = b.DNS()
+//
+//	  // Print TLDs with RDAP service.
+//	  for tld, _ := range dns.File().Entries {
+//	    fmt.Println(tld)
+//	  }
+//	}
 //
 // You can configure bootstrap.Client{} with a custom http.Client, base URL
 // (default https://data.iana.org/rdap), and custom cache. bootstrap.Question{}
@@ -64,20 +66,33 @@
 // By default, Service Registry files are cached in memory. bootstrap.Client
 // also supports caching the Service Registry files on disk. The default cache
 // location is
-// $HOME/.openrdap/.
+// $XDG_CACHE_HOME/openrdap/ (falling back to $HOME/.cache/openrdap/).
 //
 // Disk cache usage:
 //
-//   b := bootstrap.NewClient()
-//   b.Cache = cache.NewDiskCache()
+//	b := &bootstrap.Client{}
+//	b.Cache = cache.NewDiskCache()
 //
-//   dsr := b.DNS()  // Tries to load dns.json from disk cache, doesn't exist yet, so returns nil.
-//   b.Download(bootstrap.DNS) // Downloads dns.json, saves to disk cache.
+//	dsr := b.DNS()  // Tries to load dns.json from disk cache, doesn't exist yet, so returns nil.
+//	b.Download(bootstrap.DNS) // Downloads dns.json, saves to disk cache.
 //
-//   b2 := bootstrap.NewClient()
-//   b2.Cache = cache.NewDiskCache()
+//	b2 := &bootstrap.Client{}
+//	b2.Cache = cache.NewDiskCache()
 //
-//   dsr2 := b.DNS()  // Loads dns.json from disk cache.
+//	dsr2 := b.DNS()  // Loads dns.json from disk cache.
+//
+// You can pre-populate the cache with your own copy of a Service Registry file
+// (e.g. one embedded with //go:embed), to avoid downloading it:
+//
+//	c := cache.NewMemoryCache()
+//	c.Save(bootstrap.DNS.Filename(), embeddedDNSJSON)
+//
+//	b := &bootstrap.Client{Cache: c}  // Lookup() uses the cached file.
+//
+// The file is still refreshed once it expires (see SetTimeout), falling back to
+// the cached copy if the download fails. Note this only works with the default
+// BaseURL: files cached for a custom bootstrap service are stored under a
+// different, unexported filename.
 //
 // This package also implements the experimental Service Provider registry. Due
 // to the experimental nature, no Service Registry file exists on data.iana.org
@@ -92,7 +107,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -111,6 +126,7 @@ const (
 	ServiceProvider
 )
 
+// String returns the lowercase name of the registry type (e.g. "dns", "asn").
 func (r RegistryType) String() string {
 	switch r {
 	case DNS:
@@ -190,7 +206,6 @@ func (c *Client) DownloadWithContext(ctx context.Context, registry RegistryType)
 	var s Registry
 
 	json, s, err := c.download(ctx, registry)
-
 	if err != nil {
 		return err
 	}
@@ -203,7 +218,6 @@ func (c *Client) DownloadWithContext(ctx context.Context, registry RegistryType)
 	c.registries[registry] = s
 
 	return nil
-
 }
 
 func (c *Client) download(ctx context.Context, registry RegistryType) ([]byte, Registry, error) {
@@ -219,12 +233,11 @@ func (c *Client) download(ctx context.Context, registry RegistryType) ([]byte, R
 		baseURL.Path += "/"
 	}
 
-	var fetchURL *url.URL = baseURL.ResolveReference(u)
-	req, err := http.NewRequest("GET", fetchURL.String(), nil)
+	fetchURL := baseURL.ResolveReference(u)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fetchURL.String(), http.NoBody)
 	if err != nil {
 		return nil, nil, err
 	}
-	req = req.WithContext(ctx)
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
@@ -232,18 +245,17 @@ func (c *Client) download(ctx context.Context, registry RegistryType) ([]byte, R
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		return nil, nil, fmt.Errorf("Server returned non-200 status code: %s", resp.Status)
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("server returned non-200 status code: %s", resp.Status)
 	}
 
-	json, err := ioutil.ReadAll(resp.Body)
+	json, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	var s Registry
 	s, err = newRegistry(registry, json)
-
 	if err != nil {
 		return json, nil, err
 	}
@@ -251,22 +263,23 @@ func (c *Client) download(ctx context.Context, registry RegistryType) ([]byte, R
 	return json, s, nil
 }
 
+// freshenFromCache attempts to refresh the specified registry from the cache
+// if it is outdated or missing in memory.
 func (c *Client) freshenFromCache(registry RegistryType) {
-	if c.Cache.State(c.filenameFor(registry)) == cache.ShouldReload {
-		c.reloadFromCache(registry)
+	if c.shouldLoadFromCache(registry, c.Cache.State(c.filenameFor(registry))) {
+		// Best-effort refresh; on failure the existing in-memory registry is kept.
+		_ = c.reloadFromCache(registry)
 	}
 }
 
 func (c *Client) reloadFromCache(registry RegistryType) error {
 	json, err := c.Cache.Load(c.filenameFor(registry))
-
 	if err != nil {
 		return err
 	}
 
 	var s Registry
 	s, err = newRegistry(registry, json)
-
 	if err != nil {
 		return err
 	}
@@ -274,6 +287,13 @@ func (c *Client) reloadFromCache(registry RegistryType) error {
 	c.registries[registry] = s
 
 	return nil
+}
+
+// shouldLoadFromCache reports whether the cached registry file should be parsed
+// into memory: either the cache holds a newer copy, or nothing is in memory yet
+// and the cache holds an unexpired one (e.g., a caller pre-populated the cache).
+func (c *Client) shouldLoadFromCache(registry RegistryType, state cache.FileState) bool {
+	return state == cache.ShouldReload || (state == cache.Good && c.registries[registry] == nil)
 }
 
 func newRegistry(registry RegistryType, json []byte) (Registry, error) {
@@ -311,11 +331,13 @@ func (c *Client) Lookup(question *Question) (*Answer, error) {
 
 	registry := question.RegistryType
 
-	var state cache.FileState = c.Cache.State(c.filenameFor(registry))
+	state := c.Cache.State(c.filenameFor(registry))
 	c.Verbose(fmt.Sprintf("  bootstrap: Cache state: %s: %s", c.filenameFor(registry), state))
 
-	var forceDownload bool
-	if state == cache.ShouldReload {
+	// An expired file is refreshed even if it's already parsed into memory.
+	forceDownload := state == cache.Expired
+
+	if c.shouldLoadFromCache(registry, state) {
 		if err := c.reloadFromCache(registry); err != nil {
 			forceDownload = true
 
@@ -326,9 +348,16 @@ func (c *Client) Lookup(question *Question) (*Answer, error) {
 	if c.registries[registry] == nil || forceDownload {
 		c.Verbose(fmt.Sprintf("  bootstrap: Downloading %s", registry.Filename()))
 
-		err := c.DownloadWithContext(question.Context(), registry)
-		if err != nil {
-			return nil, err
+		if err := c.DownloadWithContext(question.Context(), registry); err != nil {
+			// Service Registry files change rarely, so an expired copy still
+			// answers most queries. Prefer one to failing the lookup.
+			if c.registries[registry] == nil {
+				if cacheErr := c.reloadFromCache(registry); cacheErr != nil {
+					return nil, err
+				}
+			}
+
+			c.Verbose(fmt.Sprintf("  bootstrap: Download failed (%s), using expired Service Registry file", err))
 		}
 	} else {
 		c.Verbose("  bootstrap: Using cached Service Registry file")
@@ -341,7 +370,7 @@ func (c *Client) Lookup(question *Question) (*Answer, error) {
 		if answer.Entry != "" {
 			c.Verbose(fmt.Sprintf("  bootstrap: Matching entry '%s'", answer.Entry))
 		} else {
-			c.Verbose(fmt.Sprintf("  bootstrap: No match"))
+			c.Verbose("  bootstrap: No match")
 		}
 
 		for i, url := range answer.URLs {
@@ -357,19 +386,18 @@ func (c *Client) Lookup(question *Question) (*Answer, error) {
 // This function never initiates a network transfer.
 func (c *Client) ASN() *ASNRegistry {
 	c.init()
-	c.freshenFromCache(ServiceProvider)
+	c.freshenFromCache(ASN)
 
 	s, _ := c.registries[ASN].(*ASNRegistry)
 	return s
 }
 
-//
 // DNS returns the current DNS Registry (or nil if the registry file hasn't been Download()ed).
 //
 // This function never initiates a network transfer.
 func (c *Client) DNS() *DNSRegistry {
 	c.init()
-	c.freshenFromCache(ServiceProvider)
+	c.freshenFromCache(DNS)
 
 	s, _ := c.registries[DNS].(*DNSRegistry)
 	return s
@@ -380,7 +408,7 @@ func (c *Client) DNS() *DNSRegistry {
 // This function never initiates a network transfer.
 func (c *Client) IPv4() *NetRegistry {
 	c.init()
-	c.freshenFromCache(ServiceProvider)
+	c.freshenFromCache(IPv4)
 
 	s, _ := c.registries[IPv4].(*NetRegistry)
 	return s
@@ -391,7 +419,7 @@ func (c *Client) IPv4() *NetRegistry {
 // This function never initiates a network transfer.
 func (c *Client) IPv6() *NetRegistry {
 	c.init()
-	c.freshenFromCache(ServiceProvider)
+	c.freshenFromCache(IPv6)
 
 	s, _ := c.registries[IPv6].(*NetRegistry)
 	return s
@@ -430,7 +458,7 @@ func (c *Client) filenameFor(r RegistryType) string {
 	return filename
 }
 
-// Filename returns the JSON document filename: One of {asn,dns,ipv4,ipv6,service_provider}.json.
+// Filename returns the JSON document filename: One of {asn,dns,ipv4,ipv6,object-tags}.json.
 func (r RegistryType) Filename() string {
 	switch r {
 	case ASN:
@@ -442,8 +470,7 @@ func (r RegistryType) Filename() string {
 	case IPv6:
 		return "ipv6.json"
 	case ServiceProvider:
-		// This is a guess and will need fixing to match whatever IANA chooses.
-		return "serviceprovider-draft-03.json"
+		return "object-tags.json"
 	default:
 		panic("Unknown RegistryType")
 	}

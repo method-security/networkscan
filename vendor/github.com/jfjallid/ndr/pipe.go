@@ -30,19 +30,19 @@ func validatePipeElementType(t reflect.Type) error {
 
 func (enc *Encoder) writePipe(v reflect.Value, tag reflect.StructTag) error {
 	if err := validatePipeElementType(v.Type().Elem()); err != nil {
-		return fmt.Errorf("invalid pipe element type: %v", err)
+		return fmt.Errorf("invalid pipe element type: %w", err)
 	}
 	n := v.Len()
 	if n > 0 {
 		// Write all elements as a single chunk
 		err := enc.writeUint32(uint32(n))
 		if err != nil {
-			return fmt.Errorf("could not write pipe chunk count: %v", err)
+			return fmt.Errorf("could not write pipe chunk count: %w", err)
 		}
 		for i := 0; i < n; i++ {
 			err := enc.fill(v.Index(i), tag, &[]deferedPtr{})
 			if err != nil {
-				return fmt.Errorf("could not write element %d of pipe: %v", i, err)
+				return fmt.Errorf("could not write element %d of pipe: %w", i, err)
 			}
 		}
 	}
@@ -52,23 +52,37 @@ func (enc *Encoder) writePipe(v reflect.Value, tag reflect.StructTag) error {
 
 func (dec *Decoder) fillPipe(v reflect.Value, tag reflect.StructTag) error {
 	if err := validatePipeElementType(v.Type().Elem()); err != nil {
-		return fmt.Errorf("invalid pipe element type: %v", err)
+		return fmt.Errorf("invalid pipe element type: %w", err)
 	}
 	s, err := dec.readUint32() // read element count of first chunk
 	if err != nil {
 		return err
 	}
+	if err := dec.checkAllocCount(uint64(s), v.Type().Elem(), "pipe chunk"); err != nil {
+		return err
+	}
+	accumulated := uint64(s)
 	a := reflect.MakeSlice(v.Type(), 0, 0)
 	c := reflect.MakeSlice(v.Type(), int(s), int(s))
 	for s != 0 {
 		for i := 0; i < int(s); i++ {
 			err := dec.fill(c.Index(i), tag, &[]deferedPtr{})
 			if err != nil {
-				return fmt.Errorf("could not fill element %d of pipe: %v", i, err)
+				return fmt.Errorf("could not fill element %d of pipe: %w", i, err)
 			}
 		}
-		s, err = dec.readUint32() // read element count of first chunk
+		s, err = dec.readUint32() // read element count of the next chunk
 		if err != nil {
+			return err
+		}
+		// Each chunk is bounded against the bytes still to be read, but a pipe
+		// is a sequence of chunks, so the total retained across all of them
+		// needs its own bound.
+		if err := dec.checkAllocCount(uint64(s), v.Type().Elem(), "pipe chunk"); err != nil {
+			return err
+		}
+		accumulated += uint64(s)
+		if err := dec.checkElementTotal(accumulated, "pipe"); err != nil {
 			return err
 		}
 		a = reflect.AppendSlice(a, c)

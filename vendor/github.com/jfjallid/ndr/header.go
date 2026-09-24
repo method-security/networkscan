@@ -93,7 +93,7 @@ func (dec *Decoder) readCommonHeaderV1() error {
 	// Common header length
 	lb, err := dec.readBytes(2)
 	if err != nil {
-		return Malformed{EText: fmt.Sprintf("could not read common header length: %v", err)}
+		return Errorf("could not read common header length: %w", err)
 	}
 	dec.ch.HeaderLength = dec.ch.Endianness.Uint16(lb)
 	if dec.ch.HeaderLength != commonHeaderBytes {
@@ -102,7 +102,7 @@ func (dec *Decoder) readCommonHeaderV1() error {
 	// Filler bytes
 	dec.ch.Filler, err = dec.readBytes(4)
 	if err != nil {
-		return Malformed{EText: fmt.Sprintf("could not read common header filler: %v", err)}
+		return Errorf("could not read common header filler: %w", err)
 	}
 	return nil
 }
@@ -121,7 +121,7 @@ func (dec *Decoder) readCommonHeaderV2() error {
 	// Common header length
 	lb, err := dec.readBytes(2)
 	if err != nil {
-		return Malformed{EText: fmt.Sprintf("could not read common header v2 length: %v", err)}
+		return Errorf("could not read common header v2 length: %w", err)
 	}
 	dec.ch.HeaderLength = dec.ch.Endianness.Uint16(lb)
 	// CommonHeaderLength (2 bytes): Indicates the length in bytes of the common header. MUST be 0x40.
@@ -133,18 +133,18 @@ func (dec *Decoder) readCommonHeaderV2() error {
 	// endianInfo (4 bytes): Reserved field. MUST be set to 0XCCCCCCCC during marshaling, and SHOULD be ignored during unmarshaling.
 	_, err = dec.readBytes(4)
 	if err != nil {
-		return Malformed{EText: fmt.Sprintf("could not read common header v2 endianInfo: %v", err)}
+		return Errorf("could not read common header v2 endianInfo: %w", err)
 	}
 	// Reserved (16 bytes): Reserved fields. MUST be set to 0XCCCCCCCC during marshaling and SHOULD be ignored during unmarshaling.
 	_, err = dec.readBytes(16)
 	if err != nil {
-		return Malformed{EText: fmt.Sprintf("could not read common header v2 reserved bytes: %v", err)}
+		return Errorf("could not read common header v2 reserved bytes: %w", err)
 	}
 
 	// TransferSyntax (20 bytes): RPC transfer syntax identifier used to encode data in the octet stream. It MUST use RPC_SYNTAX_IDENTIFIER format, as specified in section 2.2.2.7. It MUST be either the NDR transfer syntax identifier or the NDR64 transfer syntax identifier.
 	tsb, err := dec.readBytes(20)
 	if err != nil {
-		return Malformed{EText: fmt.Sprintf("could not read common header v2 TransferSyntax bytes: %v", err)}
+		return Errorf("could not read common header v2 TransferSyntax bytes: %w", err)
 	}
 
 	ndrUuid, err := uuid_to_bin("8a885d04-1ceb-11c9-9fe8-08002b104860") // NDR Transfer Syntax version 2.0
@@ -159,7 +159,7 @@ func (dec *Decoder) readCommonHeaderV2() error {
 	//InterfaceID (20 bytes): Interface identifier, as specified in the IDL file. It MUST use the interface identifier format, as specified in [C706] section 3.1.9. Implementations MAY ignore the value of this field.<58>
 	_, err = dec.readBytes(20)
 	if err != nil {
-		return Malformed{EText: fmt.Sprintf("could not read common header v2 InterfaceID bytes: %v", err)}
+		return Errorf("could not read common header v2 InterfaceID bytes: %w", err)
 	}
 	return nil
 }
@@ -184,7 +184,7 @@ func (dec *Decoder) readPrivateHeaderV1() error {
 	// Filler bytes
 	dec.ph.Filler, err = dec.readBytes(4)
 	if err != nil {
-		return Malformed{EText: fmt.Sprintf("could not read private header filler: %v", err)}
+		return Errorf("could not read private header filler: %w", err)
 	}
 	return nil
 }
@@ -201,7 +201,7 @@ func (dec *Decoder) readPrivateHeaderV2() error {
 	// Filler bytes
 	dec.ph.Filler, err = dec.readBytes(12)
 	if err != nil {
-		return Malformed{EText: fmt.Sprintf("could not read private header filler: %v", err)}
+		return Errorf("could not read private header filler: %w", err)
 	}
 	return nil
 }
@@ -221,21 +221,29 @@ func (enc *Encoder) writeCommonHeader(w *bytes.Buffer) (err error) {
 	} else {
 		endiannessByte = 0x10 // little-endian + ASCII
 	}
-	binary.Write(w, enc.ch.Endianness, uint8(1))
-	binary.Write(w, enc.ch.Endianness, endiannessByte)
-	binary.Write(w, enc.ch.Endianness, commonHeaderBytes)
-	binary.Write(w, enc.ch.Endianness, uint32(0xCCCCCCCC))
+	for _, f := range []interface{}{protocolVersion, endiannessByte, commonHeaderBytes, uint32(0xCCCCCCCC)} {
+		if err = binary.Write(w, enc.ch.Endianness, f); err != nil {
+			return fmt.Errorf("could not write common header: %w", err)
+		}
+	}
 	return
 }
 
 func (enc *Encoder) writePrivateHeader(w *bytes.Buffer) (err error) {
 	//Private header
-	bufLen := uint32(enc.w.Len())
+	// The object buffer length covers the serialized type only, not any prefix
+	// the caller had already put in the buffer.
+	bufLen := uint32(enc.w.Len() - enc.baseLen)
 	bufferSize := ((bufLen + 7) / 8) * 8
 	padd := bufferSize - bufLen
-	binary.Write(enc.w, enc.ch.Endianness, make([]byte, padd))
-
-	binary.Write(w, enc.ch.Endianness, bufferSize)
-	binary.Write(w, enc.ch.Endianness, uint32(0x00000000))
+	if err = binary.Write(enc.w, enc.ch.Endianness, make([]byte, padd)); err != nil {
+		return fmt.Errorf("could not write object buffer padding: %w", err)
+	}
+	if err = binary.Write(w, enc.ch.Endianness, bufferSize); err != nil {
+		return fmt.Errorf("could not write private header object buffer length: %w", err)
+	}
+	if err = binary.Write(w, enc.ch.Endianness, uint32(0x00000000)); err != nil {
+		return fmt.Errorf("could not write private header filler: %w", err)
+	}
 	return
 }

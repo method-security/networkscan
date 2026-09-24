@@ -13,9 +13,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	"github.com/ericlagergren/decimal"
 )
 
 const (
@@ -40,7 +39,15 @@ func UnmarshalJsonFromResponseBody(body io.Reader, out interface{}, tag string) 
 	if err != nil {
 		return fmt.Errorf("error reading response body: %w", err)
 	}
-	if err := UnmarshalJSON(data, out, reflect.StructTag(tag), true, false); err != nil {
+	if err := UnmarshalJSON(data, out, reflect.StructTag(tag), true, nil); err != nil {
+		return fmt.Errorf("error unmarshaling json response body: %w", err)
+	}
+
+	return nil
+}
+
+func UnmarshalJsonFromString(json string, out interface{}, tag string) error {
+	if err := UnmarshalJSON([]byte(json), out, reflect.StructTag(tag), true, nil); err != nil {
 		return fmt.Errorf("error unmarshalling json response body: %w", err)
 	}
 
@@ -183,8 +190,6 @@ func valToString(val interface{}) string {
 		return v.Format(time.RFC3339Nano)
 	case big.Int:
 		return v.String()
-	case decimal.Big:
-		return v.String()
 	default:
 		return fmt.Sprintf("%v", v)
 	}
@@ -245,6 +250,21 @@ func isNil(typ reflect.Type, val reflect.Value) bool {
 	return false
 }
 
+func isEmptyContainer(typ reflect.Type, val reflect.Value) bool {
+	if isNil(typ, val) {
+		return true
+	}
+
+	switch typ.Kind() {
+	case reflect.Slice, reflect.Array:
+		return val.Len() == 0
+	case reflect.Map:
+		return val.Len() == 0
+	default:
+		return false
+	}
+}
+
 func contains(arr []string, str string) bool {
 	for _, a := range arr {
 		if a == str {
@@ -254,14 +274,54 @@ func contains(arr []string, str string) bool {
 	return false
 }
 
+func DrainBody(res *http.Response) {
+	io.Copy(io.Discard, res.Body)
+	res.Body.Close()
+	res.Body = io.NopCloser(bytes.NewReader(nil))
+}
+
 func ConsumeRawBody(res *http.Response) ([]byte, error) {
+	defer res.Body.Close()
+
 	rawBody, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, fmt.Errorf("error reading response body: %w", err)
 	}
 
-	res.Body.Close()
 	res.Body = io.NopCloser(bytes.NewBuffer(rawBody))
 
 	return rawBody, nil
+}
+
+type bodyWithCancel struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+	once   sync.Once
+}
+
+func (b *bodyWithCancel) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil {
+		b.release()
+	}
+	return n, err
+}
+
+func (b *bodyWithCancel) Close() error {
+	err := b.ReadCloser.Close()
+	b.release()
+	return err
+}
+
+func (b *bodyWithCancel) release() {
+	b.once.Do(b.cancel)
+}
+
+// BodyWithCancel returns body wrapped so that cancel runs once reading ends or
+// the body is closed. A nil cancel returns body unchanged.
+func BodyWithCancel(body io.ReadCloser, cancel context.CancelFunc) io.ReadCloser {
+	if cancel == nil {
+		return body
+	}
+	return &bodyWithCancel{ReadCloser: body, cancel: cancel}
 }

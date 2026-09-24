@@ -4,9 +4,13 @@
 
 Random data generator written in go
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/G2G0R5EJT)
+## Support
 
-<a href="https://www.buymeacoffee.com/brianvoe" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/G2G0R5EJT) <a href="https://www.buymeacoffee.com/brianvoe" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
+
+## Merch
+
+[![Merch](https://raw.githubusercontent.com/brianvoe/gofakeit/master/merch.png)](https://gofakeit-buy-shop.fourthwall.com)
 
 ## Features
 
@@ -41,17 +45,17 @@ go get github.com/brianvoe/gofakeit/v7
 ```go
 import "github.com/brianvoe/gofakeit/v7"
 
-gofakeit.Name()             // Markus Moen
-gofakeit.Email()            // alaynawuckert@kozey.biz
-gofakeit.Phone()            // (570)245-7485
-gofakeit.BS()               // front-end
-gofakeit.BeerName()         // Duvel
-gofakeit.Color()            // MediumOrchid
-gofakeit.Company()          // Moen, Pagac and Wuckert
-gofakeit.CreditCardNumber() // 4287271570245748
-gofakeit.HackerPhrase()     // Connecting the array won't do anything, we need to generate the haptic COM driver!
-gofakeit.JobTitle()         // Director
-gofakeit.CurrencyShort()    // USD
+gofakeit.Name()                // Markus Moen
+gofakeit.Email()               // alaynawuckert@kozey.biz
+gofakeit.Phone()               // (570)245-7485
+gofakeit.BS()                  // front-end
+gofakeit.BeerName()            // Duvel
+gofakeit.Color()               // MediumOrchid
+gofakeit.Company()             // Moen, Pagac and Wuckert
+gofakeit.CreditCardNumber(nil) // 4287271570245748
+gofakeit.HackerPhrase()        // Connecting the array won't do anything, we need to generate the haptic COM driver!
+gofakeit.JobTitle()            // Director
+gofakeit.CurrencyShort()       // USD
 ```
 
 [See full list of functions](#functions)
@@ -91,7 +95,7 @@ import (
 faker := gofakeit.New(0)
 
 // NewFaker takes in a source and whether or not it should be thread safe
-faker := gofakeit.NewFaker(source rand.Source, threadSafe bool)
+faker := gofakeit.NewFaker(src rand.Source, lock bool)
 
 // PCG Pseudo
 faker := gofakeit.NewFaker(rand.NewPCG(11, 11), true)
@@ -142,7 +146,7 @@ type Foo struct {
 	Int           int
 	Pointer       *int
 	Name          string         `fake:"{firstname}"`         // Any available function all lowercase
-	Sentence      string         `fake:"{sentence:3}"`        // Can call with parameters
+	Sentence      string         `fake:"{sentence}"`          
 	RandStr       string         `fake:"{randomstring:[hello,world]}"`
 	Number        string         `fake:"{number:1,10}"`       // Comma separated for multiple values
 	Regex         string         `fake:"{regex:[abcdef]{5}}"` // Generate string from regex
@@ -171,7 +175,7 @@ fmt.Println(f.Int)      		// -7825289004089916589
 fmt.Println(*f.Pointer) 		// -343806609094473732
 fmt.Println(f.Name)     		// fred
 fmt.Println(f.Sentence) 		// Record river mind.
-fmt.Println(fStr)  				// world
+fmt.Println(f.RandStr)          // world
 fmt.Println(f.Number)   		// 4
 fmt.Println(f.Regex)    		// cbdfc
 fmt.Println(f.Map)    			// map[PxLIo:52 lxwnqhqc:846]
@@ -210,7 +214,7 @@ func (c *Friend) Fake(f *gofakeit.Faker) (any, error) {
 type Age time.Time
 
 func (c *Age) Fake(f *gofakeit.Faker) (any, error) {
-	return f.DateRange(time.Now().AddDate(-100, 0, 0), time.Now().AddDate(-18, 0, 0)), nil
+	return Age(f.DateRange(time.Now().AddDate(-100, 0, 0), time.Now().AddDate(-18, 0, 0))), nil
 }
 
 // This is the struct that we cannot modify to add struct tags
@@ -221,8 +225,8 @@ type User struct {
 
 var u User
 gofakeit.Struct(&u)
-fmt.Printf("%s", f.Name) // billy
-fmt.Printf("%s", f.Age) // 1990-12-07 04:14:25.685339029 +0000 UTC
+fmt.Println(u.Name)            // billy
+fmt.Println(time.Time(*u.Age)) // 1990-12-07 04:14:25.685339029 +0000 UTC
 ```
 
 ## Custom Functions
@@ -240,7 +244,7 @@ gofakeit.AddFuncLookup("friendname", gofakeit.Info{
 	Description: "Random friend name",
 	Example:     "bill",
 	Output:      "string",
-	Generate: func(f *Faker, m *gofakeit.MapParams, info *gofakeit.Info) (any, error) {
+	Generate: func(f *gofakeit.Faker, m *gofakeit.MapParams, info *gofakeit.Info) (any, error) {
 		return f.RandomString([]string{"bill", "bob", "sally"}), nil
 	},
 })
@@ -254,7 +258,7 @@ gofakeit.AddFuncLookup("jumbleword", gofakeit.Info{
 	Params: []gofakeit.Param{
 		{Field: "word", Type: "string", Description: "Word you want to jumble"},
 	},
-	Generate: func(f *Faker, m *gofakeit.MapParams, info *gofakeit.Info) (any, error) {
+	Generate: func(f *gofakeit.Faker, m *gofakeit.MapParams, info *gofakeit.Info) (any, error) {
 		word, err := info.GetString(m, "word")
 		if err != nil {
 			return nil, err
@@ -273,8 +277,8 @@ type Foo struct {
 
 var f Foo
 gofakeit.Struct(&f)
-fmt.Printf("%s", f.FriendName) // bill
-fmt.Printf("%s", f.JumbleWord) // loredlowlh
+fmt.Println(f.FriendName) // bill
+fmt.Println(f.JumbleWord) // loredlowlh
 ```
 
 ## Templates
@@ -328,17 +332,17 @@ func main() {
 	{{RandomString (SliceString "Warm regards" "Best wishes" "Sincerely")}}
 	{{$person:=Person}}
 	{{$person.FirstName}} {{$person.LastName}}
-	{{$person.Email}}
-	{{$person.Phone}}
+	{{$person.Contact.Email}}
+	{{$person.Contact.Phone}}
 	`
 
-	value, err := gofakeit.Template(template, &TemplateOptions{Data: 5})
+	value, err := gofakeit.Template(template, &gofakeit.TemplateOptions{Data: 5})
 
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	fmt.Println(string(value))
+	fmt.Println(value)
 }
 ```
 
@@ -353,6 +357,7 @@ Greetings!
 Quia voluptatem voluptatem voluptatem. Quia voluptatem voluptatem voluptatem. Quia voluptatem voluptatem voluptatem.
 
 Warm regards
+
 Kaitlyn Krajcik
 kaitlynkrajcik@krajcik
 570-245-7485
@@ -385,6 +390,13 @@ EmailText(co *EmailOptions) (string, error)
 FixedWidth(co *FixedWidthOptions) (string, error)
 ```
 
+### ID
+
+```go
+ID() string
+UUID() string
+```
+
 ### Product
 
 ```go
@@ -400,6 +412,7 @@ ProductDimension() string
 ProductUseCase() string
 ProductBenefit() string
 ProductSuffix() string
+ProductISBN(opts *ISBNOptions) string
 
 ```
 
@@ -414,8 +427,13 @@ FirstName() string
 MiddleName() string
 LastName() string
 Gender() string
+Age() int
+Ethnicity() string
 SSN() string
+EIN() string
 Hobby() string
+SocialMedia() string
+Bio() string
 Contact() *ContactInfo
 Email() string
 Phone() string
@@ -431,6 +449,12 @@ Slice(v any)
 Map() map[string]any
 Generate(value string) string
 Regex(value string) string
+```
+
+### Database
+
+```go
+SQL(so *SQLOptions) (string, error)
 ```
 
 ### Auth
@@ -454,11 +478,24 @@ StreetName() string
 StreetNumber() string
 StreetPrefix() string
 StreetSuffix() string
+Unit() string
 Zip() string
 Latitude() float64
 LatitudeInRange(min, max float64) (float64, error)
 Longitude() float64
 LongitudeInRange(min, max float64) (float64, error)
+```
+
+### Airline
+
+```go
+AirlineAircraftType() string
+AirlineAirplane() string
+AirlineAirport() string
+AirlineAirportIATA() string
+AirlineFlightNumber() string
+AirlineRecordLocator() string
+AirlineSeat() string
 ```
 
 ### Game
@@ -505,12 +542,16 @@ NounCollectiveAnimal() string
 NounCollectiveThing() string
 NounCountable() string
 NounUncountable() string
+NounProper() string
+NounDeterminer() string
 
 // Verbs
 Verb() string
 VerbAction() string
 VerbLinking() string
 VerbHelping() string
+VerbTransitive() string
+VerbIntransitive() string
 
 // Adverbs
 Adverb() string
@@ -547,6 +588,7 @@ PronounReflective() string
 PronounDemonstrative() string
 PronounInterrogative() string
 PronounRelative() string
+PronounIndefinite() string
 
 // Connectives
 Connective() string
@@ -559,16 +601,22 @@ ConnectiveExamplify() string
 
 // Words
 Word() string
+Interjection() string
 
-// Sentences
-Sentence(wordCount int) string
-Paragraph(paragraphCount int, sentenceCount int, wordCount int, separator string) string
+// Text
+Sentence() string
+Paragraph() string
 LoremIpsumWord() string
 LoremIpsumSentence(wordCount int) string
 LoremIpsumParagraph(paragraphCount int, sentenceCount int, wordCount int, separator string) string
 Question() string
 Quote() string
 Phrase() string
+PhraseNoun() string
+PhraseVerb() string
+PhraseAdverb() string
+PhrasePreposition() string
+Comment() string
 ```
 
 ### Foods
@@ -581,13 +629,13 @@ Lunch() string
 Dinner() string
 Snack() string
 Dessert() string
+Drink() string
 ```
 
 ### Misc
 
 ```go
 Bool() bool
-UUID() string
 Weighted(options []any, weights []float32) (any, error)
 FlipACoin() string
 RandomMapKey(mapI any) any
@@ -600,6 +648,7 @@ ShuffleAnySlice(v any)
 Color() string
 HexColor() string
 RGBColor() []int
+HSLColor() []int
 SafeColor() string
 NiceColors() string
 ```
@@ -616,6 +665,7 @@ ImagePng(width int, height int) []byte
 
 ```go
 URL() string
+UrlSlug(words int) string
 DomainName() string
 DomainSuffix() string
 IPv4Address() string
@@ -631,6 +681,7 @@ ChromeUserAgent() string
 FirefoxUserAgent() string
 OperaUserAgent() string
 SafariUserAgent() string
+APIUserAgent() string
 ```
 
 ### HTML
@@ -679,6 +730,8 @@ AchRouting() string
 AchAccount() string
 BitcoinAddress() string
 BitcoinPrivateKey() string
+BankName() string
+BankType() string
 ```
 
 ### Finance
@@ -708,7 +761,7 @@ Slogan() string
 ```go
 HackerAbbreviation() string
 HackerAdjective() string
-Hackeringverb() string
+HackeringVerb() string
 HackerNoun() string
 HackerPhrase() string
 HackerVerb() string
@@ -718,8 +771,8 @@ HackerVerb() string
 
 ```go
 HipsterWord() string
-HipsterSentence(wordCount int) string
-HipsterParagraph(paragraphCount int, sentenceCount int, wordCount int, separator string) string
+HipsterSentence() string
+HipsterParagraph() string
 ```
 
 ### App
@@ -746,10 +799,29 @@ Bird() string
 
 ```go
 Emoji() string
-EmojiDescription() string
 EmojiCategory() string
 EmojiAlias() string
 EmojiTag() string
+EmojiFlag() string
+EmojiAnimal() string
+EmojiFood() string
+EmojiPlant() string
+EmojiMusic() string
+EmojiVehicle() string
+EmojiSport() string
+EmojiFace() string
+EmojiHand() string
+EmojiClothing() string
+EmojiLandmark() string
+EmojiElectronics() string
+EmojiGame() string
+EmojiTools() string
+EmojiWeather() string
+EmojiJob() string
+EmojiPerson() string
+EmojiGesture() string
+EmojiCostume() string
+EmojiSentence() string
 ```
 
 ### Language
@@ -757,8 +829,8 @@ EmojiTag() string
 ```go
 Language() string
 LanguageAbbreviation() string
+LanguageBCP() string
 ProgrammingLanguage() string
-ProgrammingLanguageBest() string
 ```
 
 ### Number
@@ -771,18 +843,21 @@ Int8() int8
 Int16() int16
 Int32() int32
 Int64() int64
+IntRange(min, max int) int
 Uint() uint
 UintN(n uint) uint
 Uint8() uint8
 Uint16() uint16
 Uint32() uint32
 Uint64() uint64
+UintRange(min, max uint) uint
 Float32() float32
 Float32Range(min, max float32) float32
 Float64() float64
 Float64Range(min, max float64) float64
 ShuffleInts(a []int)
 RandomInt(i []int) int
+RandomUint(u []uint) uint
 HexUint(bitsize int) string
 ```
 
@@ -793,6 +868,7 @@ Digit() string
 DigitN(n uint) string
 Letter() string
 LetterN(n uint) string
+Vowel() string
 Lexify(str string) string
 Numerify(str string) string
 ShuffleStrings(a []string)
@@ -851,13 +927,14 @@ MovieGenre() string
 
 ```go
 Error() error
+ErrorObject() error
 ErrorDatabase() error
 ErrorGRPC() error
 ErrorHTTP() error
 ErrorHTTPClient() error
 ErrorHTTPServer() error
-ErrorInput() error
 ErrorRuntime() error
+ErrorValidation() error
 ```
 
 ### School

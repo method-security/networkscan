@@ -26,13 +26,13 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
-	"math"
 	"slices"
 
 	"github.com/jfjallid/golog"
 
 	"github.com/jfjallid/go-smb/gss"
-	"github.com/jfjallid/go-smb/smb/encoder"
+	"github.com/jfjallid/go-smb/smb/compress"
+	"github.com/jfjallid/go-smb/smb/unicode"
 	"github.com/jfjallid/go-smb/spnego"
 )
 
@@ -41,6 +41,7 @@ var log = golog.Get("github.com/jfjallid/go-smb/smb").SetDisplayName("smb")
 const ProtocolSmb = "\xFFSMB"
 const ProtocolSmb2 = "\xFESMB"
 const ProtocolTransformHdr = "\xFDSMB"
+const ProtocolCompressionHdr = "\xFCSMB"
 
 const SHA512 = 0x001
 
@@ -133,6 +134,43 @@ const DialectSmb_3_0 uint16 = 0x0300
 const DialectSmb_3_0_2 uint16 = 0x0302
 const DialectSmb_3_1_1 uint16 = 0x0311
 const DialectSmb2_ALL uint16 = 0x02FF
+
+// DialectString maps a dialect revision to its friendly SMB version string
+// (e.g. 0x0311 -> "3.1.1"). Unknown values fall back to a hex representation so
+// log output stays readable regardless of what a client offers.
+func DialectString(d uint16) string {
+	switch d {
+	case DialectSmb_2_0_2:
+		return "2.0.2"
+	case DialectSmb_2_1:
+		return "2.1"
+	case DialectSmb_3_0:
+		return "3.0"
+	case DialectSmb_3_0_2:
+		return "3.0.2"
+	case DialectSmb_3_1_1:
+		return "3.1.1"
+	case DialectSmb2_ALL:
+		return "2.??? (wildcard)"
+	default:
+		return fmt.Sprintf("0x%04X", d)
+	}
+}
+
+// DialectsString maps a slice of dialect revisions to their friendly version
+// strings for logging.
+func DialectsString(dialects []uint16) []string {
+	out := make([]string, len(dialects))
+	for i, d := range dialects {
+		out[i] = DialectString(d)
+	}
+	return out
+}
+
+// DialectsSMB2Only pins the negotiate offer to the legacy SMB 2.1 dialect. Use
+// it as Options.Dialects when a server has SMB 3.x disabled or must be forced
+// onto the 2.1 path (which cannot negotiate signing contexts or encryption).
+var DialectsSMB2Only = []uint16{DialectSmb_2_1}
 
 const (
 	CommandNegotiate uint16 = iota
@@ -241,12 +279,32 @@ const (
 	SigningCapabilities          uint16 = 0x0008
 )
 
+// MS-SMB2 Section 2.2.3.1.3 CompressionAlgorithms
+const (
+	CompressionNone        uint16 = 0x0000
+	CompressionLZNT1       uint16 = 0x0001
+	CompressionLZ77        uint16 = 0x0002
+	CompressionLZ77Huffman uint16 = 0x0003
+	CompressionPatternV1   uint16 = 0x0004
+	CompressionLZ4         uint16 = 0x0005
+)
+
+// MS-SMB2 Section 2.2.3.1.3 SMB2_COMPRESSION_CAPABILITIES Flags
+const (
+	CompressionCapabilitiesFlagNone    uint32 = 0x00000000
+	CompressionCapabilitiesFlagChained uint32 = 0x00000001
+)
+
 // MS-SMB2 Section 2.2.3.1.2 Ciphers
 const (
-	AES128CCM uint16 = 0x0001
-	AES128GCM uint16 = 0x0002
-	AES256CCM uint16 = 0x0003
-	AES256GCM uint16 = 0x0004
+	// CipherNone is the value a server returns in SMB2_ENCRYPTION_CAPABILITIES
+	// when it shares no cipher with the client's offer (MS-SMB2 §3.3.5.4). It
+	// means "encryption unavailable on this connection", not an error.
+	CipherNone uint16 = 0x0000
+	AES128CCM  uint16 = 0x0001
+	AES128GCM  uint16 = 0x0002
+	AES256CCM  uint16 = 0x0003
+	AES256GCM  uint16 = 0x0004
 )
 
 // MS-SMB2 Section 2.2.3.1.7 SigningAlgorithms
@@ -573,18 +631,23 @@ const (
 )
 
 var (
+	// Keys are the generic/standard access-mask bits of MS-DTYP §2.4.3. They
+	// are written via the FAccMask* constants rather than as literals: the
+	// GENERIC_WRITE entry was previously 0x4000000 (one zero short of
+	// 0x40000000), so ParseAccessMask never reported GENERIC_WRITE and instead
+	// attributed it to the reserved bit 0x04000000.
 	accessMaskMap = map[uint32]string{
-		0x80000000: AccessMaskGenericRead,
-		0x4000000:  AccessMaskGenericWrite,
-		0x20000000: AccessMaskGenericExecute,
-		0x10000000: AccessMaskGenericAll,
-		0x02000000: AccessMaskMaximumAllowed,
-		0x01000000: AccessMaskAccessSystemSecurity,
-		0x00100000: AccessMaskSynchronize,
-		0x00080000: AccessMaskWriteOwner,
-		0x00040000: AccessMaskWriteDACL,
-		0x00020000: AccessMaskReadControl,
-		0x00010000: AccessMaskDelete,
+		FAccMaskGenericRead:          AccessMaskGenericRead,
+		FAccMaskGenericWrite:         AccessMaskGenericWrite,
+		FAccMaskGenericExecute:       AccessMaskGenericExecute,
+		FAccMaskGenericAll:           AccessMaskGenericAll,
+		FAccMaskMaximumAllowed:       AccessMaskMaximumAllowed,
+		FAccMaskAccessSystemSecurity: AccessMaskAccessSystemSecurity,
+		FAccMaskSynchronize:          AccessMaskSynchronize,
+		FAccMaskWriteOwner:           AccessMaskWriteOwner,
+		FAccMaskWriteDac:             AccessMaskWriteDACL,
+		FAccMaskReadControl:          AccessMaskReadControl,
+		FAccMaskDelete:               AccessMaskDelete,
 	}
 )
 
@@ -592,7 +655,7 @@ var (
 var ErrorNotDir = fmt.Errorf("not a directory")
 
 type Header struct { // 64 bytes
-	ProtocolID    []byte `smb:"fixed:4"`
+	ProtocolID    []byte
 	StructureSize uint16
 	CreditCharge  uint16
 	Status        uint32
@@ -604,13 +667,42 @@ type Header struct { // 64 bytes
 	Reserved      uint32 // In async requests Reserved and TreeId are replaced by AsyncID
 	TreeID        uint32
 	SessionID     uint64
-	Signature     []byte `smb:"fixed:16"`
+	Signature     []byte
+}
+
+// headerSize is the fixed on-wire size of an SMB2 header (MS-SMB2 §2.2.1.2).
+const headerSize = 64
+
+// parseHeader decodes the 64-byte SMB2 header at the front of buf. It exists so
+// that every response path shares one length check: slicing buf[:64] directly
+// panics on a short reply, and a server (or an on-path attacker) controls that
+// length. op names the operation for the error message.
+func parseHeader(op string, buf []byte) (Header, error) {
+	var h Header
+	if len(buf) < headerSize {
+		return h, fmt.Errorf("%s: response too short to contain an SMB2 header (%d bytes)", op, len(buf))
+	}
+	if err := h.UnmarshalBinary(buf[:headerSize]); err != nil {
+		return h, fmt.Errorf("%s: decoding SMB2 header: %w", op, err)
+	}
+	return h, nil
+}
+
+// headerStatus decodes the response header and converts its NTSTATUS to an
+// error, the pattern used by every operation that cares only about success or
+// failure. okStatuses lists additional codes the caller treats as success.
+func headerStatus(op string, buf []byte, okStatuses ...uint32) (Header, error) {
+	h, err := parseHeader(op, buf)
+	if err != nil {
+		return h, err
+	}
+	return h, statusError(op, h.Status, okStatuses...)
 }
 
 type TransformHeader struct { // 52 bytes
 	ProtcolID           uint32
-	Signature           []byte `smb:"fixed:16"`
-	Nonce               []byte `smb:"fixed:16"` // 11 bytes nonce + 5 bytes reversed if CCM, 12 bytes nonce + 4 bytes reversed if GCM
+	Signature           []byte
+	Nonce               []byte // 11 bytes nonce + 5 bytes reversed if CCM, 12 bytes nonce + 4 bytes reversed if GCM
 	OriginalMessageSize uint32
 	Reserved            uint16
 	Flags               uint16 //SMB 3.1.1
@@ -621,16 +713,16 @@ type TransformHeader struct { // 52 bytes
 type NegotiateReq struct {
 	Header
 	StructureSize          uint16
-	DialectCount           uint16 `smb:"count:Dialects"`
+	DialectCount           uint16
 	SecurityMode           uint16
 	Reserved               uint16
 	Capabilities           uint32
-	ClientGuid             []byte `smb:"fixed:16"`
-	NegotiateContextOffset uint32 `smb:"offset:ContextList"`
-	NegotiateContextCount  uint16 `smb:"count:ContextList"`
+	ClientGuid             []byte
+	NegotiateContextOffset uint32
+	NegotiateContextCount  uint16
 	Reserved2              uint16
 	Dialects               []uint16
-	Padding                []byte `smb:"align:8"`
+	Padding                []byte
 	ContextList            []NegContext
 }
 
@@ -640,8 +732,8 @@ type NegotiateRes struct {
 	StructureSize         uint16
 	SecurityMode          uint16
 	DialectRevision       uint16
-	NegotiateContextCount uint16 `smb:"count:ContextList"`
-	ServerGuid            []byte `smb:"fixed:16"`
+	NegotiateContextCount uint16
+	ServerGuid            []byte
 	Capabilities          uint32
 	// MaxTransactSize is the maximum size, in bytes, of the buffer sent by the
 	// client in SetInfo, or sent by the server in the response to QueryInfo,
@@ -651,40 +743,52 @@ type NegotiateRes struct {
 	MaxWriteSize           uint32 // Max value for Length of Write request the server will accept
 	SystemTime             uint64
 	ServerStartTime        uint64
-	SecurityBufferOffset   uint16 `smb:"offset:SecurityBlob"`
-	SecurityBufferLength   uint16 `smb:"len:SecurityBlob"`
-	NegotiateContextOffset uint32 `smb:"offset:ContextList"`
+	SecurityBufferOffset   uint16
+	SecurityBufferLength   uint16
+	NegotiateContextOffset uint32
 	SecurityBlob           *gss.NegTokenInit
-	Padding                []byte `smb:"align:8"`
+	Padding                []byte
 	ContextList            []NegContext
 }
 
 // For SMB 3.1.1
 // MS-SMB2 Section 2.2.3.1
+// NegContext holds one negotiate context. It carries no padding field: the
+// 8-byte alignment MS-SMB2 §3.3.5.4 requires between consecutive contexts is
+// inserted by the list marshaller (marshalNegContextList), so callers assembling
+// a context list no longer size — or have to remember to clear — a tail pad.
 type NegContext struct {
 	ContextType uint16
-	DataLength  uint16 `smb:"len:Data"`
+	DataLength  uint16
 	Reserved    uint32
 	Data        []byte
-	Padd        []byte `smb:"align:8"`
 }
 
 type PreauthIntegrityContext struct {
-	HashAlgorithmCount uint16 `smb:"count:HashAlgorithms"`
-	SaltLength         uint16 `smb:"len:Salt"`
+	HashAlgorithmCount uint16
+	SaltLength         uint16
 	HashAlgorithms     []uint16
 	Salt               []byte
-	Padd               []byte `smb:"align:8"`
 }
 
 type EncryptionContext struct {
-	CipherCount uint16 `smb:"count:Ciphers"`
+	CipherCount uint16
 	Ciphers     []uint16
+}
+
+// MS-SMB2 2.2.3.1.3 SMB2_COMPRESSION_CAPABILITIES. Note the extra Padding and
+// Flags fields relative to EncryptionContext; Flags carries
+// CompressionCapabilitiesFlagChained.
+type CompressionContext struct {
+	CompressionAlgorithmCount uint16
+	Padding                   uint16
+	Flags                     uint32
+	CompressionAlgorithms     []uint16
 }
 
 // MS-SMB2 2.2.3.1.7 SMB2_SIGNING_CAPABILITIES
 type SigningContext struct {
-	SigningAlgorithmCount uint16 `smb:"count:SigningAlgorithms"`
+	SigningAlgorithmCount uint16
 	SigningAlgorithms     []uint16
 }
 
@@ -695,8 +799,8 @@ type SessionSetup1Req struct {
 	SecurityMode         byte
 	Capabilities         uint32
 	Channel              uint32
-	SecurityBufferOffset uint16 `smb:"offset:SecurityBlob"`
-	SecurityBufferLength uint16 `smb:"len:SecurityBlob"`
+	SecurityBufferOffset uint16
+	SecurityBufferLength uint16
 	PreviousSessionID    uint64
 	SecurityBlob         *gss.NegTokenInit
 }
@@ -705,8 +809,8 @@ type SessionSetup1Res struct {
 	Header
 	StructureSize        uint16
 	Flags                uint16
-	SecurityBufferOffset uint16 `smb:"offset:SecurityBlob"`
-	SecurityBufferLength uint16 `smb:"len:SecurityBlob"`
+	SecurityBufferOffset uint16
+	SecurityBufferLength uint16
 	SecurityBlob         *gss.NegTokenResp
 }
 
@@ -717,8 +821,8 @@ type SessionSetup2Req struct {
 	SecurityMode         byte
 	Capabilities         uint32
 	Channel              uint32
-	SecurityBufferOffset uint16 `smb:"offset:SecurityBlob"`
-	SecurityBufferLength uint16 `smb:"len:SecurityBlob"`
+	SecurityBufferOffset uint16
+	SecurityBufferLength uint16
 	PreviousSessionID    uint64
 	SecurityBlob         *gss.NegTokenResp
 }
@@ -727,8 +831,8 @@ type SessionSetup2Res struct {
 	Header
 	StructureSize        uint16
 	Flags                uint16
-	SecurityBufferOffset uint16 `smb:"offset:SecurityBlob"`
-	SecurityBufferLength uint16 `smb:"len:SecurityBlob"`
+	SecurityBufferOffset uint16
+	SecurityBufferLength uint16
 	SecurityBlob         *gss.NegTokenResp
 }
 
@@ -748,8 +852,8 @@ type TreeConnectReq struct {
 	Header
 	StructureSize uint16
 	Reserved      uint16
-	PathOffset    uint16 `smb:"offset:Path"`
-	PathLength    uint16 `smb:"len:Path"`
+	PathOffset    uint16
+	PathLength    uint16
 	Path          []byte
 }
 
@@ -809,9 +913,9 @@ type CreateRes struct {
 	EndOfFile            uint64
 	FileAttributes       uint32
 	Reserved2            uint32 // Must be 0
-	FileId               []byte `smb:"fixed:16"` // 16 bytes length
-	CreateContextsOffset uint32 `smb:"offset:Buffer"`
-	CreateContextsLength uint32 `smb:"len:Buffer"`
+	FileId               []byte // 16 bytes length
+	CreateContextsOffset uint32
+	CreateContextsLength uint32
 	Buffer               []byte
 }
 
@@ -820,7 +924,7 @@ type CloseReq struct {
 	StructureSize uint16 // Must be set to 24
 	Flags         uint16 // Can only be 0x0000 or 0x0001
 	Reserved      uint32
-	FileId        []byte `smb:"fixed:16"` // 16 bytes length
+	FileId        []byte // 16 bytes length
 }
 
 type CloseRes struct {
@@ -837,15 +941,40 @@ type CloseRes struct {
 	FileAttributes uint32
 }
 
+// OplockBreak models the SMB2 OPLOCK_BREAK PDU (MS-SMB2 §2.2.23.1 /
+// §2.2.24.1 / §2.2.25.1). The same 24-byte layout is used for the server's
+// unsolicited break notification, the client's acknowledgment, and the
+// server's response, differing only in the meaning of OplockLevel. A lease
+// break uses a different, larger structure (StructureSize 44) that the client
+// does not model yet.
+type OplockBreak struct {
+	Header
+	StructureSize uint16 // Must be 24
+	OplockLevel   byte
+	Reserved      byte
+	Reserved2     uint32
+	FileId        []byte
+}
+
+// CancelReq models the SMB2 CANCEL request (MS-SMB2 §2.2.30). It carries no
+// body beyond the fixed StructureSize; the request is correlated to the target
+// operation by reusing the target's MessageId (and AsyncId, if the target went
+// asynchronous).
+type CancelReq struct {
+	Header
+	StructureSize uint16 // Must be 4
+	Reserved      uint16
+}
+
 type QueryDirectoryReq struct {
 	Header
 	StructureSize        uint16 // Must always be 33 regardless of Buffer size
 	FileInformationClass byte
 	Flags                byte
 	FileIndex            uint32
-	FileID               []byte `smb:"fixed:16"`
-	FileNameOffset       uint16 `smb:"offset:Buffer"`
-	FileNameLength       uint16 `smb:"len:Buffer"`
+	FileID               []byte
+	FileNameOffset       uint16
+	FileNameLength       uint16
 	OutputBufferLength   uint32
 	Buffer               []byte
 }
@@ -853,8 +982,8 @@ type QueryDirectoryReq struct {
 type QueryDirectoryRes struct {
 	Header
 	StructureSize      uint16 // Must always be 9
-	OutputBufferOffset uint16 `smb:"offset:Buffer"`
-	OutputBufferLength uint32 `smb:"len:Buffer"`
+	OutputBufferOffset uint16
+	OutputBufferLength uint32
 	Buffer             []byte
 }
 
@@ -881,11 +1010,11 @@ type QueryInfoRes struct {
 	Buffer             []byte
 }
 
-func (s *QueryInfoReq) MarshalBinary(meta *encoder.Metadata) (ret []byte, err error) {
+func (s *QueryInfoReq) MarshalBinary() (ret []byte, err error) {
 	log.Traceln("In MarshalBinary for QueryInfoReq")
 	buf := make([]byte, 0, 40+len(s.Buffer))
 
-	hBuf, err := encoder.Marshal(s.Header)
+	hBuf, err := s.Header.MarshalBinary()
 	if err != nil {
 		log.Debugln(err)
 		return nil, err
@@ -924,9 +1053,12 @@ func (s *QueryInfoReq) MarshalBinary(meta *encoder.Metadata) (ret []byte, err er
 // QueryInfoReq.UnmarshalBinary and QueryInfoRes.MarshalBinary live in
 // marshal_server.go (server-side direction).
 
-func (s *QueryInfoRes) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error {
+func (s *QueryInfoRes) UnmarshalBinary(buf []byte) error {
 	log.Traceln("In UnmarshalBinary for QueryInfoRes")
-	err := encoder.Unmarshal(buf[:64], &s.Header)
+	if len(buf) < headerSize+8 {
+		return fmt.Errorf("QueryInfoRes: response too short (%d bytes)", len(buf))
+	}
+	err := s.Header.UnmarshalBinary(buf[:headerSize])
 	if err != nil {
 		return err
 	}
@@ -975,11 +1107,11 @@ type FileBothDirectoryInformationStruct struct {
 	EndOfFile       uint64
 	AllocationSize  uint64
 	FileAttributes  uint32
-	FileNameLength  uint32 `smb:"len:FileName"`
+	FileNameLength  uint32
 	EaSize          uint32
 	ShortNameLength byte
 	Reserved        byte
-	ShortName       []byte `smb:"fixed:24"`
+	ShortName       []byte
 	FileName        []byte
 }
 
@@ -1018,7 +1150,7 @@ type FlushReq struct {
 	StructureSize uint16 // Must be 24
 	Reserved1     uint16
 	Reserved2     uint32
-	FileId        []byte `smb:"fixed:16"`
+	FileId        []byte
 }
 
 type FlushRes struct {
@@ -1027,6 +1159,19 @@ type FlushRes struct {
 	Reserved      uint16
 }
 
+// READ Request Flags (MS-SMB2 §2.2.19). Both MUST be 0 on dialects that do not
+// define them: ReadFlagReadUnbuffered is valid from 3.0.2, and
+// ReadFlagRequestCompressed only on 3.1.1 when compression was negotiated.
+const (
+	// ReadFlagReadUnbuffered asks the server to bypass its cache for this read.
+	ReadFlagReadUnbuffered byte = 0x01
+	// ReadFlagRequestCompressed asks the server to compress the READ response.
+	// It is the only way to get compressed data back: transport compression is
+	// a sender-side decision, so without this flag a server has no reason to
+	// frame a read response even on a compression-negotiated connection.
+	ReadFlagRequestCompressed byte = 0x02
+)
+
 type ReadReq struct {
 	Header
 	StructureSize         uint16 // Must always be 49 regardless of Buffer size
@@ -1034,7 +1179,7 @@ type ReadReq struct {
 	Flags                 byte   // Must be 0 for smb 2.1
 	Length                uint32
 	Offset                uint64
-	FileId                []byte `smb:"fixed:16"`
+	FileId                []byte
 	MinimumCount          uint32 // How many bytes to at least read for successful operation
 	Channel               uint32 // Must be 0 for smb 2.1
 	RemainingBytes        uint32 // 0 for smb 2.1
@@ -1046,9 +1191,9 @@ type ReadReq struct {
 type ReadRes struct {
 	Header
 	StructureSize uint16 // Must be 17
-	DataOffset    byte   `smb:"offset:Buffer"`
+	DataOffset    byte
 	Reserved      byte
-	DataLength    uint32 `smb:"len:Buffer"`
+	DataLength    uint32
 	DataRemaining uint32
 	Reserved2     uint32 // Must be 0 for smb 2.1
 	Buffer        []byte
@@ -1057,10 +1202,10 @@ type ReadRes struct {
 type WriteReq struct {
 	Header
 	StructureSize          uint16 // Must always be 49 regardless of Buffer size
-	DataOffset             uint16 `smb:"offset:Buffer"` // 0x70. The offset, in bytes, from the beginning of the SMB2 header to the data being written.
-	Length                 uint32 `smb:"len:Buffer"`    // The length of the data being written, in bytes. Can be zero bytes.
+	DataOffset             uint16 // 0x70. The offset, in bytes, from the beginning of the SMB2 header to the data being written.
+	Length                 uint32 // The length of the data being written, in bytes. Can be zero bytes.
 	Offset                 uint64 // The offset, in bytes, of where to write the data in the destination file. For pipes it must be 0.
-	FileId                 []byte `smb:"fixed:16"`
+	FileId                 []byte
 	Channel                uint32 // Must be 0 for smb 2.1
 	RemainingBytes         uint32 // Not used in smb 2.1
 	WriteChannelInfoOffset uint16 // Not used in smb 2.1
@@ -1084,11 +1229,11 @@ type SetInfoReq struct {
 	StructureSize         uint16 // Must always be 33 regardless of Buffer size
 	InfoType              byte
 	FileInfoClass         byte
-	BufferLength          uint32 `smb:"len:Buffer"`    // The length of the data being written, in bytes. Can be zero bytes.
-	BufferOffset          uint16 `smb:"offset:Buffer"` // 0x70. The offset, in bytes, from the beginning of the SMB2 header to the data being written.
+	BufferLength          uint32 // The length of the data being written, in bytes. Can be zero bytes.
+	BufferOffset          uint16 // 0x70. The offset, in bytes, from the beginning of the SMB2 header to the data being written.
 	Reserved              uint16
 	AdditionalInformation uint32
-	FileId                []byte `smb:"fixed:16"`
+	FileId                []byte
 	Buffer                []byte // 0 length for smb 2.1
 }
 
@@ -1103,9 +1248,9 @@ type IoCtlReq struct { // 120 + len of Buffer
 	StructureSize     uint16 // Must be 57
 	Reserved          uint16 // Must be 0
 	CtlCode           uint32
-	FileId            []byte `smb:"fixed:16"`
-	InputOffset       uint32 `smb:"offset:Buffer"`
-	InputCount        uint32 `smb:"len:Buffer"`
+	FileId            []byte
+	InputOffset       uint32
+	InputCount        uint32
 	MaxInputResponse  uint32
 	OutputOffset      uint32 //`smb:"offset:Buffer"` // Must be 0
 	OutputCount       uint32 //`smb:"len:Buffer"` // Must be 0
@@ -1120,25 +1265,34 @@ type IoCtlRes struct {
 	StructureSize uint16 // Must be 49
 	Reserved      uint16 // Must be 0
 	CtlCode       uint32
-	FileId        []byte `smb:"fixed:16"`
-	InputOffset   uint32 `smb:"offset:Buffer"`
-	InputCount    uint32 `smb:"len:Buffer"`
-	OutputOffset  uint32 `smb:"offset:Buffer"` // Must be 0
-	OutputCount   uint32 `smb:"len:Buffer"`    // Must be 0
+	FileId        []byte
+	InputOffset   uint32
+	InputCount    uint32
+	OutputOffset  uint32 // Must be 0
+	OutputCount   uint32 // Must be 0
 	Flags         uint32
 	Reserved2     uint32 // Must be 0
 	Buffer        []byte
 }
 
+// calcCreditCharge returns the number of credits a request consumes for a
+// payload of payloadSize bytes: CreditCharge = (payloadSize - 1) / 65536 + 1
+// (MS-SMB2 §3.1.5.2), i.e. one credit per 64 KiB or fraction thereof. Integer
+// division is required — a float ceil over-charges by one at exact multiples of
+// 65536 (e.g. a 64 KiB read would take 2 credits instead of 1), needlessly
+// draining the window.
 func calcCreditCharge(payloadSize uint32) uint16 {
-	return uint16(math.Ceil(((float64(payloadSize) - 1) / 65536) + 1))
+	if payloadSize <= 1 {
+		return 1
+	}
+	return uint16((payloadSize-1)/65536 + 1)
 }
 
-func (s *NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, error) {
+func (s *NegotiateReq) MarshalBinary() ([]byte, error) {
 	log.Traceln("In MarshalBinary for NegotiateReq")
 	buf := make([]byte, 0, 100)
 	padding := 0
-	hBuf, err := encoder.Marshal(s.Header)
+	hBuf, err := s.Header.MarshalBinary()
 	if err != nil {
 		log.Debugln(err)
 		return nil, err
@@ -1159,7 +1313,11 @@ func (s *NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, error) {
 		buf = binary.LittleEndian.AppendUint32(buf, 0)
 		buf = binary.LittleEndian.AppendUint16(buf, 0)
 	} else {
-		padding = 8 - ((36 + len(s.Dialects)*2) % 8)
+		// Pad the dialect array up to the next 8-byte boundary so the first
+		// negotiate context is 8-aligned. The outer % 8 keeps padding at 0 when
+		// the array already ends on a boundary (e.g. a 2-dialect custom offer),
+		// instead of inserting a spurious 8 bytes.
+		padding = (8 - ((36 + len(s.Dialects)*2) % 8)) % 8
 		offset := 64 + 36 + len(s.Dialects)*2 + padding
 		buf = binary.LittleEndian.AppendUint32(buf, uint32(offset))
 		buf = binary.LittleEndian.AppendUint16(buf, s.NegotiateContextCount)
@@ -1173,23 +1331,27 @@ func (s *NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, error) {
 		}
 	}
 	if len(s.ContextList) != 0 {
-		// Padding
+		// Padding, so the first context lands on the 8-byte boundary that
+		// NegotiateContextOffset above advertises. Alignment *between* contexts is
+		// marshalNegContextList's job.
 		buf = append(buf, make([]byte, padding)...)
-		for _, c := range s.ContextList {
-			contextBuf, err := encoder.Marshal(c)
-			if err != nil {
-				log.Debugln(err)
-				return nil, err
-			}
-			buf = append(buf, contextBuf...)
+		contextBuf, err := marshalNegContextList(s.ContextList)
+		if err != nil {
+			log.Debugln(err)
+			return nil, err
 		}
+		buf = append(buf, contextBuf...)
 	}
 	return buf, nil
 }
 
-func (s *NegotiateReq) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error {
+func (s *NegotiateReq) UnmarshalBinary(buf []byte) error {
 	log.Traceln("In UnmarshalBinary for NegotiateReq")
-	err := encoder.Unmarshal(buf[:64], &s.Header)
+	// 64-byte header + 36-byte fixed body before the dialect array.
+	if len(buf) < headerSize+36 {
+		return fmt.Errorf("NegotiateReq: request too short (%d bytes)", len(buf))
+	}
+	err := s.Header.UnmarshalBinary(buf[:headerSize])
 	if err != nil {
 		return err
 	}
@@ -1220,7 +1382,7 @@ func (s *NegotiateReq) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error
 	offset = int(s.NegotiateContextOffset)
 	for i := 0; i < int(s.NegotiateContextCount); i++ {
 		var negContext NegContext
-		err = encoder.Unmarshal(buf[offset:], &negContext)
+		err = negContext.UnmarshalBinary(buf[offset:])
 		if err != nil {
 			return err
 		}
@@ -1288,30 +1450,41 @@ func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
 
 	var dialects []uint16
 
-	if s.options.ForceSMB2 {
-		dialects = []uint16{DialectSmb_2_1}
-	} else {
+	switch {
+	case len(s.options.Dialects) > 0:
+		// Caller-supplied offer (validated in validateOptions). Copy so the
+		// request does not alias the caller's slice. To pin the legacy SMB 2.1
+		// path, callers set Options.Dialects = DialectsSMB2Only.
+		dialects = append([]uint16(nil), s.options.Dialects...)
+	default:
 		dialects = []uint16{
 			DialectSmb_3_1_1,
+			DialectSmb_3_0_2,
+			DialectSmb_3_0,
 			DialectSmb_2_1,
 			DialectSmb_2_0_2,
 		}
 	}
 
 	// MS-SMB2 §2.2.3: the Capabilities field MUST be 0 unless the client
-	// implements SMB 3.x. Detect that by inspecting the offered dialect list.
+	// implements SMB 3.x, and the negotiate contexts (preauth integrity,
+	// encryption, signing) are 3.1.1-only. Detect both from the offered list
+	// so a custom Dialects set is handled correctly.
 	offers3x := false
+	offers311 := false
 	for _, d := range dialects {
 		if d >= DialectSmb_3_0 {
 			offers3x = true
-			break
+		}
+		if d == DialectSmb_3_1_1 {
+			offers311 = true
 		}
 	}
 
 	var capabilities uint32
 	if offers3x {
 		capabilities = GlobalCapLargeMTU
-		if !s.options.DisableEncryption {
+		if s.options.Encryption != EncryptionDisabled {
 			capabilities |= GlobalCapEncryption
 		}
 	}
@@ -1330,7 +1503,7 @@ func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
 		req.SecurityMode = SecurityModeSigningEnabled | SecurityModeSigningRequired
 	}
 
-	if !s.options.ForceSMB2 {
+	if offers311 {
 		pic := PreauthIntegrityContext{
 			HashAlgorithmCount: 1,
 			HashAlgorithms:     []uint16{SHA512},
@@ -1339,14 +1512,6 @@ func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
 		}
 		if _, err := rand.Read(pic.Salt); err != nil {
 			return req, err
-		}
-		ciphers := s.options.Ciphers
-		if ciphers == nil {
-			ciphers = []uint16{AES128CCM, AES128GCM, AES256CCM, AES256GCM}
-		}
-		cc := EncryptionContext{
-			CipherCount: uint16(len(ciphers)),
-			Ciphers:     ciphers,
 		}
 		sc := SigningContext{
 			// Order matters: highest-preference first. AES_GMAC is the
@@ -1357,17 +1522,12 @@ func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
 		}
 		sc.SigningAlgorithmCount = uint16(len(sc.SigningAlgorithms))
 
-		picBuf, err := encoder.Marshal(pic)
+		picBuf, err := pic.MarshalBinary()
 		if err != nil {
 			return NegotiateReq{}, err
 		}
 
-		ccBuf, err := encoder.Marshal(cc)
-		if err != nil {
-			return NegotiateReq{}, err
-		}
-
-		scBuf, err := encoder.Marshal(sc)
+		scBuf, err := sc.MarshalBinary()
 		if err != nil {
 			return NegotiateReq{}, err
 		}
@@ -1377,30 +1537,64 @@ func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
 				ContextType: PreauthIntegrityCapabilities,
 				Data:        picBuf,
 				DataLength:  uint16(len(picBuf)),
-				Padd:        make([]byte, (8-(len(picBuf)%8))%8),
 			},
 		}
-		n := NegContext{
-			ContextType: EncryptionCapabilities,
-			Data:        ccBuf,
-			DataLength:  uint16(len(ccBuf)),
-			Padd:        make([]byte, (8-(len(ccBuf)%8))%8),
+
+		// EncryptionDisabled takes encryption out of the negotiation itself, not
+		// just out of the send path: no GlobalCapEncryption in Capabilities
+		// (above) and no EncryptionCapabilities context here. A server answers
+		// with an EncryptionCapabilities context only when the client sent one
+		// (MS-SMB2 §3.3.5.4), so omitting it means no cipher is ever selected on
+		// either side and neither peer derives encryption keys. Every other
+		// policy negotiates a cipher, including EncryptionServerDirected, which
+		// needs one available in order to reach an ENCRYPT_DATA share.
+		if s.options.Encryption != EncryptionDisabled {
+			ciphers := s.options.Ciphers
+			if ciphers == nil {
+				ciphers = []uint16{AES128CCM, AES128GCM, AES256CCM, AES256GCM}
+			}
+			cc := EncryptionContext{
+				CipherCount: uint16(len(ciphers)),
+				Ciphers:     ciphers,
+			}
+			ccBuf, cErr := cc.MarshalBinary()
+			if cErr != nil {
+				return NegotiateReq{}, cErr
+			}
+			req.ContextList = append(req.ContextList, NegContext{
+				ContextType: EncryptionCapabilities,
+				Data:        ccBuf,
+				DataLength:  uint16(len(ccBuf)),
+			})
 		}
-		req.ContextList = append(req.ContextList, n)
-		n = NegContext{
+
+		req.ContextList = append(req.ContextList, NegContext{
 			ContextType: SigningCapabilities,
 			Data:        scBuf,
 			DataLength:  uint16(len(scBuf)),
-			//Padd:        make([]byte, (8-(len(scBuf)%8))%8), // Padding not needed for the last item in the list.
+		})
+		offerCompression := s.options.Compression
+
+		if offerCompression {
+			algs := s.options.CompressionAlgorithms
+			if algs == nil {
+				algs = compress.DefaultAlgorithms
+			}
+			comp := CompressionContext{
+				CompressionAlgorithmCount: uint16(len(algs)),
+				Flags:                     CompressionCapabilitiesFlagChained,
+				CompressionAlgorithms:     algs,
+			}
+			compBuf, err := comp.MarshalBinary()
+			if err != nil {
+				return NegotiateReq{}, err
+			}
+			req.ContextList = append(req.ContextList, NegContext{
+				ContextType: CompressionCapabilities,
+				Data:        compBuf,
+				DataLength:  uint16(len(compBuf)),
+			})
 		}
-		/*
-			TODO When rewriting the marshalling, move padding to before instead ot after each context based on alignment.
-			The first negotiate context in the list MUST appear at the byte offset
-			indicated by the SMB2 NEGOTIATE request's NegotiateContextOffset field.
-			Subsequent negotiate contexts MUST appear at the first 8-byte-aligned
-			offset following the previous negotiate context.
-		*/
-		req.ContextList = append(req.ContextList, n)
 
 		req.NegotiateContextCount = uint16(len(req.ContextList))
 	}
@@ -1444,7 +1638,7 @@ func (s *Connection) NewSessionSetup1Req(spnegoClient *spnego.Client) (req Sessi
 	}
 
 	var init gss.NegTokenInit
-	err = encoder.Unmarshal(negTokenInitbytes, &init)
+	err = init.UnmarshalBinary(negTokenInitbytes)
 	if err != nil {
 		return
 	}
@@ -1482,6 +1676,38 @@ func NewSessionSetup1Req() SessionSetup1Req {
 	return ret
 }
 
+// NewSessionSetupRawReq builds a SessionSetup request carrying a bare NTLMSSP
+// token (no SPNEGO wrapper). It is used for both legs of the RawNTLMSSP client
+// flow: the caller supplies the NTLMSSP NEGOTIATE (leg 1) or AUTHENTICATE
+// (leg 2) bytes as blob, and sets the header SessionID for leg 2. The generic
+// SessionSetupReq (SecurityBlob []byte) is reused so the token bytes are placed
+// on the wire verbatim.
+func (s *Connection) NewSessionSetupRawReq(blob []byte) SessionSetupReq {
+	header := newHeader()
+	header.Command = CommandSessionSetup
+	s.applyCreditCharge(&header)
+	header.SessionID = s.sessionID
+
+	req := SessionSetupReq{
+		Header:               header,
+		StructureSize:        25,
+		Flags:                0x00,
+		Capabilities:         s.capabilities,
+		Channel:              0,
+		SecurityBufferOffset: 88,
+		PreviousSessionID:    0,
+		SecurityBlob:         blob,
+	}
+
+	// See NewSessionSetup1Req for the rationale on combining ENABLED+REQUIRED.
+	if s.isSigningRequired.Load() {
+		req.SecurityMode = byte(SecurityModeSigningEnabled | SecurityModeSigningRequired)
+	} else {
+		req.SecurityMode = byte(SecurityModeSigningEnabled)
+	}
+	return req
+}
+
 func NewSessionSetup1Res() (SessionSetup1Res, error) {
 	resp, err := gss.NewNegTokenResp()
 	if err != nil {
@@ -1503,7 +1729,7 @@ func (s *Connection) NewSessionSetup2Req(sc []byte, msg *SessionSetup1Res) (Sess
 	header.SessionID = s.sessionID
 
 	var resp gss.NegTokenResp
-	err := encoder.Unmarshal(sc, &resp)
+	err := resp.UnmarshalBinary(sc)
 	if err != nil {
 		return SessionSetup2Req{}, err
 	}
@@ -1575,7 +1801,7 @@ func (s *Session) NewTreeConnectReq(name string) (TreeConnectReq, error) {
 		Reserved:      0,
 		PathOffset:    0,
 		PathLength:    0,
-		Path:          encoder.ToUnicode(path),
+		Path:          unicode.ToUnicode(path),
 	}, nil
 }
 
@@ -1614,23 +1840,16 @@ func (s *Session) NewCreateReq(share, name string,
 	header.Command = CommandCreate
 	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
-	header.TreeID = s.trees[share]
+	header.TreeID = s.treeId(share)
 	var buf []byte
 	var nameLen uint16
 	if len(name) > 0 {
-		uname := encoder.ToUnicode(name)
+		uname := unicode.ToUnicode(name)
 		nameLen = uint16(len(uname))
 		buf = make([]byte, nameLen)
 		copy(buf, uname)
 	} else {
 		buf = make([]byte, 1)
-	}
-
-	if (s.dialect != DialectSmb_2_0_2) && s.supportsMultiCredit {
-		header.Credits = 127
-		if header.CreditCharge > 127 {
-			header.Credits = header.CreditCharge
-		}
 	}
 
 	return CreateReq{
@@ -1659,7 +1878,7 @@ func (s *Session) NewCloseReq(share string, fileId []byte) (CloseReq, error) {
 	header.Command = CommandClose
 	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
-	header.TreeID = s.trees[share]
+	header.TreeID = s.treeId(share)
 
 	return CloseReq{
 		Header:        header,
@@ -1668,6 +1887,79 @@ func (s *Session) NewCloseReq(share string, fileId []byte) (CloseReq, error) {
 		Reserved:      0,
 		FileId:        fileId,
 	}, nil
+}
+
+// NewOplockBreakAck builds an SMB2 OPLOCK_BREAK acknowledgment for a break the
+// server signalled on fileId (MS-SMB2 §2.2.24.1 / §3.2.5.19). oplockLevel is the
+// level the client is willing to hold after the break — typically
+// OpLockLevelII or OpLockLevelNone.
+func (s *Session) NewOplockBreakAck(fileId []byte, oplockLevel byte) OplockBreak {
+	header := newHeader()
+	header.Command = CommandOplockBreak
+	s.applyCreditCharge(&header)
+	header.SessionID = s.sessionID
+
+	return OplockBreak{
+		Header:        header,
+		StructureSize: 24,
+		OplockLevel:   oplockLevel,
+		FileId:        fileId,
+	}
+}
+
+// NewCancelReq builds an SMB2 CANCEL for the request identified by msgId /
+// asyncId (MS-SMB2 §2.2.30 / §3.2.4.24). When asyncId is non-zero the target
+// had returned an interim STATUS_PENDING response, so the cancel is flagged
+// asynchronous and carries the AsyncId; otherwise it is correlated purely by
+// MessageId. The header's MessageId is set to the target's — the caller must
+// send this without allocating a fresh id.
+func (s *Session) NewCancelReq(msgId, asyncId uint64) CancelReq {
+	header := newHeader()
+	header.Command = CommandCancel
+	s.applyCreditCharge(&header)
+	header.MessageID = msgId
+	header.SessionID = s.sessionID
+	if asyncId != 0 {
+		header.Flags |= SMB2_FLAGS_ASYNC_COMMAND
+		// In an async header the 8-byte AsyncId overlays Reserved+TreeID.
+		header.Reserved = uint32(asyncId & 0xffffffff)
+		header.TreeID = uint32(asyncId >> 32)
+	}
+
+	return CancelReq{
+		Header:        header,
+		StructureSize: 4,
+	}
+}
+
+// NewEchoReq builds an SMB2 ECHO request (MS-SMB2 §2.2.28), a connection-level
+// keepalive that carries no body and targets no tree.
+func (s *Session) NewEchoReq() EchoReq {
+	header := newHeader()
+	header.Command = CommandEcho
+	s.applyCreditCharge(&header)
+	header.SessionID = s.sessionID
+
+	return EchoReq{
+		Header:        header,
+		StructureSize: 4,
+	}
+}
+
+// NewFlushReq builds an SMB2 FLUSH request (MS-SMB2 §2.2.17) asking the server
+// to commit buffered data for the open handle fileId to stable storage.
+func (s *Session) NewFlushReq(share string, fileId []byte) FlushReq {
+	header := newHeader()
+	header.Command = CommandFlush
+	s.applyCreditCharge(&header)
+	header.SessionID = s.sessionID
+	header.TreeID = s.treeId(share)
+
+	return FlushReq{
+		Header:        header,
+		StructureSize: 24,
+		FileId:        fileId,
+	}
 }
 
 func (s *Session) NewQueryDirectoryReq(share, pattern string, fileId []byte,
@@ -1686,14 +1978,7 @@ func (s *Session) NewQueryDirectoryReq(share, pattern string, fileId []byte,
 	header.CreditCharge = calcCreditCharge(outputBufferLength)
 	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
-	header.TreeID = s.trees[share]
-
-	if (s.dialect != DialectSmb_2_0_2) && s.supportsMultiCredit {
-		header.Credits = 127
-		if header.CreditCharge > 127 {
-			header.Credits = header.CreditCharge
-		}
-	}
+	header.TreeID = s.treeId(share)
 
 	if pattern == "" {
 		/* QueryDirectory has a fixed Structure Size of 33 which seems to mean
@@ -1702,15 +1987,14 @@ func (s *Session) NewQueryDirectoryReq(share, pattern string, fileId []byte,
 		   pattern length of 0, but that would lead to a 32 byte request which is
 		   invalid. As such at least 1 byte has to be stored in the pattern buffer
 		   but the offset and length must still be specified to 0.
-		   Due to a problem with how the generic encoder is implemented it is not
-		   possible to manually specify the length and offset of a buffer.
-		   So either implement some workaround or just replace an empty pattern
-		   with a pattern of "*" which serves as a wildcard.
+		   Rather than emit a 1-byte filler the server has to ignore, substitute
+		   the "*" wildcard, which is what an empty pattern means anyway and is
+		   what every server already expects.
 		*/
 		pattern = "*"
 	}
 	var buf []byte
-	upattern := encoder.ToUnicode(pattern)
+	upattern := unicode.ToUnicode(pattern)
 	patternLen := uint16(len(upattern))
 	buf = make([]byte, patternLen)
 	copy(buf, upattern)
@@ -1738,21 +2022,20 @@ func (s *Session) NewReadReq(share string, fileid []byte,
 	header.CreditCharge = calcCreditCharge(length)
 	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
-	header.TreeID = s.trees[share]
+	header.TreeID = s.treeId(share)
 
-	if (s.dialect != DialectSmb_2_0_2) && s.supportsMultiCredit {
-		header.Credits = 127
-		if header.CreditCharge > 127 {
-			header.Credits = header.CreditCharge
-		}
-		header.Credits = header.CreditCharge
+	// compressReads is only ever set once the negotiate confirmed 3.1.1 plus a
+	// usable compression context, which is exactly when the flag is legal.
+	var flags byte
+	if s.compressReads {
+		flags = ReadFlagRequestCompressed
 	}
 
 	return ReadReq{
 		Header:                header, //Size 64 bytes
 		StructureSize:         49,
 		Padding:               0,
-		Flags:                 0,
+		Flags:                 flags,
 		Length:                length,
 		Offset:                offset,
 		FileId:                fileid,
@@ -1775,15 +2058,7 @@ func (s *Session) NewWriteReq(share string, fileid []byte,
 	header.CreditCharge = calcCreditCharge(uint32(len(data)))
 	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
-	header.TreeID = s.trees[share]
-
-	if (s.dialect != DialectSmb_2_0_2) && s.supportsMultiCredit {
-		header.Credits = 127
-		if header.CreditCharge > 127 {
-			header.Credits = header.CreditCharge
-		}
-		header.Credits = header.CreditCharge
-	}
+	header.TreeID = s.treeId(share)
 
 	fileSize := len(data)
 	buf := make([]byte, fileSize)
@@ -1811,7 +2086,6 @@ func (f *File) NewIoCTLReq(operation uint32, data []byte) (*IoCtlReq, error) {
 	header := newHeader()
 	header.Command = CommandIOCtl
 	f.applyCreditCharge(&header)
-	header.Credits = 127
 	header.SessionID = f.sessionID
 	header.TreeID = f.shareid
 
@@ -1845,14 +2119,7 @@ func (s *Session) NewSetInfoReq(share string, fileId []byte) (SetInfoReq, error)
 	header.Command = CommandSetInfo
 	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
-	header.TreeID = s.trees[share]
-
-	if (s.dialect != DialectSmb_2_0_2) && s.supportsMultiCredit {
-		header.Credits = 127
-		if header.CreditCharge > 127 {
-			header.Credits = header.CreditCharge
-		}
-	}
+	header.TreeID = s.treeId(share)
 
 	return SetInfoReq{
 		Header:        header,
@@ -1878,14 +2145,7 @@ func (s *Session) NewQueryInfoReq(
 	header.CreditCharge = calcCreditCharge(outputBufferLength)
 	s.applyCreditCharge(&header)
 	header.SessionID = s.sessionID
-	header.TreeID = s.trees[share]
-
-	if (s.dialect != DialectSmb_2_0_2) && s.supportsMultiCredit {
-		header.Credits = 127
-		if header.CreditCharge > 127 {
-			header.Credits = header.CreditCharge
-		}
-	}
+	header.TreeID = s.treeId(share)
 
 	return QueryInfoReq{
 		Header:                header, //Size 64 bytes

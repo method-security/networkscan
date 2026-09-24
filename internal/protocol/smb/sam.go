@@ -19,7 +19,7 @@ import (
 	smbfern "github.com/Method-Security/networkscan/generated/go/pentest/smb"
 	"github.com/Method-Security/networkscan/internal/common/ntlm"
 	"github.com/jfjallid/go-smb/dcerpc/msrrp"
-	"github.com/jfjallid/go-smb/smb/encoder"
+	"github.com/jfjallid/go-smb/smb/unicode"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"golang.org/x/crypto/md4"
 )
@@ -347,7 +347,7 @@ func GetNTHash(rpccon *msrrp.RPCCon, base []byte, rids []string, modifyDacl bool
 
 		offsetName := binary.LittleEndian.Uint32(v[0x0c:]) + 0xcc
 		szName := binary.LittleEndian.Uint32(v[0x10:])
-		result[cntr].Username, err = encoder.FromUnicodeString(v[offsetName : offsetName+szName])
+		result[cntr].Username, err = unicode.FromUnicodeString(v[offsetName : offsetName+szName])
 		if err != nil {
 			continue
 		}

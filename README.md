@@ -31,12 +31,12 @@ To learn more about networkscan, please see the [Documentation site](https://met
 
 ### Get networkscan
 
-For the full list of available installation options, please see the [Installation](./getting-started/installation.md) page. For convenience, here are some of the most commonly used options:
+For the full list of available installation options, please see the [Installation](./docs/getting-started/installation.md) page. For convenience, here are some of the most commonly used options:
 
 - `docker run methodsecurity/networkscan`
 - `docker run ghcr.io/method-security/networkscan`
 - Download the latest binary from the [Github Releases](https://github.com/Method-Security/networkscan/releases/latest) page
-- [Installation documentation](./getting-started/installation.md)
+- [Installation documentation](./docs/getting-started/installation.md)
 
 ### General Usage
 
@@ -58,12 +58,12 @@ networkscan discover tls --targets scanme.sh:443,example.com:443
 networkscan discover domain --target 192.168.1.1
 
 # Service Enumeration  
-networkscan enumerate service --targets 192.168.1.10:22,192.168.1.11:21 --service ssh
+networkscan enumerate service --targets 192.168.1.10:22,192.168.1.11:22 --service ssh
 
 # Credential Spraying
 networkscan pentest spray password --targets 192.168.1.0/24 --service SMB --usernames admin,guest --passwords Password123,123456 --domain CORP
 networkscan pentest spray password --targets 192.168.1.100:445 --service SMB --username-lists DOMAIN_USERNAMES --password-lists DOMAIN_PASSWORDS --sleep 2 --jitter 10
-networkscan pentest spray username --targets dc.example.com:88 --service KERBEROS --domain EXAMPLE.COM --usernames admin,guest
+networkscan pentest service kerberos --targets dc.example.com:88 --actions USER_ENUM --domain EXAMPLE.COM --principals admin,guest
 
 # Service-Specific Penetration Testing
 networkscan pentest service smb --targets 192.168.1.100:445 --usernames admin --passwords password --actions AUTH,SHARES_MAP

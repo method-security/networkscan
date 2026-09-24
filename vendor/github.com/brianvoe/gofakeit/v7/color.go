@@ -56,6 +56,17 @@ func rgbColor(f *Faker) []int {
 	return []int{randIntRange(f, 0, 255), randIntRange(f, 0, 255), randIntRange(f, 0, 255)}
 }
 
+// HSLColor will generate a random HSL color slice [hue, saturation, lightness]
+func HSLColor() []int { return hslColor(GlobalFaker) }
+
+// HSLColor will generate a random HSL color slice [hue, saturation, lightness]
+func (f *Faker) HSLColor() []int { return hslColor(f) }
+
+func hslColor(f *Faker) []int {
+	// Hue is 0-360, Saturation and Lightness are 0-100%
+	return []int{randIntRange(f, 0, 360), randIntRange(f, 0, 100), randIntRange(f, 0, 100)}
+}
+
 func addColorLookup() {
 	AddFuncLookup("color", Info{
 		Display:     "Color",
@@ -63,6 +74,8 @@ func addColorLookup() {
 		Description: "Hue seen by the eye, returns the name of the color like red or blue",
 		Example:     "MediumOrchid",
 		Output:      "string",
+		Aliases:     []string{"color name", "hue name", "visual color", "shade name", "color label"},
+		Keywords:    []string{"hue", "chroma", "shade", "tone", "css", "name", "visual", "appearance", "pigment", "spectrum", "palette", "tint", "saturation", "brightness", "rgb", "hex"},
 		Generate: func(f *Faker, m *MapParams, info *Info) (any, error) {
 			return color(f), nil
 		},
@@ -71,10 +84,12 @@ func addColorLookup() {
 	AddFuncLookup("nicecolors", Info{
 		Display:     "Nice Colors",
 		Category:    "color",
-		Description: "Attractive and appealing combinations of colors, returns an list of color hex codes",
+		Description: "Attractive and appealing combinations of colors, returns a list of color hex codes",
 		Example:     `["#cfffdd","#b4dec1","#5c5863","#a85163","#ff1f4c"]`,
 		Output:      "[]string",
 		ContentType: "application/json",
+		Aliases:     []string{"color palette", "nice palette", "harmonious colors", "aesthetic palette", "design colors"},
+		Keywords:    []string{"nice", "colors", "palette", "array", "hex", "design", "aesthetic", "beautiful", "harmonious", "scheme", "ui", "ux"},
 		Generate: func(f *Faker, m *MapParams, info *Info) (any, error) {
 			return niceColors(f), nil
 		},
@@ -86,6 +101,8 @@ func addColorLookup() {
 		Description: "Colors displayed consistently on different web browsers and devices",
 		Example:     "black",
 		Output:      "string",
+		Aliases:     []string{"web safe color", "browser safe", "cross platform color", "universal color", "standard color"},
+		Keywords:    []string{"safe", "color", "cross-platform", "css", "html", "compatible", "browser", "device", "universal", "stable", "standard"},
 		Generate: func(f *Faker, m *MapParams, info *Info) (any, error) {
 			return safeColor(f), nil
 		},
@@ -94,9 +111,11 @@ func addColorLookup() {
 	AddFuncLookup("hexcolor", Info{
 		Display:     "Hex Color",
 		Category:    "color",
-		Description: "Six-digit code representing a color in the color model",
+		Description: "Six-digit hexadecimal code representing a color in the RGB color model",
 		Example:     "#a99fb4",
 		Output:      "string",
+		Aliases:     []string{"hex color code", "css hex", "html hex", "web hex", "hexadecimal color"},
+		Keywords:    []string{"hex", "hexcolor", "color", "rgb", "six-digit", "web", "css", "html", "design", "hexadecimal", "hash", "code"},
 		Generate: func(f *Faker, m *MapParams, info *Info) (any, error) {
 			return hexColor(f), nil
 		},
@@ -109,8 +128,25 @@ func addColorLookup() {
 		Example:     "[85, 224, 195]",
 		Output:      "[]int",
 		ContentType: "application/json",
+		Aliases:     []string{"rgb triplet", "rgb array", "rgb value", "red green blue", "rgb color code"},
+		Keywords:    []string{"rgb", "color", "red", "green", "blue", "triplet", "digital", "screen", "display", "primary", "additive", "value", "css"},
 		Generate: func(f *Faker, m *MapParams, info *Info) (any, error) {
 			return rgbColor(f), nil
 		},
 	})
+	AddFuncLookup("hslcolor", Info{
+		Display:     "HSL Color",
+		Category:    "color",
+		Description: "Color defined by hue, saturation, and lightness values",
+		Example:     "[210, 85, 50]",
+		Output:      "[]int",
+		ContentType: "application/json",
+		Aliases:     []string{"hsl triplet", "hsl array", "hsl value", "hue saturation lightness"},
+		Keywords:    []string{"hsl", "color", "hue", "saturation", "lightness", "brightness", "triplet", "palette", "css"},
+		Generate: func(f *Faker, m *MapParams, info *Info) (any, error) {
+			return hslColor(f), nil
+		},
+	})
+
+
 }
