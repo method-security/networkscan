@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
@@ -56,111 +57,87 @@ func (X11Fingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		return nil, err
 	}
 
-	// Read response
-	response := make([]byte, 1024)
-	n, err := conn.Read(response)
+	metadata, err := readX11Setup(conn)
 	if err != nil {
 		return nil, err
 	}
 
-	if n < 8 {
-		return nil, fmt.Errorf("response too short")
-	}
-
-	// Parse X11 response
-	// Byte 0: success (1), failed (0), or authenticate (2)
-	status := response[0]
-
-	// Check if this is a valid X11 response
-	if status != 0 && status != 1 && status != 2 {
-		return nil, fmt.Errorf("invalid X11 response status: %d", status)
-	}
-
-	var protocolMajor, protocolMinor *int
-	var vendor, version *string
-	var releaseNumber *int
-	var authRequired *bool
-
-	// Parse based on response status
-	if status == 1 {
-		// Success - parse server information
-		// Bytes 2-3: protocol-major-version
-		// Bytes 4-5: protocol-minor-version
-		if n >= 6 {
-			major := int(binary.LittleEndian.Uint16(response[2:4]))
-			minor := int(binary.LittleEndian.Uint16(response[4:6]))
-			protocolMajor = &major
-			protocolMinor = &minor
-
-			versionStr := fmt.Sprintf("X11R%d.%d", major, minor)
-			version = &versionStr
-		}
-
-		// Bytes 6-7: length of additional data
-		if n >= 8 {
-			additionalDataLen := int(binary.LittleEndian.Uint16(response[6:8]))
-
-			// Parse additional data which includes vendor information
-			if n >= 40 {
-				// Bytes 8-11: release-number
-				rel := int(binary.LittleEndian.Uint32(response[8:12]))
-				releaseNumber = &rel
-
-				// Bytes 24-25: vendor length
-				vendorLen := int(binary.LittleEndian.Uint16(response[24:26]))
-
-				// Vendor string starts at byte 40
-				if n >= 40+vendorLen && vendorLen > 0 && vendorLen < 256 {
-					vendorStr := string(response[40 : 40+vendorLen])
-					vendor = &vendorStr
-				}
-			}
-
-			_ = additionalDataLen // Used for validation if needed
-		}
-
-		authReq := false
-		authRequired = &authReq
-
-	} else if status == 0 {
-		// Failed - authentication required or other error
-		authReq := true
-		authRequired = &authReq
-
-		// Protocol version might still be in the response
-		if n >= 6 {
-			major := int(binary.LittleEndian.Uint16(response[2:4]))
-			minor := int(binary.LittleEndian.Uint16(response[4:6]))
-			protocolMajor = &major
-			protocolMinor = &minor
-
-			versionStr := fmt.Sprintf("X11R%d.%d", major, minor)
-			version = &versionStr
-		}
-	} else if status == 2 {
-		// Authenticate - server requires authentication
-		authReq := true
-		authRequired = &authReq
-	}
-
-	metadata := &protocol.X11ServerInfo{
-		Version:       version,
-		ProtocolMajor: protocolMajor,
-		ProtocolMinor: protocolMinor,
-		Vendor:        vendor,
-		ReleaseNumber: releaseNumber,
-		AuthRequired:  authRequired,
-	}
-
-	result := &discoverfern.ServiceDetails{
-		Host:      host,
-		Ip:        ip.String(),
-		Port:      port,
+	return &discoverfern.ServiceDetails{
+		Host: host, Ip: ip.String(), Port: port,
 		Transport: common.TransportTypeTcp,
 		Protocol:  common.ProtocolTypeX11,
-		Version:   version,
+		Version:   metadata.Version,
 		Metadata:  &discoverfern.ServiceMetadata{X11: metadata},
-	}
+	}, nil
+}
 
-	return result, nil
+// Connection setup encoding: https://www.x.org/releases/X11R7.7/doc/xproto/x11protocol.html
+func readX11Setup(r io.Reader) (*protocol.X11ServerInfo, error) {
+	var header [8]byte
+	if _, err := io.ReadFull(r, header[:]); err != nil {
+		return nil, err
+	}
+	status := header[0]
+	if status > 2 {
+		return nil, fmt.Errorf("invalid X11 response status: %d", status)
+	}
+	// CARD16 units bound allocation to 262140 bytes, including authentication data.
+	bodyLen := int(binary.LittleEndian.Uint16(header[6:8])) * 4
+	authRequired := status != 1
+	metadata := &protocol.X11ServerInfo{AuthRequired: &authRequired}
+	if status != 2 {
+		major := int(binary.LittleEndian.Uint16(header[2:4]))
+		minor := int(binary.LittleEndian.Uint16(header[4:6]))
+		if major != 11 || minor != 0 {
+			return nil, fmt.Errorf("invalid X11 setup version: %d.%d", major, minor)
+		}
+		version := fmt.Sprintf("X11R%d.%d", major, minor)
+		metadata.ProtocolMajor, metadata.ProtocolMinor, metadata.Version = &major, &minor, &version
+	}
+	if status == 0 && bodyLen != (int(header[1])+3)&^3 {
+		return nil, fmt.Errorf("invalid X11 failure reason length")
+	}
+	if status == 1 && bodyLen < 32 {
+		return nil, fmt.Errorf("short X11 success body")
+	}
+	body := make([]byte, bodyLen)
+	if _, err := io.ReadFull(r, body); err != nil {
+		return nil, err
+	}
+	if status != 1 {
+		return metadata, nil
+	}
+	vendorLen := int(binary.LittleEndian.Uint16(body[16:18]))
+	offset := 32 + (vendorLen+3)&^3 + 8*int(body[21])
+	if offset > len(body) {
+		return nil, fmt.Errorf("invalid X11 vendor or pixmap formats length")
+	}
+	for screen := 0; screen < int(body[20]); screen++ {
+		if len(body)-offset < 40 {
+			return nil, fmt.Errorf("short X11 screen")
+		}
+		depths := int(body[offset+39])
+		offset += 40
+		for depth := 0; depth < depths; depth++ {
+			if len(body)-offset < 8 {
+				return nil, fmt.Errorf("short X11 depth")
+			}
+			visuals := int(binary.LittleEndian.Uint16(body[offset+2 : offset+4]))
+			offset += 8
+			if visuals > (len(body)-offset)/24 {
+				return nil, fmt.Errorf("short X11 visuals")
+			}
+			offset += 24 * visuals
+		}
+	}
+	if offset != len(body) {
+		return nil, fmt.Errorf("unexpected X11 setup data")
+	}
+	release := int(binary.LittleEndian.Uint32(body[:4]))
+	metadata.ReleaseNumber = &release
+	if vendorLen > 0 {
+		vendor := string(body[32 : 32+vendorLen])
+		metadata.Vendor = &vendor
+	}
+	return metadata, nil
 }

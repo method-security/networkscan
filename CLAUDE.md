@@ -165,7 +165,7 @@ The tool follows a modular architecture with clear separation of concerns:
 
 ## CVE Detection — Two Execution Paths, One Report
 
-`pentest cve` runs **both** nuclei templates and custom Go detectors and merges them into the same `PentestCveReport`. This mirrors `discover service`, where fingerprintx and custom protocol plugins both feed the same `ServiceDetails` type. Downstream processors don't care which path produced an attempt — the report shape is identical.
+`pentest cve` runs **both** nuclei templates and custom Go detectors and merges them into the same `PentestCveReport`. Like the local protocol plugins in `discover service`, these detectors produce a uniform report shape for downstream processors.
 
 | Path | Lives in | Use when |
 |------|----------|----------|

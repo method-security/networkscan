@@ -5,7 +5,9 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
@@ -35,74 +37,56 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 
 	// Read the banner — SMTP servers send a 220 greeting on connect.
 	// Banners can be multi-line (220- continuation lines followed by a final 220 line).
-	reader := bufio.NewReader(conn)
-	var bannerLines []string
-	for {
-		line, readErr := reader.ReadString('\n')
-		if readErr != nil {
-			return nil, readErr
-		}
-		line = strings.TrimSpace(line)
-
-		if !strings.HasPrefix(line, "220") {
-			return nil, fmt.Errorf("not an SMTP service: %s", line)
-		}
-		bannerLines = append(bannerLines, line)
-
-		// "220 " (space at index 3) is the final banner line
-		if len(line) >= 4 && line[3] == ' ' {
-			break
-		}
-		// Single "220" with no continuation marker is also final
-		if len(line) < 4 {
-			break
-		}
+	reader := bufio.NewReaderSize(io.LimitReader(conn, 65536), 4096)
+	code, greeting, err := readSMTPReply(reader)
+	if err != nil {
+		return nil, err
 	}
-
-	banner := bannerLines[0]
+	if code != 220 {
+		return nil, fmt.Errorf("not an SMTP service: %s", greeting)
+	}
+	banner := helpers.FirstLine(greeting)
 
 	// Parse banner for server info
 	serverName, softwareName, softwareVersion := smtputil.ParseBanner(banner)
-	esmtp := strings.Contains(banner, "ESMTP")
 
 	// Send EHLO to discover capabilities
 	_ = helpers.SetWriteDeadlineDuration(conn, dur)
 	ehloHost := "scanner.local"
 	_, err = fmt.Fprintf(conn, "EHLO %s\r\n", ehloHost)
 	if err != nil {
-		return buildSMTPResult(host, ip, port, banner, serverName, softwareName, softwareVersion, esmtp, false, nil, nil), nil
+		return nil, err
 	}
 
 	_ = helpers.SetReadDeadlineDuration(conn, dur)
+	code, response, err := readSMTPReply(reader)
+	if err != nil {
+		return nil, err
+	}
+	esmtp := code == 250
+	if code != 250 {
+		if code != 500 && code != 502 && code != 504 {
+			return nil, fmt.Errorf("SMTP EHLO rejected")
+		}
+		_ = helpers.SetWriteDeadlineDuration(conn, dur)
+		if _, err = fmt.Fprintf(conn, "HELO %s\r\n", ehloHost); err != nil {
+			return nil, err
+		}
+		_ = helpers.SetReadDeadlineDuration(conn, dur)
+		code, _, err = readSMTPReply(reader)
+		if err != nil || code != 250 {
+			return nil, fmt.Errorf("SMTP HELO failed: %v", err)
+		}
+		response = ""
+	}
 
 	var extensions []string
 	var authMethods []protocol.SmtpAuthCommand
 	tlsSupported := false
-	firstLine := true
 
-	// Read EHLO response lines — only accept 250 responses
-	for {
-		line, readErr := reader.ReadString('\n')
-		if readErr != nil {
-			break
-		}
-		line = strings.TrimSpace(line)
-
-		if len(line) < 4 {
-			break
-		}
-
-		// Only process 250 response lines; anything else means EHLO failed or unexpected response
-		if !strings.HasPrefix(line, "250") {
-			break
-		}
-
-		// First 250 line is the server greeting (RFC 5321), not an extension
-		if firstLine {
-			firstLine = false
-			if line[3] == ' ' {
-				break
-			}
+	for i, line := range strings.Split(response, "\n") {
+		// The first line is the server greeting, not an extension.
+		if i == 0 || len(line) < 4 {
 			continue
 		}
 
@@ -120,11 +104,6 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 			}
 		}
 		extensions = append(extensions, ext)
-
-		// "250 " (space, not dash) means last line
-		if line[3] == ' ' {
-			break
-		}
 	}
 
 	// Send QUIT
@@ -132,6 +111,38 @@ func (SMTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	_, _ = fmt.Fprintf(conn, "QUIT\r\n")
 
 	return buildSMTPResult(host, ip, port, banner, serverName, softwareName, softwareVersion, esmtp, tlsSupported, authMethods, extensions), nil
+}
+
+func readSMTPReply(reader *bufio.Reader) (int, string, error) {
+	var lines []string
+	code := 0
+	for count := 0; count < 100; count++ {
+		raw, err := reader.ReadSlice('\n')
+		if err != nil {
+			return 0, "", err
+		}
+		if len(raw) < 5 || !strings.HasSuffix(string(raw), "\r\n") {
+			return 0, "", fmt.Errorf("invalid SMTP reply framing")
+		}
+		line := string(raw[:len(raw)-2])
+		for i := 0; i < 3; i++ {
+			if line[i] < '0' || line[i] > '9' {
+				return 0, "", fmt.Errorf("invalid SMTP reply code")
+			}
+		}
+		current, _ := strconv.Atoi(line[:3])
+		if count == 0 {
+			code = current
+		}
+		if current != code || (len(line) > 3 && line[3] != ' ' && line[3] != '-') {
+			return 0, "", fmt.Errorf("invalid SMTP reply continuation")
+		}
+		lines = append(lines, line)
+		if len(line) == 3 || line[3] == ' ' {
+			return code, strings.Join(lines, "\n"), nil
+		}
+	}
+	return 0, "", fmt.Errorf("SMTP reply exceeds line limit")
 }
 
 func buildSMTPResult(host string, ip net.IP, port int, banner, serverName, softwareName, softwareVersion string, esmtp, tlsSupported bool, authMethods []protocol.SmtpAuthCommand, extensions []string) *discoverfern.ServiceDetails {

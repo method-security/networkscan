@@ -1,0 +1,183 @@
+package service
+
+import (
+	"context"
+	"net"
+
+	discover "github.com/Method-Security/networkscan/generated/go/discover"
+	localPlugins "github.com/Method-Security/networkscan/internal/discover/service/plugins"
+)
+
+// Fingerprinter detects one application protocol at an endpoint.
+type Fingerprinter interface {
+	Name() string
+	// An empty DefaultPorts list makes the plugin applicable on every TCP port.
+	DefaultPorts() []int
+	Detect(context.Context, net.IP, int, string, int) (*discover.ServiceDetails, error)
+}
+
+// tcpPlugins returns plugins in detection-priority order. Earlier matches win.
+// Keep specific protocols before generic fallbacks, including S7Comm before MMS,
+// JMX before Java RMI, UniStream before EtherNet/IP, and product probes before HTTP.
+func tcpPlugins() []Fingerprinter {
+	return []Fingerprinter{
+		&localPlugins.SSHFingerprinter{},
+		&localPlugins.DNSTCPFingerprinter{},
+		&localPlugins.DNSTLSFingerprinter{},
+		&localPlugins.EtcdFingerprinter{},
+		&localPlugins.RedisFingerprinter{},
+		&localPlugins.MongoDBFingerprinter{},
+		&localPlugins.CassandraFingerprinter{},
+		&localPlugins.BGPFingerprinter{},
+		&localPlugins.DCERPCFingerprinter{},
+		&localPlugins.IPPFingerprinter{},
+		&localPlugins.WinRMFingerprinter{},
+		&localPlugins.KerberosFingerprinter{},
+		&localPlugins.SMBFingerprinter{},
+		&localPlugins.FortiGateFingerprinter{},
+		&localPlugins.PcworxFingerprinter{},
+		&localPlugins.OpcuaFingerprinter{},
+		&localPlugins.X11Fingerprinter{},
+		&localPlugins.PcomFingerprinter{},
+		&localPlugins.Iec104Fingerprinter{},
+		&localPlugins.GesrtpFingerprinter{},
+		&localPlugins.FinsFingerprinter{},
+		&localPlugins.AtgFingerprinter{},
+		&localPlugins.ArdFingerprinter{},
+		&localPlugins.PptpFingerprinter{},
+		&localPlugins.MsmqFingerprinter{},
+		&localPlugins.S7CommFingerprinter{},
+		&localPlugins.MmsFingerprinter{},
+		&localPlugins.HartFingerprinter{},
+		&localPlugins.FoxFingerprinter{},
+		&localPlugins.MemcachedFingerprinter{},
+		&localPlugins.UnistreamFingerprinter{},
+		&localPlugins.EthernetIPFingerprinter{},
+		&localPlugins.OracleFingerprinter{},
+		&localPlugins.SMTPFingerprinter{},
+		&localPlugins.JMXFingerprinter{},
+		&localPlugins.JavaRMIFingerprinter{},
+		&localPlugins.AJP13Fingerprinter{},
+		&localPlugins.GrpcFingerprinter{},
+		&localPlugins.WebLogicT3Fingerprinter{},
+		&localPlugins.ZooKeeperFingerprinter{},
+		&localPlugins.AMQPFingerprinter{},
+		&localPlugins.NATSFingerprinter{},
+		&localPlugins.BeanstalkdFingerprinter{},
+		&localPlugins.ErlangEPMDFingerprinter{},
+		&localPlugins.ADBFingerprinter{},
+		&localPlugins.RTMPFingerprinter{},
+		&localPlugins.SCCPFingerprinter{},
+		&localPlugins.SOCKSFingerprinter{},
+		&localPlugins.NNTPFingerprinter{},
+		&localPlugins.IRCFingerprinter{},
+		&localPlugins.XMPPFingerprinter{},
+		&localPlugins.IdentFingerprinter{},
+		&localPlugins.GopherFingerprinter{},
+		&localPlugins.AFPFingerprinter{},
+		&localPlugins.GitDaemonFingerprinter{},
+		&localPlugins.FingerFingerprinter{},
+		&localPlugins.WhoisFingerprinter{},
+		&localPlugins.VMwareAuthdFingerprinter{},
+		&localPlugins.PoppassdFingerprinter{},
+		&localPlugins.JetDirectFingerprinter{},
+		&localPlugins.LPDFingerprinter{},
+		&localPlugins.RloginFingerprinter{},
+		&localPlugins.DubboFingerprinter{},
+		&localPlugins.TarantoolFingerprinter{},
+		&localPlugins.DNP3Fingerprinter{},
+		&localPlugins.MELSECFingerprinter{},
+		&localPlugins.CodesysFingerprinter{},
+		&localPlugins.BeckhoffADSFingerprinter{},
+		&localPlugins.SAPRouterFingerprinter{},
+		&localPlugins.NDMPFingerprinter{},
+		&localPlugins.HPDataProtectorFingerprinter{},
+		&localPlugins.NFSFingerprinter{},
+		&localPlugins.WinboxFingerprinter{},
+		&localPlugins.Neo4jFingerprinter{},
+		&localPlugins.Neo4jTLSFingerprinter{},
+		&localPlugins.EchoFingerprinter{},
+		&localPlugins.TelnetFingerprinter{},
+		&localPlugins.FTPFingerprinter{},
+		&localPlugins.SNPPFingerprinter{},
+		&localPlugins.KubernetesFingerprinter{},
+		&localPlugins.ChromaDBFingerprinter{},
+		&localPlugins.MilvusFingerprinter{},
+		&localPlugins.PineconeFingerprinter{},
+		&localPlugins.ChromaDBTLSFingerprinter{},
+		&localPlugins.MilvusMetricsFingerprinter{},
+		&localPlugins.SMPPFingerprinter{},
+		&localPlugins.DiameterFingerprinter{},
+		&localPlugins.SMTPTLSFingerprinter{},
+		&localPlugins.RDPFingerprinter{},
+		&localPlugins.RDPTLSFingerprinter{},
+		&localPlugins.FirebirdFingerprinter{},
+		&localPlugins.CouchDBFingerprinter{},
+		&localPlugins.ElasticsearchFingerprinter{},
+		&localPlugins.InfluxDBFingerprinter{},
+		&localPlugins.CouchDBTLSFingerprinter{},
+		&localPlugins.POP3Fingerprinter{},
+		&localPlugins.DB2Fingerprinter{},
+		&localPlugins.POP3TLSFingerprinter{},
+		&localPlugins.MySQLFingerprinter{},
+		&localPlugins.MSSQLFingerprinter{},
+		&localPlugins.SybaseFingerprinter{},
+		&localPlugins.LDAPDiscoveryFingerprinter{},
+		&localPlugins.LDAPTLSFingerprinter{},
+		&localPlugins.IMAPTLSFingerprinter{},
+		&localPlugins.IMAPFingerprinter{},
+		&localPlugins.KafkaNewFingerprinter{},
+		&localPlugins.KafkaNewTLSFingerprinter{},
+		&localPlugins.KafkaOldFingerprinter{},
+		&localPlugins.KafkaOldTLSFingerprinter{},
+		&localPlugins.VNCFingerprinter{},
+		&localPlugins.RPCFingerprinter{},
+		&localPlugins.ModbusFingerprinter{},
+		&localPlugins.RedisTLSFingerprinter{},
+		&localPlugins.JDWPFingerprinter{},
+		&localPlugins.MQTT3Fingerprinter{},
+		&localPlugins.MQTT3TLSFingerprinter{},
+		&localPlugins.MQTT5Fingerprinter{},
+		&localPlugins.MQTT5TLSFingerprinter{},
+		&localPlugins.RsyncFingerprinter{},
+		&localPlugins.PostgresFingerprinter{},
+		&localPlugins.RTSPFingerprinter{},
+		&localPlugins.HTTPDiscoveryFingerprinter{},
+		&localPlugins.HTTPSFingerprinter{},
+	}
+}
+
+// udpPlugins maps every supported UDP port to its probe; no other ports are attempted.
+func udpPlugins() map[uint16]Fingerprinter {
+	return map[uint16]Fingerprinter{
+		53:    &localPlugins.DNSFingerprinter{},
+		67:    &localPlugins.DHCPFingerprinter{},
+		69:    &localPlugins.TFTPFingerprinter{},
+		123:   &localPlugins.NTPFingerprinter{},
+		137:   &localPlugins.NetBIOSFingerprinter{},
+		161:   &localPlugins.SNMPFingerprinter{},
+		162:   &localPlugins.SNMPFingerprinter{},
+		177:   &localPlugins.XdmcpFingerprinter{},
+		427:   &localPlugins.SlpFingerprinter{},
+		500:   &localPlugins.IKEFingerprinter{},
+		623:   &localPlugins.IPMIFingerprinter{},
+		1194:  &localPlugins.OpenVPNFingerprinter{},
+		1812:  &localPlugins.RADIUSFingerprinter{},
+		1900:  &localPlugins.SSDPFingerprinter{},
+		2049:  &localPlugins.NFSUDPFingerprinter{},
+		3478:  &localPlugins.STUNFingerprinter{},
+		3702:  &localPlugins.WSDiscoveryFingerprinter{},
+		4500:  &localPlugins.IKEFingerprinter{},
+		5060:  &localPlugins.SIPFingerprinter{},
+		5683:  &localPlugins.CoAPFingerprinter{},
+		10001: &localPlugins.UbiquitiFingerprinter{},
+		20000: &localPlugins.DNP3UDPFingerprinter{},
+		44818: &localPlugins.EthernetIPUDPFingerprinter{},
+		47808: &localPlugins.BACnetFingerprinter{},
+	}
+}
+
+var (
+	customFingerprintModules = tcpPlugins()
+	udpFingerprinters        = udpPlugins()
+)

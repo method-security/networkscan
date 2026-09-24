@@ -46,11 +46,11 @@ imports:
   vmwareauthdProtocol: ../common/protocol/vmwareauthd.yml
 
 types:
-  # Generic metadata for fingerprintx and other sources
+  # Generic metadata for protocol probes without a dedicated metadata type
   # This is specific to the discover module and not a protocol-specific type
   GenericServiceMetadata:
     properties:
-      metadata: optional<map<string, string>> # Flat key-value pairs from fingerprintx or other sources
+      metadata: optional<map<string, string>> # Flat key-value pairs from protocol probes
 
   # Union type for service metadata
   ServiceMetadata:

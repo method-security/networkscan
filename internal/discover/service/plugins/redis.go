@@ -68,11 +68,11 @@ func redisDetailsFromResponse(host string, ip net.IP, port int, resp []byte) *di
 		if mode := parseRedisInfoValue(text, "redis_mode"); mode != "" {
 			metadata["redis_mode"] = mode
 		}
-	case hasRESPLine && strings.HasPrefix(line, "-NOAUTH"):
+	case hasRESPLine && redisErrorToken(line, "NOAUTH"):
 		metadata["state"] = "auth_required"
-	case hasRESPLine && strings.HasPrefix(line, "-DENIED") && strings.Contains(strings.ToLower(line), "redis is running in protected mode"):
+	case hasRESPLine && redisErrorToken(line, "DENIED") && strings.Contains(strings.ToLower(line), "redis is running in protected mode"):
 		metadata["state"] = "protected_mode"
-	case hasRESPLine && strings.HasPrefix(line, "-ERR") && strings.Contains(strings.ToLower(line), "redis"):
+	case hasRESPLine && redisErrorToken(line, "ERR") && strings.Contains(strings.ToLower(line), "redis"):
 		metadata["state"] = "redis_error"
 	default:
 		return nil
@@ -87,6 +87,10 @@ func redisDetailsFromResponse(host string, ip net.IP, port int, resp []byte) *di
 		Protocol:  common.ProtocolTypeRedis,
 		Metadata:  &discoverfern.ServiceMetadata{Generic: &discoverfern.GenericServiceMetadata{Metadata: metadata}},
 	}
+}
+
+func redisErrorToken(line, token string) bool {
+	return line == "-"+token || strings.HasPrefix(line, "-"+token+" ")
 }
 
 func firstRESPLine(text string) (string, bool) {

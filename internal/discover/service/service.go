@@ -4,159 +4,18 @@ package service
 import (
 	// Standard
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
-	"net/netip"
 	"strings"
 	"sync"
 
 	// Generated
-	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
-
-	// External
-	plugins "github.com/praetorian-inc/fingerprintx/pkg/plugins"
-	scan "github.com/praetorian-inc/fingerprintx/pkg/scan"
-
-	// Custom fingerprinters
-	localPlugins "github.com/Method-Security/networkscan/internal/discover/service/plugins"
 	// Internal
-	"github.com/Method-Security/networkscan/internal/common/ntlm"
 	servicehelpers "github.com/Method-Security/networkscan/internal/discover/service/helpers"
-
 	// Utilities
 	"github.com/Method-Security/networkscan/utils"
 )
-
-/* -------------------------------------------------------------------------- */
-/*  Custom-fingerprinter interface & registry                                 */
-/* -------------------------------------------------------------------------- */
-
-// Fingerprinter detects **one** specific application protocol (gRPC, MQTT, …).
-// On match: (*ServiceDetails, nil)
-// On "not mine": (nil, nil)
-// On fatal error: (nil, err)
-type Fingerprinter interface {
-	Name() string
-	Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error)
-	// DefaultPorts returns the list of default ports for this service
-	// Empty list means the service can run on any port (no port restrictions)
-	DefaultPorts() []int
-}
-
-// Custom fingerprinters for protocols that need specialized detection.
-// Order is semantic priority: earlier entries win when multiple probes match
-// the same endpoint. Keep more-specific fingerprints before generic/container
-// protocols and document intentional default-port overlaps inline.
-//
-// Current TCP overlap groups:
-//   - 102: S7Comm before MMS
-//   - 1099: JMX before Java RMI
-//   - 5555: ADB and HP Data Protector
-//   - 20000: DNP3 and MELSEC MC
-//   - 44818: Unitronics UniStream before generic EtherNet/IP
-var customFingerprintModules = []Fingerprinter{
-	&localPlugins.SSHFingerprinter{},             // SSH (Secure Shell)
-	&localPlugins.DNSTLSFingerprinter{},          // DNS over TLS
-	&localPlugins.EtcdFingerprinter{},            // etcd distributed key-value store; keep before generic gRPC
-	&localPlugins.RedisFingerprinter{},           // Redis key-value store
-	&localPlugins.MongoDBFingerprinter{},         // MongoDB driver manages its own connections
-	&localPlugins.CassandraFingerprinter{},       // Cassandra native protocol
-	&localPlugins.BGPFingerprinter{},             // BGP protocol detection
-	&localPlugins.DCERPCFingerprinter{},          // Windows DCE/RPC
-	&localPlugins.IPPFingerprinter{},             // Internet Printing Protocol
-	&localPlugins.WinRMFingerprinter{},           // Windows Remote Management
-	&localPlugins.KerberosFingerprinter{},        // Kerberos (Kerberos 5),
-	&localPlugins.SMBFingerprinter{},             // SMB (Server Message Block),
-	&localPlugins.FortiGateFingerprinter{},       // FortiGate FGFM (FortiGate to FortiManager),
-	&localPlugins.PcworxFingerprinter{},          // PCWORX (Phoenix Contact PLCs)
-	&localPlugins.OpcuaFingerprinter{},           // OPC UA (OPC Unified Architecture)
-	&localPlugins.X11Fingerprinter{},             // X11 (X Window System)
-	&localPlugins.PcomFingerprinter{},            // Unitronics PCOM (PLC Communication)
-	&localPlugins.Iec104Fingerprinter{},          // IEC 60870-5-104 (SCADA protocol)
-	&localPlugins.GesrtpFingerprinter{},          // GE SRTP (Service Request Transport Protocol)
-	&localPlugins.FinsFingerprinter{},            // FINS (Omron PLC)
-	&localPlugins.AtgFingerprinter{},             // ATG (Automatic Tank Gauging)
-	&localPlugins.ArdFingerprinter{},             // ARD (Apple Remote Desktop)
-	&localPlugins.PptpFingerprinter{},            // PPTP (Point-to-Point Tunneling Protocol)
-	&localPlugins.MsmqFingerprinter{},            // MSMQ (Microsoft Message Queuing)
-	&localPlugins.S7CommFingerprinter{},          // Siemens S7comm (more specific TCP/102 PLC probe)
-	&localPlugins.MmsFingerprinter{},             // MMS fallback for TCP/102 ISO-on-TPKT
-	&localPlugins.HartFingerprinter{},            // HART-IP (Highway Addressable Remote Transducer)
-	&localPlugins.FoxFingerprinter{},             // FOX (Tridium Niagara Framework)
-	&localPlugins.MemcachedFingerprinter{},       // MEMCACHED
-	&localPlugins.UnistreamFingerprinter{},       // Unitronics UniStream (more specific EtherNet/IP device match)
-	&localPlugins.EthernetIPFingerprinter{},      // Generic EtherNet/IP/CIP fallback for TCP/44818
-	&localPlugins.OracleFingerprinter{},          // Oracle TNS Listener
-	&localPlugins.SMTPFingerprinter{},            // SMTP (Simple Mail Transfer Protocol)
-	&localPlugins.JMXFingerprinter{},             // JMX over RMI; keep before generic Java RMI
-	&localPlugins.JavaRMIFingerprinter{},         // Java RMI Registry
-	&localPlugins.AJP13Fingerprinter{},           // Apache JServ Protocol
-	&localPlugins.GrpcFingerprinter{},            // gRPC can run on any port
-	&localPlugins.WebLogicT3Fingerprinter{},      // WebLogic T3
-	&localPlugins.ZooKeeperFingerprinter{},       // ZooKeeper
-	&localPlugins.AMQPFingerprinter{},            // AMQP
-	&localPlugins.NATSFingerprinter{},            // NATS
-	&localPlugins.BeanstalkdFingerprinter{},      // beanstalkd
-	&localPlugins.ErlangEPMDFingerprinter{},      // Erlang Port Mapper Daemon
-	&localPlugins.ADBFingerprinter{},             // Android Debug Bridge (overlaps HP Data Protector on TCP/5555)
-	&localPlugins.RTMPFingerprinter{},            // RTMP
-	&localPlugins.SCCPFingerprinter{},            // Cisco SCCP/Skinny
-	&localPlugins.SOCKSFingerprinter{},           // SOCKS5 proxy
-	&localPlugins.NNTPFingerprinter{},            // NNTP
-	&localPlugins.IRCFingerprinter{},             // IRC
-	&localPlugins.XMPPFingerprinter{},            // XMPP
-	&localPlugins.IdentFingerprinter{},           // Ident/Auth
-	&localPlugins.GopherFingerprinter{},          // Gopher
-	&localPlugins.AFPFingerprinter{},             // Apple Filing Protocol
-	&localPlugins.GitDaemonFingerprinter{},       // Git daemon
-	&localPlugins.FingerFingerprinter{},          // Finger
-	&localPlugins.WhoisFingerprinter{},           // WHOIS
-	&localPlugins.VMwareAuthdFingerprinter{},     // VMware Authentication Daemon
-	&localPlugins.PoppassdFingerprinter{},        // poppassd
-	&localPlugins.JetDirectFingerprinter{},       // JetDirect/PJL
-	&localPlugins.LPDFingerprinter{},             // Line Printer Daemon
-	&localPlugins.RloginFingerprinter{},          // rlogin
-	&localPlugins.DubboFingerprinter{},           // Apache Dubbo
-	&localPlugins.TarantoolFingerprinter{},       // Tarantool
-	&localPlugins.DNP3Fingerprinter{},            // DNP3 (overlaps MELSEC MC on TCP/20000; protocol-specific probe)
-	&localPlugins.MELSECFingerprinter{},          // Mitsubishi MELSEC MC
-	&localPlugins.CodesysFingerprinter{},         // CODESYS
-	&localPlugins.BeckhoffADSFingerprinter{},     // Beckhoff ADS/TwinCAT
-	&localPlugins.SAPRouterFingerprinter{},       // SAProuter
-	&localPlugins.NDMPFingerprinter{},            // Network Data Management Protocol
-	&localPlugins.HPDataProtectorFingerprinter{}, // HP Data Protector OmniInet (overlaps ADB on TCP/5555)
-	&localPlugins.NFSFingerprinter{},             // Network File System
-	&localPlugins.WinboxFingerprinter{},          // MikroTik Winbox (TCP/8291) service fingerprinter
-}
-
-// UDP fingerprinters mapped to their specific ports
-// Each UDP service is only probed on its well-known port(s)
-var udpFingerprinters = map[uint16]Fingerprinter{
-	53:    &localPlugins.DNSFingerprinter{},           // DNS
-	67:    &localPlugins.DHCPFingerprinter{},          // DHCP Server
-	69:    &localPlugins.TFTPFingerprinter{},          // TFTP (Trivial File Transfer Protocol)
-	123:   &localPlugins.NTPFingerprinter{},           // NTP
-	137:   &localPlugins.NetBIOSFingerprinter{},       // NetBIOS Name Service
-	161:   &localPlugins.SNMPFingerprinter{},          // SNMP
-	162:   &localPlugins.SNMPFingerprinter{},          // SNMP Trap
-	177:   &localPlugins.XdmcpFingerprinter{},         // XDMCP (X Display Manager Control Protocol)
-	427:   &localPlugins.SlpFingerprinter{},           // SLP (Service Location Protocol)
-	500:   &localPlugins.IKEFingerprinter{},           // IKE (Internet Key Exchange)
-	623:   &localPlugins.IPMIFingerprinter{},          // IPMI (Intelligent Platform Management Interface)
-	1900:  &localPlugins.SSDPFingerprinter{},          // SSDP (Simple Service Discovery Protocol)
-	2049:  &localPlugins.NFSUDPFingerprinter{},        // NFS
-	4500:  &localPlugins.IKEFingerprinter{},           // IKE NAT-T (NAT Traversal)
-	5060:  &localPlugins.SIPFingerprinter{},           // SIP (Session Initiation Protocol)
-	10001: &localPlugins.UbiquitiFingerprinter{},      // Ubiquiti Discovery Protocol
-	47808: &localPlugins.BACnetFingerprinter{},        // BACnet/IP
-	5683:  &localPlugins.CoAPFingerprinter{},          // CoAP
-	1812:  &localPlugins.RADIUSFingerprinter{},        // RADIUS
-	3702:  &localPlugins.WSDiscoveryFingerprinter{},   // WS-Discovery
-	20000: &localPlugins.DNP3UDPFingerprinter{},       // DNP3
-	44818: &localPlugins.EthernetIPUDPFingerprinter{}, // EtherNet/IP
-}
 
 // RunServiceFingerprint fingerprints services using the transport selected in
 // config. New callers should prefer RunTCPServiceFingerprint or
@@ -172,8 +31,7 @@ func RunServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServ
 //  1. If stealth mode is enabled, use targeted fingerprinting for the specified service type.
 //  2. Otherwise, for TCP (port-priority system):
 //     Phase 1: Run custom fingerprinters ONLY if port matches their default ports
-//     Phase 2: Run fingerprintx (which has its own port priority)
-//     Phase 3: If nothing found, run custom fingerprinters on all ports (comprehensive fallback)
+//     Phase 2: If nothing found, run the remaining plugins on non-default ports.
 func RunTCPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}
 
@@ -271,16 +129,6 @@ func runTCPServiceFingerprintForIP(ctx context.Context, config discoverfern.Disc
 	var results []*discoverfern.ServiceDetails
 	var errors []string
 
-	// Standard fingerprinting path
-	fingerprintConfig := scan.Config{
-		FastMode:       false,
-		DefaultTimeout: servicehelpers.Timeout(config.Timeout),
-		UDP:            false,
-		Verbose:        true,
-	}
-
-	addrPort := netip.AddrPortFrom(netip.MustParseAddr(ip.String()), uint16(port))
-	fingerprintTarget := plugins.Target{Address: addrPort, Host: host}
 	serviceFound := false
 
 	/* --- Phase 1: Run custom fingerprinters on default ports only ------- */
@@ -312,51 +160,15 @@ func runTCPServiceFingerprintForIP(ctx context.Context, config discoverfern.Disc
 		}
 	}
 
-	/* --- Phase 2: Run fingerprintx (has its own port priority) --------- */
-	if !serviceFound {
-		fxCtx, cancel := servicehelpers.Context(ctx, config.Timeout)
-
-		resultChan := make(chan *plugins.Service, 1)
-		errChan := make(chan error, 1)
-
-		go func() {
-			defer func() {
-				if r := recover(); r != nil {
-					errChan <- fmt.Errorf("fingerprintx panic: %v", r)
-				}
-			}()
-
-			result, err := fingerprintConfig.SimpleScanTarget(fingerprintTarget)
-			if err != nil {
-				errChan <- err
-				return
-			}
-			resultChan <- result
-		}()
-
-		select {
-		// fingerprintx timed out or context cancelled - move to Phase 3.
-		case <-fxCtx.Done():
-		case fxResult := <-resultChan:
-			if fxResult != nil && fxResult.Protocol != "" {
-				if details := fxToServiceDetails(fxResult); details != nil {
-					results = append(results, details)
-					serviceFound = true
-				}
-			}
-		case err := <-errChan:
-			// fingerprintx failed - continue to Phase 3
-			_ = err
-		}
-		cancel()
-	}
-
-	/* --- Phase 3: Run custom fingerprinters on all ports (fallback) ---- */
+	/* --- Phase 2: Run remaining fingerprinters on all ports (fallback) ---- */
 	if !serviceFound {
 		// Collect fingerprinters we haven't tried yet
 		var fallbackFingerprinters []Fingerprinter
 		for _, fingerprinter := range customFingerprintModules {
 			defaultPorts := fingerprinter.DefaultPorts()
+			if len(defaultPorts) == 0 {
+				continue
+			} // Unrestricted plugins already ran in phase 1.
 			// Skip if we already tried this fingerprinter in phase 1
 			if len(defaultPorts) > 0 {
 				portMatches := false
@@ -544,84 +356,7 @@ func noEarlierFingerprintersPending(completed []bool, bestIndex int) bool {
 	return true
 }
 
-// fxToServiceDetails converts fingerprintx result to ServiceDetails
-func fxToServiceDetails(result *plugins.Service) *discoverfern.ServiceDetails {
-	protocol, err := fxProtocolToProtocolType(result.Protocol)
-	if err != nil {
-		return nil
-	}
-
-	// Parse fingerprintx result into a map so we can enrich it
-	var meta map[string]interface{}
-	if len(result.Raw) > 0 {
-		if err := json.Unmarshal(result.Raw, &meta); err != nil {
-			// If parsing fails, create new map with raw data as string
-			meta = map[string]interface{}{
-				"raw": string(result.Raw),
-			}
-		}
-	} else {
-		meta = make(map[string]interface{})
-	}
-
-	// Parse Windows OS version from NTLM metadata if available
-	if osVersion, exists := meta["osVersion"]; exists {
-		if osVersionStr, ok := osVersion.(string); ok && osVersionStr != "" {
-			// Extract build number from version like "10.0.20348" -> "Build 20348"
-			parts := strings.Split(osVersionStr, ".")
-			if len(parts) >= 3 {
-				buildVersion := fmt.Sprintf("Build %s", parts[2])
-				meta["mappedOsVersion"] = ntlm.ParseWindowsVersion(buildVersion)
-			}
-		}
-	}
-
-	// Convert map[string]interface{} to map[string]string for GenericServiceMetadata
-	metadataMap := make(map[string]string)
-	for k, v := range meta {
-		metadataMap[k] = fmt.Sprintf("%v", v)
-	}
-
-	serviceDetails := &discoverfern.ServiceDetails{
-		Host: result.Host,
-		Ip:   result.IP,
-		Port: result.Port,
-		Tls:  &result.TLS,
-		Transport: func() common.TransportType {
-			if transport, err := common.NewTransportTypeFromString(strings.ToUpper(result.Transport)); err == nil {
-				return transport
-			}
-			return common.TransportTypeUnknown
-		}(),
-		Protocol: protocol,
-		Version:  &result.Version,
-		Metadata: &discoverfern.ServiceMetadata{Generic: &discoverfern.GenericServiceMetadata{Metadata: metadataMap}},
-	}
-
-	return serviceDetails
-}
-
-func fxProtocolToProtocolType(protocolName string) (common.ProtocolType, error) {
-	normalized := strings.ToUpper(strings.TrimSpace(protocolName))
-	switch normalized {
-	case "ORACLE":
-		normalized = "ORACLEDB"
-	case "POSTGRES":
-		normalized = "POSTGRESQL"
-	case "NETBIOS-NS":
-		normalized = "NETBIOS"
-	case "KAFKANEW", "KAFKAOLD", "KAFKANEWTLS", "KAFKAOLDTLS":
-		normalized = "KAFKA"
-	case "MQTT3", "MQTT3TLS":
-		normalized = "MQTT3"
-	case "MQTT5", "MQTT5TLS":
-		normalized = "MQTT5"
-	}
-	return common.NewProtocolTypeFromString(normalized)
-}
-
 // runUDPServiceDiscovery scans common UDP ports on the target host and fingerprints discovered services.
-// It uses the custom UDP fingerprinters only; fingerprintx is not consulted on this path.
 // Each service is only probed on its well-known port(s) to avoid false positives.
 func runUDPServiceDiscovery(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
 	report := &discoverfern.DiscoverServiceReport{Config: &config}

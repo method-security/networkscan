@@ -2,9 +2,12 @@
 package plugins
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	"github.com/Method-Security/networkscan/generated/go/common/protocol"
@@ -42,14 +45,14 @@ func (NTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	}
 
 	// Read response
-	buffer := make([]byte, 48)
+	buffer := make([]byte, 65535)
 	n, err := conn.Read(buffer)
 	if err != nil {
 		return nil, err
 	}
 
-	// NTP response must be exactly 48 bytes
-	if n != 48 {
+	// Extension fields and authentication data may follow the fixed header.
+	if n < 48 {
 		return nil, fmt.Errorf("invalid NTP response size: %d", n)
 	}
 
@@ -59,9 +62,11 @@ func (NTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	mode := buffer[0] & 0x07
 	stratum := buffer[1]
 
-	// Validate it's an NTP response (mode should be 4 for server response)
-	if mode != 4 && mode != 5 {
-		return nil, fmt.Errorf("invalid NTP mode: %d", mode)
+	if mode != 4 || versionNumber < 1 || versionNumber > 4 || stratum > 16 {
+		return nil, fmt.Errorf("invalid NTP server header")
+	}
+	if !bytes.Equal(buffer[24:32], ntpRequest[40:48]) {
+		return nil, fmt.Errorf("NTP origin timestamp does not match request")
 	}
 
 	version := fmt.Sprintf("%d", versionNumber)
@@ -74,7 +79,7 @@ func (NTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	var referenceIP *string
 
 	// Parse reference identifier (bytes 12-15)
-	if stratum == 1 {
+	if stratum <= 1 {
 		// For stratum 1, reference ID is an ASCII string (reference clock identifier)
 		refID := string(buffer[12:16])
 		referenceID = &refID
@@ -113,7 +118,10 @@ func buildNTPRequest() []byte {
 	// Set Leap Indicator (0), Version (3), and Mode (3 = client)
 	packet[0] = 0x1B // 00 011 011 = LI=0, Version=3, Mode=3
 
-	// All other fields can remain zero for a basic request
+	// The server echoes this timestamp in its origin field.
+	now := time.Now()
+	binary.BigEndian.PutUint32(packet[40:44], uint32(now.Unix()+2208988800))
+	binary.BigEndian.PutUint32(packet[44:48], uint32((uint64(now.Nanosecond())<<32)/1000000000))
 
 	return packet
 }

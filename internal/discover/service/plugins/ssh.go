@@ -2,8 +2,10 @@
 package plugins
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 
@@ -47,18 +49,9 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 		return nil, err
 	}
 
-	// Read banner
-	buf := make([]byte, 256)
-	n, err := conn.Read(buf)
+	banner, err := readSSHIdentification(conn)
 	if err != nil {
 		return nil, err
-	}
-
-	banner := strings.TrimSpace(string(buf[:n]))
-
-	// SSH always begins with "SSH-" banner
-	if !strings.HasPrefix(banner, "SSH") {
-		return nil, fmt.Errorf("not an SSH service")
 	}
 
 	// Extract version from banner (e.g., "SSH-2.0-OpenSSH_8.9" -> "SSH-2.0-OpenSSH_8.9")
@@ -79,4 +72,39 @@ func (SSHFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	}
 
 	return result, nil
+}
+
+func readSSHIdentification(r io.Reader) (string, error) {
+	// Bound both pre-identification text and individual lines while allowing fragmentation.
+	reader := bufio.NewReaderSize(io.LimitReader(r, 8192), 256)
+	for lines := 0; lines < 64; lines++ {
+		raw, err := reader.ReadSlice('\n')
+		if err != nil {
+			return "", err
+		}
+		line := strings.TrimSuffix(strings.TrimSuffix(string(raw), "\n"), "\r")
+		if !strings.HasPrefix(line, "SSH-") {
+			continue
+		}
+		version, software, ok := strings.Cut(line[4:], "-")
+		if !ok || (version != "2.0" && version != "1.99" && version != "1.5") || len(raw) > 255 {
+			return "", fmt.Errorf("invalid SSH identification")
+		}
+		name, _, _ := strings.Cut(software, " ")
+		if name == "" {
+			return "", fmt.Errorf("missing SSH software version")
+		}
+		for _, c := range name {
+			if c < 33 || c > 126 {
+				return "", fmt.Errorf("invalid SSH software version")
+			}
+		}
+		for _, c := range software {
+			if c < 32 || c == 127 {
+				return "", fmt.Errorf("invalid SSH identification text")
+			}
+		}
+		return line, nil
+	}
+	return "", fmt.Errorf("SSH preamble exceeds limit")
 }

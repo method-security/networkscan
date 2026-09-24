@@ -14,7 +14,7 @@ func dialErr(inner error) error {
 	return &net.OpError{
 		Op:   "dial",
 		Net:  "tcp",
-		Addr: &net.TCPAddr{IP: net.ParseIP("1.2.3.4"), Port: 21},
+		Addr: &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 21},
 		Err:  inner,
 	}
 }
@@ -26,7 +26,7 @@ func TestClassifyNetError(t *testing.T) {
 		category NetErrorCategory
 		wantAddr string
 	}{
-		{name: "connection refused", err: dialErr(os.NewSyscallError("connect", syscall.ECONNREFUSED)), category: NetErrorConnRefused, wantAddr: "1.2.3.4:21"},
+		{name: "connection refused", err: dialErr(os.NewSyscallError("connect", syscall.ECONNREFUSED)), category: NetErrorConnRefused, wantAddr: "10.0.0.1:21"},
 		{name: "connection reset", err: dialErr(os.NewSyscallError("read", syscall.ECONNRESET)), category: NetErrorConnReset},
 		{name: "no route to host", err: dialErr(os.NewSyscallError("connect", syscall.EHOSTUNREACH)), category: NetErrorNoRouteToHost},
 		{name: "network unreachable", err: dialErr(os.NewSyscallError("connect", syscall.ENETUNREACH)), category: NetErrorNetworkDown},

@@ -23,7 +23,6 @@ require (
 	github.com/palantir/pkg/datetime v1.4.0
 	github.com/palantir/witchcraft-go-logging v1.70.0
 	github.com/pkg/sftp v1.13.11
-	github.com/praetorian-inc/fingerprintx v1.1.19
 	github.com/projectdiscovery/goflags v0.1.76
 	github.com/projectdiscovery/naabu/v2 v2.5.0
 	github.com/projectdiscovery/nuclei/v3 v3.11.1
@@ -93,6 +92,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/petermattis/goid v0.0.0-20260820044319-269ab09b5261 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
+	github.com/praetorian-inc/fingerprintx v1.1.19 // indirect
 	github.com/projectdiscovery/goja v0.0.0-20260618133720-acb73e419534 // indirect
 	github.com/projectdiscovery/goja_nodejs v0.0.0-20260828073336-835cbae9b74d // indirect
 	github.com/projectdiscovery/govaluate v0.0.0-20260729205521-4c61bf19382e // indirect
@@ -356,7 +356,7 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dsnet/compress v0.0.2-0.20230904184137-39efe44ab707 // indirect
 	github.com/fatih/color v1.19.0 // indirect
-	github.com/go-asn1-ber/asn1-ber v1.5.8 // indirect
+	github.com/go-asn1-ber/asn1-ber v1.5.8
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/go-github/v30 v30.1.0 // indirect
@@ -413,7 +413,7 @@ require (
 	github.com/projectdiscovery/retryablehttp-go v1.3.24 // indirect
 	github.com/projectdiscovery/uncover v1.2.1 // indirect
 	github.com/projectdiscovery/utils v0.11.2 // indirect
-	github.com/projectdiscovery/wappalyzergo v0.2.96 // indirect
+	github.com/projectdiscovery/wappalyzergo v0.2.96
 	github.com/rbetts/go-ntlm v0.0.0-20130522135510-f22198915663
 	github.com/refraction-networking/utls v1.8.2 // indirect
 	github.com/remeh/sizedwaitgroup v1.0.0 // indirect
@@ -449,7 +449,7 @@ require (
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/text v0.41.0
 	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260831171406-18b4a7587f8a // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
