@@ -5,7 +5,6 @@ import (
 	"github.com/jfjallid/gofork/encoding/asn1"
 
 	"github.com/jfjallid/go-smb/gss"
-	"github.com/jfjallid/go-smb/smb/encoder"
 )
 
 // MS-SPNG
@@ -39,6 +38,13 @@ func (c *Client) InitSecContext(inputToken []byte) (res []byte, err error) {
 		if err != nil {
 			return
 		}
+		// Record the optimistic mechanism as selected up front. RFC 4178 §4.2.2
+		// only requires supportedMech in the acceptor's first reply, which for a
+		// single-leg accept-completed exchange is also its last; an acceptor that
+		// omits it would leave selectedMech nil and nil-dereference in
+		// SessionKey(). The loop below overwrites this if a different mechanism
+		// is named.
+		c.selectedMech = c.mechs[0]
 		// Currently we are always sending a MIC Token regardless if required or not.
 		// To be compatible with really old servers we would have to only send it when required
 		// Typically the server should respond with the request-mic(3) status code rather than
@@ -51,7 +57,7 @@ func (c *Client) InitSecContext(inputToken []byte) (res []byte, err error) {
 		var token gss.NegTokenResp
 		var responseToken []byte
 		var ms []byte
-		err = encoder.Unmarshal(inputToken, &token)
+		err = token.UnmarshalBinary(inputToken)
 		if err != nil {
 			return
 		}
@@ -62,6 +68,14 @@ func (c *Client) InitSecContext(inputToken []byte) (res []byte, err error) {
 				c.selectedMech = c.mechs[i]
 				break
 			}
+		}
+		// A server naming a mechanism we never offered leaves selectedMech at
+		// whatever the optimistic branch set. If even that is unset there is
+		// nothing to continue with, and dereferencing it would crash the client
+		// on a response we do not control.
+		if c.selectedMech == nil {
+			err = fmt.Errorf("server selected a GSS mechanism that was not offered")
+			return
 		}
 
 		responseToken, err = c.selectedMech.InitSecContext(token.ResponseToken)
@@ -79,7 +93,7 @@ func (c *Client) InitSecContext(inputToken []byte) (res []byte, err error) {
 		}
 
 		negTokenRes.MechListMIC = c.selectedMech.Sum(ms)
-		return encoder.Marshal(&negTokenRes)
+		return negTokenRes.MarshalBinary()
 	}
 }
 

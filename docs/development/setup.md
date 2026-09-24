@@ -6,6 +6,16 @@ To add a new scan to networkscan, providing new enumeration capabilities to secu
 
 ## Setting up your development environment
 
+Install the Go version declared in `go.mod`, a C compiler, and libpcap development headers before building. The scanner uses CGO. Some discovery modes also require nmap and elevated privileges. Prefer CONNECT scans for unprivileged local testing.
+
+Generate the ignored Go SDK before compiling. Install the Fern CLI with `npm install -g fern-api`, authenticate Fern for the organization if required, then run:
+
+```bash
+fern generate --group local --retry-rate-limited
+```
+
+The CLI and generator versions are configured in `fern/fern.config.json` and `fern/generators.yml`. Generated files under `generated/` are not committed; CI generates them before building and testing.
+
 If you've just cloned networkscan for the first time, welcome to the community! We use Palantir's [godel](https://github.com/palantir/godel) to streamline local development and [goreleaser](https://goreleaser.com/) to handle the heavy lifting on the release process.
 
 To get started with godel, you can run
@@ -15,6 +25,16 @@ To get started with godel, you can run
 ```
 
 This will run a number of checks for us, including linters, tests, and license checks. We run this command as part of our CI pipeline to ensure the codebase is consistently passing tests.
+
+## Building documentation
+
+Use an isolated Python environment and the same strict build as CI:
+
+```bash
+python3 -m venv /tmp/networkscan-docs-venv
+/tmp/networkscan-docs-venv/bin/pip install -r docs/build/requirements.txt
+/tmp/networkscan-docs-venv/bin/mkdocs build --strict
+```
 
 ## Building the CLI
 

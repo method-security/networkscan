@@ -4,13 +4,13 @@ If you are just getting started with networkscan, welcome! This guide will walk 
 
 ## Installation
 
-networkscan is provided in several convenient form factors, including statically compiled binary images on a variety of architectures as well as a Docker image for both x86 and ARM machines.
+networkscan is provided as release binaries for several operating systems and architectures, as well as Docker images for amd64 and arm64.
 
 If you do not see an architecture that you require, please open a [Discussion](https://method-security.github.io/community/contribute/discussions.html) to propose adding it.
 
 ### Binaries
 
-networkscan currently supports statically compiled binaries across the following operating systems and architectures:
+networkscan currently provides binaries for the following operating systems and architectures:
 
 | OS      | Architecture |
 | ------- | ------------ |
@@ -20,6 +20,8 @@ networkscan currently supports statically compiled binaries across the following
 | Windows | amd64        |
 
 The latest binaries can be downloaded directly from [Github](https://github.com/Method-Security/networkscan/releases/latest).
+
+Some discovery commands require nmap. SYN port scans require raw-packet privileges; use `--scan-type CONNECT` when those privileges are unavailable. Building from source additionally requires a C compiler and libpcap development headers; see [Development Setup](../development/setup.md).
 
 ### Docker
 

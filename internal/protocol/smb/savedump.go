@@ -15,7 +15,7 @@ import (
 	"github.com/Method-Security/networkscan/internal/common/ntlm"
 	"github.com/jfjallid/go-smb/dcerpc/msrrp"
 	gosmb "github.com/jfjallid/go-smb/smb"
-	"github.com/jfjallid/go-smb/smb/encoder"
+	"github.com/jfjallid/go-smb/smb/unicode"
 	svc1log "github.com/palantir/witchcraft-go-logging/wlog/svclog/svc1log"
 	"golang.org/x/crypto/md4"
 )
@@ -170,7 +170,7 @@ func DumpSAMFromHives(ctx context.Context, systemData, samData []byte) ([]*smbfe
 		if int(offsetName+szName) > len(data) {
 			continue
 		}
-		username, err := encoder.FromUnicodeString(data[offsetName : offsetName+szName])
+		username, err := unicode.FromUnicodeString(data[offsetName : offsetName+szName])
 		if err != nil {
 			continue
 		}
@@ -610,14 +610,14 @@ func parseSecretFromHive(systemHive *RegistryHive, name string, secretItem []byt
 	result := &PrintableLSASecret{secretType: "[*] " + name}
 
 	if strings.HasPrefix(upperName, "_SC_") {
-		secretDecoded, err := encoder.FromUnicodeString(secretItem)
+		secretDecoded, err := unicode.FromUnicodeString(secretItem)
 		if err != nil {
 			return nil
 		}
 		svcUser := getServiceUserFromHive(systemHive, name[4:])
 		result.secrets = append(result.secrets, fmt.Sprintf("%s: %s", svcUser, secretDecoded))
 	} else if strings.HasPrefix(upperName, "ASPNET_WP_PASSWORD") {
-		secretDecoded, err := encoder.FromUnicodeString(secretItem)
+		secretDecoded, err := unicode.FromUnicodeString(secretItem)
 		if err != nil {
 			return nil
 		}
@@ -651,7 +651,7 @@ func parseSecretFromHive(systemHive *RegistryHive, name string, secretItem []byt
 			result.secrets = append(result.secrets, fmt.Sprintf("NL$KM: 0x%x", secretItem[:16]))
 		}
 	} else if strings.HasPrefix(upperName, "CACHEDDEFAULTPASSWORD") {
-		secretDecoded, err := encoder.FromUnicodeString(secretItem)
+		secretDecoded, err := unicode.FromUnicodeString(secretItem)
 		if err != nil {
 			return nil
 		}
@@ -803,7 +803,7 @@ func getCachedHashesFromHive(ctx context.Context, securityHive *RegistryHive, bo
 		if len(userData) < int(record.UserLength) {
 			continue
 		}
-		username, err := encoder.FromUnicodeString(userData[:record.UserLength])
+		username, err := unicode.FromUnicodeString(userData[:record.UserLength])
 		if err != nil {
 			continue
 		}
@@ -813,7 +813,7 @@ func getCachedHashesFromHive(ctx context.Context, securityHive *RegistryHive, bo
 		if int(offset)+int(record.DNSDomainNameLength) > len(userData) {
 			continue
 		}
-		dnsDomain, err := encoder.FromUnicodeString(userData[offset : offset+uint64(record.DNSDomainNameLength)])
+		dnsDomain, err := unicode.FromUnicodeString(userData[offset : offset+uint64(record.DNSDomainNameLength)])
 		if err != nil {
 			continue
 		}

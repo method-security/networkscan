@@ -24,28 +24,61 @@ type Encoder struct {
 	current        []string      // keeps track of the current field being populated
 	nextReferentID uint32
 	includeHeaders bool
+	baseLen        int  // length of w when the Encoder was created
+	strictTags     bool // reject unrecognised ndr struct tags
 }
 
-// NewDecoder creates a new instance of a NDR Decoder.
+// NewEncoder creates a new instance of an NDR Encoder writing into w. If w is
+// nil a buffer is allocated. Any content already in w is preserved and treated
+// as a prefix: it is neither overwritten nor counted towards NDR alignment.
 func NewEncoder(w *bytes.Buffer, includeHeaders bool) *Encoder {
 	enc := new(Encoder)
+	if w == nil {
+		w = new(bytes.Buffer)
+	}
 	enc.w = w
+	enc.baseLen = w.Len()
 	enc.nextReferentID = 0x00020000
 	enc.ch.Endianness = binary.LittleEndian
 	enc.includeHeaders = includeHeaders
+	enc.strictTags = true
 	return enc
 }
 
+// SetStrictTags controls whether unrecognised `ndr:"..."` struct tags are
+// rejected. See Decoder.SetStrictTags.
+func (enc *Encoder) SetStrictTags(strict bool) {
+	enc.strictTags = strict
+}
+
+// GetBytes returns the NDR data written so far, excluding any prefix the caller
+// had already placed in the buffer. Unlike Encode it never includes the common
+// and private headers, which Encode prepends on return.
 func (enc *Encoder) GetBytes() []byte {
-	return enc.w.Bytes()
+	return enc.w.Bytes()[enc.baseLen:]
 }
 
 // Encode marshals the provided structure into NDR encoded bytes.
 func (enc *Encoder) Encode(s interface{}) (buf []byte, err error) {
+	// Encoding reflects over a caller-supplied type; a shape reflect refuses to
+	// handle should be reported as an error rather than crashing the caller.
+	defer func() {
+		if r := recover(); r != nil {
+			buf, err = nil, Errorf("panic while encoding field(%s): %v", strings.Join(enc.current, "/"), r)
+		}
+	}()
 	enc.s = s
+	if enc.strictTags {
+		if err = checkTags(s); err != nil {
+			return nil, err
+		}
+	}
 	enc.nextReferentID = 0x00020000
 	enc.conformantMax = nil
 	enc.current = nil
+	// Discard anything a previous Encode left behind, keeping only the prefix
+	// the caller supplied, so repeated calls are idempotent.
+	enc.w.Truncate(enc.baseLen)
 	if enc.includeHeaders {
 		//First write an NDR ptr
 		err = binary.Write(enc.w, enc.ch.Endianness, uint32(0xFFFFFFFF))
@@ -70,10 +103,10 @@ func (enc *Encoder) Encode(s interface{}) (buf []byte, err error) {
 		if err != nil {
 			return
 		}
-		return append(header.Bytes(), enc.w.Bytes()...), nil
+		return append(header.Bytes(), enc.w.Bytes()[enc.baseLen:]...), nil
 	}
 
-	return enc.w.Bytes(), nil
+	return enc.w.Bytes()[enc.baseLen:], nil
 }
 
 func (enc *Encoder) SetEndianness(order binary.ByteOrder) {
@@ -91,13 +124,13 @@ func (enc *Encoder) process(s interface{}, tag reflect.StructTag) (err error) {
 	var localDef []deferedPtr
 	err = enc.fill(s, tag, &localDef)
 	if err != nil {
-		return Errorf("could not encode: %v", err)
+		return Errorf("could not encode: %w", err)
 	}
 	// Write any deferred referents associated with pointers
 	for _, p := range localDef {
 		err = enc.process(p.v, p.tag)
 		if err != nil {
-			return fmt.Errorf("could not encode deferred referent: %v", err)
+			return fmt.Errorf("could not encode deferred referent: %w", err)
 		}
 	}
 	return nil
@@ -108,7 +141,7 @@ func (enc *Encoder) process(s interface{}, tag reflect.StructTag) (err error) {
 func (enc *Encoder) scanConformantArrays(s interface{}, tag reflect.StructTag) error {
 	err := enc.conformantScan(s, tag)
 	if err != nil {
-		return fmt.Errorf("failed to scan for embedded conformant arrays: %v", err)
+		return fmt.Errorf("failed to scan for embedded conformant arrays: %w", err)
 	}
 	for i := range enc.conformantMax {
 		//fmt.Printf("Writing conformant max value of: %d for field: %v\n", enc.conformantMax[i], enc.current)
@@ -116,7 +149,7 @@ func (enc *Encoder) scanConformantArrays(s interface{}, tag reflect.StructTag) e
 		enc.ensureAlignment(SizeUint32)
 		err = binary.Write(enc.w, enc.ch.Endianness, enc.conformantMax[i])
 		if err != nil {
-			return fmt.Errorf("could not write preceding conformant max count index %d: %v", i, err)
+			return fmt.Errorf("could not write preceding conformant max count index %d: %w", i, err)
 		}
 	}
 	// Clear list as we may encounter new conformantMax values in defered structs
@@ -144,6 +177,19 @@ func (enc *Encoder) conformantScan(s interface{}, tag reflect.StructTag) error {
 	switch v.Kind() {
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {
+			if v.Type().Field(i).PkgPath != "" {
+				continue // unexported: no NDR representation
+			}
+			// See the matching comment in the decoder: union arms never hoist a
+			// conformant max count, because the discriminant that selects the
+			// arm has not been read at the point the max counts appear.
+			if ft := parseTags(v.Type().Field(i).Tag); ft.HasValue(TagUnionField) {
+				if err := checkUnionArm(v.Type().Name(), v.Type().Field(i).Name,
+					v.Type().Field(i).Type, v.Type().Field(i).Tag); err != nil {
+					return err
+				}
+				continue
+			}
 			fieldTag := v.Type().Field(i).Tag
 			fieldNdrTag := parseTags(fieldTag)
 			// Resolve maxcount sibling field reference at struct level
@@ -177,7 +223,7 @@ func (enc *Encoder) conformantScan(s interface{}, tag reflect.StructTag) error {
 		if mcStr, ok := ndrTag.Map[TagMaxCount]; ok {
 			mc, err := strconv.Atoi(mcStr)
 			if err != nil {
-				return fmt.Errorf("invalid maxcount tag value %q: %v", mcStr, err)
+				return fmt.Errorf("invalid maxcount tag value %q: %w", mcStr, err)
 			}
 			maxCount = uint32(mc)
 		} else {
@@ -204,7 +250,7 @@ func (enc *Encoder) conformantScan(s interface{}, tag reflect.StructTag) error {
 					if mcStr, ok := ndrTag.Map[TagMaxCount]; ok {
 						mc, err := strconv.Atoi(mcStr)
 						if err != nil {
-							return fmt.Errorf("invalid maxcount tag value %q: %v", mcStr, err)
+							return fmt.Errorf("invalid maxcount tag value %q: %w", mcStr, err)
 						}
 						dimMax = uint32(mc)
 					} else if i < len(l) {
@@ -221,7 +267,7 @@ func (enc *Encoder) conformantScan(s interface{}, tag reflect.StructTag) error {
 			if mcStr, ok := ndrTag.Map[TagMaxCount]; ok {
 				mc, err := strconv.Atoi(mcStr)
 				if err != nil {
-					return fmt.Errorf("invalid maxcount tag value %q: %v", mcStr, err)
+					return fmt.Errorf("invalid maxcount tag value %q: %w", mcStr, err)
 				}
 				maxCount = uint32(mc)
 			} else {
@@ -259,7 +305,7 @@ func (enc *Encoder) isPointer(v reflect.Value, tag reflect.StructTag, def *[]def
 		if v.Kind() == reflect.Pointer && !v.IsNil() {
 			err = enc.writePointer()
 			if err != nil {
-				return true, fmt.Errorf("could not write pointer: %v", err)
+				return true, fmt.Errorf("could not write pointer: %w", err)
 			}
 			*def = append(*def, deferedPtr{v: v, tag: ndrTag.StructTag()})
 		} else if v.Kind() == reflect.Invalid {
@@ -269,7 +315,7 @@ func (enc *Encoder) isPointer(v reflect.Value, tag reflect.StructTag, def *[]def
 			}
 			enc.ensureAlignment(SizePtr)
 			if err = binary.Write(enc.w, enc.ch.Endianness, uint32(0)); err != nil {
-				return true, fmt.Errorf("could not write null pointer: %v", err)
+				return true, fmt.Errorf("could not write null pointer: %w", err)
 			}
 		} else {
 			zero := reflect.Zero(v.Type())
@@ -277,13 +323,13 @@ func (enc *Encoder) isPointer(v reflect.Value, tag reflect.StructTag, def *[]def
 			if !isZero || notNullPtr {
 				err = enc.writePointer()
 				if err != nil {
-					return true, fmt.Errorf("could not write pointer: %v", err)
+					return true, fmt.Errorf("could not write pointer: %w", err)
 				}
 				*def = append(*def, deferedPtr{v: v, tag: ndrTag.StructTag()})
 			} else if nullable {
 				enc.ensureAlignment(SizePtr)
 				if err = binary.Write(enc.w, enc.ch.Endianness, uint32(0)); err != nil {
-					return true, fmt.Errorf("could not write empty pointer: %v", err)
+					return true, fmt.Errorf("could not write empty pointer: %w", err)
 				}
 			} else {
 				return true, fmt.Errorf("embedded reference pointer cannot be NULL")
@@ -310,7 +356,7 @@ func (enc *Encoder) isTopLevelPointer(v reflect.Value, tag reflect.StructTag, de
 			}
 			err = binary.Write(enc.w, enc.ch.Endianness, uint32(0))
 			if err != nil {
-				err = fmt.Errorf("could not write pointer: %v", err)
+				err = fmt.Errorf("could not write pointer: %w", err)
 				return
 			}
 			// Signal that we move on and do not write the referrent (because it is null)
@@ -323,7 +369,7 @@ func (enc *Encoder) isTopLevelPointer(v reflect.Value, tag reflect.StructTag, de
 			if fullPointer {
 				err = enc.writePointer()
 				if err != nil {
-					err = fmt.Errorf("could not write pointer: %v", err)
+					err = fmt.Errorf("could not write pointer: %w", err)
 					return
 				}
 			}
@@ -354,7 +400,7 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 
 	topPointer, skipReferent, err := enc.isTopLevelPointer(v, tag, localDef)
 	if err != nil {
-		return fmt.Errorf("could not process struct field(%s): %v", strings.Join(enc.current, "/"), err)
+		return fmt.Errorf("could not process struct field(%s): %w", strings.Join(enc.current, "/"), err)
 	}
 	if skipReferent {
 		return nil
@@ -367,7 +413,7 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 		// Continue below to write the referent
 		err = enc.process(v, ndrTags.StructTag())
 		if err != nil {
-			return fmt.Errorf("could not process struct field(%s): %v", strings.Join(enc.current, "/"), err)
+			return fmt.Errorf("could not process struct field(%s): %w", strings.Join(enc.current, "/"), err)
 		}
 		return nil
 	}
@@ -381,14 +427,14 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 		ndrTag.delete(TagFullPointer)
 		err = enc.writePointer()
 		if err != nil {
-			return fmt.Errorf("could not write pointer for field(%s): %v", strings.Join(enc.current, "/"), err)
+			return fmt.Errorf("could not write pointer for field(%s): %w", strings.Join(enc.current, "/"), err)
 		}
 		*localDef = append(*localDef, deferedPtr{v: v, tag: ndrTag.StructTag()})
 		return nil
 	}
 	ptr, err := enc.isPointer(v, tag, localDef)
 	if err != nil {
-		return fmt.Errorf("could not process struct field(%s): %v", strings.Join(enc.current, "/"), err)
+		return fmt.Errorf("could not process struct field(%s): %w", strings.Join(enc.current, "/"), err)
 	}
 	if ptr {
 		log.Debugf("Found a ptr so skipping for now: %v\n", enc.current)
@@ -415,7 +461,7 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 		// NIL ptr
 		err = binary.Write(enc.w, enc.ch.Endianness, uint32(0))
 		if err != nil {
-			return fmt.Errorf("could not fill struct field(%s): %v", strings.Join(enc.current, "/"), err)
+			return fmt.Errorf("could not fill struct field(%s): %w", strings.Join(enc.current, "/"), err)
 		}
 	case reflect.Struct:
 		// NDR spec: struct alignment is the largest alignment of all its fields.
@@ -434,6 +480,12 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 		// the NDR wire format verified in Wireshark.
 		// Go through each field in the struct and recursively fill
 		for i := 0; i < v.NumField(); i++ {
+			// Unexported fields have no NDR representation. Skipping them
+			// mirrors encoding/json and keeps reflect from panicking on a
+			// value it is not allowed to read or set.
+			if v.Type().Field(i).PkgPath != "" {
+				continue
+			}
 			fieldName := v.Type().Field(i).Name
 			enc.current = append(enc.current, fieldName) //Track the current field being filled
 			structTag := v.Type().Field(i).Tag
@@ -444,14 +496,17 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 			// Union handling
 			if !unionTag.IsValid() {
 				// Is this field a union tag?
-				unionTag = enc.isUnion(v.Field(i), structTag)
+				unionTag, err = enc.isUnion(v.Field(i), structTag)
+				if err != nil {
+					return fmt.Errorf("could not process union discriminant field(%s): %w", strings.Join(enc.current, "/"), err)
+				}
 			} else {
 				// What is the selected field value of the union if we don't already know
 				if unionField == "" {
 					unionField, err = unionSelectedField(v, unionTag)
 					if err != nil {
 						return fmt.Errorf("could not determine selected union value field for %s with discriminat"+
-							" tag %s: %v", v.Type().Name(), unionTag, err)
+							" tag %s: %w", v.Type().Name(), unionTag, err)
 					}
 				}
 				if ndrTag.HasValue(TagUnionField) && fieldName != unionField {
@@ -480,7 +535,7 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 						mc, resolveErr = resolveSiblingFieldAsUint32(v, mcField)
 					}
 					if resolveErr != nil {
-						return fmt.Errorf("could not resolve maxcount for field(%s): %v",
+						return fmt.Errorf("could not resolve maxcount for field(%s): %w",
 							strings.Join(enc.current, "/"), resolveErr)
 					}
 					ndrTag.Map[TagMaxCount] = strconv.Itoa(int(mc))
@@ -493,22 +548,22 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 				// field is for rawbytes
 				structTag, err = addSizeToTag(v, v.Field(i), structTag)
 				if err != nil {
-					return fmt.Errorf("could not get rawbytes field(%s) size: %v", strings.Join(enc.current, "/"), err)
+					return fmt.Errorf("could not get rawbytes field(%s) size: %w", strings.Join(enc.current, "/"), err)
 				}
 				ptr, err := enc.isPointer(v.Field(i), structTag, localDef)
 				if err != nil {
-					return fmt.Errorf("could not process struct field(%s): %v", strings.Join(enc.current, "/"), err)
+					return fmt.Errorf("could not process struct field(%s): %w", strings.Join(enc.current, "/"), err)
 				}
 				if !ptr {
 					err := enc.writeRawBytes(v.Field(i), structTag)
 					if err != nil {
-						return fmt.Errorf("could not write raw bytes struct field(%s): %v", strings.Join(enc.current, "/"), err)
+						return fmt.Errorf("could not write raw bytes struct field(%s): %w", strings.Join(enc.current, "/"), err)
 					}
 				}
 			} else {
 				err := enc.fill(v.Field(i), structTag, localDef)
 				if err != nil {
-					return fmt.Errorf("could not fill struct field(%s): %v", strings.Join(enc.current, "/"), err)
+					return fmt.Errorf("could not fill struct field(%s): %w", strings.Join(enc.current, "/"), err)
 				}
 			}
 			enc.current = enc.current[:len(enc.current)-1] //This field has been filled so remove it from the current field tracker
@@ -517,47 +572,47 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 	case reflect.Bool:
 		err := enc.writeBool(v.Bool())
 		if err != nil {
-			return fmt.Errorf("could not fill %s: %v", v.Type().Name(), err)
+			return fmt.Errorf("could not fill %s: %w", v.Type().Name(), err)
 		}
 	case reflect.Uint8:
 		err := enc.writeUint8(uint8(v.Uint()))
 		if err != nil {
-			return fmt.Errorf("could not fill %s: %v", v.Type().Name(), err)
+			return fmt.Errorf("could not fill %s: %w", v.Type().Name(), err)
 		}
 	case reflect.Uint16:
 		err := enc.writeUint16(uint16(v.Uint()))
 		if err != nil {
-			return fmt.Errorf("could not fill %s: %v", v.Type().Name(), err)
+			return fmt.Errorf("could not fill %s: %w", v.Type().Name(), err)
 		}
 	case reflect.Uint32:
 		err := enc.writeUint32(uint32(v.Uint()))
 		if err != nil {
-			return fmt.Errorf("could not fill %s: %v", v.Type().Name(), err)
+			return fmt.Errorf("could not fill %s: %w", v.Type().Name(), err)
 		}
 	case reflect.Uint64:
 		err := enc.writeUint64(v.Uint())
 		if err != nil {
-			return fmt.Errorf("could not fill %s: %v", v.Type().Name(), err)
+			return fmt.Errorf("could not fill %s: %w", v.Type().Name(), err)
 		}
 	case reflect.Int8:
 		err := enc.writeInt8(int8(v.Int()))
 		if err != nil {
-			return fmt.Errorf("could not fill %s: %v", v.Type().Name(), err)
+			return fmt.Errorf("could not fill %s: %w", v.Type().Name(), err)
 		}
 	case reflect.Int16:
 		err := enc.writeInt16(int16(v.Int()))
 		if err != nil {
-			return fmt.Errorf("could not fill %s: %v", v.Type().Name(), err)
+			return fmt.Errorf("could not fill %s: %w", v.Type().Name(), err)
 		}
 	case reflect.Int32:
 		err := enc.writeInt32(int32(v.Int()))
 		if err != nil {
-			return fmt.Errorf("could not fill %s: %v", v.Type().Name(), err)
+			return fmt.Errorf("could not fill %s: %w", v.Type().Name(), err)
 		}
 	case reflect.Int64:
 		err := enc.writeInt64(int64(v.Int()))
 		if err != nil {
-			return fmt.Errorf("could not fill %s: %v", v.Type().Name(), err)
+			return fmt.Errorf("could not fill %s: %w", v.Type().Name(), err)
 		}
 	case reflect.String:
 		ndrTag := parseTags(tag)
@@ -570,17 +625,17 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 			s += "\x00"
 		}
 		if err := enc.writeVaryingString(s); err != nil {
-			return fmt.Errorf("could not write varying string: %v", err)
+			return fmt.Errorf("could not write varying string: %w", err)
 		}
 	case reflect.Float32:
 		err := enc.writeFloat32(float32(v.Float()))
 		if err != nil {
-			return fmt.Errorf("could not fill %v: %v", v.Type().Name(), err)
+			return fmt.Errorf("could not fill %v: %w", v.Type().Name(), err)
 		}
 	case reflect.Float64:
 		err := enc.writeFloat64(v.Float())
 		if err != nil {
-			return fmt.Errorf("could not fill %v: %v", v.Type().Name(), err)
+			return fmt.Errorf("could not fill %v: %w", v.Type().Name(), err)
 		}
 	case reflect.Array:
 		err := enc.writeFixedArray(v, tag, localDef)
@@ -626,14 +681,13 @@ func (enc *Encoder) fill(s interface{}, tag reflect.StructTag, localDef *[]defer
 			}
 		}
 	default:
-		fmt.Printf("unsupported type: %v\n", v.Kind())
-		return fmt.Errorf("unsupported type")
+		return fmt.Errorf("unsupported type %s for field(%s)", v.Kind(), strings.Join(enc.current, "/"))
 	}
 	return nil
 }
 
 func (enc *Encoder) ensureAlignment(n int) {
-	diff := enc.w.Len() % n
+	diff := (enc.w.Len() - enc.baseLen) % n
 	if diff > 0 {
 		//fmt.Printf("\nUsing %d bytes alignment\n\n", n-diff)
 		log.Debugf("\nUsing %d bytes alignment\n\n", n-diff)

@@ -24,9 +24,12 @@ const (
 	AcceptHeaderEnumApplicationJson                                      AcceptHeaderEnum = "application/json"
 	AcceptHeaderEnumApplicationProblemPlusJson                           AcceptHeaderEnum = "application/problem+json"
 	AcceptHeaderEnumApplicationVndCensysApiV3CertificateV1PlusJson       AcceptHeaderEnum = "application/vnd.censys.api.v3.certificate.v1+json"
+	AcceptHeaderEnumApplicationXPemFile                                  AcceptHeaderEnum = "application/x-pem-file"
+	AcceptHeaderEnumApplicationVndCensysApiV3HostEnrichmentV1PlusJson    AcceptHeaderEnum = "application/vnd.censys.api.v3.host-enrichment.v1+json"
 	AcceptHeaderEnumApplicationVndCensysApiV3HostV1PlusJson              AcceptHeaderEnum = "application/vnd.censys.api.v3.host.v1+json"
 	AcceptHeaderEnumApplicationVndCensysApiV3HostTimelineEventV1PlusJson AcceptHeaderEnum = "application/vnd.censys.api.v3.host_timeline_event.v1+json"
 	AcceptHeaderEnumApplicationVndCensysApiV3WebpropertyV1PlusJson       AcceptHeaderEnum = "application/vnd.censys.api.v3.webproperty.v1+json"
+	AcceptHeaderEnumApplicationVndCensysApiV3WebTimelineEventV1PlusJson  AcceptHeaderEnum = "application/vnd.censys.api.v3.web_timeline_event.v1+json"
 	AcceptHeaderEnumApplicationVndCensysApiV3TrackedscanV1PlusJson       AcceptHeaderEnum = "application/vnd.censys.api.v3.trackedscan.v1+json"
 )
 
@@ -80,7 +83,7 @@ func WithRetries(config retry.Config) Option {
 // WithOperationTimeout allows setting the request timeout applied for an operation.
 func WithOperationTimeout(timeout time.Duration) Option {
 	return func(opts *Options, supportedOptions ...string) error {
-		if !utils.Contains(supportedOptions, SupportedOptionRetries) {
+		if !utils.Contains(supportedOptions, SupportedOptionTimeout) {
 			return ErrUnsupportedOption
 		}
 

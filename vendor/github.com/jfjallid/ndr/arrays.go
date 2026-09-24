@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 )
 
 // typeAlignment returns the NDR alignment requirement for a Go type.
@@ -65,6 +66,9 @@ func structAlignment(t reflect.Type) int {
 	}
 	maxAlign := 1
 	for i := 0; i < t.NumField(); i++ {
+		if t.Field(i).PkgPath != "" {
+			continue // unexported: no NDR representation
+		}
 		ft := t.Field(i).Type
 		// Fields tagged as pointers have alignment 4 (referent ID), not the
 		// alignment of the pointed-to type (which is deferred).
@@ -89,7 +93,7 @@ func intFromTag(tag reflect.StructTag, key string) (int, error) {
 	if n, ok := ndrTag.Map[key]; ok {
 		i, err := strconv.Atoi(n)
 		if err != nil {
-			return d, fmt.Errorf("invalid dimensions tag [%s]: %v", n, err)
+			return d, fmt.Errorf("invalid dimensions tag [%s]: %w", n, err)
 		}
 		d = i
 	}
@@ -177,11 +181,17 @@ func multiDimensionalIndexPermutations(l []int) (ps [][]int) {
 	return
 }
 
-// precedingMax reads off the next conformant max value
-func (dec *Decoder) precedingMax() uint32 {
+// precedingMax reads off the next conformant max value. Running out of them
+// means the conformant scan and the fill disagree about the shape of the
+// structure, which is a bug in the struct's tags rather than in the stream.
+func (dec *Decoder) precedingMax() (uint32, error) {
+	if len(dec.conformantMax) == 0 {
+		return 0, Errorf("no conformant max count available for field(%s); check the ndr struct tags",
+			strings.Join(dec.current, "/"))
+	}
 	m := dec.conformantMax[0]
 	dec.conformantMax = dec.conformantMax[1:]
-	return m
+	return m, nil
 }
 
 // precedingMax reads off the next conformant max value
@@ -203,7 +213,7 @@ func (dec *Decoder) fillFixedArray(v reflect.Value, tag reflect.StructTag, def *
 	if len(l) == 1 {
 		err := dec.fillUniDimensionalFixedArray(v, tag, def)
 		if err != nil {
-			return fmt.Errorf("could not fill uni-dimensional fixed array: %v", err)
+			return fmt.Errorf("could not fill uni-dimensional fixed array: %w", err)
 		}
 		return nil
 	}
@@ -218,7 +228,7 @@ func (dec *Decoder) fillFixedArray(v reflect.Value, tag reflect.StructTag, def *
 		// fill with the last dimension array
 		err := dec.fillUniDimensionalFixedArray(a, tag, def)
 		if err != nil {
-			return fmt.Errorf("could not fill dimension %v of multi-dimensional fixed array: %v", p, err)
+			return fmt.Errorf("could not fill dimension %v of multi-dimensional fixed array: %w", p, err)
 		}
 	}
 	return nil
@@ -229,7 +239,7 @@ func (dec *Decoder) fillUniDimensionalFixedArray(v reflect.Value, tag reflect.St
 	for i := 0; i < v.Len(); i++ {
 		err := dec.fill(v.Index(i), tag, def)
 		if err != nil {
-			return fmt.Errorf("could not fill index %d of fixed array: %v", i, err)
+			return fmt.Errorf("could not fill index %d of fixed array: %w", i, err)
 		}
 	}
 	return nil
@@ -254,14 +264,19 @@ func (dec *Decoder) fillConformantArray(v reflect.Value, tag reflect.StructTag, 
 
 // fillUniDimensionalConformantArray fills the uni-dimensional slice value.
 func (dec *Decoder) fillUniDimensionalConformantArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
-	m := dec.precedingMax()
+	m, err := dec.precedingMax()
+	if err != nil {
+		return err
+	}
+	if err := dec.checkAllocCount(uint64(m), v.Type().Elem(), "conformant array"); err != nil {
+		return err
+	}
 	n := int(m)
-	//fmt.Printf("Encountered conformant array with max count: %d for field: %v\n", m, dec.current)
 	a := reflect.MakeSlice(v.Type(), n, n)
 	for i := 0; i < n; i++ {
 		err := dec.fill(a.Index(i), tag, def)
 		if err != nil {
-			return fmt.Errorf("could not fill index %d of uni-dimensional conformant array: %v", i, err)
+			return fmt.Errorf("could not fill index %d of uni-dimensional conformant array: %w", i, err)
 		}
 	}
 	v.Set(a)
@@ -274,8 +289,18 @@ func (dec *Decoder) fillUniDimensionalConformantArray(v reflect.Value, tag refle
 func (dec *Decoder) fillMultiDimensionalConformantArray(v reflect.Value, d int, tag reflect.StructTag, def *[]deferedPtr) error {
 	// Read the max size of each dimensions from the ndr stream
 	l := make([]int, d, d)
+	dims := make([]uint64, d)
 	for i := range l {
-		l[i] = int(dec.precedingMax())
+		m, err := dec.precedingMax()
+		if err != nil {
+			return err
+		}
+		dims[i] = uint64(m)
+		l[i] = int(m)
+	}
+	_, elem := sliceDimensions(v.Type())
+	if err := dec.checkAllocDims(dims, elem, "multi-dimensional conformant array"); err != nil {
+		return err
 	}
 	// Initialise size of slices
 	//   Initialise the size of the 1st dimension
@@ -294,7 +319,7 @@ func (dec *Decoder) fillMultiDimensionalConformantArray(v reflect.Value, d int, 
 		}
 		err := dec.fill(a, tag, def)
 		if err != nil {
-			return fmt.Errorf("could not fill index %v of slice: %v", p, err)
+			return fmt.Errorf("could not fill index %v of slice: %w", p, err)
 		}
 	}
 	return nil
@@ -321,21 +346,26 @@ func (dec *Decoder) fillVaryingArray(v reflect.Value, tag reflect.StructTag, def
 func (dec *Decoder) fillUniDimensionalVaryingArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
 	o, err := dec.readUint32()
 	if err != nil {
-		return fmt.Errorf("could not read offset of uni-dimensional varying array: %v", err)
+		return fmt.Errorf("could not read offset of uni-dimensional varying array: %w", err)
 	}
 	s, err := dec.readUint32()
 	if err != nil {
-		return fmt.Errorf("could not establish actual count of uni-dimensional varying array: %v", err)
+		return fmt.Errorf("could not establish actual count of uni-dimensional varying array: %w", err)
 	}
 	t := v.Type()
 	// Total size of the array is the offset in the index being passed plus the actual count of elements being passed.
-	n := int(s + o)
+	// Computed as uint64: in uint32 the sum can wrap and silently truncate the array.
+	total := uint64(o) + uint64(s)
+	if err := dec.checkAllocCount(total, t.Elem(), "varying array"); err != nil {
+		return err
+	}
+	n := int(total)
 	a := reflect.MakeSlice(t, n, n)
 	// Populate the array starting at the offset specified
 	for i := int(o); i < n; i++ {
 		err := dec.fill(a.Index(i), tag, def)
 		if err != nil {
-			return fmt.Errorf("could not fill index %d of uni-dimensional varying array: %v", i, err)
+			return fmt.Errorf("could not fill index %d of uni-dimensional varying array: %w", i, err)
 		}
 	}
 	v.Set(a)
@@ -349,17 +379,22 @@ func (dec *Decoder) fillMultiDimensionalVaryingArray(v reflect.Value, t reflect.
 	// Read the offset and actual count of each dimensions from the ndr stream
 	o := make([]int, d, d)
 	l := make([]int, d, d)
+	dims := make([]uint64, d)
 	for i := range l {
 		off, err := dec.readUint32()
 		if err != nil {
-			return fmt.Errorf("could not read offset of dimension %d: %v", i+1, err)
+			return fmt.Errorf("could not read offset of dimension %d: %w", i+1, err)
 		}
 		o[i] = int(off)
 		s, err := dec.readUint32()
 		if err != nil {
-			return fmt.Errorf("could not read size of dimension %d: %v", i+1, err)
+			return fmt.Errorf("could not read size of dimension %d: %w", i+1, err)
 		}
-		l[i] = int(s) + int(off)
+		dims[i] = uint64(off) + uint64(s)
+		l[i] = int(dims[i])
+	}
+	if err := dec.checkAllocDims(dims, t, "multi-dimensional varying array"); err != nil {
+		return err
 	}
 	// Initialise size of slices
 	//   Initialise the size of the 1st dimension
@@ -387,7 +422,7 @@ func (dec *Decoder) fillMultiDimensionalVaryingArray(v reflect.Value, t reflect.
 		}
 		err := dec.fill(a, tag, def)
 		if err != nil {
-			return fmt.Errorf("could not fill index %v of slice: %v", p, err)
+			return fmt.Errorf("could not fill index %v of slice: %w", p, err)
 		}
 	}
 	return nil
@@ -415,25 +450,34 @@ func (dec *Decoder) fillConformantVaryingArray(v reflect.Value, tag reflect.Stru
 // positions [offset, offset+actual_count). The first `offset` slots are
 // zero-valued placeholders, matching the varying-only sibling.
 func (dec *Decoder) fillUniDimensionalConformantVaryingArray(v reflect.Value, tag reflect.StructTag, def *[]deferedPtr) error {
-	m := dec.precedingMax()
+	m, err := dec.precedingMax()
+	if err != nil {
+		return err
+	}
 	o, err := dec.readUint32()
 	if err != nil {
-		return fmt.Errorf("could not read offset of uni-dimensional conformant varying array: %v", err)
+		return fmt.Errorf("could not read offset of uni-dimensional conformant varying array: %w", err)
 	}
 	s, err := dec.readUint32()
 	if err != nil {
-		return fmt.Errorf("could not establish actual count of uni-dimensional conformant varying array: %v", err)
+		return fmt.Errorf("could not establish actual count of uni-dimensional conformant varying array: %w", err)
 	}
-	if m < o+s {
+	// uint64 throughout: offset + actual count can wrap in uint32, which would
+	// turn an oversized pair into a spuriously valid one.
+	total := uint64(o) + uint64(s)
+	if uint64(m) < total {
 		return errors.New("max count is less than the offset plus actual count")
 	}
 	t := v.Type()
-	n := int(s + o)
+	if err := dec.checkAllocCount(total, t.Elem(), "conformant varying array"); err != nil {
+		return err
+	}
+	n := int(total)
 	a := reflect.MakeSlice(t, n, n)
 	for i := int(o); i < n; i++ {
 		err := dec.fill(a.Index(i), tag, def)
 		if err != nil {
-			return fmt.Errorf("could not fill index %d of uni-dimensional conformant varying array: %v", i, err)
+			return fmt.Errorf("could not fill index %d of uni-dimensional conformant varying array: %w", i, err)
 		}
 	}
 	v.Set(a)
@@ -448,26 +492,35 @@ func (dec *Decoder) fillMultiDimensionalConformantVaryingArray(v reflect.Value, 
 	// Per C706 §14.3.7.2, max_count >= actual_count + offset; transmitted
 	// elements occupy indices [offset, offset+actual_count). Slice size matches
 	// the transmitted range (actual+offset), like the uni-dim sibling.
-	m := make([]int, d)
+	m := make([]uint64, d)
 	for i := range m {
-		m[i] = int(dec.precedingMax())
+		mx, err := dec.precedingMax()
+		if err != nil {
+			return err
+		}
+		m[i] = uint64(mx)
 	}
 	o := make([]int, d)
 	l := make([]int, d)
+	dims := make([]uint64, d)
 	for i := range l {
 		off, err := dec.readUint32()
 		if err != nil {
-			return fmt.Errorf("could not read offset of dimension %d: %v", i+1, err)
+			return fmt.Errorf("could not read offset of dimension %d: %w", i+1, err)
 		}
 		o[i] = int(off)
 		s, err := dec.readUint32()
 		if err != nil {
-			return fmt.Errorf("could not read actual count of dimension %d: %v", i+1, err)
+			return fmt.Errorf("could not read actual count of dimension %d: %w", i+1, err)
 		}
-		if m[i] < int(s)+int(off) {
+		dims[i] = uint64(off) + uint64(s)
+		if m[i] < dims[i] {
 			return fmt.Errorf("max count %d is less than offset %d plus actual count %d for dimension %d", m[i], off, s, i+1)
 		}
-		l[i] = int(s) + int(off)
+		l[i] = int(dims[i])
+	}
+	if err := dec.checkAllocDims(dims, t, "multi-dimensional conformant varying array"); err != nil {
+		return err
 	}
 	// Initialise size of slices
 	//   Initialise the size of the 1st dimension
@@ -495,7 +548,7 @@ func (dec *Decoder) fillMultiDimensionalConformantVaryingArray(v reflect.Value, 
 		}
 		err := dec.fill(a, tag, def)
 		if err != nil {
-			return fmt.Errorf("could not fill index %v of slice: %v", p, err)
+			return fmt.Errorf("could not fill index %v of slice: %w", p, err)
 		}
 	}
 	return nil
@@ -512,7 +565,7 @@ func (enc *Encoder) writeFixedArray(v reflect.Value, tag reflect.StructTag, def 
 	if len(l) == 1 {
 		err := enc.writeUniDimensionalFixedArray(v, tag, def)
 		if err != nil {
-			return fmt.Errorf("could not fill uni-dimensional fixed array: %v", err)
+			return fmt.Errorf("could not fill uni-dimensional fixed array: %w", err)
 		}
 		return nil
 	}
@@ -527,7 +580,7 @@ func (enc *Encoder) writeFixedArray(v reflect.Value, tag reflect.StructTag, def 
 		// write the last dimension array
 		err := enc.writeUniDimensionalFixedArray(a, tag, def)
 		if err != nil {
-			return fmt.Errorf("could not write dimension %v of multi-dimensional fixed array: %v", p, err)
+			return fmt.Errorf("could not write dimension %v of multi-dimensional fixed array: %w", p, err)
 		}
 	}
 	return nil
@@ -537,7 +590,7 @@ func (enc *Encoder) writeUniDimensionalFixedArray(v reflect.Value, tag reflect.S
 	for i := 0; i < v.Len(); i++ {
 		err := enc.fill(v.Index(i), tag, def)
 		if err != nil {
-			return fmt.Errorf("could not fill index %d of fixed array: %v", i, err)
+			return fmt.Errorf("could not fill index %d of fixed array: %w", i, err)
 		}
 	}
 	return nil
@@ -572,7 +625,7 @@ func (enc *Encoder) writeMultiDimensionalConformantArray(v reflect.Value, d int,
 		}
 		err := enc.fill(a, tag, def)
 		if err != nil {
-			return fmt.Errorf("could not write index %v of multi-dimensional conformant array: %v", p, err)
+			return fmt.Errorf("could not write index %v of multi-dimensional conformant array: %w", p, err)
 		}
 	}
 	return nil
@@ -602,11 +655,11 @@ func (enc *Encoder) writeMultiDimensionalVaryingArray(v reflect.Value, d int, ta
 		// offset is always 0
 		err := enc.writeUint32(uint32(0))
 		if err != nil {
-			return fmt.Errorf("could not write offset of dimension %d: %v", i+1, err)
+			return fmt.Errorf("could not write offset of dimension %d: %w", i+1, err)
 		}
 		err = enc.writeUint32(uint32(l[i]))
 		if err != nil {
-			return fmt.Errorf("could not write actual count of dimension %d: %v", i+1, err)
+			return fmt.Errorf("could not write actual count of dimension %d: %w", i+1, err)
 		}
 	}
 
@@ -619,7 +672,7 @@ func (enc *Encoder) writeMultiDimensionalVaryingArray(v reflect.Value, d int, ta
 		}
 		err := enc.writeUniDimensionalFixedArray(a, tag, def)
 		if err != nil {
-			return fmt.Errorf("could not write dimension %v of multi-dimensional varying array: %v", p, err)
+			return fmt.Errorf("could not write dimension %v of multi-dimensional varying array: %w", p, err)
 		}
 	}
 	return nil
@@ -630,15 +683,15 @@ func (enc *Encoder) writeUniDimensionalVaryingArray(v reflect.Value, tag reflect
 	// Use an offset of 0
 	err := enc.writeUint32(uint32(0))
 	if err != nil {
-		return fmt.Errorf("could not write offset of uni-dimensional varying array: %v", err)
+		return fmt.Errorf("could not write offset of uni-dimensional varying array: %w", err)
 	}
 	err = enc.writeUint32(uint32(v.Len()))
 	if err != nil {
-		return fmt.Errorf("could not write actual count of uni-dimensional varying array: %v", err)
+		return fmt.Errorf("could not write actual count of uni-dimensional varying array: %w", err)
 	}
 	err = enc.writeUniDimensionalFixedArray(v, tag, def)
 	if err != nil {
-		return fmt.Errorf("could not write uni-dimensional varying array: %v", err)
+		return fmt.Errorf("could not write uni-dimensional varying array: %w", err)
 	}
 	return nil
 }
@@ -668,11 +721,11 @@ func (enc *Encoder) writeMultiDimensionalConformantVaryingArray(v reflect.Value,
 		// offset is always 0
 		err := enc.writeUint32(uint32(0))
 		if err != nil {
-			return fmt.Errorf("could not write offset of dimension %d: %v", i+1, err)
+			return fmt.Errorf("could not write offset of dimension %d: %w", i+1, err)
 		}
 		err = enc.writeUint32(uint32(l[i]))
 		if err != nil {
-			return fmt.Errorf("could not write actual count of dimension %d: %v", i+1, err)
+			return fmt.Errorf("could not write actual count of dimension %d: %w", i+1, err)
 		}
 	}
 
@@ -685,7 +738,7 @@ func (enc *Encoder) writeMultiDimensionalConformantVaryingArray(v reflect.Value,
 		}
 		err := enc.writeUniDimensionalFixedArray(a, tag, def)
 		if err != nil {
-			return fmt.Errorf("could not write dimension %v of multi-dimensional conformant varying array: %v", p, err)
+			return fmt.Errorf("could not write dimension %v of multi-dimensional conformant varying array: %w", p, err)
 		}
 	}
 	return nil

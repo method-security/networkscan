@@ -2,11 +2,6 @@
 
 package components
 
-import (
-	"encoding/json"
-	"fmt"
-)
-
 type ServiceScanTransportProtocol string
 
 const (
@@ -20,995 +15,1609 @@ const (
 func (e ServiceScanTransportProtocol) ToPointer() *ServiceScanTransportProtocol {
 	return &e
 }
-func (e *ServiceScanTransportProtocol) UnmarshalJSON(data []byte) error {
-	var v string
-	if err := json.Unmarshal(data, &v); err != nil {
-		return err
+
+// IsExact returns true if the value matches a known enum value, false otherwise.
+func (e *ServiceScanTransportProtocol) IsExact() bool {
+	if e != nil {
+		switch *e {
+		case "", "tcp", "udp", "icmp", "quic":
+			return true
+		}
 	}
-	switch v {
-	case "":
-		fallthrough
-	case "tcp":
-		fallthrough
-	case "udp":
-		fallthrough
-	case "icmp":
-		fallthrough
-	case "quic":
-		*e = ServiceScanTransportProtocol(v)
-		return nil
-	default:
-		return fmt.Errorf("invalid value for ServiceScanTransportProtocol: %v", v)
-	}
+	return false
 }
 
 type ServiceScan struct {
-	Activemq           *Activemq                     `json:"activemq,omitempty"`
-	Amqp               *Amqp                         `json:"amqp,omitempty"`
-	AnyConnect         *AnyConnect                   `json:"any_connect,omitempty"`
-	Bacnet             *Bacnet                       `json:"bacnet,omitempty"`
-	Banner             *string                       `json:"banner,omitempty"`
-	BannerHashSha256   *string                       `json:"banner_hash_sha256,omitempty"`
-	CheckpointTopology *CheckpointTopology           `json:"checkpoint_topology,omitempty"`
-	Chromecast         *Chromecast                   `json:"chromecast,omitempty"`
-	CiscoIpsla         *CiscoIpsla                   `json:"cisco_ipsla,omitempty"`
-	Cmore              *Cmore                        `json:"cmore,omitempty"`
-	Coap               *Coap                         `json:"coap,omitempty"`
-	CrestronCp3        *CrestronCp3                  `json:"crestron_cp3,omitempty"`
-	CrestronDinAp2     *CrestronDinAp2               `json:"crestron_din_ap2,omitempty"`
-	Cwmp               *Cwmp                         `json:"cwmp,omitempty"`
-	Darkcomet          *Darkcomet                    `json:"darkcomet,omitempty"`
-	Darkgate           *Darkgate                     `json:"darkgate,omitempty"`
-	Dcerpc             *Dcerpc                       `json:"dcerpc,omitempty"`
-	Dhcpdiscover       *Dhcpdiscover                 `json:"dhcpdiscover,omitempty"`
-	Dnp3               *Dnp3                         `json:"dnp3,omitempty"`
-	DNS                *DNS                          `json:"dns,omitempty"`
-	Dtls               *Dtls                         `json:"dtls,omitempty"`
-	DvrIP              *DvrIP                        `json:"dvr_ip,omitempty"`
-	Eip                *Eip                          `json:"eip,omitempty"`
-	ElfFile            *ElfFile                      `json:"elf_file,omitempty"`
-	Epmd               *Epmd                         `json:"epmd,omitempty"`
-	Etcd               *Etcd                         `json:"etcd,omitempty"`
-	Ethereum           *Ethereum                     `json:"ethereum,omitempty"`
-	Fox                *Fox                          `json:"fox,omitempty"`
-	Ftp                *Ftp                          `json:"ftp,omitempty"`
-	Gearman            *Gearman                      `json:"gearman,omitempty"`
-	HidVertx           *HidVertx                     `json:"hid_vertx,omitempty"`
-	Hikvision          *Hikvision                    `json:"hikvision,omitempty"`
-	Ibmnje             *Ibmnje                       `json:"ibmnje,omitempty"`
-	Ike                *Ike                          `json:"ike,omitempty"`
-	Imap               *Imap                         `json:"imap,omitempty"`
-	Iota               *Iota                         `json:"iota,omitempty"`
-	IP                 *string                       `json:"ip,omitempty"`
-	Ipmi               *Ipmi                         `json:"ipmi,omitempty"`
-	Ipp                *Ipp                          `json:"ipp,omitempty"`
-	IsSuccess          *bool                         `json:"is_success,omitempty"`
-	Iscsi              *Iscsi                        `json:"iscsi,omitempty"`
-	Krpc               *Krpc                         `json:"krpc,omitempty"`
-	L2tp               *L2Tp                         `json:"l2tp,omitempty"`
-	Ldap               *Ldap                         `json:"ldap,omitempty"`
-	Lpd                *Lpd                          `json:"lpd,omitempty"`
-	Mdns               *Mdns                         `json:"mdns,omitempty"`
-	Memcached          *Memcached                    `json:"memcached,omitempty"`
-	Minecraft          *Minecraft                    `json:"minecraft,omitempty"`
-	Mms                *Mms                          `json:"mms,omitempty"`
-	Modbus             *Modbus                       `json:"modbus,omitempty"`
-	MoneroP2p          *MoneroP2P                    `json:"monero_p2p,omitempty"`
-	Mongodb            *Mongodb                      `json:"mongodb,omitempty"`
-	Mqtt               *Mqtt                         `json:"mqtt,omitempty"`
-	Mssql              *Mssql                        `json:"mssql,omitempty"`
-	Murmur             *Murmur                       `json:"murmur,omitempty"`
-	Mysql              *Mysql                        `json:"mysql,omitempty"`
-	NatsIo             *NatsIo                       `json:"nats_io,omitempty"`
-	Nbd                *Nbd                          `json:"nbd,omitempty"`
-	NfsMountd          *NfsMountd                    `json:"nfs_mountd,omitempty"`
-	Nmea               *Nmea                         `json:"nmea,omitempty"`
-	Ntp                *Ntp                          `json:"ntp,omitempty"`
-	Ntrip              *Ntrip                        `json:"ntrip,omitempty"`
-	Onc                *Onc                          `json:"onc,omitempty"`
-	Onvif              *Onvif                        `json:"onvif,omitempty"`
-	OpcUa              *OpcUa                        `json:"opc_ua,omitempty"`
-	Openvpn            *Openvpn                      `json:"openvpn,omitempty"`
-	Oracle             *Oracle                       `json:"oracle,omitempty"`
-	PcAnywhere         *PcAnywhere                   `json:"pc_anywhere,omitempty"`
-	Pgbouncer          *Pgbouncer                    `json:"pgbouncer,omitempty"`
-	Pop3               *Pop3                         `json:"pop3,omitempty"`
-	Port               *int                          `json:"port,omitempty"`
-	Portmap            *Portmap                      `json:"portmap,omitempty"`
-	Postgres           *Postgres                     `json:"postgres,omitempty"`
-	Pptp               *Pptp                         `json:"pptp,omitempty"`
-	ProfinetCm         *ProfinetCm                   `json:"profinet_cm,omitempty"`
-	Protocol           *string                       `json:"protocol,omitempty"`
-	Rdate              *Rdate                        `json:"rdate,omitempty"`
-	Rdp                *Rdp                          `json:"rdp,omitempty"`
-	Realport           *Realport                     `json:"realport,omitempty"`
-	Redis              *Redis                        `json:"redis,omitempty"`
-	Redline            *Redline                      `json:"redline,omitempty"`
-	RedlionCrimson     *RedlionCrimson               `json:"redlion_crimson,omitempty"`
-	RepresentativeInfo *RepresentativeInfo           `json:"representative_info,omitempty"`
-	Rifatron           *Rifatron                     `json:"rifatron,omitempty"`
-	Ripple             *Ripple                       `json:"ripple,omitempty"`
-	Rlogin             *Rlogin                       `json:"rlogin,omitempty"`
-	Rocketmq           *Rocketmq                     `json:"rocketmq,omitempty"`
-	Rtsp               *Rtsp                         `json:"rtsp,omitempty"`
-	S7                 *S7                           `json:"s7,omitempty"`
-	SapRouter          *SapRouter                    `json:"sap_router,omitempty"`
-	ScanTime           *string                       `json:"scan_time,omitempty"`
-	Scpi               *Scpi                         `json:"scpi,omitempty"`
-	Screenshots        []Screenshot                  `json:"screenshots,omitempty"`
-	Ser2net            *Ser2Net                      `json:"ser2net,omitempty"`
-	SevenDaysToDie     *SevenDaysToDie               `json:"seven_days_to_die,omitempty"`
-	Sip                *Sip                          `json:"sip,omitempty"`
-	Skinny             *Skinny                       `json:"skinny,omitempty"`
-	Smb                *Smb                          `json:"smb,omitempty"`
-	SMTP               *SMTP                         `json:"smtp,omitempty"`
-	Snmp               *Snmp                         `json:"snmp,omitempty"`
-	Socks              *Socks                        `json:"socks,omitempty"`
-	Spice              *Spice                        `json:"spice,omitempty"`
-	Ssdp               *Ssdp                         `json:"ssdp,omitempty"`
-	SSH                *SSH                          `json:"ssh,omitempty"`
-	Steam              *Steam                        `json:"steam,omitempty"`
-	TacacsPlus         *TacacsPlus                   `json:"tacacs_plus,omitempty"`
-	TeamViewer         *TeamViewer                   `json:"team_viewer,omitempty"`
-	Telnet             *Telnet                       `json:"telnet,omitempty"`
-	Tibia              *Tibia                        `json:"tibia,omitempty"`
-	TLS                *TLS                          `json:"tls,omitempty"`
-	TplinkKasa         *TplinkKasa                   `json:"tplink_kasa,omitempty"`
-	TransportProtocol  *ServiceScanTransportProtocol `json:"transport_protocol,omitempty"`
-	UnitronicsPcom     *UnitronicsPcom               `json:"unitronics_pcom,omitempty"`
-	Upnp               *Upnp                         `json:"upnp,omitempty"`
-	Ventrilo           *Ventrilo                     `json:"ventrilo,omitempty"`
-	Vnc                *Vnc                          `json:"vnc,omitempty"`
-	WeblogicT3         *WeblogicT3                   `json:"weblogic_t3,omitempty"`
-	Winrm              *Winrm                        `json:"winrm,omitempty"`
-	WsDiscovery        *WsDiscovery                  `json:"ws_discovery,omitempty"`
-	X11                *X11                          `json:"x11,omitempty"`
-	Zeromq             *Zeromq                       `json:"zeromq,omitempty"`
+	Activemq                 *Activemq                     `json:"activemq,omitempty"`
+	Amqp                     *Amqp                         `json:"amqp,omitempty"`
+	AnermaCfForth            *AnermaCfForth                `json:"anerma_cf_forth,omitempty"`
+	AnyConnect               *AnyConnect                   `json:"any_connect,omitempty"`
+	AsteriskManagerInterface *AsteriskManagerInterface     `json:"asterisk_manager_interface,omitempty"`
+	Bacnet                   *Bacnet                       `json:"bacnet,omitempty"`
+	Banner                   *string                       `json:"banner,omitempty"`
+	BannerHashSha256         *string                       `json:"banner_hash_sha256,omitempty"`
+	BluemaxNuttcp            *BluemaxNuttcp                `json:"bluemax_nuttcp,omitempty"`
+	CheckpointTopology       *CheckpointTopology           `json:"checkpoint_topology,omitempty"`
+	Chromecast               *Chromecast                   `json:"chromecast,omitempty"`
+	CiscoIpsla               *CiscoIpsla                   `json:"cisco_ipsla,omitempty"`
+	CiscoSdwanVdaemon        *CiscoSdwanVdaemon            `json:"cisco_sdwan_vdaemon,omitempty"`
+	Clamav                   *Clamav                       `json:"clamav,omitempty"`
+	ClickhouseNative         *ClickHouseNative             `json:"clickhouse_native,omitempty"`
+	Cmore                    *Cmore                        `json:"cmore,omitempty"`
+	CnordSecurityCenter      *CnordSecurityCenter          `json:"cnord_security_center,omitempty"`
+	Coap                     *Coap                         `json:"coap,omitempty"`
+	ComelitIcona             *ComelitIcona                 `json:"comelit_icona,omitempty"`
+	CortexXdrP2p             *CortexXdrP2P                 `json:"cortex_xdr_p2p,omitempty"`
+	CrestronCp3              *CrestronCp3                  `json:"crestron_cp3,omitempty"`
+	CrestronDinAp2           *CrestronDinAp2               `json:"crestron_din_ap2,omitempty"`
+	CursorOnTarget           *CursorOnTarget               `json:"cursor_on_target,omitempty"`
+	Cwmp                     *Cwmp                         `json:"cwmp,omitempty"`
+	Darkcomet                *Darkcomet                    `json:"darkcomet,omitempty"`
+	Darkgate                 *Darkgate                     `json:"darkgate,omitempty"`
+	Dcerpc                   *Dcerpc                       `json:"dcerpc,omitempty"`
+	DenonHeos                *DenonHeos                    `json:"denon_heos,omitempty"`
+	Dhcpdiscover             *Dhcpdiscover                 `json:"dhcpdiscover,omitempty"`
+	Dicom                    *Dicom                        `json:"dicom,omitempty"`
+	Dlt                      *Dlt                          `json:"dlt,omitempty"`
+	Dnp3                     *Dnp3                         `json:"dnp3,omitempty"`
+	DNS                      *DNS                          `json:"dns,omitempty"`
+	DotnetNegotiateStream    *DotnetNegotiateStream        `json:"dotnet_negotiate_stream,omitempty"`
+	Dtls                     *Dtls                         `json:"dtls,omitempty"`
+	Dubbo                    *Dubbo                        `json:"dubbo,omitempty"`
+	DvrIP                    *DvrIP                        `json:"dvr_ip,omitempty"`
+	Eip                      *Eip                          `json:"eip,omitempty"`
+	ElasticsearchTransport   *ElasticsearchTransport       `json:"elasticsearch_transport,omitempty"`
+	ElfFile                  *ElfFile                      `json:"elf_file,omitempty"`
+	Epmd                     *Epmd                         `json:"epmd,omitempty"`
+	Etcd                     *Etcd                         `json:"etcd,omitempty"`
+	Ethereum                 *Ethereum                     `json:"ethereum,omitempty"`
+	Fins                     *Fins                         `json:"fins,omitempty"`
+	FlashSocketPolicy        *FlashSocketPolicy            `json:"flash_socket_policy,omitempty"`
+	FourdServer              *FourdServer                  `json:"fourd_server,omitempty"`
+	Fox                      *Fox                          `json:"fox,omitempty"`
+	Frps                     *Frps                         `json:"frps,omitempty"`
+	Ftp                      *Ftp                          `json:"ftp,omitempty"`
+	Gearman                  *Gearman                      `json:"gearman,omitempty"`
+	Gemini                   *Gemini                       `json:"gemini,omitempty"`
+	GeovisionAudio           *GeovisionAudio               `json:"geovision_audio,omitempty"`
+	Giop                     *Giop                         `json:"giop,omitempty"`
+	Gopher                   *Gopher                       `json:"gopher,omitempty"`
+	GrilConsole              *GrilConsole                  `json:"gril_console,omitempty"`
+	Hajime                   *Hajime                       `json:"hajime,omitempty"`
+	HidVertx                 *HidVertx                     `json:"hid_vertx,omitempty"`
+	Hikvision                *Hikvision                    `json:"hikvision,omitempty"`
+	HoosatHtndGrpc           *HoosatHtndGrpc               `json:"hoosat_htnd_grpc,omitempty"`
+	Ibmnje                   *Ibmnje                       `json:"ibmnje,omitempty"`
+	Icap                     *Icap                         `json:"icap,omitempty"`
+	Iec608705104             *Iec608705104                 `json:"iec60870_5_104,omitempty"`
+	Ike                      *Ike                          `json:"ike,omitempty"`
+	Imap                     *Imap                         `json:"imap,omitempty"`
+	Iota                     *Iota                         `json:"iota,omitempty"`
+	IP                       *string                       `json:"ip,omitempty"`
+	Iperf3                   *Iperf3                       `json:"iperf3,omitempty"`
+	Ipmi                     *Ipmi                         `json:"ipmi,omitempty"`
+	Ipp                      *Ipp                          `json:"ipp,omitempty"`
+	IsSuccess                *bool                         `json:"is_success,omitempty"`
+	IscDhcpOmapi             *IscDhcpOmapi                 `json:"isc_dhcp_omapi,omitempty"`
+	Iscsi                    *Iscsi                        `json:"iscsi,omitempty"`
+	JavaRmi                  *JavaRmi                      `json:"java_rmi,omitempty"`
+	KcodesNetusb             *KcodesNetusb                 `json:"kcodes_netusb,omitempty"`
+	Knxip                    *Knxip                        `json:"knxip,omitempty"`
+	Krpc                     *Krpc                         `json:"krpc,omitempty"`
+	L2tp                     *L2Tp                         `json:"l2tp,omitempty"`
+	Ldap                     *Ldap                         `json:"ldap,omitempty"`
+	Libp2p                   *Libp2P                       `json:"libp2p,omitempty"`
+	Lpd                      *Lpd                          `json:"lpd,omitempty"`
+	Managesieve              *Managesieve                  `json:"managesieve,omitempty"`
+	ManticoreSphinxapi       *ManticoreSphinxapi           `json:"manticore_sphinxapi,omitempty"`
+	Mavlink                  *Mavlink                      `json:"mavlink,omitempty"`
+	Mdns                     *Mdns                         `json:"mdns,omitempty"`
+	Melsec                   *Melsec                       `json:"melsec,omitempty"`
+	Memberlist               *Memberlist                   `json:"memberlist,omitempty"`
+	Memcached                *Memcached                    `json:"memcached,omitempty"`
+	MikrotikWinbox           *MikrotikWinbox               `json:"mikrotik_winbox,omitempty"`
+	Minecraft                *Minecraft                    `json:"minecraft,omitempty"`
+	Mms                      *Mms                          `json:"mms,omitempty"`
+	Modbus                   *Modbus                       `json:"modbus,omitempty"`
+	MoneroP2p                *MoneroP2P                    `json:"monero_p2p,omitempty"`
+	Mongodb                  *Mongodb                      `json:"mongodb,omitempty"`
+	MplsLdp                  *MplsLdp                      `json:"mpls_ldp,omitempty"`
+	Mqtt                     *Mqtt                         `json:"mqtt,omitempty"`
+	Mssql                    *Mssql                        `json:"mssql,omitempty"`
+	Murmur                   *Murmur                       `json:"murmur,omitempty"`
+	Mysql                    *Mysql                        `json:"mysql,omitempty"`
+	Mysqlx                   *Mysqlx                       `json:"mysqlx,omitempty"`
+	NatsIo                   *NatsIo                       `json:"nats_io,omitempty"`
+	Nbd                      *Nbd                          `json:"nbd,omitempty"`
+	NfsMountd                *NfsMountd                    `json:"nfs_mountd,omitempty"`
+	Nmea                     *Nmea                         `json:"nmea,omitempty"`
+	Nrpe                     *Nrpe                         `json:"nrpe,omitempty"`
+	Ntp                      *Ntp                          `json:"ntp,omitempty"`
+	Ntrip                    *Ntrip                        `json:"ntrip,omitempty"`
+	Onc                      *Onc                          `json:"onc,omitempty"`
+	Onvif                    *Onvif                        `json:"onvif,omitempty"`
+	OpcUa                    *OpcUa                        `json:"opc_ua,omitempty"`
+	Openflow                 *Openflow                     `json:"openflow,omitempty"`
+	Openvpn                  *Openvpn                      `json:"openvpn,omitempty"`
+	OpenvpnMgmt              *OpenvpnMgmt                  `json:"openvpn_mgmt,omitempty"`
+	OpwFsc3000               *OpwFsc3000                   `json:"opw_fsc3000,omitempty"`
+	Oracle                   *Oracle                       `json:"oracle,omitempty"`
+	OrencoAtrtu              *OrencoAtrtu                  `json:"orenco_atrtu,omitempty"`
+	OtlpGrpc                 *OtlpGrpc                     `json:"otlp_grpc,omitempty"`
+	PcAnywhere               *PcAnywhere                   `json:"pc_anywhere,omitempty"`
+	PerforceP4d              *PerforceP4D                  `json:"perforce_p4d,omitempty"`
+	Pgbouncer                *Pgbouncer                    `json:"pgbouncer,omitempty"`
+	Pigeonhole               *Pigeonhole                   `json:"pigeonhole,omitempty"`
+	Pop3                     *Pop3                         `json:"pop3,omitempty"`
+	Port                     *int                          `json:"port,omitempty"`
+	Portmap                  *Portmap                      `json:"portmap,omitempty"`
+	Postgres                 *Postgres                     `json:"postgres,omitempty"`
+	Pptp                     *Pptp                         `json:"pptp,omitempty"`
+	ProfinetCm               *ProfinetCm                   `json:"profinet_cm,omitempty"`
+	Protocol                 *string                       `json:"protocol,omitempty"`
+	QdrantGrpc               *QdrantGrpc                   `json:"qdrant_grpc,omitempty"`
+	R1softBuagent            *R1SoftBuagent                `json:"r1soft_buagent,omitempty"`
+	Rdate                    *Rdate                        `json:"rdate,omitempty"`
+	Rdp                      *Rdp                          `json:"rdp,omitempty"`
+	Realport                 *Realport                     `json:"realport,omitempty"`
+	Redis                    *Redis                        `json:"redis,omitempty"`
+	Redline                  *Redline                      `json:"redline,omitempty"`
+	RedlionCrimson           *RedlionCrimson               `json:"redlion_crimson,omitempty"`
+	Redshift                 *Redshift                     `json:"redshift,omitempty"`
+	ReolinkBaichuan          *ReolinkBaichuan              `json:"reolink_baichuan,omitempty"`
+	RepresentativeInfo       *RepresentativeInfo           `json:"representative_info,omitempty"`
+	Rifatron                 *Rifatron                     `json:"rifatron,omitempty"`
+	Ripple                   *Ripple                       `json:"ripple,omitempty"`
+	Rlogin                   *Rlogin                       `json:"rlogin,omitempty"`
+	Rocketmq                 *Rocketmq                     `json:"rocketmq,omitempty"`
+	RouterosAPI              *RouterosAPI                  `json:"routeros_api,omitempty"`
+	Rtmp                     *Rtmp                         `json:"rtmp,omitempty"`
+	Rtsp                     *Rtsp                         `json:"rtsp,omitempty"`
+	RustdeskHeartbeat        *RustdeskHeartbeat            `json:"rustdesk_heartbeat,omitempty"`
+	RustdeskRelay            *RustdeskRelay                `json:"rustdesk_relay,omitempty"`
+	RustdeskRendezvous       *RustdeskRendezvous           `json:"rustdesk_rendezvous,omitempty"`
+	S7                       *S7                           `json:"s7,omitempty"`
+	SapRouter                *SapRouter                    `json:"sap_router,omitempty"`
+	Sapient                  *Sapient                      `json:"sapient,omitempty"`
+	ScanTime                 *string                       `json:"scan_time,omitempty"`
+	Scpi                     *Scpi                         `json:"scpi,omitempty"`
+	Screenshots              []Screenshot                  `json:"screenshots,omitempty"`
+	Ser2net                  *Ser2Net                      `json:"ser2net,omitempty"`
+	SevenDaysToDie           *SevenDaysToDie               `json:"seven_days_to_die,omitempty"`
+	Sip                      *Sip                          `json:"sip,omitempty"`
+	Skinny                   *Skinny                       `json:"skinny,omitempty"`
+	Smb                      *Smb                          `json:"smb,omitempty"`
+	SMTP                     *SMTP                         `json:"smtp,omitempty"`
+	Smux                     *Smux                         `json:"smux,omitempty"`
+	Snmp                     *Snmp                         `json:"snmp,omitempty"`
+	Socks                    *Socks                        `json:"socks,omitempty"`
+	Spice                    *Spice                        `json:"spice,omitempty"`
+	SpotifyConnect           *SpotifyConnect               `json:"spotify_connect,omitempty"`
+	Ssdp                     *Ssdp                         `json:"ssdp,omitempty"`
+	SSH                      *SSH                          `json:"ssh,omitempty"`
+	Steam                    *Steam                        `json:"steam,omitempty"`
+	Stomp                    *Stomp                        `json:"stomp,omitempty"`
+	Stun                     *Stun                         `json:"stun,omitempty"`
+	SyncthingBep             *SyncthingBep                 `json:"syncthing_bep,omitempty"`
+	Synergy                  *Synergy                      `json:"synergy,omitempty"`
+	TacacsPlus               *TacacsPlus                   `json:"tacacs_plus,omitempty"`
+	Tarantool                *Tarantool                    `json:"tarantool,omitempty"`
+	TaurusStb                *TaurusStb                    `json:"taurus_stb,omitempty"`
+	TeamViewer               *TeamViewer                   `json:"team_viewer,omitempty"`
+	TelexperTlxp             *TelexperTlxp                 `json:"telexper_tlxp,omitempty"`
+	Telnet                   *Telnet                       `json:"telnet,omitempty"`
+	Thrulay                  *Thrulay                      `json:"thrulay,omitempty"`
+	Tibia                    *Tibia                        `json:"tibia,omitempty"`
+	TLS                      *TLS                          `json:"tls,omitempty"`
+	TplinkKasa               *TplinkKasa                   `json:"tplink_kasa,omitempty"`
+	TransportProtocol        *ServiceScanTransportProtocol `json:"transport_protocol,omitempty"`
+	TvtControl               *TvtControl                   `json:"tvt_control,omitempty"`
+	TwampControl             *TwampControl                 `json:"twamp_control,omitempty"`
+	UnitronicsPcom           *UnitronicsPcom               `json:"unitronics_pcom,omitempty"`
+	Upnp                     *Upnp                         `json:"upnp,omitempty"`
+	UtilinetLpp              *UtilinetLpp                  `json:"utilinet_lpp,omitempty"`
+	VantageInfusion          *VantageInfusion              `json:"vantage_infusion,omitempty"`
+	Ventrilo                 *Ventrilo                     `json:"ventrilo,omitempty"`
+	VisionhitechIpcam        *VisionhitechIpcam            `json:"visionhitech_ipcam,omitempty"`
+	Vnc                      *Vnc                          `json:"vnc,omitempty"`
+	WeblogicT3               *WeblogicT3                   `json:"weblogic_t3,omitempty"`
+	WinceCerdisp             *WinceCerdisp                 `json:"wince_cerdisp,omitempty"`
+	Winrm                    *Winrm                        `json:"winrm,omitempty"`
+	WowRealmd                *WowRealmd                    `json:"wow_realmd,omitempty"`
+	WsDiscovery              *WsDiscovery                  `json:"ws_discovery,omitempty"`
+	X11                      *X11                          `json:"x11,omitempty"`
+	Zeromq                   *Zeromq                       `json:"zeromq,omitempty"`
 }
 
-func (o *ServiceScan) GetActivemq() *Activemq {
-	if o == nil {
+func (s *ServiceScan) GetActivemq() *Activemq {
+	if s == nil {
 		return nil
 	}
-	return o.Activemq
+	return s.Activemq
 }
 
-func (o *ServiceScan) GetAmqp() *Amqp {
-	if o == nil {
+func (s *ServiceScan) GetAmqp() *Amqp {
+	if s == nil {
 		return nil
 	}
-	return o.Amqp
+	return s.Amqp
 }
 
-func (o *ServiceScan) GetAnyConnect() *AnyConnect {
-	if o == nil {
+func (s *ServiceScan) GetAnermaCfForth() *AnermaCfForth {
+	if s == nil {
 		return nil
 	}
-	return o.AnyConnect
+	return s.AnermaCfForth
 }
 
-func (o *ServiceScan) GetBacnet() *Bacnet {
-	if o == nil {
+func (s *ServiceScan) GetAnyConnect() *AnyConnect {
+	if s == nil {
 		return nil
 	}
-	return o.Bacnet
+	return s.AnyConnect
 }
 
-func (o *ServiceScan) GetBanner() *string {
-	if o == nil {
+func (s *ServiceScan) GetAsteriskManagerInterface() *AsteriskManagerInterface {
+	if s == nil {
 		return nil
 	}
-	return o.Banner
+	return s.AsteriskManagerInterface
 }
 
-func (o *ServiceScan) GetBannerHashSha256() *string {
-	if o == nil {
+func (s *ServiceScan) GetBacnet() *Bacnet {
+	if s == nil {
 		return nil
 	}
-	return o.BannerHashSha256
+	return s.Bacnet
 }
 
-func (o *ServiceScan) GetCheckpointTopology() *CheckpointTopology {
-	if o == nil {
+func (s *ServiceScan) GetBanner() *string {
+	if s == nil {
 		return nil
 	}
-	return o.CheckpointTopology
+	return s.Banner
 }
 
-func (o *ServiceScan) GetChromecast() *Chromecast {
-	if o == nil {
+func (s *ServiceScan) GetBannerHashSha256() *string {
+	if s == nil {
 		return nil
 	}
-	return o.Chromecast
+	return s.BannerHashSha256
 }
 
-func (o *ServiceScan) GetCiscoIpsla() *CiscoIpsla {
-	if o == nil {
+func (s *ServiceScan) GetBluemaxNuttcp() *BluemaxNuttcp {
+	if s == nil {
 		return nil
 	}
-	return o.CiscoIpsla
+	return s.BluemaxNuttcp
 }
 
-func (o *ServiceScan) GetCmore() *Cmore {
-	if o == nil {
+func (s *ServiceScan) GetCheckpointTopology() *CheckpointTopology {
+	if s == nil {
 		return nil
 	}
-	return o.Cmore
+	return s.CheckpointTopology
 }
 
-func (o *ServiceScan) GetCoap() *Coap {
-	if o == nil {
+func (s *ServiceScan) GetChromecast() *Chromecast {
+	if s == nil {
 		return nil
 	}
-	return o.Coap
+	return s.Chromecast
 }
 
-func (o *ServiceScan) GetCrestronCp3() *CrestronCp3 {
-	if o == nil {
+func (s *ServiceScan) GetCiscoIpsla() *CiscoIpsla {
+	if s == nil {
 		return nil
 	}
-	return o.CrestronCp3
+	return s.CiscoIpsla
 }
 
-func (o *ServiceScan) GetCrestronDinAp2() *CrestronDinAp2 {
-	if o == nil {
+func (s *ServiceScan) GetCiscoSdwanVdaemon() *CiscoSdwanVdaemon {
+	if s == nil {
 		return nil
 	}
-	return o.CrestronDinAp2
+	return s.CiscoSdwanVdaemon
 }
 
-func (o *ServiceScan) GetCwmp() *Cwmp {
-	if o == nil {
+func (s *ServiceScan) GetClamav() *Clamav {
+	if s == nil {
 		return nil
 	}
-	return o.Cwmp
+	return s.Clamav
 }
 
-func (o *ServiceScan) GetDarkcomet() *Darkcomet {
-	if o == nil {
+func (s *ServiceScan) GetClickhouseNative() *ClickHouseNative {
+	if s == nil {
 		return nil
 	}
-	return o.Darkcomet
+	return s.ClickhouseNative
 }
 
-func (o *ServiceScan) GetDarkgate() *Darkgate {
-	if o == nil {
+func (s *ServiceScan) GetCmore() *Cmore {
+	if s == nil {
 		return nil
 	}
-	return o.Darkgate
+	return s.Cmore
 }
 
-func (o *ServiceScan) GetDcerpc() *Dcerpc {
-	if o == nil {
+func (s *ServiceScan) GetCnordSecurityCenter() *CnordSecurityCenter {
+	if s == nil {
 		return nil
 	}
-	return o.Dcerpc
+	return s.CnordSecurityCenter
 }
 
-func (o *ServiceScan) GetDhcpdiscover() *Dhcpdiscover {
-	if o == nil {
+func (s *ServiceScan) GetCoap() *Coap {
+	if s == nil {
 		return nil
 	}
-	return o.Dhcpdiscover
+	return s.Coap
 }
 
-func (o *ServiceScan) GetDnp3() *Dnp3 {
-	if o == nil {
+func (s *ServiceScan) GetComelitIcona() *ComelitIcona {
+	if s == nil {
 		return nil
 	}
-	return o.Dnp3
+	return s.ComelitIcona
 }
 
-func (o *ServiceScan) GetDNS() *DNS {
-	if o == nil {
+func (s *ServiceScan) GetCortexXdrP2p() *CortexXdrP2P {
+	if s == nil {
 		return nil
 	}
-	return o.DNS
+	return s.CortexXdrP2p
 }
 
-func (o *ServiceScan) GetDtls() *Dtls {
-	if o == nil {
+func (s *ServiceScan) GetCrestronCp3() *CrestronCp3 {
+	if s == nil {
 		return nil
 	}
-	return o.Dtls
+	return s.CrestronCp3
 }
 
-func (o *ServiceScan) GetDvrIP() *DvrIP {
-	if o == nil {
+func (s *ServiceScan) GetCrestronDinAp2() *CrestronDinAp2 {
+	if s == nil {
 		return nil
 	}
-	return o.DvrIP
+	return s.CrestronDinAp2
 }
 
-func (o *ServiceScan) GetEip() *Eip {
-	if o == nil {
+func (s *ServiceScan) GetCursorOnTarget() *CursorOnTarget {
+	if s == nil {
 		return nil
 	}
-	return o.Eip
+	return s.CursorOnTarget
 }
 
-func (o *ServiceScan) GetElfFile() *ElfFile {
-	if o == nil {
+func (s *ServiceScan) GetCwmp() *Cwmp {
+	if s == nil {
 		return nil
 	}
-	return o.ElfFile
+	return s.Cwmp
 }
 
-func (o *ServiceScan) GetEpmd() *Epmd {
-	if o == nil {
+func (s *ServiceScan) GetDarkcomet() *Darkcomet {
+	if s == nil {
 		return nil
 	}
-	return o.Epmd
+	return s.Darkcomet
 }
 
-func (o *ServiceScan) GetEtcd() *Etcd {
-	if o == nil {
+func (s *ServiceScan) GetDarkgate() *Darkgate {
+	if s == nil {
 		return nil
 	}
-	return o.Etcd
+	return s.Darkgate
 }
 
-func (o *ServiceScan) GetEthereum() *Ethereum {
-	if o == nil {
+func (s *ServiceScan) GetDcerpc() *Dcerpc {
+	if s == nil {
 		return nil
 	}
-	return o.Ethereum
+	return s.Dcerpc
 }
 
-func (o *ServiceScan) GetFox() *Fox {
-	if o == nil {
+func (s *ServiceScan) GetDenonHeos() *DenonHeos {
+	if s == nil {
 		return nil
 	}
-	return o.Fox
+	return s.DenonHeos
 }
 
-func (o *ServiceScan) GetFtp() *Ftp {
-	if o == nil {
+func (s *ServiceScan) GetDhcpdiscover() *Dhcpdiscover {
+	if s == nil {
 		return nil
 	}
-	return o.Ftp
+	return s.Dhcpdiscover
 }
 
-func (o *ServiceScan) GetGearman() *Gearman {
-	if o == nil {
+func (s *ServiceScan) GetDicom() *Dicom {
+	if s == nil {
 		return nil
 	}
-	return o.Gearman
+	return s.Dicom
 }
 
-func (o *ServiceScan) GetHidVertx() *HidVertx {
-	if o == nil {
+func (s *ServiceScan) GetDlt() *Dlt {
+	if s == nil {
 		return nil
 	}
-	return o.HidVertx
+	return s.Dlt
 }
 
-func (o *ServiceScan) GetHikvision() *Hikvision {
-	if o == nil {
+func (s *ServiceScan) GetDnp3() *Dnp3 {
+	if s == nil {
 		return nil
 	}
-	return o.Hikvision
+	return s.Dnp3
 }
 
-func (o *ServiceScan) GetIbmnje() *Ibmnje {
-	if o == nil {
+func (s *ServiceScan) GetDNS() *DNS {
+	if s == nil {
 		return nil
 	}
-	return o.Ibmnje
+	return s.DNS
 }
 
-func (o *ServiceScan) GetIke() *Ike {
-	if o == nil {
+func (s *ServiceScan) GetDotnetNegotiateStream() *DotnetNegotiateStream {
+	if s == nil {
 		return nil
 	}
-	return o.Ike
+	return s.DotnetNegotiateStream
 }
 
-func (o *ServiceScan) GetImap() *Imap {
-	if o == nil {
+func (s *ServiceScan) GetDtls() *Dtls {
+	if s == nil {
 		return nil
 	}
-	return o.Imap
+	return s.Dtls
 }
 
-func (o *ServiceScan) GetIota() *Iota {
-	if o == nil {
+func (s *ServiceScan) GetDubbo() *Dubbo {
+	if s == nil {
 		return nil
 	}
-	return o.Iota
+	return s.Dubbo
 }
 
-func (o *ServiceScan) GetIP() *string {
-	if o == nil {
+func (s *ServiceScan) GetDvrIP() *DvrIP {
+	if s == nil {
 		return nil
 	}
-	return o.IP
+	return s.DvrIP
 }
 
-func (o *ServiceScan) GetIpmi() *Ipmi {
-	if o == nil {
+func (s *ServiceScan) GetEip() *Eip {
+	if s == nil {
 		return nil
 	}
-	return o.Ipmi
+	return s.Eip
 }
 
-func (o *ServiceScan) GetIpp() *Ipp {
-	if o == nil {
+func (s *ServiceScan) GetElasticsearchTransport() *ElasticsearchTransport {
+	if s == nil {
 		return nil
 	}
-	return o.Ipp
+	return s.ElasticsearchTransport
 }
 
-func (o *ServiceScan) GetIsSuccess() *bool {
-	if o == nil {
+func (s *ServiceScan) GetElfFile() *ElfFile {
+	if s == nil {
 		return nil
 	}
-	return o.IsSuccess
+	return s.ElfFile
 }
 
-func (o *ServiceScan) GetIscsi() *Iscsi {
-	if o == nil {
+func (s *ServiceScan) GetEpmd() *Epmd {
+	if s == nil {
 		return nil
 	}
-	return o.Iscsi
+	return s.Epmd
 }
 
-func (o *ServiceScan) GetKrpc() *Krpc {
-	if o == nil {
+func (s *ServiceScan) GetEtcd() *Etcd {
+	if s == nil {
 		return nil
 	}
-	return o.Krpc
+	return s.Etcd
 }
 
-func (o *ServiceScan) GetL2tp() *L2Tp {
-	if o == nil {
+func (s *ServiceScan) GetEthereum() *Ethereum {
+	if s == nil {
 		return nil
 	}
-	return o.L2tp
+	return s.Ethereum
 }
 
-func (o *ServiceScan) GetLdap() *Ldap {
-	if o == nil {
+func (s *ServiceScan) GetFins() *Fins {
+	if s == nil {
 		return nil
 	}
-	return o.Ldap
+	return s.Fins
 }
 
-func (o *ServiceScan) GetLpd() *Lpd {
-	if o == nil {
+func (s *ServiceScan) GetFlashSocketPolicy() *FlashSocketPolicy {
+	if s == nil {
 		return nil
 	}
-	return o.Lpd
+	return s.FlashSocketPolicy
 }
 
-func (o *ServiceScan) GetMdns() *Mdns {
-	if o == nil {
+func (s *ServiceScan) GetFourdServer() *FourdServer {
+	if s == nil {
 		return nil
 	}
-	return o.Mdns
+	return s.FourdServer
 }
 
-func (o *ServiceScan) GetMemcached() *Memcached {
-	if o == nil {
+func (s *ServiceScan) GetFox() *Fox {
+	if s == nil {
 		return nil
 	}
-	return o.Memcached
+	return s.Fox
 }
 
-func (o *ServiceScan) GetMinecraft() *Minecraft {
-	if o == nil {
+func (s *ServiceScan) GetFrps() *Frps {
+	if s == nil {
 		return nil
 	}
-	return o.Minecraft
+	return s.Frps
 }
 
-func (o *ServiceScan) GetMms() *Mms {
-	if o == nil {
+func (s *ServiceScan) GetFtp() *Ftp {
+	if s == nil {
 		return nil
 	}
-	return o.Mms
+	return s.Ftp
 }
 
-func (o *ServiceScan) GetModbus() *Modbus {
-	if o == nil {
+func (s *ServiceScan) GetGearman() *Gearman {
+	if s == nil {
 		return nil
 	}
-	return o.Modbus
+	return s.Gearman
 }
 
-func (o *ServiceScan) GetMoneroP2p() *MoneroP2P {
-	if o == nil {
+func (s *ServiceScan) GetGemini() *Gemini {
+	if s == nil {
 		return nil
 	}
-	return o.MoneroP2p
+	return s.Gemini
 }
 
-func (o *ServiceScan) GetMongodb() *Mongodb {
-	if o == nil {
+func (s *ServiceScan) GetGeovisionAudio() *GeovisionAudio {
+	if s == nil {
 		return nil
 	}
-	return o.Mongodb
+	return s.GeovisionAudio
 }
 
-func (o *ServiceScan) GetMqtt() *Mqtt {
-	if o == nil {
+func (s *ServiceScan) GetGiop() *Giop {
+	if s == nil {
 		return nil
 	}
-	return o.Mqtt
+	return s.Giop
 }
 
-func (o *ServiceScan) GetMssql() *Mssql {
-	if o == nil {
+func (s *ServiceScan) GetGopher() *Gopher {
+	if s == nil {
 		return nil
 	}
-	return o.Mssql
+	return s.Gopher
 }
 
-func (o *ServiceScan) GetMurmur() *Murmur {
-	if o == nil {
+func (s *ServiceScan) GetGrilConsole() *GrilConsole {
+	if s == nil {
 		return nil
 	}
-	return o.Murmur
+	return s.GrilConsole
 }
 
-func (o *ServiceScan) GetMysql() *Mysql {
-	if o == nil {
+func (s *ServiceScan) GetHajime() *Hajime {
+	if s == nil {
 		return nil
 	}
-	return o.Mysql
+	return s.Hajime
 }
 
-func (o *ServiceScan) GetNatsIo() *NatsIo {
-	if o == nil {
+func (s *ServiceScan) GetHidVertx() *HidVertx {
+	if s == nil {
 		return nil
 	}
-	return o.NatsIo
+	return s.HidVertx
 }
 
-func (o *ServiceScan) GetNbd() *Nbd {
-	if o == nil {
+func (s *ServiceScan) GetHikvision() *Hikvision {
+	if s == nil {
 		return nil
 	}
-	return o.Nbd
+	return s.Hikvision
 }
 
-func (o *ServiceScan) GetNfsMountd() *NfsMountd {
-	if o == nil {
+func (s *ServiceScan) GetHoosatHtndGrpc() *HoosatHtndGrpc {
+	if s == nil {
 		return nil
 	}
-	return o.NfsMountd
+	return s.HoosatHtndGrpc
 }
 
-func (o *ServiceScan) GetNmea() *Nmea {
-	if o == nil {
+func (s *ServiceScan) GetIbmnje() *Ibmnje {
+	if s == nil {
 		return nil
 	}
-	return o.Nmea
+	return s.Ibmnje
 }
 
-func (o *ServiceScan) GetNtp() *Ntp {
-	if o == nil {
+func (s *ServiceScan) GetIcap() *Icap {
+	if s == nil {
 		return nil
 	}
-	return o.Ntp
+	return s.Icap
 }
 
-func (o *ServiceScan) GetNtrip() *Ntrip {
-	if o == nil {
+func (s *ServiceScan) GetIec608705104() *Iec608705104 {
+	if s == nil {
 		return nil
 	}
-	return o.Ntrip
+	return s.Iec608705104
 }
 
-func (o *ServiceScan) GetOnc() *Onc {
-	if o == nil {
+func (s *ServiceScan) GetIke() *Ike {
+	if s == nil {
 		return nil
 	}
-	return o.Onc
+	return s.Ike
 }
 
-func (o *ServiceScan) GetOnvif() *Onvif {
-	if o == nil {
+func (s *ServiceScan) GetImap() *Imap {
+	if s == nil {
 		return nil
 	}
-	return o.Onvif
+	return s.Imap
 }
 
-func (o *ServiceScan) GetOpcUa() *OpcUa {
-	if o == nil {
+func (s *ServiceScan) GetIota() *Iota {
+	if s == nil {
 		return nil
 	}
-	return o.OpcUa
+	return s.Iota
 }
 
-func (o *ServiceScan) GetOpenvpn() *Openvpn {
-	if o == nil {
+func (s *ServiceScan) GetIP() *string {
+	if s == nil {
 		return nil
 	}
-	return o.Openvpn
+	return s.IP
 }
 
-func (o *ServiceScan) GetOracle() *Oracle {
-	if o == nil {
+func (s *ServiceScan) GetIperf3() *Iperf3 {
+	if s == nil {
 		return nil
 	}
-	return o.Oracle
+	return s.Iperf3
 }
 
-func (o *ServiceScan) GetPcAnywhere() *PcAnywhere {
-	if o == nil {
+func (s *ServiceScan) GetIpmi() *Ipmi {
+	if s == nil {
 		return nil
 	}
-	return o.PcAnywhere
+	return s.Ipmi
 }
 
-func (o *ServiceScan) GetPgbouncer() *Pgbouncer {
-	if o == nil {
+func (s *ServiceScan) GetIpp() *Ipp {
+	if s == nil {
 		return nil
 	}
-	return o.Pgbouncer
+	return s.Ipp
 }
 
-func (o *ServiceScan) GetPop3() *Pop3 {
-	if o == nil {
+func (s *ServiceScan) GetIsSuccess() *bool {
+	if s == nil {
 		return nil
 	}
-	return o.Pop3
+	return s.IsSuccess
 }
 
-func (o *ServiceScan) GetPort() *int {
-	if o == nil {
+func (s *ServiceScan) GetIscDhcpOmapi() *IscDhcpOmapi {
+	if s == nil {
 		return nil
 	}
-	return o.Port
+	return s.IscDhcpOmapi
 }
 
-func (o *ServiceScan) GetPortmap() *Portmap {
-	if o == nil {
+func (s *ServiceScan) GetIscsi() *Iscsi {
+	if s == nil {
 		return nil
 	}
-	return o.Portmap
+	return s.Iscsi
 }
 
-func (o *ServiceScan) GetPostgres() *Postgres {
-	if o == nil {
+func (s *ServiceScan) GetJavaRmi() *JavaRmi {
+	if s == nil {
 		return nil
 	}
-	return o.Postgres
+	return s.JavaRmi
 }
 
-func (o *ServiceScan) GetPptp() *Pptp {
-	if o == nil {
+func (s *ServiceScan) GetKcodesNetusb() *KcodesNetusb {
+	if s == nil {
 		return nil
 	}
-	return o.Pptp
+	return s.KcodesNetusb
 }
 
-func (o *ServiceScan) GetProfinetCm() *ProfinetCm {
-	if o == nil {
+func (s *ServiceScan) GetKnxip() *Knxip {
+	if s == nil {
 		return nil
 	}
-	return o.ProfinetCm
+	return s.Knxip
 }
 
-func (o *ServiceScan) GetProtocol() *string {
-	if o == nil {
+func (s *ServiceScan) GetKrpc() *Krpc {
+	if s == nil {
 		return nil
 	}
-	return o.Protocol
+	return s.Krpc
 }
 
-func (o *ServiceScan) GetRdate() *Rdate {
-	if o == nil {
+func (s *ServiceScan) GetL2tp() *L2Tp {
+	if s == nil {
 		return nil
 	}
-	return o.Rdate
+	return s.L2tp
 }
 
-func (o *ServiceScan) GetRdp() *Rdp {
-	if o == nil {
+func (s *ServiceScan) GetLdap() *Ldap {
+	if s == nil {
 		return nil
 	}
-	return o.Rdp
+	return s.Ldap
 }
 
-func (o *ServiceScan) GetRealport() *Realport {
-	if o == nil {
+func (s *ServiceScan) GetLibp2p() *Libp2P {
+	if s == nil {
 		return nil
 	}
-	return o.Realport
+	return s.Libp2p
 }
 
-func (o *ServiceScan) GetRedis() *Redis {
-	if o == nil {
+func (s *ServiceScan) GetLpd() *Lpd {
+	if s == nil {
 		return nil
 	}
-	return o.Redis
+	return s.Lpd
 }
 
-func (o *ServiceScan) GetRedline() *Redline {
-	if o == nil {
+func (s *ServiceScan) GetManagesieve() *Managesieve {
+	if s == nil {
 		return nil
 	}
-	return o.Redline
+	return s.Managesieve
 }
 
-func (o *ServiceScan) GetRedlionCrimson() *RedlionCrimson {
-	if o == nil {
+func (s *ServiceScan) GetManticoreSphinxapi() *ManticoreSphinxapi {
+	if s == nil {
 		return nil
 	}
-	return o.RedlionCrimson
+	return s.ManticoreSphinxapi
 }
 
-func (o *ServiceScan) GetRepresentativeInfo() *RepresentativeInfo {
-	if o == nil {
+func (s *ServiceScan) GetMavlink() *Mavlink {
+	if s == nil {
 		return nil
 	}
-	return o.RepresentativeInfo
+	return s.Mavlink
 }
 
-func (o *ServiceScan) GetRifatron() *Rifatron {
-	if o == nil {
+func (s *ServiceScan) GetMdns() *Mdns {
+	if s == nil {
 		return nil
 	}
-	return o.Rifatron
+	return s.Mdns
 }
 
-func (o *ServiceScan) GetRipple() *Ripple {
-	if o == nil {
+func (s *ServiceScan) GetMelsec() *Melsec {
+	if s == nil {
 		return nil
 	}
-	return o.Ripple
+	return s.Melsec
 }
 
-func (o *ServiceScan) GetRlogin() *Rlogin {
-	if o == nil {
+func (s *ServiceScan) GetMemberlist() *Memberlist {
+	if s == nil {
 		return nil
 	}
-	return o.Rlogin
+	return s.Memberlist
 }
 
-func (o *ServiceScan) GetRocketmq() *Rocketmq {
-	if o == nil {
+func (s *ServiceScan) GetMemcached() *Memcached {
+	if s == nil {
 		return nil
 	}
-	return o.Rocketmq
+	return s.Memcached
 }
 
-func (o *ServiceScan) GetRtsp() *Rtsp {
-	if o == nil {
+func (s *ServiceScan) GetMikrotikWinbox() *MikrotikWinbox {
+	if s == nil {
 		return nil
 	}
-	return o.Rtsp
+	return s.MikrotikWinbox
 }
 
-func (o *ServiceScan) GetS7() *S7 {
-	if o == nil {
+func (s *ServiceScan) GetMinecraft() *Minecraft {
+	if s == nil {
 		return nil
 	}
-	return o.S7
+	return s.Minecraft
 }
 
-func (o *ServiceScan) GetSapRouter() *SapRouter {
-	if o == nil {
+func (s *ServiceScan) GetMms() *Mms {
+	if s == nil {
 		return nil
 	}
-	return o.SapRouter
+	return s.Mms
 }
 
-func (o *ServiceScan) GetScanTime() *string {
-	if o == nil {
+func (s *ServiceScan) GetModbus() *Modbus {
+	if s == nil {
 		return nil
 	}
-	return o.ScanTime
+	return s.Modbus
 }
 
-func (o *ServiceScan) GetScpi() *Scpi {
-	if o == nil {
+func (s *ServiceScan) GetMoneroP2p() *MoneroP2P {
+	if s == nil {
 		return nil
 	}
-	return o.Scpi
+	return s.MoneroP2p
 }
 
-func (o *ServiceScan) GetScreenshots() []Screenshot {
-	if o == nil {
+func (s *ServiceScan) GetMongodb() *Mongodb {
+	if s == nil {
 		return nil
 	}
-	return o.Screenshots
+	return s.Mongodb
 }
 
-func (o *ServiceScan) GetSer2net() *Ser2Net {
-	if o == nil {
+func (s *ServiceScan) GetMplsLdp() *MplsLdp {
+	if s == nil {
 		return nil
 	}
-	return o.Ser2net
+	return s.MplsLdp
 }
 
-func (o *ServiceScan) GetSevenDaysToDie() *SevenDaysToDie {
-	if o == nil {
+func (s *ServiceScan) GetMqtt() *Mqtt {
+	if s == nil {
 		return nil
 	}
-	return o.SevenDaysToDie
+	return s.Mqtt
 }
 
-func (o *ServiceScan) GetSip() *Sip {
-	if o == nil {
+func (s *ServiceScan) GetMssql() *Mssql {
+	if s == nil {
 		return nil
 	}
-	return o.Sip
+	return s.Mssql
 }
 
-func (o *ServiceScan) GetSkinny() *Skinny {
-	if o == nil {
+func (s *ServiceScan) GetMurmur() *Murmur {
+	if s == nil {
 		return nil
 	}
-	return o.Skinny
+	return s.Murmur
 }
 
-func (o *ServiceScan) GetSmb() *Smb {
-	if o == nil {
+func (s *ServiceScan) GetMysql() *Mysql {
+	if s == nil {
 		return nil
 	}
-	return o.Smb
+	return s.Mysql
 }
 
-func (o *ServiceScan) GetSMTP() *SMTP {
-	if o == nil {
+func (s *ServiceScan) GetMysqlx() *Mysqlx {
+	if s == nil {
 		return nil
 	}
-	return o.SMTP
+	return s.Mysqlx
 }
 
-func (o *ServiceScan) GetSnmp() *Snmp {
-	if o == nil {
+func (s *ServiceScan) GetNatsIo() *NatsIo {
+	if s == nil {
 		return nil
 	}
-	return o.Snmp
+	return s.NatsIo
 }
 
-func (o *ServiceScan) GetSocks() *Socks {
-	if o == nil {
+func (s *ServiceScan) GetNbd() *Nbd {
+	if s == nil {
 		return nil
 	}
-	return o.Socks
+	return s.Nbd
 }
 
-func (o *ServiceScan) GetSpice() *Spice {
-	if o == nil {
+func (s *ServiceScan) GetNfsMountd() *NfsMountd {
+	if s == nil {
 		return nil
 	}
-	return o.Spice
+	return s.NfsMountd
 }
 
-func (o *ServiceScan) GetSsdp() *Ssdp {
-	if o == nil {
+func (s *ServiceScan) GetNmea() *Nmea {
+	if s == nil {
 		return nil
 	}
-	return o.Ssdp
+	return s.Nmea
 }
 
-func (o *ServiceScan) GetSSH() *SSH {
-	if o == nil {
+func (s *ServiceScan) GetNrpe() *Nrpe {
+	if s == nil {
 		return nil
 	}
-	return o.SSH
+	return s.Nrpe
 }
 
-func (o *ServiceScan) GetSteam() *Steam {
-	if o == nil {
+func (s *ServiceScan) GetNtp() *Ntp {
+	if s == nil {
 		return nil
 	}
-	return o.Steam
+	return s.Ntp
 }
 
-func (o *ServiceScan) GetTacacsPlus() *TacacsPlus {
-	if o == nil {
+func (s *ServiceScan) GetNtrip() *Ntrip {
+	if s == nil {
 		return nil
 	}
-	return o.TacacsPlus
+	return s.Ntrip
 }
 
-func (o *ServiceScan) GetTeamViewer() *TeamViewer {
-	if o == nil {
+func (s *ServiceScan) GetOnc() *Onc {
+	if s == nil {
 		return nil
 	}
-	return o.TeamViewer
+	return s.Onc
 }
 
-func (o *ServiceScan) GetTelnet() *Telnet {
-	if o == nil {
+func (s *ServiceScan) GetOnvif() *Onvif {
+	if s == nil {
 		return nil
 	}
-	return o.Telnet
+	return s.Onvif
 }
 
-func (o *ServiceScan) GetTibia() *Tibia {
-	if o == nil {
+func (s *ServiceScan) GetOpcUa() *OpcUa {
+	if s == nil {
 		return nil
 	}
-	return o.Tibia
+	return s.OpcUa
 }
 
-func (o *ServiceScan) GetTLS() *TLS {
-	if o == nil {
+func (s *ServiceScan) GetOpenflow() *Openflow {
+	if s == nil {
 		return nil
 	}
-	return o.TLS
+	return s.Openflow
 }
 
-func (o *ServiceScan) GetTplinkKasa() *TplinkKasa {
-	if o == nil {
+func (s *ServiceScan) GetOpenvpn() *Openvpn {
+	if s == nil {
 		return nil
 	}
-	return o.TplinkKasa
+	return s.Openvpn
 }
 
-func (o *ServiceScan) GetTransportProtocol() *ServiceScanTransportProtocol {
-	if o == nil {
+func (s *ServiceScan) GetOpenvpnMgmt() *OpenvpnMgmt {
+	if s == nil {
 		return nil
 	}
-	return o.TransportProtocol
+	return s.OpenvpnMgmt
 }
 
-func (o *ServiceScan) GetUnitronicsPcom() *UnitronicsPcom {
-	if o == nil {
+func (s *ServiceScan) GetOpwFsc3000() *OpwFsc3000 {
+	if s == nil {
 		return nil
 	}
-	return o.UnitronicsPcom
+	return s.OpwFsc3000
 }
 
-func (o *ServiceScan) GetUpnp() *Upnp {
-	if o == nil {
+func (s *ServiceScan) GetOracle() *Oracle {
+	if s == nil {
 		return nil
 	}
-	return o.Upnp
+	return s.Oracle
 }
 
-func (o *ServiceScan) GetVentrilo() *Ventrilo {
-	if o == nil {
+func (s *ServiceScan) GetOrencoAtrtu() *OrencoAtrtu {
+	if s == nil {
 		return nil
 	}
-	return o.Ventrilo
+	return s.OrencoAtrtu
 }
 
-func (o *ServiceScan) GetVnc() *Vnc {
-	if o == nil {
+func (s *ServiceScan) GetOtlpGrpc() *OtlpGrpc {
+	if s == nil {
 		return nil
 	}
-	return o.Vnc
+	return s.OtlpGrpc
 }
 
-func (o *ServiceScan) GetWeblogicT3() *WeblogicT3 {
-	if o == nil {
+func (s *ServiceScan) GetPcAnywhere() *PcAnywhere {
+	if s == nil {
 		return nil
 	}
-	return o.WeblogicT3
+	return s.PcAnywhere
 }
 
-func (o *ServiceScan) GetWinrm() *Winrm {
-	if o == nil {
+func (s *ServiceScan) GetPerforceP4d() *PerforceP4D {
+	if s == nil {
 		return nil
 	}
-	return o.Winrm
+	return s.PerforceP4d
 }
 
-func (o *ServiceScan) GetWsDiscovery() *WsDiscovery {
-	if o == nil {
+func (s *ServiceScan) GetPgbouncer() *Pgbouncer {
+	if s == nil {
 		return nil
 	}
-	return o.WsDiscovery
+	return s.Pgbouncer
 }
 
-func (o *ServiceScan) GetX11() *X11 {
-	if o == nil {
+func (s *ServiceScan) GetPigeonhole() *Pigeonhole {
+	if s == nil {
 		return nil
 	}
-	return o.X11
+	return s.Pigeonhole
 }
 
-func (o *ServiceScan) GetZeromq() *Zeromq {
-	if o == nil {
+func (s *ServiceScan) GetPop3() *Pop3 {
+	if s == nil {
 		return nil
 	}
-	return o.Zeromq
+	return s.Pop3
+}
+
+func (s *ServiceScan) GetPort() *int {
+	if s == nil {
+		return nil
+	}
+	return s.Port
+}
+
+func (s *ServiceScan) GetPortmap() *Portmap {
+	if s == nil {
+		return nil
+	}
+	return s.Portmap
+}
+
+func (s *ServiceScan) GetPostgres() *Postgres {
+	if s == nil {
+		return nil
+	}
+	return s.Postgres
+}
+
+func (s *ServiceScan) GetPptp() *Pptp {
+	if s == nil {
+		return nil
+	}
+	return s.Pptp
+}
+
+func (s *ServiceScan) GetProfinetCm() *ProfinetCm {
+	if s == nil {
+		return nil
+	}
+	return s.ProfinetCm
+}
+
+func (s *ServiceScan) GetProtocol() *string {
+	if s == nil {
+		return nil
+	}
+	return s.Protocol
+}
+
+func (s *ServiceScan) GetQdrantGrpc() *QdrantGrpc {
+	if s == nil {
+		return nil
+	}
+	return s.QdrantGrpc
+}
+
+func (s *ServiceScan) GetR1softBuagent() *R1SoftBuagent {
+	if s == nil {
+		return nil
+	}
+	return s.R1softBuagent
+}
+
+func (s *ServiceScan) GetRdate() *Rdate {
+	if s == nil {
+		return nil
+	}
+	return s.Rdate
+}
+
+func (s *ServiceScan) GetRdp() *Rdp {
+	if s == nil {
+		return nil
+	}
+	return s.Rdp
+}
+
+func (s *ServiceScan) GetRealport() *Realport {
+	if s == nil {
+		return nil
+	}
+	return s.Realport
+}
+
+func (s *ServiceScan) GetRedis() *Redis {
+	if s == nil {
+		return nil
+	}
+	return s.Redis
+}
+
+func (s *ServiceScan) GetRedline() *Redline {
+	if s == nil {
+		return nil
+	}
+	return s.Redline
+}
+
+func (s *ServiceScan) GetRedlionCrimson() *RedlionCrimson {
+	if s == nil {
+		return nil
+	}
+	return s.RedlionCrimson
+}
+
+func (s *ServiceScan) GetRedshift() *Redshift {
+	if s == nil {
+		return nil
+	}
+	return s.Redshift
+}
+
+func (s *ServiceScan) GetReolinkBaichuan() *ReolinkBaichuan {
+	if s == nil {
+		return nil
+	}
+	return s.ReolinkBaichuan
+}
+
+func (s *ServiceScan) GetRepresentativeInfo() *RepresentativeInfo {
+	if s == nil {
+		return nil
+	}
+	return s.RepresentativeInfo
+}
+
+func (s *ServiceScan) GetRifatron() *Rifatron {
+	if s == nil {
+		return nil
+	}
+	return s.Rifatron
+}
+
+func (s *ServiceScan) GetRipple() *Ripple {
+	if s == nil {
+		return nil
+	}
+	return s.Ripple
+}
+
+func (s *ServiceScan) GetRlogin() *Rlogin {
+	if s == nil {
+		return nil
+	}
+	return s.Rlogin
+}
+
+func (s *ServiceScan) GetRocketmq() *Rocketmq {
+	if s == nil {
+		return nil
+	}
+	return s.Rocketmq
+}
+
+func (s *ServiceScan) GetRouterosAPI() *RouterosAPI {
+	if s == nil {
+		return nil
+	}
+	return s.RouterosAPI
+}
+
+func (s *ServiceScan) GetRtmp() *Rtmp {
+	if s == nil {
+		return nil
+	}
+	return s.Rtmp
+}
+
+func (s *ServiceScan) GetRtsp() *Rtsp {
+	if s == nil {
+		return nil
+	}
+	return s.Rtsp
+}
+
+func (s *ServiceScan) GetRustdeskHeartbeat() *RustdeskHeartbeat {
+	if s == nil {
+		return nil
+	}
+	return s.RustdeskHeartbeat
+}
+
+func (s *ServiceScan) GetRustdeskRelay() *RustdeskRelay {
+	if s == nil {
+		return nil
+	}
+	return s.RustdeskRelay
+}
+
+func (s *ServiceScan) GetRustdeskRendezvous() *RustdeskRendezvous {
+	if s == nil {
+		return nil
+	}
+	return s.RustdeskRendezvous
+}
+
+func (s *ServiceScan) GetS7() *S7 {
+	if s == nil {
+		return nil
+	}
+	return s.S7
+}
+
+func (s *ServiceScan) GetSapRouter() *SapRouter {
+	if s == nil {
+		return nil
+	}
+	return s.SapRouter
+}
+
+func (s *ServiceScan) GetSapient() *Sapient {
+	if s == nil {
+		return nil
+	}
+	return s.Sapient
+}
+
+func (s *ServiceScan) GetScanTime() *string {
+	if s == nil {
+		return nil
+	}
+	return s.ScanTime
+}
+
+func (s *ServiceScan) GetScpi() *Scpi {
+	if s == nil {
+		return nil
+	}
+	return s.Scpi
+}
+
+func (s *ServiceScan) GetScreenshots() []Screenshot {
+	if s == nil {
+		return nil
+	}
+	return s.Screenshots
+}
+
+func (s *ServiceScan) GetSer2net() *Ser2Net {
+	if s == nil {
+		return nil
+	}
+	return s.Ser2net
+}
+
+func (s *ServiceScan) GetSevenDaysToDie() *SevenDaysToDie {
+	if s == nil {
+		return nil
+	}
+	return s.SevenDaysToDie
+}
+
+func (s *ServiceScan) GetSip() *Sip {
+	if s == nil {
+		return nil
+	}
+	return s.Sip
+}
+
+func (s *ServiceScan) GetSkinny() *Skinny {
+	if s == nil {
+		return nil
+	}
+	return s.Skinny
+}
+
+func (s *ServiceScan) GetSmb() *Smb {
+	if s == nil {
+		return nil
+	}
+	return s.Smb
+}
+
+func (s *ServiceScan) GetSMTP() *SMTP {
+	if s == nil {
+		return nil
+	}
+	return s.SMTP
+}
+
+func (s *ServiceScan) GetSmux() *Smux {
+	if s == nil {
+		return nil
+	}
+	return s.Smux
+}
+
+func (s *ServiceScan) GetSnmp() *Snmp {
+	if s == nil {
+		return nil
+	}
+	return s.Snmp
+}
+
+func (s *ServiceScan) GetSocks() *Socks {
+	if s == nil {
+		return nil
+	}
+	return s.Socks
+}
+
+func (s *ServiceScan) GetSpice() *Spice {
+	if s == nil {
+		return nil
+	}
+	return s.Spice
+}
+
+func (s *ServiceScan) GetSpotifyConnect() *SpotifyConnect {
+	if s == nil {
+		return nil
+	}
+	return s.SpotifyConnect
+}
+
+func (s *ServiceScan) GetSsdp() *Ssdp {
+	if s == nil {
+		return nil
+	}
+	return s.Ssdp
+}
+
+func (s *ServiceScan) GetSSH() *SSH {
+	if s == nil {
+		return nil
+	}
+	return s.SSH
+}
+
+func (s *ServiceScan) GetSteam() *Steam {
+	if s == nil {
+		return nil
+	}
+	return s.Steam
+}
+
+func (s *ServiceScan) GetStomp() *Stomp {
+	if s == nil {
+		return nil
+	}
+	return s.Stomp
+}
+
+func (s *ServiceScan) GetStun() *Stun {
+	if s == nil {
+		return nil
+	}
+	return s.Stun
+}
+
+func (s *ServiceScan) GetSyncthingBep() *SyncthingBep {
+	if s == nil {
+		return nil
+	}
+	return s.SyncthingBep
+}
+
+func (s *ServiceScan) GetSynergy() *Synergy {
+	if s == nil {
+		return nil
+	}
+	return s.Synergy
+}
+
+func (s *ServiceScan) GetTacacsPlus() *TacacsPlus {
+	if s == nil {
+		return nil
+	}
+	return s.TacacsPlus
+}
+
+func (s *ServiceScan) GetTarantool() *Tarantool {
+	if s == nil {
+		return nil
+	}
+	return s.Tarantool
+}
+
+func (s *ServiceScan) GetTaurusStb() *TaurusStb {
+	if s == nil {
+		return nil
+	}
+	return s.TaurusStb
+}
+
+func (s *ServiceScan) GetTeamViewer() *TeamViewer {
+	if s == nil {
+		return nil
+	}
+	return s.TeamViewer
+}
+
+func (s *ServiceScan) GetTelexperTlxp() *TelexperTlxp {
+	if s == nil {
+		return nil
+	}
+	return s.TelexperTlxp
+}
+
+func (s *ServiceScan) GetTelnet() *Telnet {
+	if s == nil {
+		return nil
+	}
+	return s.Telnet
+}
+
+func (s *ServiceScan) GetThrulay() *Thrulay {
+	if s == nil {
+		return nil
+	}
+	return s.Thrulay
+}
+
+func (s *ServiceScan) GetTibia() *Tibia {
+	if s == nil {
+		return nil
+	}
+	return s.Tibia
+}
+
+func (s *ServiceScan) GetTLS() *TLS {
+	if s == nil {
+		return nil
+	}
+	return s.TLS
+}
+
+func (s *ServiceScan) GetTplinkKasa() *TplinkKasa {
+	if s == nil {
+		return nil
+	}
+	return s.TplinkKasa
+}
+
+func (s *ServiceScan) GetTransportProtocol() *ServiceScanTransportProtocol {
+	if s == nil {
+		return nil
+	}
+	return s.TransportProtocol
+}
+
+func (s *ServiceScan) GetTvtControl() *TvtControl {
+	if s == nil {
+		return nil
+	}
+	return s.TvtControl
+}
+
+func (s *ServiceScan) GetTwampControl() *TwampControl {
+	if s == nil {
+		return nil
+	}
+	return s.TwampControl
+}
+
+func (s *ServiceScan) GetUnitronicsPcom() *UnitronicsPcom {
+	if s == nil {
+		return nil
+	}
+	return s.UnitronicsPcom
+}
+
+func (s *ServiceScan) GetUpnp() *Upnp {
+	if s == nil {
+		return nil
+	}
+	return s.Upnp
+}
+
+func (s *ServiceScan) GetUtilinetLpp() *UtilinetLpp {
+	if s == nil {
+		return nil
+	}
+	return s.UtilinetLpp
+}
+
+func (s *ServiceScan) GetVantageInfusion() *VantageInfusion {
+	if s == nil {
+		return nil
+	}
+	return s.VantageInfusion
+}
+
+func (s *ServiceScan) GetVentrilo() *Ventrilo {
+	if s == nil {
+		return nil
+	}
+	return s.Ventrilo
+}
+
+func (s *ServiceScan) GetVisionhitechIpcam() *VisionhitechIpcam {
+	if s == nil {
+		return nil
+	}
+	return s.VisionhitechIpcam
+}
+
+func (s *ServiceScan) GetVnc() *Vnc {
+	if s == nil {
+		return nil
+	}
+	return s.Vnc
+}
+
+func (s *ServiceScan) GetWeblogicT3() *WeblogicT3 {
+	if s == nil {
+		return nil
+	}
+	return s.WeblogicT3
+}
+
+func (s *ServiceScan) GetWinceCerdisp() *WinceCerdisp {
+	if s == nil {
+		return nil
+	}
+	return s.WinceCerdisp
+}
+
+func (s *ServiceScan) GetWinrm() *Winrm {
+	if s == nil {
+		return nil
+	}
+	return s.Winrm
+}
+
+func (s *ServiceScan) GetWowRealmd() *WowRealmd {
+	if s == nil {
+		return nil
+	}
+	return s.WowRealmd
+}
+
+func (s *ServiceScan) GetWsDiscovery() *WsDiscovery {
+	if s == nil {
+		return nil
+	}
+	return s.WsDiscovery
+}
+
+func (s *ServiceScan) GetX11() *X11 {
+	if s == nil {
+		return nil
+	}
+	return s.X11
+}
+
+func (s *ServiceScan) GetZeromq() *Zeromq {
+	if s == nil {
+		return nil
+	}
+	return s.Zeromq
 }

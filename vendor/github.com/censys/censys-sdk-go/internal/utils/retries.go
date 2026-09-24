@@ -7,12 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"github.com/censys/censys-sdk-go/retry"
+	"io"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -27,6 +31,17 @@ type Retries struct {
 	StatusCodes []string
 }
 
+var (
+	// IETF RFC 7231 4.2 safe and idempotent HTTP methods for connection retries
+	idempotentHTTPMethods = []string{
+		http.MethodDelete,
+		http.MethodGet,
+		http.MethodHead,
+		http.MethodOptions,
+		http.MethodPut,
+	}
+)
+
 func Retry(ctx context.Context, r Retries, operation func() (*http.Response, error)) (*http.Response, error) {
 	switch r.Config.Strategy {
 	case "backoff":
@@ -39,6 +54,7 @@ func Retry(ctx context.Context, r Retries, operation func() (*http.Response, err
 		err := retryWithBackoff(ctx, r.Config.Backoff, func() error {
 			if resp != nil {
 				resp.Body.Close()
+				resp = nil
 			}
 
 			select {
@@ -49,11 +65,47 @@ func Retry(ctx context.Context, r Retries, operation func() (*http.Response, err
 
 			res, err := operation()
 			if err != nil {
+				if !r.Config.RetryConnectionErrors {
+					return retry.Permanent(err)
+				}
+
+				var httpMethod string
+
+				// Use http.Request method if available
+				if res != nil && res.Request != nil {
+					httpMethod = res.Request.Method
+				}
+
+				isIdempotentHTTPMethod := slices.Contains(idempotentHTTPMethods, httpMethod)
 				urlError := new(url.Error)
+
 				if errors.As(err, &urlError) {
-					if (urlError.Temporary() || urlError.Timeout()) && r.Config.RetryConnectionErrors {
+					if urlError.Temporary() || urlError.Timeout() {
 						return err
 					}
+
+					// In certain error cases, the http.Request may not have
+					// been populated, so use url.Error.Op which only has its
+					// first character capitalized from the original request
+					// HTTP method.
+					if httpMethod == "" {
+						httpMethod = strings.ToUpper(urlError.Op)
+					}
+
+					isIdempotentHTTPMethod = slices.Contains(idempotentHTTPMethods, httpMethod)
+
+					// Connection closed
+					if errors.Is(urlError.Err, io.EOF) && isIdempotentHTTPMethod {
+						return err
+					}
+				}
+
+				var networkOperationError *net.OpError
+				isBrokenPipeOrConnectionReset := errors.As(err, &networkOperationError) &&
+					(errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET))
+
+				if isBrokenPipeOrConnectionReset && isIdempotentHTTPMethod {
+					return err
 				}
 
 				return retry.Permanent(err)
@@ -92,21 +144,31 @@ func Retry(ctx context.Context, r Retries, operation func() (*http.Response, err
 			return nil
 		})
 
-		var tempErr *retry.TemporaryError
-		if err != nil && !errors.As(err, &tempErr) {
-			return nil, err
-		}
-
-		return resp, nil
+		return retryResult(resp, err)
 	default:
 		return operation()
 	}
 }
 
+func retryResult(resp *http.Response, err error) (*http.Response, error) {
+	var tempErr *retry.TemporaryError
+	if err != nil && !errors.As(err, &tempErr) {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		return nil, err
+	}
+
+	if resp == nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
 func retryWithBackoff(ctx context.Context, s *retry.BackoffStrategy, operation func() error) error {
 	var (
 		err            error
-		next           time.Duration
 		attempt        int
 		start          = time.Now()
 		maxElapsedTime = time.Duration(s.MaxElapsedTime) * time.Millisecond
@@ -118,6 +180,7 @@ func retryWithBackoff(ctx context.Context, s *retry.BackoffStrategy, operation f
 	}()
 
 	for {
+		var next time.Duration
 		err = operation()
 		if err == nil {
 			return nil
@@ -128,13 +191,23 @@ func retryWithBackoff(ctx context.Context, s *retry.BackoffStrategy, operation f
 			return permanent.Unwrap()
 		}
 
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+
 		if time.Since(start) >= maxElapsedTime {
 			return err
 		}
 
 		var temporary *retry.TemporaryError
+		hasRetryAfter := false
 		if errors.As(err, &temporary) {
 			next = temporary.RetryAfter()
+			hasRetryAfter = next > 0
+		}
+
+		if hasRetryAfter && next > maxElapsedTime-time.Since(start) {
+			return err
 		}
 
 		if next <= 0 {
