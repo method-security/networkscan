@@ -33,11 +33,33 @@ var runServiceFingerprintForValidation = discoverservice.RunTCPServiceFingerprin
 // Conclusion:
 // Returns only sockets containing ports with confirmed active services
 func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfig, sockets []*discoverfern.SocketDetails) ([]*discoverfern.SocketDetails, []string) {
+	validatedPortsBySocket, errors := validatePortsBySocket(ctx, config, sockets)
+
+	validatedSockets := []*discoverfern.SocketDetails{}
+	for socketIndex, socket := range sockets {
+		if socket == nil || len(validatedPortsBySocket[socketIndex]) == 0 {
+			continue
+		}
+		validatedSockets = append(validatedSockets, &discoverfern.SocketDetails{
+			Host:  socket.Host,
+			Ip:    socket.Ip,
+			Ports: validatedPortsBySocket[socketIndex],
+		})
+	}
+
+	return validatedSockets, errors
+}
+
+// validatePortsBySocket verifies ports while preserving the input socket indexes.
+// This lets callers validate only selected sockets and merge the filtered ports
+// back into a larger scan result without affecting unrelated hosts.
+func validatePortsBySocket(ctx context.Context, config discoverfern.DiscoverPortConfig, sockets []*discoverfern.SocketDetails) ([][]*discoverfern.PortDetails, []string) {
 	log := svc1log.FromContext(ctx)
 	log.Info("Validating ports", svc1log.SafeParam("threads", config.ValidateThreads))
 
 	var errorsMutex sync.Mutex
 	errors := []string{}
+	validatedPortsBySocket := make([][]*discoverfern.PortDetails, len(sockets))
 
 	// Determine number of validation threads (use CPU cores if 0 or not specified)
 	maxThreads := runtime.NumCPU()
@@ -63,10 +85,9 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 		}
 	}
 	if taskCount == 0 {
-		return nil, errors
+		return validatedPortsBySocket, errors
 	}
 
-	validatedPortsBySocket := make([][]*discoverfern.PortDetails, len(sockets))
 	var portsMutex sync.Mutex
 	taskChan := make(chan validationTask, taskCount)
 	var wg sync.WaitGroup
@@ -137,19 +158,7 @@ func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfi
 	close(taskChan)
 	wg.Wait()
 
-	validatedSockets := []*discoverfern.SocketDetails{}
-	for socketIndex, socket := range sockets {
-		if socket == nil || len(validatedPortsBySocket[socketIndex]) == 0 {
-			continue
-		}
-		validatedSockets = append(validatedSockets, &discoverfern.SocketDetails{
-			Host:  socket.Host,
-			Ip:    socket.Ip,
-			Ports: validatedPortsBySocket[socketIndex],
-		})
-	}
-
-	return validatedSockets, errors
+	return validatedPortsBySocket, errors
 }
 
 // isCDNResponse detects if a service response indicates a CDN blocking access.
