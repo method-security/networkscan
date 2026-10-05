@@ -4,7 +4,6 @@ import (
 	// Standard
 	"context"
 	"runtime"
-	"strings"
 	"sync"
 
 	// Generated
@@ -21,15 +20,12 @@ var runServiceFingerprintForValidation = discoverservice.RunTCPServiceFingerprin
 
 // validatePortScan verifies that discovered ports actually have legitimate services running on them.
 //
-// Many port scanners report false positives - ports that appear open but don't actually host services,
-// or services that are blocked by CDNs. This function performs service fingerprinting on each
-// discovered port to confirm genuine service availability and filters out protected or non-responsive endpoints.
+// Many port scanners report false positives - ports that appear open but don't actually host services.
+// This function performs service fingerprinting on each discovered port to confirm service availability.
 //
 // Validation steps:
 // 1. Performs service fingerprinting on each discovered port
 // 2. Filters out ports that don't respond to service detection probes
-// 3. Detects and removes CDN protected services that return blocking responses
-//
 // Conclusion:
 // Returns only sockets containing ports with confirmed active services
 func validatePortScan(ctx context.Context, config discoverfern.DiscoverPortConfig, sockets []*discoverfern.SocketDetails) ([]*discoverfern.SocketDetails, []string) {
@@ -121,25 +117,12 @@ func validatePortsBySocket(ctx context.Context, config discoverfern.DiscoverPort
 					continue
 				}
 
-				// If we found any services on this port, check if they're real services or just CDN responses.
+				// A detected service confirms the port is open, regardless of its response metadata.
 				if serviceReport != nil && serviceReport.Result != nil && serviceReport.Result.Services != nil && len(serviceReport.Result.Services) > 0 {
-					hasValidService := false
-					for _, service := range serviceReport.Result.Services {
-						// Skip services that are only CDN responses
-						if !isCDNResponse(ctx, service) {
-							hasValidService = true
-							break
-						}
-					}
-
-					if hasValidService {
-						log.Info("Valid service detected", svc1log.SafeParam("ip", task.socket.Ip), svc1log.SafeParam("port", task.port.Port))
-						portsMutex.Lock()
-						validatedPortsBySocket[task.socketIndex] = append(validatedPortsBySocket[task.socketIndex], task.port)
-						portsMutex.Unlock()
-					} else {
-						log.Info("Only CDN responses detected, filtering out port", svc1log.SafeParam("ip", task.socket.Ip), svc1log.SafeParam("port", task.port.Port))
-					}
+					log.Info("Valid service detected", svc1log.SafeParam("ip", task.socket.Ip), svc1log.SafeParam("port", task.port.Port))
+					portsMutex.Lock()
+					validatedPortsBySocket[task.socketIndex] = append(validatedPortsBySocket[task.socketIndex], task.port)
+					portsMutex.Unlock()
 				}
 			}
 		}()
@@ -159,68 +142,4 @@ func validatePortsBySocket(ctx context.Context, config discoverfern.DiscoverPort
 	wg.Wait()
 
 	return validatedPortsBySocket, errors
-}
-
-// isCDNResponse detects if a service response indicates a CDN blocking access.
-// It checks for common patterns in HTTP/HTTPS responses that indicate CDN protection.
-func isCDNResponse(ctx context.Context, service *discoverfern.ServiceDetails) bool {
-	if service == nil || service.Metadata == nil {
-		return false
-	}
-
-	protocol := strings.ToLower(string(service.Protocol))
-
-	// Only check HTTP and HTTPS services
-	if protocol != "http" && protocol != "https" {
-		return false
-	}
-
-	// Extract metadata based on type
-	// For generic metadata, use the metadata map directly
-	metadataMap := make(map[string]string)
-	if service.Metadata.Generic != nil && service.Metadata.Generic.Metadata != nil {
-		metadataMap = service.Metadata.Generic.Metadata
-	}
-
-	// Check for specific CDN indicators regardless of status code
-	return hasCDNIndicators(ctx, service.Port, metadataMap)
-}
-
-// hasCDNIndicators checks for specific headers and content patterns that indicate CDN responses.
-func hasCDNIndicators(ctx context.Context, port int, metadata map[string]string) bool {
-	log := svc1log.FromContext(ctx)
-	if metadata == nil {
-		return false
-	}
-	log.Info("Checking for CDN indicators", svc1log.SafeParam("port", port), svc1log.SafeParam("metadata", metadata))
-
-	// Create case-insensitive metadata map for lookups
-	normalizedMetadata := make(map[string]string)
-	for key, value := range metadata {
-		normalizedMetadata[strings.ToLower(key)] = value
-	}
-
-	// Check response status patterns that commonly indicate firewall blocking
-	firewallStatusPatterns := []string{
-		"service unavailable",
-		"forbidden",
-		"access denied",
-		"blocked",
-		"unauthorized",
-		"too many requests",
-		"rate limit",
-		"security block",
-	}
-	if status, exists := normalizedMetadata["status"]; exists {
-		status = strings.ToLower(status)
-
-		for _, pattern := range firewallStatusPatterns {
-			if strings.Contains(status, pattern) {
-				log.Info("CDN detected via status", svc1log.SafeParam("port", port), svc1log.SafeParam("status", status), svc1log.SafeParam("pattern", pattern))
-				return true
-			}
-		}
-	}
-
-	return false
 }

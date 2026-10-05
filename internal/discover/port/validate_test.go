@@ -7,8 +7,37 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
 )
+
+func TestValidatePortScanKeepsHTTPBlockingResponse(t *testing.T) {
+	originalRunServiceFingerprint := runServiceFingerprintForValidation
+	defer func() { runServiceFingerprintForValidation = originalRunServiceFingerprint }()
+
+	runServiceFingerprintForValidation = func(_ context.Context, _ discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
+		return &discoverfern.DiscoverServiceReport{
+			Result: &discoverfern.DiscoverServiceResult{
+				Services: []*discoverfern.ServiceDetails{{
+					Protocol: common.ProtocolTypeHttp,
+					Metadata: &discoverfern.ServiceMetadata{Generic: &discoverfern.GenericServiceMetadata{
+						Metadata: map[string]string{"status": "403 Forbidden"},
+					}},
+				}},
+			},
+		}, nil
+	}
+
+	validated, errors := validatePortScan(context.Background(), discoverfern.DiscoverPortConfig{}, []*discoverfern.SocketDetails{
+		{Ip: "10.0.0.1", Ports: []*discoverfern.PortDetails{{Port: 80}}},
+	})
+	if len(errors) != 0 {
+		t.Fatalf("validation errors = %v, want none", errors)
+	}
+	if len(validated) != 1 || len(validated[0].Ports) != 1 || validated[0].Ports[0].Port != 80 {
+		t.Fatalf("validated sockets = %v, want port 80 retained", validated)
+	}
+}
 
 func TestValidatePortScanThreadsAcrossSockets(t *testing.T) {
 	originalRunServiceFingerprint := runServiceFingerprintForValidation
