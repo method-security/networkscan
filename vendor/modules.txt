@@ -89,7 +89,7 @@ github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/internal/shared
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/pageblob
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas
 github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service
-# github.com/Azure/go-ntlmssp v0.1.1
+# github.com/Azure/go-ntlmssp v0.1.2-0.20260824092057-1c8077778c2c
 ## explicit; go 1.24
 github.com/Azure/go-ntlmssp
 github.com/Azure/go-ntlmssp/internal/md4
@@ -526,10 +526,6 @@ github.com/bits-and-blooms/bitset
 # github.com/bits-and-blooms/bloom/v3 v3.7.1
 ## explicit; go 1.16
 github.com/bits-and-blooms/bloom/v3
-# github.com/bodgit/ntlmssp v0.0.0-20240506230425-31973bb52d9b
-## explicit; go 1.18
-github.com/bodgit/ntlmssp
-github.com/bodgit/ntlmssp/http
 # github.com/bodgit/plumbing v1.3.0
 ## explicit; go 1.13
 github.com/bodgit/plumbing
@@ -1109,7 +1105,7 @@ github.com/google/shlex
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
-# github.com/gopacket/gopacket v1.7.2
+# github.com/gopacket/gopacket v1.7.4
 ## explicit; go 1.25.0
 github.com/gopacket/gopacket
 github.com/gopacket/gopacket/layers
@@ -1490,8 +1486,8 @@ github.com/mackerelio/go-osstat/network
 # github.com/masterzen/simplexml v0.0.0-20190410153822-31eea3082786
 ## explicit
 github.com/masterzen/simplexml/dom
-# github.com/masterzen/winrm v0.0.0-20260407182533-5570be7f80cf
-## explicit; go 1.21
+# github.com/masterzen/winrm v0.0.0-20261004123143-57b335310d59
+## explicit; go 1.24
 github.com/masterzen/winrm
 github.com/masterzen/winrm/soap
 # github.com/mattn/go-colorable v0.1.15
@@ -2513,9 +2509,6 @@ github.com/tidwall/rtred/base
 # github.com/tidwall/tinyqueue v0.1.1
 ## explicit; go 1.15
 github.com/tidwall/tinyqueue
-# github.com/tidwall/transform v0.0.0-20201103190739-32f242e2dbde
-## explicit
-github.com/tidwall/transform
 # github.com/tim-ywliu/nested-logrus-formatter v1.3.2
 ## explicit
 github.com/tim-ywliu/nested-logrus-formatter
