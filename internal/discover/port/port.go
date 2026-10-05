@@ -93,46 +93,94 @@ func RunPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig) (*
 		errors = append(errors, err.Error())
 	}
 
-	// Port validation checks:
-	// 1. Check if open ports exceed threshold
-	// 2. Check if required validation ports are open
 	if config.Validate {
-		shouldValidate := false
-
-		// Step 1: Check if the number of open ports exceeds the validation threshold
-		if config.MaxOpenPortsValidationThreshold != nil && *config.MaxOpenPortsValidationThreshold > 0 {
-			openPortCount := countOpenPorts(portscanResult)
-			if openPortCount > *config.MaxOpenPortsValidationThreshold {
-				log.Warn("Number of open ports exceeds validation threshold, triggering validation",
-					svc1log.SafeParam("openPorts", openPortCount),
-					svc1log.SafeParam("threshold", *config.MaxOpenPortsValidationThreshold))
-				errors = append(errors, fmt.Sprintf("validation triggered due to count of open ports exceeding threshold (%d > %d)", openPortCount, *config.MaxOpenPortsValidationThreshold)) // Note: DD Metrics is generated off of this error line. Please update with caution
-				shouldValidate = true
-			}
-		}
-		// Step 2: Check if required validation ports are ope
-		hasOpenRequiredPorts := hasOpenRequiredPorts(portscanResult, requiredPorts)
-		if hasOpenRequiredPorts {
-			log.Warn("Required validation ports are open, triggering validation", svc1log.SafeParam("requiredPorts", requiredPorts))
-			errors = append(errors, fmt.Sprintf("validation triggered due to one or more validation ports being open: %v", requiredPorts)) // Note: DD Metrics is generated off of this error line. Please update with caution
-			shouldValidate = true
-		}
-
-		// If neither condition is met, skip validation
-		if !shouldValidate {
-			log.Info("Skipping validation, conditions not met")
-			return &discoverfern.DiscoverPortReport{
-				Config: &config, Result: &discoverfern.DiscoverPortResult{Sockets: portscanResult}, Errors: errors}, nil
-		}
-
-		// If either condition is met, proceed with validation
-		validatedPorts, validationErrors := validatePortScan(ctx, config, portscanResult)
+		validatedPorts, validationErrors := validateTriggeredPortScan(ctx, config, portscanResult)
 		portscanResult = validatedPorts
 		errors = append(errors, validationErrors...)
 	}
 
 	return &discoverfern.DiscoverPortReport{
 		Config: &config, Result: &discoverfern.DiscoverPortResult{Sockets: portscanResult}, Errors: errors}, nil
+}
+
+// validateTriggeredPortScan applies validation only to the IPs that individually
+// trigger the validation heuristics. Untriggered sockets remain unchanged.
+func validateTriggeredPortScan(ctx context.Context, config discoverfern.DiscoverPortConfig, sockets []*discoverfern.SocketDetails) ([]*discoverfern.SocketDetails, []string) {
+	log := svc1log.FromContext(ctx)
+	targetIndexes, errors := getPortValidationTargetIndexes(ctx, config, sockets)
+	if len(targetIndexes) == 0 {
+		log.Info("Skipping validation, conditions not met")
+		return sockets, errors
+	}
+
+	validationTargets := make([]*discoverfern.SocketDetails, 0, len(targetIndexes))
+	targetPositionBySocketIndex := make(map[int]int, len(targetIndexes))
+	for _, socketIndex := range targetIndexes {
+		targetPositionBySocketIndex[socketIndex] = len(validationTargets)
+		validationTargets = append(validationTargets, sockets[socketIndex])
+	}
+
+	validatedPortsByTarget, validationErrors := validatePortsBySocket(ctx, config, validationTargets)
+	errors = append(errors, validationErrors...)
+
+	validatedSockets := make([]*discoverfern.SocketDetails, 0, len(sockets))
+	for socketIndex, socket := range sockets {
+		targetPosition, shouldValidate := targetPositionBySocketIndex[socketIndex]
+		if !shouldValidate {
+			validatedSockets = append(validatedSockets, socket)
+			continue
+		}
+
+		if socket == nil || len(validatedPortsByTarget[targetPosition]) == 0 {
+			continue
+		}
+		validatedSockets = append(validatedSockets, &discoverfern.SocketDetails{
+			Host:  socket.Host,
+			Ip:    socket.Ip,
+			Ports: validatedPortsByTarget[targetPosition],
+		})
+	}
+
+	return validatedSockets, errors
+}
+
+// getPortValidationTargetIndexes returns the sockets that need validation.
+// The heuristics are evaluated per IP instead of across the entire scan result.
+func getPortValidationTargetIndexes(ctx context.Context, config discoverfern.DiscoverPortConfig, sockets []*discoverfern.SocketDetails) ([]int, []string) {
+	log := svc1log.FromContext(ctx)
+	targetIndexes := []int{}
+	errors := []string{}
+
+	for socketIndex, socket := range sockets {
+		if socket == nil {
+			continue
+		}
+
+		shouldValidate := false
+		openPortCount := countSocketOpenPorts(socket)
+		if config.MaxOpenPortsValidationThreshold != nil && *config.MaxOpenPortsValidationThreshold > 0 && openPortCount > *config.MaxOpenPortsValidationThreshold {
+			log.Warn("Number of open ports exceeds validation threshold, triggering validation",
+				svc1log.SafeParam("ip", socket.Ip),
+				svc1log.SafeParam("openPorts", openPortCount),
+				svc1log.SafeParam("threshold", *config.MaxOpenPortsValidationThreshold))
+			errors = append(errors, fmt.Sprintf("validation triggered due to count of open ports exceeding threshold (%d > %d)", openPortCount, *config.MaxOpenPortsValidationThreshold)) // Note: DD Metrics is generated off of this error line. Please update with caution
+			shouldValidate = true
+		}
+
+		if hasOpenRequiredPortsForSocket(socket, requiredPorts) {
+			log.Warn("Required validation ports are open, triggering validation",
+				svc1log.SafeParam("ip", socket.Ip),
+				svc1log.SafeParam("requiredPorts", requiredPorts))
+			errors = append(errors, fmt.Sprintf("validation triggered due to one or more validation ports being open: %v", requiredPorts)) // Note: DD Metrics is generated off of this error line. Please update with caution
+			shouldValidate = true
+		}
+
+		if shouldValidate {
+			targetIndexes = append(targetIndexes, socketIndex)
+		}
+	}
+
+	return targetIndexes, errors
 }
 
 // getPortScan configures and runs the port scanning process using the Naabu library.
@@ -343,35 +391,30 @@ func portSpecContainsPort(portSpec string, port string) bool {
 	return false
 }
 
-// hasOpenRequiredPorts checks if any of the required ports (as strings) are open in the scan results
-func hasOpenRequiredPorts(scanResults []*discoverfern.SocketDetails, requiredPorts []string) bool {
+func hasOpenRequiredPortsForSocket(socket *discoverfern.SocketDetails, requiredPorts []string) bool {
+	if socket == nil || socket.Ports == nil {
+		return false
+	}
+
 	requiredPortsMap := make(map[string]bool)
 	for _, port := range requiredPorts {
 		requiredPortsMap[port] = true
 	}
 
-	for _, socket := range scanResults {
-		if socket != nil && socket.Ports != nil {
-			for _, port := range socket.Ports {
-				if port != nil && requiredPortsMap[strconv.Itoa(port.Port)] {
-					return true
-				}
-			}
+	for _, port := range socket.Ports {
+		if port != nil && requiredPortsMap[strconv.Itoa(port.Port)] {
+			return true
 		}
 	}
 
 	return false
 }
 
-// countOpenPorts counts the total number of open ports across all hosts in the scan results
-func countOpenPorts(scanResults []*discoverfern.SocketDetails) int {
-	count := 0
-	for _, socket := range scanResults {
-		if socket != nil && socket.Ports != nil {
-			count += len(socket.Ports)
-		}
+func countSocketOpenPorts(socket *discoverfern.SocketDetails) int {
+	if socket == nil || socket.Ports == nil {
+		return 0
 	}
-	return count
+	return len(socket.Ports)
 }
 
 // hideOsArgsFromNaabu prevents Naabu from processing command line arguments.
