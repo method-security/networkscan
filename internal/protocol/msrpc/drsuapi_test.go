@@ -54,6 +54,11 @@ func TestExtractUserCredentialsPasswordAttributes(t *testing.T) {
 		lmHash       string
 	}{
 		{
+			name:       "current NT hash without password history",
+			attributes: []*drsuapi.Attribute{current},
+			ntHash:     "00112233445566778899aabbccddeeff",
+		},
+		{
 			name:       "current hashes with password history",
 			attributes: []*drsuapi.Attribute{history, current, lm},
 			ntHash:     "00112233445566778899aabbccddeeff",
