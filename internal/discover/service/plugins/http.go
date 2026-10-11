@@ -5,10 +5,8 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
-	"strings"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
@@ -45,7 +43,7 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		// Use net.JoinHostPort to properly format IPv6 addresses with brackets
 		hostPort := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 		url := fmt.Sprintf("%s://%s/", proto.scheme, hostPort)
-		req, err := http.NewRequestWithContext(timeoutCtx, http.MethodGet, url, nil)
+		req, err := http.NewRequestWithContext(timeoutCtx, "HEAD", url, nil)
 		if err != nil {
 			continue
 		}
@@ -53,12 +51,7 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		if err != nil {
 			continue // Try next protocol
 		}
-		// Read enough body to catch common CDN/fronting error pages.
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
 		_ = resp.Body.Close()
-		if isHTTPFrontingError(resp.StatusCode, body) {
-			continue
-		}
 
 		// Extract server info
 		server := resp.Header.Get("Server")
@@ -94,21 +87,4 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 
 	return nil, fmt.Errorf("no HTTP service detected")
-}
-
-func isHTTPFrontingError(statusCode int, body []byte) bool {
-
-	lowerBody := strings.ToLower(string(body))
-	for _, marker := range []string{
-		"400 bad request",
-		"http request to a https server",
-		"http request to an https server",
-		"plain http request was sent to https port",
-		"speaking plain http to an ssl-enabled server port",
-	} {
-		if strings.Contains(lowerBody, marker) {
-			return true
-		}
-	}
-	return false
 }
