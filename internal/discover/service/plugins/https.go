@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
@@ -41,6 +42,9 @@ func discoverNativeHTTP(ctx context.Context, ip net.IP, port int, host string, t
 	r, body, err := p.get(ctx, "/")
 	if r == nil {
 		return nil, err
+	}
+	if isHTTPFrontingError(r.StatusCode, body) {
+		return nil, nil
 	}
 	metadata := map[string]string{}
 	if err != nil {
@@ -81,4 +85,21 @@ func discoverNativeHTTP(ctx context.Context, ip net.IP, port int, host string, t
 		protocol, name = common.ProtocolTypeHttps, "https"
 	}
 	return productHTTPResult(host, ip, port, secure, protocol, name, r.Header.Get("Server"), r, metadata), nil
+}
+
+func isHTTPFrontingError(statusCode int, body []byte) bool {
+	_ = statusCode
+	lowerBody := strings.ToLower(string(body))
+	for _, marker := range []string{
+		"400 bad request",
+		"http request to a https server",
+		"http request to an https server",
+		"plain http request was sent to https port",
+		"speaking plain http to an ssl-enabled server port",
+	} {
+		if strings.Contains(lowerBody, marker) {
+			return true
+		}
+	}
+	return false
 }
