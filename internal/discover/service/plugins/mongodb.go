@@ -29,14 +29,25 @@ func (MongoDBFingerprinter) Name() string { return "mongodb" }
 func (MongoDBFingerprinter) DefaultPorts() []int { return []int{27017} }
 
 func (MongoDBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+	ctx, cancel := helpers.Context(ctx, timeout)
+	defer cancel()
+
 	// Create MongoDB connection string
 	addr := utils.FormatHostPort(ip.String(), port)
 	uri := fmt.Sprintf("mongodb://%s", addr)
 
 	// Create context with timeout
 	timeoutDuration := boundedMongoProbeTimeout(timeout)
-	timeoutCtx, cancel := helpers.ContextDuration(ctx, timeoutDuration)
-	defer cancel()
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, ctx.Err()
+		}
+		// Leave half the attempt budget for the native HTTP warning fallback.
+		timeoutDuration = min(timeoutDuration, remaining/2)
+	}
+	timeoutCtx, cancelDriver := helpers.ContextDuration(ctx, timeoutDuration)
+	defer cancelDriver()
 
 	// Set client options with short timeout
 	clientOptions := options.Client().
@@ -140,8 +151,19 @@ func buildMongoDBResult(host string, ip net.IP, port int, tlsEnabled bool, versi
 }
 
 func detectMongoDBNativeHTTPWarning(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	for _, tlsEnabled := range []bool{true, false} {
-		resp, err := mongoHTTPWarningExchange(ctx, ip, port, host, timeout, tlsEnabled)
+	for index, tlsEnabled := range []bool{true, false} {
+		attemptTimeout := boundedMongoWarningTimeout(timeout)
+		if deadline, ok := ctx.Deadline(); ok {
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return nil, ctx.Err()
+			}
+			// A stalled TLS probe must leave time for the plaintext attempt.
+			attemptTimeout = min(attemptTimeout, remaining/time.Duration(2-index))
+		}
+		attemptCtx, cancel := helpers.ContextDuration(ctx, attemptTimeout)
+		resp, err := mongoHTTPWarningExchange(attemptCtx, ip, port, host, timeout, tlsEnabled)
+		cancel()
 		if err != nil {
 			continue
 		}
