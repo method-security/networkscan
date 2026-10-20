@@ -385,7 +385,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	addDiscoverServiceCommonFlags(discoverServiceTCPCmd, "Target addresses (IP:port, hostname:port, or quoted IP:port|hostname)")
 	discoverServiceTCPCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
-	discoverServiceTCPCmd.Flags().String("user-agent", "", "HTTP User-Agent preset: RANDOM, CHROME, FIREFOX, SAFARI, EDGE, CURL (omitted: use transport defaults)")
+	discoverServiceTCPCmd.Flags().String("user-agent", "RANDOM", "HTTP User-Agent preset: RANDOM, CHROME, FIREFOX, SAFARI, EDGE, CURL")
 	_ = discoverServiceTCPCmd.MarkFlagRequired("targets")
 
 	discoverServiceUDPCmd := &cobra.Command{
@@ -651,17 +651,15 @@ func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
 }
 
 func setDiscoverServiceHTTPFlags(cmd *cobra.Command, config *discoverfern.DiscoverServiceConfig) error {
-	if cmd.Flags().Changed("user-agent") {
-		value, err := cmd.Flags().GetString("user-agent")
-		if err != nil {
-			return err
-		}
-		preset, err := common.NewUserAgentPresetFromString(strings.ToUpper(value))
-		if err != nil {
-			return fmt.Errorf("invalid --user-agent preset: %w", err)
-		}
-		config.UserAgent = &preset
+	value, err := cmd.Flags().GetString("user-agent")
+	if err != nil {
+		return err
 	}
+	preset, err := common.NewUserAgentPresetFromString(strings.ToUpper(value))
+	if err != nil {
+		return fmt.Errorf("invalid --user-agent preset: %w", err)
+	}
+	config.UserAgent = &preset
 	return nil
 }
 

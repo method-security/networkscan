@@ -104,3 +104,37 @@ func TestTCPHostnameAndUserAgentStealth(t *testing.T) {
 		t.Fatal("UDP accepted hostname target")
 	}
 }
+
+func TestTCPHostnameRandomUserAgentFallback(t *testing.T) {
+	userAgents := make(chan string, 2)
+	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userAgents <- r.UserAgent()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer s.Close()
+	address := s.Listener.Addr().String()
+	config := discover.DiscoverServiceConfig{
+		Targets:       []string{address + "|one.invalid", address + "|two.invalid"},
+		Stealth:       &discover.ServiceStealthConfig{ServiceType: discover.StealthServiceTypeHttp},
+		Timeout:       5,
+		Threads:       2,
+		PluginThreads: 2,
+	}
+	report, err := RunTCPServiceFingerprint(context.Background(), config)
+	if err != nil || report.Result == nil || len(report.Result.Services) != 2 {
+		t.Fatalf("missing services: %+v, %v", report, err)
+	}
+	if report.Config.UserAgent == nil || *report.Config.UserAgent != common.UserAgentPresetRandom {
+		t.Fatalf("missing RANDOM config default: %+v", report.Config)
+	}
+	if len(userAgents) != 2 {
+		t.Fatalf("got %d requests, want 2", len(userAgents))
+	}
+	first, second := <-userAgents, <-userAgents
+	if first == "" || strings.HasPrefix(first, "Go-http-client/") || strings.HasPrefix(first, "networkscan") {
+		t.Fatalf("no random user agent selected: %q", first)
+	}
+	if first != second {
+		t.Fatalf("user agent changed within a scan: %q != %q", first, second)
+	}
+}

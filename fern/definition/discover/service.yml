@@ -135,7 +135,7 @@ types:
       timeout: integer
       threads: integer # Maximum concurrent target IPs
       pluginThreads: integer # Maximum custom service plugins to run concurrently per target
-      userAgent: optional<common.UserAgentPreset> # TCP HTTP probes only; omission uses transport defaults, without a scanner-specific header
+      userAgent: optional<common.UserAgentPreset> # TCP HTTP probes only; defaults to RANDOM, resolved once per scan
       stealth: optional<ServiceStealthConfig>
       udp: optional<boolean> # Enable UDP service discovery mode (scans common UDP ports)
   # Final report

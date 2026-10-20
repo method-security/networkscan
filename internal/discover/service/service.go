@@ -53,12 +53,15 @@ func RunTCPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverS
 		}
 	}
 
+	preset := common.UserAgentPresetRandom
 	if config.UserAgent != nil {
-		if _, err := common.NewUserAgentPresetFromString(string(*config.UserAgent)); err != nil {
-			return report, err
-		}
-		ctx = servicehelpers.WithHTTPUserAgent(ctx, useragent.Resolve(*config.UserAgent))
+		preset = *config.UserAgent
 	}
+	if _, err := common.NewUserAgentPresetFromString(string(preset)); err != nil {
+		return report, err
+	}
+	config.UserAgent = &preset
+	ctx = servicehelpers.WithHTTPUserAgent(ctx, useragent.Resolve(preset))
 	targets, err := parseTCPServiceTargets(config.Targets)
 	if err != nil {
 		report.Result = &discoverfern.DiscoverServiceResult{}

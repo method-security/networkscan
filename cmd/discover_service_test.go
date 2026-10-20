@@ -38,8 +38,8 @@ func TestDiscoverServiceHTTPFlags(t *testing.T) {
 			if (err != nil) != tc.bad {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if tc.name == "omitted" && config.UserAgent != nil {
-				t.Fatalf("changed default: %+v", config)
+			if tc.name == "omitted" && (config.UserAgent == nil || *config.UserAgent != common.UserAgentPresetRandom) {
+				t.Fatalf("missing RANDOM default: %+v", config)
 			}
 			if tc.name == "chrome" && (config.UserAgent == nil || *config.UserAgent != common.UserAgentPresetChrome) {
 				t.Fatalf("wrong preset: %+v", config)
