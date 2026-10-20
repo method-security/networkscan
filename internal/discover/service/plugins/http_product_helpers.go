@@ -51,28 +51,37 @@ func newProductHTTP(ip net.IP, port int, host string, timeout int, secure bool) 
 	return &productHTTP{transport: t, base: url.URL{Scheme: scheme, Host: authority}}
 }
 
-func (p *productHTTP) get(ctx context.Context, path string) (*http.Response, []byte, error) {
+func (p *productHTTP) getResponse(ctx context.Context, path string) (*http.Response, error) {
 	u := p.base
 	u.Path = path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
 		req.Header.Set("User-Agent", userAgent)
 	}
 	// RoundTrip preserves valid responses even when Location is malformed;
 	// discovery never follows redirects to another endpoint.
-	r, err := p.transport.RoundTrip(req)
+	return p.transport.RoundTrip(req)
+}
+
+func (p *productHTTP) get(ctx context.Context, path string) (*http.Response, []byte, error) {
+	r, err := p.getResponse(ctx, path)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer func() { _ = r.Body.Close() }()
-	b, err := io.ReadAll(io.LimitReader(r.Body, productBodyLimit+1))
-	if len(b) > productBodyLimit {
-		return r, b[:productBodyLimit], fmt.Errorf("HTTP discovery body exceeds %d bytes", productBodyLimit)
-	}
+	b, err := readProductHTTPBody(r.Body)
 	return r, b, err
+}
+
+func readProductHTTPBody(body io.Reader) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(body, productBodyLimit+1))
+	if len(b) > productBodyLimit {
+		return b[:productBodyLimit], fmt.Errorf("HTTP discovery body exceeds %d bytes", productBodyLimit)
+	}
+	return b, err
 }
 
 func productHTTPResult(host string, ip net.IP, port int, secure bool, protocol common.ProtocolType, name, version string, r *http.Response, metadata map[string]string) *discover.ServiceDetails {
