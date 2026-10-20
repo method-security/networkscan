@@ -15,11 +15,15 @@ func TestDiscoverServiceHTTPFlags(t *testing.T) {
 	}{
 		{"omitted", nil, false},
 		{"hostname", []string{"--hostname", "product.test", "--user-agent", "chrome"}, false},
-		{"multiple-bindings", []string{"--target-hostnames", "127.0.0.1:443=one.test,127.0.0.2:443=two.test", "--target-hostnames", "127.0.0.1:443=three.test", "--user-agent", "CURL"}, false},
-		{"mutually-exclusive", []string{"--hostname", "product.test", "--target-hostnames", "127.0.0.1:443=product.test"}, true},
+		{"multiple-bindings", []string{"--target-hostnames", "127.0.0.1:443|one.test,127.0.0.2:443|two.test", "--target-hostnames", "127.0.0.1:443|three.test", "--user-agent", "CURL"}, false},
+		{"mutually-exclusive", []string{"--hostname", "product.test", "--target-hostnames", "127.0.0.1:443|product.test"}, true},
 		{"invalid-user-agent", []string{"--user-agent", "arbitrary-browser"}, true},
 		{"empty-user-agent", []string{"--user-agent", ""}, true},
 		{"invalid-binding", []string{"--target-hostnames", "127.0.0.1:443"}, true},
+		{"old-separator", []string{"--target-hostnames", "127.0.0.1:443=product.test"}, true},
+		{"extra-separator", []string{"--target-hostnames", "127.0.0.1:443|product.test|extra"}, true},
+		{"empty-hostname", []string{"--target-hostnames", "127.0.0.1:443|"}, true},
+		{"ipv6", []string{"--target-hostnames", "[::1]:443|product.test"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := NewNetworkScan("test")
@@ -53,8 +57,12 @@ func TestDiscoverServiceHTTPFlags(t *testing.T) {
 					t.Fatalf("wrong config: %+v", config)
 				}
 			case "multiple-bindings":
-				if len(config.TargetHostnames) != 3 || config.TargetHostnames[2].Hostname != "three.test" || config.UserAgent == nil || *config.UserAgent != common.UserAgentPresetCurl {
+				if len(config.TargetHostnames) != 3 || config.TargetHostnames[2] != "127.0.0.1:443|three.test" || config.UserAgent == nil || *config.UserAgent != common.UserAgentPresetCurl {
 					t.Fatalf("wrong config: %+v", config)
+				}
+			case "ipv6":
+				if len(config.TargetHostnames) != 1 || config.TargetHostnames[0] != "[::1]:443|product.test" {
+					t.Fatalf("wrong IPv6 binding: %+v", config)
 				}
 			}
 			udp, _, err := a.RootCmd.Find([]string{"discover", "service", "udp"})

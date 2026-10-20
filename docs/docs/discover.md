@@ -138,12 +138,14 @@ Keep the destination IP fixed while supplying a logical hostname for HTTP Host, 
 ```bash
 networkscan discover service tcp --targets 192.0.2.10:443,192.0.2.11:8443 --hostname app.example.com
 networkscan discover service tcp --targets 192.0.2.10:443,192.0.2.11:443 \
-  --target-hostnames 192.0.2.10:443=one.example.com,192.0.2.11:443=two.example.com \
-  --target-hostnames 192.0.2.10:443=another.example.com --user-agent CHROME
+  --target-hostnames '192.0.2.10:443|one.example.com,192.0.2.11:443|two.example.com' \
+  --target-hostnames '192.0.2.10:443|another.example.com' --user-agent CHROME
 networkscan discover service tcp --targets '[2001:db8::1]:443' --hostname app.example.com --service-type HTTP --user-agent CURL
 ```
 
 `--hostname` applies one name to every target, which must be an explicit IP:port. Alternatively, `--target-hostnames` binds names to individual IP:port targets; repeat a socket with different names to probe multiple virtual hosts. Every binding must match a supplied target. Unmapped targets retain their existing behavior. These two flags are mutually exclusive. Overrides do not resolve the supplied hostname or change the connection IP. Results retain the logical name in `host` and the destination address in `ip`.
+
+Bindings are flat strings in `IP:port|hostname` format. Quote CLI values because an unquoted `|` is a shell pipe. The report config preserves the same flat list, for example `"targetHostnames": ["192.0.2.10:443|app.example.com", "[2001:db8::1]:443|app.example.com"]`.
 
 `--user-agent` accepts the same named presets as WebProbe: `RANDOM`, `CHROME`, `FIREFOX`, `SAFARI`, `EDGE`, and `CURL` (case-insensitive). One value is selected per invocation and reused across HTTP probes and follow-up requests. Omitting the flag preserves each plugin's existing header. It does not modify non-HTTP protocol headers or guarantee that a server will accept the request.
 
@@ -209,7 +211,7 @@ Flags:
       --hostname string            Logical hostname for all IP:port targets (HTTP Host and TLS SNI); does not change the destination IP
       --plugin-threads int         Maximum custom service plugins to run concurrently per target (default 10)
       --service-type string        Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
-      --target-hostnames strings   Per-socket IP:port=hostname bindings; repeat for multiple virtual hosts
+      --target-hostnames strings   Per-socket IP:port|hostname bindings (quote values); repeat for multiple virtual hosts
       --targets strings            Target addresses (IP:port or hostname:port)
       --threads int                Maximum concurrent target IPs (default 10)
       --timeout int                Timeout in seconds for each service fingerprinting attempt (default 30)

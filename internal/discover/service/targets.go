@@ -68,17 +68,18 @@ func parseTCPServiceConfigTargets(config discover.DiscoverServiceConfig) ([]serv
 			}
 		}
 		for _, binding := range config.TargetHostnames {
-			if binding == nil {
-				return nil, fmt.Errorf("targetHostnames cannot contain null bindings")
+			target, hostname, ok := strings.Cut(binding, "|")
+			if !ok || target == "" || hostname == "" || strings.Contains(hostname, "|") {
+				return nil, fmt.Errorf("invalid targetHostnames binding %q: expected IP:port|hostname", binding)
 			}
-			key, _, _, err := explicitIPSocket(binding.Target)
+			key, _, _, err := explicitIPSocket(target)
 			if err != nil {
 				return nil, err
 			}
 			if !sockets[key] {
-				return nil, fmt.Errorf("hostname binding target %q is not in targets", binding.Target)
+				return nil, fmt.Errorf("hostname binding target %q is not in targets", target)
 			}
-			host, err := normalizeHostname(binding.Hostname)
+			host, err := normalizeHostname(hostname)
 			if err != nil {
 				return nil, err
 			}

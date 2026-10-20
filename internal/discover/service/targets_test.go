@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -25,11 +26,11 @@ func TestTCPHostnameTargets(t *testing.T) {
 		{"global", discover.DiscoverServiceConfig{Targets: []string{"127.0.0.1:443", "[::1]:8443"}, Hostname: &host}, []string{"127.0.0.1:443=product.invalid", "[::1]:8443=product.invalid"}},
 		{"bindings", discover.DiscoverServiceConfig{
 			Targets: []string{"127.0.0.1:443", "127.0.0.1:8443", "[::1]:443"},
-			TargetHostnames: []*discover.ServiceTargetHostname{
-				{Target: "127.0.0.1:443", Hostname: "one.invalid"},
-				{Target: "127.0.0.1:443", Hostname: "two.invalid"},
-				{Target: "127.0.0.1:443", Hostname: "ONE.INVALID."},
-				{Target: "[0:0:0:0:0:0:0:1]:443", Hostname: "v6.invalid"},
+			TargetHostnames: []string{
+				"127.0.0.1:443|one.invalid",
+				"127.0.0.1:443|two.invalid",
+				"127.0.0.1:443|ONE.INVALID.",
+				"[0:0:0:0:0:0:0:1]:443|v6.invalid",
 			},
 		}, []string{"127.0.0.1:443=one.invalid", "127.0.0.1:443=two.invalid", "127.0.0.1:8443=127.0.0.1", "[::1]:443=v6.invalid"}},
 	} {
@@ -64,13 +65,34 @@ func TestTCPHostnameValidation(t *testing.T) {
 		}
 	}
 	for _, config := range []discover.DiscoverServiceConfig{
-		{Targets: []string{"127.0.0.1:443"}, TargetHostnames: []*discover.ServiceTargetHostname{nil}},
-		{Targets: []string{"127.0.0.1:443"}, TargetHostnames: []*discover.ServiceTargetHostname{{Target: "127.0.0.1:8443", Hostname: host}}},
-		{Targets: []string{"127.0.0.1:443"}, Hostname: &host, TargetHostnames: []*discover.ServiceTargetHostname{{Target: "127.0.0.1:443", Hostname: host}}},
+		{Targets: []string{"127.0.0.1:443"}, TargetHostnames: []string{""}},
+		{Targets: []string{"127.0.0.1:443"}, TargetHostnames: []string{"127.0.0.1:8443|" + host}},
+		{Targets: []string{"127.0.0.1:443"}, Hostname: &host, TargetHostnames: []string{"127.0.0.1:443|" + host}},
 	} {
 		if _, err := parseTCPServiceConfigTargets(config); err == nil {
 			t.Errorf("accepted invalid config %+v", config)
 		}
+	}
+	for _, binding := range []string{"127.0.0.1:443", "127.0.0.1:443=product.invalid", "127.0.0.1:443|", "|product.invalid", "127.0.0.1:443|product.invalid|extra", "127.0.0.1:443|bad_name", "example.invalid:443|product.invalid"} {
+		if _, err := parseTCPServiceConfigTargets(discover.DiscoverServiceConfig{Targets: []string{"127.0.0.1:443"}, TargetHostnames: []string{binding}}); err == nil {
+			t.Errorf("accepted invalid binding %q", binding)
+		}
+	}
+}
+
+func TestTCPHostnameFlatConfig(t *testing.T) {
+	const input = `{"targets":["127.0.0.1:443"],"timeout":2,"threads":1,"pluginThreads":1,"targetHostnames":["127.0.0.1:443|product.invalid"]}`
+	var config discover.DiscoverServiceConfig
+	if err := json.Unmarshal([]byte(input), &config); err != nil {
+		t.Fatal(err)
+	}
+	targets, err := parseTCPServiceConfigTargets(config)
+	if err != nil || len(targets) != 1 || targets[0].host != "product.invalid" || targets[0].ip.String() != "127.0.0.1" {
+		t.Fatalf("invalid flat config: %+v, %v", targets, err)
+	}
+	output, err := json.Marshal(config)
+	if err != nil || !strings.Contains(string(output), `"targetHostnames":["127.0.0.1:443|product.invalid"]`) {
+		t.Fatalf("config did not stay flat: %s, %v", output, err)
 	}
 }
 
@@ -85,8 +107,8 @@ func TestTCPHostnameAndUserAgentStealth(t *testing.T) {
 		w.WriteHeader(http.StatusFound)
 	}))
 	defer s.Close()
-	host, ua := "product.invalid", common.UserAgentPresetCurl
-	config := discover.DiscoverServiceConfig{Targets: []string{s.Listener.Addr().String()}, Hostname: &host, UserAgent: &ua, Stealth: &discover.ServiceStealthConfig{ServiceType: discover.StealthServiceTypeHttp}, Timeout: 2, Threads: 2, PluginThreads: 2}
+	ua := common.UserAgentPresetCurl
+	config := discover.DiscoverServiceConfig{Targets: []string{s.Listener.Addr().String()}, TargetHostnames: []string{s.Listener.Addr().String() + "|product.invalid"}, UserAgent: &ua, Stealth: &discover.ServiceStealthConfig{ServiceType: discover.StealthServiceTypeHttp}, Timeout: 2, Threads: 2, PluginThreads: 2}
 	report, err := RunTCPServiceFingerprint(context.Background(), config)
 	if err != nil || report.Result == nil || len(report.Result.Services) == 0 {
 		t.Fatalf("missing service: %+v, %v", report, err)
