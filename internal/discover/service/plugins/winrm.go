@@ -4,7 +4,6 @@ package plugins
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -43,7 +42,9 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 		transport = common.TransportTypeTcptls
 	}
 
-	url := fmt.Sprintf("%s://%s/wsman", scheme, net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
+	p := newProductHTTP(ip, port, host, timeout, useTLS)
+	defer p.transport.CloseIdleConnections()
+	url := p.base.String() + "/wsman"
 
 	// Create WinRM Identify request
 	requestBody := `<?xml version="1.0" encoding="UTF-8"?>
@@ -56,10 +57,9 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 
 	// Create HTTP client
 	client := &http.Client{
-		Timeout: helpers.Timeout(timeout),
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
+		Timeout:       helpers.Timeout(timeout),
+		Transport:     p.transport,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(requestBody))
@@ -68,7 +68,7 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 	}
 
 	req.Header.Set("Content-Type", "application/soap+xml;charset=UTF-8")
-	req.Header.Set("User-Agent", "networkscan")
+	req.Header.Set("User-Agent", helpers.HTTPUserAgent(ctx, "networkscan"))
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -85,7 +85,7 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 	}
 
 	metadata, hasWSManResponse := parseWinRMBody(body)
-	hasWSManAuthChallenge := hasWinRMAuthChallenge(resp) && hasWinRMPostOnlyEndpoint(ctx, client, scheme, ip, port)
+	hasWSManAuthChallenge := hasWinRMAuthChallenge(resp) && hasWinRMPostOnlyEndpoint(ctx, client, url)
 
 	// Microsoft-HTTPAPI/2.0 is emitted by HTTP.sys for many Microsoft services,
 	// so the Server header alone is not enough to identify WinRM. Require a
@@ -206,11 +206,13 @@ func hasWinRMAuthChallenge(resp *http.Response) bool {
 	return false
 }
 
-func hasWinRMPostOnlyEndpoint(ctx context.Context, client *http.Client, scheme string, ip net.IP, port int) bool {
-	url := fmt.Sprintf("%s://%s/wsman", scheme, net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
+func hasWinRMPostOnlyEndpoint(ctx context.Context, client *http.Client, url string) bool {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false
+	}
+	if userAgent := helpers.HTTPUserAgent(ctx, ""); userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
 	}
 
 	resp, err := client.Do(req)

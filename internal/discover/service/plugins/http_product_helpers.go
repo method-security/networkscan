@@ -58,7 +58,7 @@ func (p *productHTTP) get(ctx context.Context, path string) (*http.Response, []b
 	if err != nil {
 		return nil, nil, err
 	}
-	req.Header.Set("User-Agent", "networkscan")
+	req.Header.Set("User-Agent", helpers.HTTPUserAgent(ctx, "networkscan"))
 	// RoundTrip preserves valid responses even when Location is malformed;
 	// discovery never follows redirects to another endpoint.
 	r, err := p.transport.RoundTrip(req)

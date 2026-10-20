@@ -10,11 +10,14 @@ import (
 	"sync"
 
 	// Generated
+	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+
 	// Internal
 	servicehelpers "github.com/Method-Security/networkscan/internal/discover/service/helpers"
 	// Utilities
 	"github.com/Method-Security/networkscan/utils"
+	"github.com/Method-Security/networkscan/utils/useragent"
 )
 
 // RunServiceFingerprint fingerprints services using the transport selected in
@@ -49,7 +52,13 @@ func RunTCPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverS
 		}
 	}
 
-	targets, err := parseTCPServiceTargets(config.Targets)
+	if config.UserAgent != nil {
+		if _, err := common.NewUserAgentPresetFromString(string(*config.UserAgent)); err != nil {
+			return report, err
+		}
+		ctx = servicehelpers.WithHTTPUserAgent(ctx, useragent.Resolve(*config.UserAgent))
+	}
+	targets, err := parseTCPServiceConfigTargets(config)
 	if err != nil {
 		report.Result = &discoverfern.DiscoverServiceResult{}
 		return report, err
@@ -78,6 +87,9 @@ func RunTCPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverS
 
 // RunUDPServiceFingerprint scans common UDP ports on one or more target hosts.
 func RunUDPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
+	if config.Hostname != nil || len(config.TargetHostnames) > 0 || config.UserAgent != nil {
+		return &discoverfern.DiscoverServiceReport{Config: &config}, fmt.Errorf("hostname overrides and userAgent apply only to TCP service discovery")
+	}
 	return runUDPServiceDiscovery(ctx, config)
 }
 

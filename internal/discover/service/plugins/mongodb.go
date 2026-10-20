@@ -141,7 +141,7 @@ func buildMongoDBResult(host string, ip net.IP, port int, tlsEnabled bool, versi
 
 func detectMongoDBNativeHTTPWarning(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
 	for _, tlsEnabled := range []bool{true, false} {
-		resp, err := mongoHTTPWarningExchange(ctx, ip, port, timeout, tlsEnabled)
+		resp, err := mongoHTTPWarningExchange(ctx, ip, port, host, timeout, tlsEnabled)
 		if err != nil {
 			continue
 		}
@@ -152,7 +152,7 @@ func detectMongoDBNativeHTTPWarning(ctx context.Context, ip net.IP, port int, ho
 	return nil, fmt.Errorf("no MongoDB native HTTP warning")
 }
 
-func mongoHTTPWarningExchange(ctx context.Context, ip net.IP, port int, timeout int, tlsEnabled bool) ([]byte, error) {
+func mongoHTTPWarningExchange(ctx context.Context, ip net.IP, port int, host string, timeout int, tlsEnabled bool) ([]byte, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 	exchangeTimeout := boundedMongoWarningTimeout(timeout)
 	conn, err := helpers.DialDuration(ctx, "tcp", addr, exchangeTimeout)
@@ -162,14 +162,21 @@ func mongoHTTPWarningExchange(ctx context.Context, ip net.IP, port int, timeout 
 	defer func() { _ = conn.Close() }()
 
 	if tlsEnabled {
-		tlsConn := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
+		tlsConn := tls.Client(conn, helpers.DiscoveryTLSConfig(host))
 		if err := tlsConn.Handshake(); err != nil {
 			return nil, err
 		}
 		conn = tlsConn
 	}
 
-	if _, err := conn.Write([]byte("GET / HTTP/1.0\r\n\r\n")); err != nil {
+	request := "GET / HTTP/1.0\r\n"
+	if host != "" && net.ParseIP(host) == nil {
+		request += "Host: " + net.JoinHostPort(host, fmt.Sprintf("%d", port)) + "\r\n"
+	}
+	if userAgent := helpers.HTTPUserAgent(ctx, ""); userAgent != "" {
+		request += "User-Agent: " + userAgent + "\r\n"
+	}
+	if _, err := conn.Write([]byte(request + "\r\n")); err != nil {
 		return nil, err
 	}
 	buf := make([]byte, 512)

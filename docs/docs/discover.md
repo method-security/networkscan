@@ -131,6 +131,24 @@ networkscan discover service udp --targets 192.168.1.1,10.0.0.0/28
 
 TCP accepts comma-separated sockets, including hostnames, CIDRs, and IP ranges with a port. Use brackets around IPv6 addresses when specifying a port. UDP accepts comma-separated hosts, CIDRs, and IP ranges without a port and probes the registered plugins' default UDP ports. CIDRs include every address, including IPv4 network and broadcast addresses. Hostname targets retain their name for probes that use SNI or a Host header.
 
+#### Hostname and HTTP Identity
+
+Keep the destination IP fixed while supplying a logical hostname for HTTP Host, TLS SNI, and hostname-aware service probes:
+
+```bash
+networkscan discover service tcp --targets 192.0.2.10:443,192.0.2.11:8443 --hostname app.example.com
+networkscan discover service tcp --targets 192.0.2.10:443,192.0.2.11:443 \
+  --target-hostnames 192.0.2.10:443=one.example.com,192.0.2.11:443=two.example.com \
+  --target-hostnames 192.0.2.10:443=another.example.com --user-agent CHROME
+networkscan discover service tcp --targets '[2001:db8::1]:443' --hostname app.example.com --service-type HTTP --user-agent CURL
+```
+
+`--hostname` applies one name to every target, which must be an explicit IP:port. Alternatively, `--target-hostnames` binds names to individual IP:port targets; repeat a socket with different names to probe multiple virtual hosts. Every binding must match a supplied target. Unmapped targets retain their existing behavior. These two flags are mutually exclusive. Overrides do not resolve the supplied hostname or change the connection IP. Results retain the logical name in `host` and the destination address in `ip`.
+
+`--user-agent` accepts the same named presets as WebProbe: `RANDOM`, `CHROME`, `FIREFOX`, `SAFARI`, `EDGE`, and `CURL` (case-insensitive). One value is selected per invocation and reused across HTTP probes and follow-up requests. Omitting the flag preserves each plugin's existing header. It does not modify non-HTTP protocol headers or guarantee that a server will accept the request.
+
+These flags apply only to TCP service discovery, including HTTP stealth mode. HTTP-based probes use the supplied Host and SNI while connecting to the original socket; redirects are not followed. A TLS handshake alone still does not identify an HTTPS service: an HTTP response is required. These options add service evidence, not WebApplication objects directly.
+
 #### Concurrency and Timeouts
 
 Both commands share these flags:
@@ -187,12 +205,15 @@ Usage:
   networkscan discover service tcp [flags]
 
 Flags:
-  -h, --help                  help for tcp
-      --plugin-threads int    Maximum custom service plugins to run concurrently per target (default 10)
-      --service-type string   Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
-      --targets strings       Target addresses (IP:port or hostname:port)
-      --threads int           Maximum concurrent target IPs (default 10)
-      --timeout int           Timeout in seconds for each service fingerprinting attempt (default 30)
+  -h, --help                       help for tcp
+      --hostname string            Logical hostname for all IP:port targets (HTTP Host and TLS SNI); does not change the destination IP
+      --plugin-threads int         Maximum custom service plugins to run concurrently per target (default 10)
+      --service-type string        Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
+      --target-hostnames strings   Per-socket IP:port=hostname bindings; repeat for multiple virtual hosts
+      --targets strings            Target addresses (IP:port or hostname:port)
+      --threads int                Maximum concurrent target IPs (default 10)
+      --timeout int                Timeout in seconds for each service fingerprinting attempt (default 30)
+      --user-agent string          HTTP User-Agent preset: RANDOM, CHROME, FIREFOX, SAFARI, EDGE, CURL (omitted: preserve plugin defaults)
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")
