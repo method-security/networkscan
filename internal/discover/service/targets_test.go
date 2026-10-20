@@ -22,8 +22,8 @@ func TestTCPHostnameTargets(t *testing.T) {
 		want    []string
 	}{
 		{"default", []string{"127.0.0.1:443", "[::1]:8443"}, []string{"127.0.0.1:443|127.0.0.1", "[::1]:8443|::1"}},
-		{"hostname", []string{"127.0.0.1:443|Product.Invalid.", "[::1]:8443|product.invalid"}, []string{"127.0.0.1:443|product.invalid", "[::1]:8443|product.invalid"}},
-		{"mixed", []string{"127.0.0.1:443|one.invalid", "127.0.0.1:443|two.invalid", "127.0.0.1:443|ONE.INVALID.", "127.0.0.1:8443", "[0:0:0:0:0:0:0:1]:443|v6.invalid"}, []string{"127.0.0.1:443|one.invalid", "127.0.0.1:443|two.invalid", "127.0.0.1:8443|127.0.0.1", "[::1]:443|v6.invalid"}},
+		{"hostname", []string{"127.0.0.1:443|Product.Invalid.", "[::1]:8443|product.invalid"}, []string{"127.0.0.1:443|Product.Invalid.", "[::1]:8443|product.invalid"}},
+		{"mixed", []string{"127.0.0.1:443|one.invalid", "127.0.0.1:443|two.invalid", "127.0.0.1:443|ONE.INVALID.", "127.0.0.1:443|one.invalid", "127.0.0.1:8443", "[0:0:0:0:0:0:0:1]:443|v6.invalid"}, []string{"127.0.0.1:443|one.invalid", "127.0.0.1:443|two.invalid", "127.0.0.1:443|ONE.INVALID.", "127.0.0.1:8443|127.0.0.1", "[::1]:443|v6.invalid"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			targets, err := parseTCPServiceTargets(tc.targets)
@@ -40,14 +40,21 @@ func TestTCPHostnameTargets(t *testing.T) {
 	}
 }
 
-func TestTCPHostnameValidation(t *testing.T) {
-	for _, hostname := range []string{"", "https://example.com", "example.com:443", "127.0.0.1", "::1", "-bad.test", "bad-.test", "a..test", "a_test", "a\r\nHost: evil", " a.test", strings.Repeat("a", 64) + ".test"} {
+func TestTCPHostnamePreserved(t *testing.T) {
+	for _, hostname := range []string{"Product.Invalid.", "https://example.com", "example.com:443", "127.0.0.1", "::1", "-bad.test", "bad-.test", "a..test", "a_test", "a\r\nHost: evil", " a.test ", strings.Repeat("a", 64) + ".test", strings.Repeat("a.", 127) + "test"} {
 		t.Run(hostname, func(t *testing.T) {
-			if _, err := parseTCPServiceTargets([]string{"127.0.0.1:443|" + hostname}); err == nil {
-				t.Fatal("accepted invalid hostname")
+			targets, err := parseTCPServiceTargets([]string{"127.0.0.1:443|" + hostname})
+			if err != nil || len(targets) != 1 {
+				t.Fatalf("got %+v, %v", targets, err)
+			}
+			if targets[0].host != hostname {
+				t.Fatalf("got hostname %q, want %q", targets[0].host, hostname)
 			}
 		})
 	}
+}
+
+func TestTCPHostnameTargetStructure(t *testing.T) {
 	for _, target := range []string{"example.com:443", "127.0.0.1", "127.0.0.0/24:443", "127.0.0.1:0", "127.0.0.1:65536", "::1:443"} {
 		if _, err := parseTCPServiceTargets([]string{target + "|product.invalid"}); err == nil {
 			t.Errorf("accepted invalid socket %q", target)
@@ -77,9 +84,10 @@ func TestTCPHostnameFlatConfig(t *testing.T) {
 }
 
 func TestTCPHostnameAndUserAgentStealth(t *testing.T) {
+	const hostname = "Product.Invalid"
 	var requests atomic.Int32
 	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS.ServerName != "product.invalid" || !strings.HasPrefix(r.Host, "product.invalid:") || r.UserAgent() != "curl/8.4.0" {
+		if r.TLS.ServerName != hostname || !strings.HasPrefix(r.Host, hostname+":") || r.UserAgent() != "curl/8.4.0" {
 			t.Errorf("wrong request identity: Host=%q, SNI=%q, UA=%q", r.Host, r.TLS.ServerName, r.UserAgent())
 		}
 		requests.Add(1)
@@ -88,12 +96,12 @@ func TestTCPHostnameAndUserAgentStealth(t *testing.T) {
 	}))
 	defer s.Close()
 	ua := common.UserAgentPresetCurl
-	config := discover.DiscoverServiceConfig{Targets: []string{s.Listener.Addr().String() + "|product.invalid"}, UserAgent: &ua, Stealth: &discover.ServiceStealthConfig{ServiceType: discover.StealthServiceTypeHttp}, Timeout: 5, Threads: 2, PluginThreads: 2}
+	config := discover.DiscoverServiceConfig{Targets: []string{s.Listener.Addr().String() + "|" + hostname}, UserAgent: &ua, Stealth: &discover.ServiceStealthConfig{ServiceType: discover.StealthServiceTypeHttp}, Timeout: 5, Threads: 2, PluginThreads: 2}
 	report, err := RunTCPServiceFingerprint(context.Background(), config)
 	if err != nil || report.Result == nil || len(report.Result.Services) == 0 {
 		t.Fatalf("missing service: %+v, %v", report, err)
 	}
-	if requests.Load() != 1 || report.Result.Services[0].Tls == nil || !*report.Result.Services[0].Tls || report.Result.Services[0].Host != "product.invalid" || report.Result.Services[0].Ip != "127.0.0.1" {
+	if requests.Load() != 1 || report.Result.Services[0].Tls == nil || !*report.Result.Services[0].Tls || report.Result.Services[0].Host != hostname || report.Result.Services[0].Ip != "127.0.0.1" {
 		t.Fatalf("wrong HTTPS result: %+v, requests=%d", report.Result.Services, requests.Load())
 	}
 	if _, err := RunUDPServiceFingerprint(context.Background(), config); err == nil {

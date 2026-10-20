@@ -142,7 +142,7 @@ networkscan discover service tcp --targets '192.0.2.10:443|one.example.com,192.0
 networkscan discover service tcp --targets '[2001:db8::1]:443|app.example.com' --service-type HTTP --user-agent CURL
 ```
 
-Append `|hostname` directly to an explicit IP:port target to supply its logical hostname. Repeat a socket with different names to probe multiple virtual hosts. Plain targets retain their existing behavior and can be mixed with hostname-bearing targets. The supplied name is not resolved and never changes the connection IP. Results retain the logical name in `host` and the destination address in `ip`.
+Append `|hostname` directly to an explicit IP:port target to supply its logical hostname. The target parser preserves the hostname as supplied, without normalization or DNS-name validation. Repeat a socket with different names to probe multiple virtual hosts. Plain targets retain their existing behavior and can be mixed with hostname-bearing targets. The supplied name is not resolved and never changes the connection IP. Results retain the logical name in `host` and the destination address in `ip`.
 
 Quote CLI values because an unquoted `|` is a shell pipe. The report config preserves the same flat list, for example `"targets": ["192.0.2.10:443|app.example.com", "[2001:db8::1]:443|app.example.com"]`. There are no separate hostname flags or config fields.
 
