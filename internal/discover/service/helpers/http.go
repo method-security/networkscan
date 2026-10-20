@@ -12,9 +12,8 @@ func WithHTTPUserAgent(ctx context.Context, value string) context.Context {
 	return context.WithValue(ctx, httpUserAgentKey{}, value)
 }
 
-func HTTPUserAgent(ctx context.Context, fallback string) string {
-	if value, ok := ctx.Value(httpUserAgentKey{}).(string); ok && value != "" {
-		return value
-	}
-	return fallback
+// HTTPUserAgent returns the explicit override, or empty to leave transport defaults intact.
+func HTTPUserAgent(ctx context.Context) string {
+	value, _ := ctx.Value(httpUserAgentKey{}).(string)
+	return value
 }

@@ -385,7 +385,7 @@ func (a *NetworkScan) InitDiscoverCommand() {
 	}
 	addDiscoverServiceCommonFlags(discoverServiceTCPCmd, "Target addresses (IP:port, hostname:port, or quoted IP:port|hostname)")
 	discoverServiceTCPCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
-	discoverServiceTCPCmd.Flags().String("user-agent", "", "HTTP User-Agent preset: RANDOM, CHROME, FIREFOX, SAFARI, EDGE, CURL (omitted: preserve plugin defaults)")
+	discoverServiceTCPCmd.Flags().String("user-agent", "", "HTTP User-Agent preset: RANDOM, CHROME, FIREFOX, SAFARI, EDGE, CURL (omitted: use transport defaults)")
 	_ = discoverServiceTCPCmd.MarkFlagRequired("targets")
 
 	discoverServiceUDPCmd := &cobra.Command{

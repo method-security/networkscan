@@ -26,18 +26,17 @@ func TestHTTPProbeRequestIdentity(t *testing.T) {
 		probe interface {
 			Detect(context.Context, net.IP, int, string, int) (*discover.ServiceDetails, error)
 		}
-		defaultUA string
 	}{
-		{"http", HTTPDiscoveryFingerprinter{}, "networkscan"},
-		{"https", HTTPSFingerprinter{}, "networkscan"},
-		{"stealth-http", HTTPFingerprinter{}, "Go-http-client/1.1"},
-		{"etcd", EtcdFingerprinter{}, "Go-http-client/1.1"},
-		{"winrm", WinRMFingerprinter{}, "networkscan"},
-		{"ipp", IPPFingerprinter{}, "networkscan-ipp"},
+		{"http", HTTPDiscoveryFingerprinter{}},
+		{"https", HTTPSFingerprinter{}},
+		{"stealth-http", HTTPFingerprinter{}},
+		{"etcd", EtcdFingerprinter{}},
+		{"winrm", WinRMFingerprinter{}},
+		{"ipp", IPPFingerprinter{}},
 	} {
 		for _, override := range []bool{false, true} {
 			name := tc.name + "/default"
-			ctx, wantUA := context.Background(), tc.defaultUA
+			ctx, wantUA := context.Background(), "Go-http-client/1.1"
 			if override {
 				name = tc.name + "/override"
 				wantUA = "browser-fixture/1.0"
@@ -47,12 +46,8 @@ func TestHTTPProbeRequestIdentity(t *testing.T) {
 				var requests atomic.Int32
 				s := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					requests.Add(1)
-					ua := wantUA
-					if tc.name == "winrm" && r.Method == http.MethodGet && !override {
-						ua = "Go-http-client/1.1"
-					}
-					if r.UserAgent() != ua || !strings.HasPrefix(r.Host, "product.invalid:") {
-						t.Errorf("wrong identity: Host=%q UA=%q, want UA=%q", r.Host, r.UserAgent(), ua)
+					if r.UserAgent() != wantUA || !strings.HasPrefix(r.Host, "product.invalid:") {
+						t.Errorf("wrong identity: Host=%q UA=%q, want UA=%q", r.Host, r.UserAgent(), wantUA)
 					}
 					if tc.name != "http" && (r.TLS == nil || r.TLS.ServerName != "product.invalid") {
 						t.Errorf("wrong SNI: %+v", r.TLS)

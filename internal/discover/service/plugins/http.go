@@ -39,7 +39,7 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 			p.transport.CloseIdleConnections()
 			continue
 		}
-		if userAgent := helpers.HTTPUserAgent(ctx, ""); userAgent != "" {
+		if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
 			req.Header.Set("User-Agent", userAgent)
 		}
 		// Fingerprint the requested socket, not a redirect's destination.

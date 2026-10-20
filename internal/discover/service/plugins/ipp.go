@@ -82,7 +82,9 @@ func detectIPPWithScheme(ctx context.Context, ip net.IP, port int, host string, 
 	}
 
 	req.Header.Set("Content-Type", "application/ipp")
-	req.Header.Set("User-Agent", helpers.HTTPUserAgent(ctx, "networkscan-ipp"))
+	if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

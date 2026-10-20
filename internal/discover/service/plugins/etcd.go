@@ -40,7 +40,7 @@ func (EtcdFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		if err != nil {
 			continue
 		}
-		if userAgent := helpers.HTTPUserAgent(ctx, ""); userAgent != "" {
+		if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
 			req.Header.Set("User-Agent", userAgent)
 		}
 
@@ -87,7 +87,7 @@ func detectKubernetesEtcd(ctx context.Context, client *http.Client, baseURL stri
 	if err != nil {
 		return false
 	}
-	if userAgent := helpers.HTTPUserAgent(ctx, ""); userAgent != "" {
+	if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
 		req.Header.Set("User-Agent", userAgent)
 	}
 	resp, err := client.Do(req)

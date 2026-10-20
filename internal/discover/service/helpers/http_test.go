@@ -14,14 +14,14 @@ func TestHTTPUserAgentScope(t *testing.T) {
 		ctx  context.Context
 		want string
 	}{
-		{"default", parent, "networkscan"},
+		{"default", parent, ""},
 		{"chrome", chrome, "chrome-fixture"},
 		{"curl", curl, "curl-fixture"},
-		{"empty", WithHTTPUserAgent(parent, ""), "networkscan"},
+		{"empty", WithHTTPUserAgent(parent, ""), ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := HTTPUserAgent(tc.ctx, "networkscan"); got != tc.want {
+			if got := HTTPUserAgent(tc.ctx); got != tc.want {
 				t.Fatalf("got %q, want %q", got, tc.want)
 			}
 		})

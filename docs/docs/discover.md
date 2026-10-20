@@ -146,7 +146,7 @@ Append `|hostname` directly to an explicit IP:port target to supply its logical 
 
 Quote CLI values because an unquoted `|` is a shell pipe. The report config preserves the same flat list, for example `"targets": ["192.0.2.10:443|app.example.com", "[2001:db8::1]:443|app.example.com"]`. There are no separate hostname flags or config fields.
 
-`--user-agent` accepts the same named presets as WebProbe: `RANDOM`, `CHROME`, `FIREFOX`, `SAFARI`, `EDGE`, and `CURL` (case-insensitive). One value is selected per invocation and reused across HTTP probes and follow-up requests. Omitting the flag preserves each plugin's existing header. It does not modify non-HTTP protocol headers or guarantee that a server will accept the request.
+`--user-agent` accepts the same named presets as WebProbe: `RANDOM`, `CHROME`, `FIREFOX`, `SAFARI`, `EDGE`, and `CURL` (case-insensitive). One value is selected per invocation and reused across HTTP probes and follow-up requests. Omitting the flag leaves the transport default: standard HTTP probes send Go's default User-Agent rather than a hardcoded scanner name; MongoDB's raw diagnostic request sends no User-Agent. It does not modify non-HTTP protocol headers or guarantee that a server will accept the request.
 
 Hostname-bearing targets and `--user-agent` apply only to TCP service discovery, including HTTP stealth mode. HTTP-based probes use the supplied Host and SNI while connecting to the original socket; redirects are not followed. A TLS handshake alone still does not identify an HTTPS service: an HTTP response is required. These options add service evidence, not WebApplication objects directly.
 
@@ -212,7 +212,7 @@ Flags:
       --targets strings            Target addresses (IP:port, hostname:port, or quoted IP:port|hostname)
       --threads int                Maximum concurrent target IPs (default 10)
       --timeout int                Timeout in seconds for each service fingerprinting attempt (default 30)
-      --user-agent string          HTTP User-Agent preset: RANDOM, CHROME, FIREFOX, SAFARI, EDGE, CURL (omitted: preserve plugin defaults)
+      --user-agent string          HTTP User-Agent preset: RANDOM, CHROME, FIREFOX, SAFARI, EDGE, CURL (omitted: use transport defaults)
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")

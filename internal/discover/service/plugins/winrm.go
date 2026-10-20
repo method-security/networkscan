@@ -68,7 +68,9 @@ func detectWinRMWithScheme(ctx context.Context, ip net.IP, port int, host string
 	}
 
 	req.Header.Set("Content-Type", "application/soap+xml;charset=UTF-8")
-	req.Header.Set("User-Agent", helpers.HTTPUserAgent(ctx, "networkscan"))
+	if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -211,7 +213,7 @@ func hasWinRMPostOnlyEndpoint(ctx context.Context, client *http.Client, url stri
 	if err != nil {
 		return false
 	}
-	if userAgent := helpers.HTTPUserAgent(ctx, ""); userAgent != "" {
+	if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
 		req.Header.Set("User-Agent", userAgent)
 	}
 

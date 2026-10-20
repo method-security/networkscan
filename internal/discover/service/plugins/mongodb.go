@@ -173,7 +173,7 @@ func mongoHTTPWarningExchange(ctx context.Context, ip net.IP, port int, host str
 	if host != "" && net.ParseIP(host) == nil {
 		request += "Host: " + net.JoinHostPort(host, fmt.Sprintf("%d", port)) + "\r\n"
 	}
-	if userAgent := helpers.HTTPUserAgent(ctx, ""); userAgent != "" {
+	if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
 		request += "User-Agent: " + userAgent + "\r\n"
 	}
 	if _, err := conn.Write([]byte(request + "\r\n")); err != nil {
