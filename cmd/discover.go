@@ -631,10 +631,17 @@ func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
 		return
 	}
 	if !udp {
-		if err := setDiscoverServiceHTTPFlags(cmd, &config); err != nil {
+		value, err := cmd.Flags().GetString("user-agent")
+		if err != nil {
 			a.OutputSignal.AddError(err)
 			return
 		}
+		preset, err := common.NewUserAgentPresetFromString(strings.ToUpper(value))
+		if err != nil {
+			a.OutputSignal.AddError(fmt.Errorf("invalid --user-agent preset: %w", err))
+			return
+		}
+		config.UserAgent = &preset
 	}
 
 	var report *discoverfern.DiscoverServiceReport
@@ -648,19 +655,6 @@ func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
 		return
 	}
 	a.OutputSignal.Content = report
-}
-
-func setDiscoverServiceHTTPFlags(cmd *cobra.Command, config *discoverfern.DiscoverServiceConfig) error {
-	value, err := cmd.Flags().GetString("user-agent")
-	if err != nil {
-		return err
-	}
-	preset, err := common.NewUserAgentPresetFromString(strings.ToUpper(value))
-	if err != nil {
-		return fmt.Errorf("invalid --user-agent preset: %w", err)
-	}
-	config.UserAgent = &preset
-	return nil
 }
 
 // getDiscoverPortConfig creates a configuration for port scanning with the provided parameters.

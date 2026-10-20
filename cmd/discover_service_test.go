@@ -12,6 +12,10 @@ import (
 )
 
 func TestDiscoverServiceHTTPFlags(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer s.Close()
 	for _, tc := range []struct {
 		name string
 		args []string
@@ -30,19 +34,31 @@ func TestDiscoverServiceHTTPFlags(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := command.ParseFlags(tc.args); err != nil {
+			command.SetContext(context.Background())
+			args := append([]string{"--targets", s.Listener.Addr().String(), "--service-type", "HTTP", "--timeout", "5"}, tc.args...)
+			if err := command.ParseFlags(args); err != nil {
 				t.Fatal(err)
 			}
-			var config discover.DiscoverServiceConfig
-			err = setDiscoverServiceHTTPFlags(command, &config)
-			if (err != nil) != tc.bad {
-				t.Fatalf("unexpected error: %v", err)
+			a.runDiscoverServiceCommand(command, false)
+			if (a.OutputSignal.ErrorMessage != nil) != tc.bad {
+				t.Fatalf("unexpected command result: %+v", a.OutputSignal)
 			}
-			if tc.name == "omitted" && (config.UserAgent == nil || *config.UserAgent != common.UserAgentPresetRandom) {
-				t.Fatalf("missing RANDOM default: %+v", config)
-			}
-			if tc.name == "chrome" && (config.UserAgent == nil || *config.UserAgent != common.UserAgentPresetChrome) {
-				t.Fatalf("wrong preset: %+v", config)
+			if tc.bad {
+				if !strings.Contains(*a.OutputSignal.ErrorMessage, "invalid --user-agent preset:") || a.OutputSignal.Content != nil {
+					t.Fatalf("unexpected preset validation result: %+v", a.OutputSignal)
+				}
+			} else {
+				report, ok := a.OutputSignal.Content.(*discover.DiscoverServiceReport)
+				if !ok || report.Result == nil || len(report.Result.Services) != 1 {
+					t.Fatalf("missing service report: %+v", a.OutputSignal)
+				}
+				want := common.UserAgentPresetRandom
+				if tc.name == "chrome" {
+					want = common.UserAgentPresetChrome
+				}
+				if report.Config.UserAgent == nil || *report.Config.UserAgent != want {
+					t.Fatalf("wrong preset: %+v", report.Config)
+				}
 			}
 			for _, name := range []string{"hostname", "target-hostnames"} {
 				if command.Flags().Lookup(name) != nil {

@@ -1,12 +1,12 @@
 types:
   UserAgentPreset:
     enum:
-      - RANDOM
       - CHROME
-      - FIREFOX
-      - SAFARI
-      - EDGE
       - CURL
+      - EDGE
+      - FIREFOX
+      - RANDOM
+      - SAFARI
 
   ProtocolType:
     enum:
