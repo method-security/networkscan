@@ -147,7 +147,7 @@ github.com/FalconOpsLLC/goexec/pkg/goexec/wmi
 # github.com/Masterminds/semver/v3 v3.5.0
 ## explicit; go 1.21
 github.com/Masterminds/semver/v3
-# github.com/Method-Security/pkg v0.1.1
+# github.com/Method-Security/pkg v0.2.0
 ## explicit; go 1.26.0
 github.com/Method-Security/pkg/signal
 github.com/Method-Security/pkg/writer
