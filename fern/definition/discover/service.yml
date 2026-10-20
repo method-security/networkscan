@@ -131,12 +131,10 @@ types:
   # Config
   DiscoverServiceConfig:
     properties:
-      targets: list<string> # TCP: IP:port or hostname:port; UDP: IP, hostname, CIDR, IP range, or comma-delimited list
+      targets: list<string> # TCP: IP:port, hostname:port, or IP:port|hostname (bracket IPv6); UDP: IP, hostname, CIDR, IP range, or comma-delimited list
       timeout: integer
       threads: integer # Maximum concurrent target IPs
       pluginThreads: integer # Maximum custom service plugins to run concurrently per target
-      hostname: optional<string> # TCP only; use this hostname for every explicit IP:port target
-      targetHostnames: optional<list<string>> # TCP only; flat IP:port|hostname bindings (bracket IPv6), mutually exclusive with hostname
       userAgent: optional<common.UserAgentPreset> # TCP HTTP probes only; omission preserves each plugin's existing header
       stealth: optional<ServiceStealthConfig>
       udp: optional<boolean> # Enable UDP service discovery mode (scans common UDP ports)

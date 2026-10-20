@@ -40,7 +40,8 @@ func RunTCPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverS
 
 	if config.Stealth != nil {
 		for _, target := range config.Targets {
-			_, portStr, err := net.SplitHostPort(target)
+			address, _, _ := strings.Cut(target, "|")
+			_, portStr, err := net.SplitHostPort(address)
 			if err != nil {
 				report.Errors = append(report.Errors, "stealth mode requires explicit port specification (use format host:port)")
 				return report, nil
@@ -58,7 +59,7 @@ func RunTCPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverS
 		}
 		ctx = servicehelpers.WithHTTPUserAgent(ctx, useragent.Resolve(*config.UserAgent))
 	}
-	targets, err := parseTCPServiceConfigTargets(config)
+	targets, err := parseTCPServiceTargets(config.Targets)
 	if err != nil {
 		report.Result = &discoverfern.DiscoverServiceResult{}
 		return report, err
@@ -87,8 +88,13 @@ func RunTCPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverS
 
 // RunUDPServiceFingerprint scans common UDP ports on one or more target hosts.
 func RunUDPServiceFingerprint(ctx context.Context, config discoverfern.DiscoverServiceConfig) (*discoverfern.DiscoverServiceReport, error) {
-	if config.Hostname != nil || len(config.TargetHostnames) > 0 || config.UserAgent != nil {
-		return &discoverfern.DiscoverServiceReport{Config: &config}, fmt.Errorf("hostname overrides and userAgent apply only to TCP service discovery")
+	if config.UserAgent != nil {
+		return &discoverfern.DiscoverServiceReport{Config: &config}, fmt.Errorf("userAgent applies only to TCP service discovery")
+	}
+	for _, target := range config.Targets {
+		if strings.Contains(target, "|") {
+			return &discoverfern.DiscoverServiceReport{Config: &config}, fmt.Errorf("IP:port|hostname targets apply only to TCP service discovery")
+		}
 	}
 	return runUDPServiceDiscovery(ctx, config)
 }
@@ -123,7 +129,20 @@ func parseServiceTargets(target string) ([]serviceTarget, error) {
 
 func parseTCPServiceTargets(targets []string) ([]serviceTarget, error) {
 	var expandedTargets []serviceTarget
+	seenHostnameTargets := make(map[string]bool)
 	for _, target := range targets {
+		if strings.Contains(target, "|") {
+			parsed, err := parseTCPHostnameTarget(target)
+			if err != nil {
+				return nil, err
+			}
+			key := net.JoinHostPort(parsed.ip.String(), fmt.Sprintf("%d", parsed.port)) + "|" + parsed.host
+			if !seenHostnameTargets[key] {
+				expandedTargets = append(expandedTargets, parsed)
+				seenHostnameTargets[key] = true
+			}
+			continue
+		}
 		host, port := utils.ParseHostPort(target, 80)
 		targetsForHost, err := parseServiceTargets(host)
 		if err != nil {

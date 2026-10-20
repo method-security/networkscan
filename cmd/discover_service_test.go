@@ -1,6 +1,10 @@
 package cmd
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
@@ -14,16 +18,9 @@ func TestDiscoverServiceHTTPFlags(t *testing.T) {
 		bad  bool
 	}{
 		{"omitted", nil, false},
-		{"hostname", []string{"--hostname", "product.test", "--user-agent", "chrome"}, false},
-		{"multiple-bindings", []string{"--target-hostnames", "127.0.0.1:443|one.test,127.0.0.2:443|two.test", "--target-hostnames", "127.0.0.1:443|three.test", "--user-agent", "CURL"}, false},
-		{"mutually-exclusive", []string{"--hostname", "product.test", "--target-hostnames", "127.0.0.1:443|product.test"}, true},
+		{"chrome", []string{"--user-agent", "chrome"}, false},
 		{"invalid-user-agent", []string{"--user-agent", "arbitrary-browser"}, true},
 		{"empty-user-agent", []string{"--user-agent", ""}, true},
-		{"invalid-binding", []string{"--target-hostnames", "127.0.0.1:443"}, true},
-		{"old-separator", []string{"--target-hostnames", "127.0.0.1:443=product.test"}, true},
-		{"extra-separator", []string{"--target-hostnames", "127.0.0.1:443|product.test|extra"}, true},
-		{"empty-hostname", []string{"--target-hostnames", "127.0.0.1:443|"}, true},
-		{"ipv6", []string{"--target-hostnames", "[::1]:443|product.test"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a := NewNetworkScan("test")
@@ -37,43 +34,59 @@ func TestDiscoverServiceHTTPFlags(t *testing.T) {
 				t.Fatal(err)
 			}
 			var config discover.DiscoverServiceConfig
-			err = command.ValidateFlagGroups()
-			if err == nil {
-				err = setDiscoverServiceHTTPFlags(command, &config)
-			}
+			err = setDiscoverServiceHTTPFlags(command, &config)
 			if (err != nil) != tc.bad {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if tc.bad {
-				return
+			if tc.name == "omitted" && config.UserAgent != nil {
+				t.Fatalf("changed default: %+v", config)
 			}
-			switch tc.name {
-			case "omitted":
-				if config.UserAgent != nil || config.Hostname != nil || len(config.TargetHostnames) != 0 {
-					t.Fatalf("changed defaults: %+v", config)
-				}
-			case "hostname":
-				if config.Hostname == nil || *config.Hostname != "product.test" || config.UserAgent == nil || *config.UserAgent != common.UserAgentPresetChrome {
-					t.Fatalf("wrong config: %+v", config)
-				}
-			case "multiple-bindings":
-				if len(config.TargetHostnames) != 3 || config.TargetHostnames[2] != "127.0.0.1:443|three.test" || config.UserAgent == nil || *config.UserAgent != common.UserAgentPresetCurl {
-					t.Fatalf("wrong config: %+v", config)
-				}
-			case "ipv6":
-				if len(config.TargetHostnames) != 1 || config.TargetHostnames[0] != "[::1]:443|product.test" {
-					t.Fatalf("wrong IPv6 binding: %+v", config)
+			if tc.name == "chrome" && (config.UserAgent == nil || *config.UserAgent != common.UserAgentPresetChrome) {
+				t.Fatalf("wrong preset: %+v", config)
+			}
+			for _, name := range []string{"hostname", "target-hostnames"} {
+				if command.Flags().Lookup(name) != nil {
+					t.Errorf("unexpected separate hostname flag %q", name)
 				}
 			}
 			udp, _, err := a.RootCmd.Find([]string{"discover", "service", "udp"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			for _, name := range []string{"user-agent", "hostname", "target-hostnames"} {
-				if udp.Flags().Lookup(name) != nil {
-					t.Errorf("HTTP-only flag %q exposed on UDP", name)
-				}
+			if udp.Flags().Lookup("user-agent") != nil {
+				t.Error("HTTP-only user-agent flag exposed on UDP")
 			}
 		})
+	}
+}
+
+func TestDiscoverServiceInlineHostname(t *testing.T) {
+	s := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS.ServerName != "product.invalid" || !strings.HasPrefix(r.Host, "product.invalid:") || r.UserAgent() != "curl/8.4.0" {
+			t.Errorf("wrong identity: Host=%q SNI=%q UA=%q", r.Host, r.TLS.ServerName, r.UserAgent())
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer s.Close()
+	a := NewNetworkScan("test")
+	a.InitRootCommand()
+	a.InitDiscoverCommand()
+	command, _, err := a.RootCmd.Find([]string{"discover", "service", "tcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := s.Listener.Addr().String() + "|product.invalid"
+	command.SetContext(context.Background())
+	if err := command.ParseFlags([]string{"--targets", target, "--service-type", "HTTP", "--user-agent", "CURL", "--timeout", "5"}); err != nil {
+		t.Fatal(err)
+	}
+	a.runDiscoverServiceCommand(command, false)
+	report, ok := a.OutputSignal.Content.(*discover.DiscoverServiceReport)
+	if !ok || report.Result == nil || len(report.Result.Services) != 1 || report.Config.Targets[0] != target {
+		t.Fatalf("missing inline target report: %+v", a.OutputSignal)
+	}
+	result := report.Result.Services[0]
+	if result.Host != "product.invalid" || result.Ip != "127.0.0.1" || result.Tls == nil || !*result.Tls {
+		t.Fatalf("incorrect result: %+v", result)
 	}
 }

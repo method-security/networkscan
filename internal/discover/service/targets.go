@@ -5,8 +5,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-
-	discover "github.com/Method-Security/networkscan/generated/go/discover"
 )
 
 func normalizeHostname(host string) (string, error) {
@@ -27,85 +25,23 @@ func normalizeHostname(host string) (string, error) {
 	return host, nil
 }
 
-func explicitIPSocket(target string) (string, net.IP, int, error) {
-	host, portText, err := net.SplitHostPort(target)
+func parseTCPHostnameTarget(target string) (serviceTarget, error) {
+	address, hostname, ok := strings.Cut(target, "|")
+	if !ok || address == "" || hostname == "" || strings.Contains(hostname, "|") {
+		return serviceTarget{}, fmt.Errorf("invalid target %q: expected IP:port|hostname", target)
+	}
+	host, portText, err := net.SplitHostPort(address)
 	if err != nil {
-		return "", nil, 0, fmt.Errorf("hostname overrides require an explicit IP:port target: %q", target)
+		return serviceTarget{}, fmt.Errorf("hostname targets require an explicit IP:port: %q", target)
 	}
 	ip := net.ParseIP(host)
 	port, err := strconv.Atoi(portText)
 	if ip == nil || err != nil || port < 1 || port > 65535 {
-		return "", nil, 0, fmt.Errorf("invalid IP:port target for hostname override: %q", target)
+		return serviceTarget{}, fmt.Errorf("invalid IP:port in hostname target: %q", target)
 	}
-	return net.JoinHostPort(ip.String(), strconv.Itoa(port)), ip, port, nil
-}
-
-func parseTCPServiceConfigTargets(config discover.DiscoverServiceConfig) ([]serviceTarget, error) {
-	if config.Hostname == nil && len(config.TargetHostnames) == 0 {
-		return parseTCPServiceTargets(config.Targets)
+	logicalHost, err := normalizeHostname(hostname)
+	if err != nil {
+		return serviceTarget{}, err
 	}
-	if config.Hostname != nil && len(config.TargetHostnames) > 0 {
-		return nil, fmt.Errorf("hostname and targetHostnames are mutually exclusive")
-	}
-	bindings := make(map[string][]string)
-	if config.Hostname != nil {
-		host, err := normalizeHostname(*config.Hostname)
-		if err != nil {
-			return nil, err
-		}
-		for _, target := range config.Targets {
-			key, _, _, err := explicitIPSocket(target)
-			if err != nil {
-				return nil, err
-			}
-			bindings[key] = []string{host}
-		}
-	} else {
-		sockets := make(map[string]bool)
-		for _, target := range config.Targets {
-			if key, _, _, err := explicitIPSocket(target); err == nil {
-				sockets[key] = true
-			}
-		}
-		for _, binding := range config.TargetHostnames {
-			target, hostname, ok := strings.Cut(binding, "|")
-			if !ok || target == "" || hostname == "" || strings.Contains(hostname, "|") {
-				return nil, fmt.Errorf("invalid targetHostnames binding %q: expected IP:port|hostname", binding)
-			}
-			key, _, _, err := explicitIPSocket(target)
-			if err != nil {
-				return nil, err
-			}
-			if !sockets[key] {
-				return nil, fmt.Errorf("hostname binding target %q is not in targets", target)
-			}
-			host, err := normalizeHostname(hostname)
-			if err != nil {
-				return nil, err
-			}
-			duplicate := false
-			for _, existing := range bindings[key] {
-				duplicate = duplicate || existing == host
-			}
-			if !duplicate {
-				bindings[key] = append(bindings[key], host)
-			}
-		}
-	}
-	var targets []serviceTarget
-	for _, target := range config.Targets {
-		key, ip, port, _ := explicitIPSocket(target)
-		if hosts := bindings[key]; len(hosts) > 0 {
-			for _, host := range hosts {
-				targets = append(targets, serviceTarget{ip: ip, port: port, host: host})
-			}
-			continue
-		}
-		original, err := parseTCPServiceTargets([]string{target})
-		if err != nil {
-			return nil, err
-		}
-		targets = append(targets, original...)
-	}
-	return targets, nil
+	return serviceTarget{ip: ip, port: port, host: logicalHost}, nil
 }

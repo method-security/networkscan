@@ -383,12 +383,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.runDiscoverServiceCommand(cmd, false)
 		},
 	}
-	addDiscoverServiceCommonFlags(discoverServiceTCPCmd, "Target addresses (IP:port or hostname:port)")
+	addDiscoverServiceCommonFlags(discoverServiceTCPCmd, "Target addresses (IP:port, hostname:port, or quoted IP:port|hostname)")
 	discoverServiceTCPCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
-	discoverServiceTCPCmd.Flags().String("hostname", "", "Logical hostname for all IP:port targets (HTTP Host and TLS SNI); does not change the destination IP")
-	discoverServiceTCPCmd.Flags().StringSlice("target-hostnames", nil, "Per-socket IP:port|hostname bindings (quote values); repeat for multiple virtual hosts")
 	discoverServiceTCPCmd.Flags().String("user-agent", "", "HTTP User-Agent preset: RANDOM, CHROME, FIREFOX, SAFARI, EDGE, CURL (omitted: preserve plugin defaults)")
-	discoverServiceTCPCmd.MarkFlagsMutuallyExclusive("hostname", "target-hostnames")
 	_ = discoverServiceTCPCmd.MarkFlagRequired("targets")
 
 	discoverServiceUDPCmd := &cobra.Command{
@@ -609,11 +606,12 @@ func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
 	serviceType := ""
 	if !udp {
 		for _, target := range targets {
-			if !strings.Contains(target, ":") {
+			address, _, _ := strings.Cut(target, "|")
+			if !strings.Contains(address, ":") {
 				a.OutputSignal.AddError(fmt.Errorf("target must include port for TCP service discovery (e.g., %s:80)", target))
 				return
 			}
-			_, port := utils.ParseHostPort(target, 0)
+			_, port := utils.ParseHostPort(address, 0)
 			if port == 0 {
 				a.OutputSignal.AddError(fmt.Errorf("target must include a valid port for TCP service discovery (e.g., %s:80)", target))
 				return
@@ -653,24 +651,6 @@ func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
 }
 
 func setDiscoverServiceHTTPFlags(cmd *cobra.Command, config *discoverfern.DiscoverServiceConfig) error {
-	if cmd.Flags().Changed("hostname") {
-		hostname, err := cmd.Flags().GetString("hostname")
-		if err != nil {
-			return err
-		}
-		config.Hostname = &hostname
-	}
-	bindings, err := cmd.Flags().GetStringSlice("target-hostnames")
-	if err != nil {
-		return err
-	}
-	for _, binding := range bindings {
-		target, hostname, ok := strings.Cut(binding, "|")
-		if !ok || target == "" || hostname == "" || strings.Contains(hostname, "|") {
-			return fmt.Errorf("invalid --target-hostnames binding %q: expected IP:port|hostname", binding)
-		}
-	}
-	config.TargetHostnames = bindings
 	if cmd.Flags().Changed("user-agent") {
 		value, err := cmd.Flags().GetString("user-agent")
 		if err != nil {
