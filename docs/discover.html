@@ -816,6 +816,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#hostname-and-http-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hostname and HTTP Identity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#concurrency-and-timeouts" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1517,6 +1528,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#hostname-and-http-identity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Hostname and HTTP Identity
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#concurrency-and-timeouts" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1836,6 +1858,17 @@ networkscan<span class="w"> </span>discover<span class="w"> </span>service<span 
 <div class="highlight"><pre><span></span><code>networkscan<span class="w"> </span>discover<span class="w"> </span>service<span class="w"> </span>udp<span class="w"> </span>--targets<span class="w"> </span><span class="m">192</span>.168.1.1,10.0.0.0/28
 </code></pre></div>
 <p>TCP accepts comma-separated sockets, including hostnames, CIDRs, and IP ranges with a port. Use brackets around IPv6 addresses when specifying a port. UDP accepts comma-separated hosts, CIDRs, and IP ranges without a port and probes the registered plugins' default UDP ports. CIDRs include every address, including IPv4 network and broadcast addresses. Hostname targets retain their name for probes that use SNI or a Host header.</p>
+<h4 id="hostname-and-http-identity">Hostname and HTTP Identity<a class="headerlink" href="#hostname-and-http-identity" title="Permanent link">#</a></h4>
+<p>Keep the destination IP fixed while supplying a logical hostname for HTTP Host, TLS SNI, and hostname-aware service probes:</p>
+<div class="highlight"><pre><span></span><code>networkscan<span class="w"> </span>discover<span class="w"> </span>service<span class="w"> </span>tcp<span class="w"> </span>--targets<span class="w"> </span><span class="s1">'192.0.2.10:443|app.example.com,192.0.2.11:8443|app.example.com'</span>
+networkscan<span class="w"> </span>discover<span class="w"> </span>service<span class="w"> </span>tcp<span class="w"> </span>--targets<span class="w"> </span><span class="s1">'192.0.2.10:443|one.example.com,192.0.2.11:443|two.example.com'</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--targets<span class="w"> </span><span class="s1">'192.0.2.10:443|another.example.com'</span><span class="w"> </span>--user-agent<span class="w"> </span>CHROME
+networkscan<span class="w"> </span>discover<span class="w"> </span>service<span class="w"> </span>tcp<span class="w"> </span>--targets<span class="w"> </span><span class="s1">'[2001:db8::1]:443|app.example.com'</span><span class="w"> </span>--service-type<span class="w"> </span>HTTP<span class="w"> </span>--user-agent<span class="w"> </span>CURL
+</code></pre></div>
+<p>Append <code>|hostname</code> directly to an explicit IP:port target to supply its logical hostname. The target parser preserves the hostname as supplied, without normalization or DNS-name validation. Repeat a socket with different names to probe multiple virtual hosts. Plain targets retain their existing behavior and can be mixed with hostname-bearing targets. The supplied name is not resolved and never changes the connection IP. Results retain the logical name in <code>host</code> and the destination address in <code>ip</code>.</p>
+<p>Quote CLI values because an unquoted <code>|</code> is a shell pipe. The report config preserves the same flat list, for example <code>"targets": ["192.0.2.10:443|app.example.com", "[2001:db8::1]:443|app.example.com"]</code>. There are no separate hostname flags or config fields.</p>
+<p><code>--user-agent</code> accepts the same named presets as WebProbe: <code>RANDOM</code>, <code>CHROME</code>, <code>FIREFOX</code>, <code>SAFARI</code>, <code>EDGE</code>, and <code>CURL</code> (case-insensitive). Omitting the flag defaults to <code>RANDOM</code>, including when the config field is omitted by SDK callers. One value is selected per invocation and reused across HTTP probes and follow-up requests, including MongoDB's diagnostic HTTP request. It does not modify non-HTTP protocol headers or guarantee that a server will accept the request.</p>
+<p>Hostname-bearing targets and <code>--user-agent</code> apply only to TCP service discovery, including HTTP stealth mode. HTTP-based probes use the supplied Host and SNI while connecting to the original socket; redirects are not followed. A TLS handshake alone still does not identify an HTTPS service: an HTTP response is required. These options add service evidence, not WebApplication objects directly.</p>
 <h4 id="concurrency-and-timeouts">Concurrency and Timeouts<a class="headerlink" href="#concurrency-and-timeouts" title="Permanent link">#</a></h4>
 <p>Both commands share these flags:</p>
 <table>
@@ -1906,12 +1939,13 @@ Usage:
 <span class="w">  </span>networkscan<span class="w"> </span>discover<span class="w"> </span>service<span class="w"> </span>tcp<span class="w"> </span><span class="o">[</span>flags<span class="o">]</span>
 
 Flags:
-<span class="w">  </span>-h,<span class="w"> </span>--help<span class="w">                  </span><span class="nb">help</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>tcp
-<span class="w">      </span>--plugin-threads<span class="w"> </span>int<span class="w">    </span>Maximum<span class="w"> </span>custom<span class="w"> </span>service<span class="w"> </span>plugins<span class="w"> </span>to<span class="w"> </span>run<span class="w"> </span>concurrently<span class="w"> </span>per<span class="w"> </span>target<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="m">10</span><span class="o">)</span>
-<span class="w">      </span>--service-type<span class="w"> </span>string<span class="w">   </span>Service<span class="w"> </span><span class="nb">type</span><span class="w"> </span>to<span class="w"> </span>fingerprint<span class="w"> </span><span class="k">for</span><span class="w"> </span>stealth<span class="w"> </span>mode:<span class="w"> </span>SSH,<span class="w"> </span>HTTP,<span class="w"> </span>GRPC,<span class="w"> </span>KERBEROS,<span class="w"> </span>LDAP,<span class="w"> </span>SMB<span class="w"> </span><span class="o">(</span>stealth<span class="w"> </span>mode<span class="w"> </span>enabled<span class="w"> </span>when<span class="w"> </span>specified<span class="o">)</span>
-<span class="w">      </span>--targets<span class="w"> </span>strings<span class="w">       </span>Target<span class="w"> </span>addresses<span class="w"> </span><span class="o">(</span>IP:port<span class="w"> </span>or<span class="w"> </span>hostname:port<span class="o">)</span>
-<span class="w">      </span>--threads<span class="w"> </span>int<span class="w">           </span>Maximum<span class="w"> </span>concurrent<span class="w"> </span>target<span class="w"> </span>IPs<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="m">10</span><span class="o">)</span>
-<span class="w">      </span>--timeout<span class="w"> </span>int<span class="w">           </span>Timeout<span class="w"> </span><span class="k">in</span><span class="w"> </span>seconds<span class="w"> </span><span class="k">for</span><span class="w"> </span>each<span class="w"> </span>service<span class="w"> </span>fingerprinting<span class="w"> </span>attempt<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="m">30</span><span class="o">)</span>
+<span class="w">  </span>-h,<span class="w"> </span>--help<span class="w">                       </span><span class="nb">help</span><span class="w"> </span><span class="k">for</span><span class="w"> </span>tcp
+<span class="w">      </span>--plugin-threads<span class="w"> </span>int<span class="w">         </span>Maximum<span class="w"> </span>custom<span class="w"> </span>service<span class="w"> </span>plugins<span class="w"> </span>to<span class="w"> </span>run<span class="w"> </span>concurrently<span class="w"> </span>per<span class="w"> </span>target<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="m">10</span><span class="o">)</span>
+<span class="w">      </span>--service-type<span class="w"> </span>string<span class="w">        </span>Service<span class="w"> </span><span class="nb">type</span><span class="w"> </span>to<span class="w"> </span>fingerprint<span class="w"> </span><span class="k">for</span><span class="w"> </span>stealth<span class="w"> </span>mode:<span class="w"> </span>SSH,<span class="w"> </span>HTTP,<span class="w"> </span>GRPC,<span class="w"> </span>KERBEROS,<span class="w"> </span>LDAP,<span class="w"> </span>SMB<span class="w"> </span><span class="o">(</span>stealth<span class="w"> </span>mode<span class="w"> </span>enabled<span class="w"> </span>when<span class="w"> </span>specified<span class="o">)</span>
+<span class="w">      </span>--targets<span class="w"> </span>strings<span class="w">            </span>Target<span class="w"> </span>addresses<span class="w"> </span><span class="o">(</span>IP:port,<span class="w"> </span>hostname:port,<span class="w"> </span>or<span class="w"> </span>quoted<span class="w"> </span>IP:port<span class="p">|</span>hostname<span class="o">)</span>
+<span class="w">      </span>--threads<span class="w"> </span>int<span class="w">                </span>Maximum<span class="w"> </span>concurrent<span class="w"> </span>target<span class="w"> </span>IPs<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="m">10</span><span class="o">)</span>
+<span class="w">      </span>--timeout<span class="w"> </span>int<span class="w">                </span>Timeout<span class="w"> </span><span class="k">in</span><span class="w"> </span>seconds<span class="w"> </span><span class="k">for</span><span class="w"> </span>each<span class="w"> </span>service<span class="w"> </span>fingerprinting<span class="w"> </span>attempt<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="m">30</span><span class="o">)</span>
+<span class="w">      </span>--user-agent<span class="w"> </span>string<span class="w">          </span>HTTP<span class="w"> </span>User-Agent<span class="w"> </span>preset:<span class="w"> </span>RANDOM,<span class="w"> </span>CHROME,<span class="w"> </span>FIREFOX,<span class="w"> </span>SAFARI,<span class="w"> </span>EDGE,<span class="w"> </span>CURL<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="s2">"RANDOM"</span><span class="o">)</span>
 
 Global<span class="w"> </span>Flags:
 <span class="w">  </span>-o,<span class="w"> </span>--output<span class="w"> </span>string<span class="w">        </span>Output<span class="w"> </span>format<span class="w"> </span><span class="o">(</span>signal,<span class="w"> </span>json,<span class="w"> </span>yaml<span class="o">)</span>.<span class="w"> </span>Default<span class="w"> </span>value<span class="w"> </span>is<span class="w"> </span>signal<span class="w"> </span><span class="o">(</span>default<span class="w"> </span><span class="s2">"signal"</span><span class="o">)</span>
