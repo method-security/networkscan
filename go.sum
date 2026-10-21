@@ -45,8 +45,8 @@ github.com/FalconOpsLLC/goexec v0.3.0 h1:ryLMkrGT6asnkqdc5rFMNOSTYdMH/iCfyEuwu0D
 github.com/FalconOpsLLC/goexec v0.3.0/go.mod h1:kiyxVbmFCGbbwXRyZmOSKlOy7PiK+JH2gq07Ztag/k8=
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
-github.com/Method-Security/pkg v0.1.1 h1:Y8Ca5DlihOVBYuysW6Yr+EeNntDTp9n4sHBhN63Xhe8=
-github.com/Method-Security/pkg v0.1.1/go.mod h1:suN5TaS8DJ4VR3uhwpzTZKfNuWylz08Z+a4JUSbv0LY=
+github.com/Method-Security/pkg v0.2.0 h1:YlRgT5brOqHkz68+6FGI0r6JuJ0lgOzg1gUamhmVgxs=
+github.com/Method-Security/pkg v0.2.0/go.mod h1:suN5TaS8DJ4VR3uhwpzTZKfNuWylz08Z+a4JUSbv0LY=
 github.com/Microsoft/go-winio v0.5.2/go.mod h1:WpS1mjBmmwHBEWmogvA2mj8546UReBk4v8QkMxJ6pZY=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=

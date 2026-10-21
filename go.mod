@@ -4,7 +4,7 @@ go 1.26.8
 
 require (
 	github.com/Azure/go-ntlmssp v0.1.2-0.20260824092057-1c8077778c2c
-	github.com/Method-Security/pkg v0.1.1
+	github.com/Method-Security/pkg v0.2.0
 	github.com/RedTeamPentesting/adauth v0.5.4-0.20260511073005-3d18e8a5a687
 	github.com/go-asn1-ber/asn1-ber v1.5.8
 	github.com/go-ldap/ldap/v3 v3.4.14

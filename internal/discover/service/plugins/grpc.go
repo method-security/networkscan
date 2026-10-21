@@ -6,7 +6,6 @@ package plugins
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -48,10 +47,10 @@ func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	if deadline, ok := timeoutCtx.Deadline(); ok {
 		dialBudget = time.Until(deadline)
 	}
-	conn, tlsUsed, err := dial(timeoutCtx, addr, dialBudget/2, false)
+	conn, tlsUsed, err := dial(timeoutCtx, addr, host, dialBudget/2, false)
 	if err != nil {
 		/* ---- fallback to opportunistic TLS -------------------------------- */
-		conn, tlsUsed, err = dial(timeoutCtx, addr, timeoutDuration, true)
+		conn, tlsUsed, err = dial(timeoutCtx, addr, host, timeoutDuration, true)
 		if err != nil {
 			return nil, nil // neither path worked → not gRPC
 		}
@@ -107,14 +106,17 @@ func (GrpcFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 /*  Helpers                                                                   */
 /* -------------------------------------------------------------------------- */
 
-func dial(ctx context.Context, addr string, to time.Duration, useTLS bool) (*grpc.ClientConn, bool, error) {
+func dial(ctx context.Context, addr, host string, to time.Duration, useTLS bool) (*grpc.ClientConn, bool, error) {
 	dctx, cancel := helpers.ContextDuration(ctx, to)
 	defer cancel()
 
 	opts := []grpc.DialOption{grpc.WithBlock()}
+	if host != "" && net.ParseIP(host) == nil {
+		opts = append(opts, grpc.WithAuthority(host))
+	}
 	if useTLS {
 		opts = append(opts,
-			grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})))
+			grpc.WithTransportCredentials(credentials.NewTLS(helpers.DiscoveryTLSConfig(host))))
 	} else {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}

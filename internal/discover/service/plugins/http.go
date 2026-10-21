@@ -3,7 +3,6 @@ package plugins
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -22,14 +21,6 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	timeoutCtx, cancel := helpers.Context(ctx, timeout)
 	defer cancel()
 
-	// Use proper HTTP client with the scanner timeout.
-	client := &http.Client{
-		Timeout: helpers.Timeout(timeout),
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // For HTTPS detection
-		},
-	}
-
 	// Try HTTPS first, then HTTP
 	protocols := []struct {
 		scheme string
@@ -40,14 +31,20 @@ func (HTTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	}
 
 	for _, proto := range protocols {
-		// Use net.JoinHostPort to properly format IPv6 addresses with brackets
-		hostPort := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
-		url := fmt.Sprintf("%s://%s/", proto.scheme, hostPort)
-		req, err := http.NewRequestWithContext(timeoutCtx, "HEAD", url, nil)
+		p := newProductHTTP(ip, port, host, timeout, proto.isTLS)
+		u := p.base
+		u.Path = "/"
+		req, err := http.NewRequestWithContext(timeoutCtx, "HEAD", u.String(), nil)
 		if err != nil {
+			p.transport.CloseIdleConnections()
 			continue
 		}
-		resp, err := client.Do(req)
+		if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
+			req.Header.Set("User-Agent", userAgent)
+		}
+		// Fingerprint the requested socket, not a redirect's destination.
+		resp, err := p.transport.RoundTrip(req)
+		p.transport.CloseIdleConnections()
 		if err != nil {
 			continue // Try next protocol
 		}
