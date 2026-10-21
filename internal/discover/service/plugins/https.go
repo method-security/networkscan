@@ -62,9 +62,7 @@ func discoverNativeHTTP(ctx context.Context, ip net.IP, port int, host string, t
 	stopCancel := context.AfterFunc(enrichmentCtx, cancelRequest)
 	defer stopCancel()
 	body, bodyErr := readProductHTTPBody(r.Body)
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
+	// Cancellation bounds optional enrichment, not the HTTP evidence already received.
 	if isHTTPFrontingError(r.StatusCode, body) {
 		return nil, nil
 	}
@@ -104,9 +102,6 @@ func discoverNativeHTTP(ctx context.Context, ip net.IP, port int, host string, t
 		}
 	case <-enrichmentCtx.Done():
 		metadata["analysisIncomplete"] = "true"
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
 	}
 	return result, nil
 }
