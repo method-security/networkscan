@@ -4,6 +4,7 @@ package plugins
 import (
 	"context"
 	"net"
+	"strings"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	commonprotocolfern "github.com/Method-Security/networkscan/generated/go/common/protocol"
@@ -61,6 +62,9 @@ func detectSMBService(ctx context.Context, ip net.IP, port int, host string) (*d
 	// Attempt to connect to test if SMB service is running
 	// In challenge-only mode, this will succeed after getting the challenge
 	err := client.ConnectWithContext(ctx)
+	if isSMBv1OnlyError(err) {
+		return buildSMBv1OnlyResult(host, ip, port), nil
+	}
 
 	// For challenge-only mode, we need to validate that we actually got SMB-specific info
 	var serverInfo *commonprotocolfern.SmbServerInfo
@@ -215,4 +219,27 @@ func isValidSMBServerInfo(serverInfo *commonprotocolfern.SmbServerInfo) bool {
 	}
 
 	return false
+}
+
+func isSMBv1OnlyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "only accepting SMBv1") || strings.Contains(message, "only accepts SMBv1")
+}
+
+func buildSMBv1OnlyResult(host string, ip net.IP, port int) *discoverfern.ServiceDetails {
+	version := commonprotocolfern.SmbVersionSmb1
+	return &discoverfern.ServiceDetails{
+		Host:      host,
+		Ip:        ip.String(),
+		Port:      port,
+		Transport: common.TransportTypeTcp,
+		Protocol:  common.ProtocolTypeSmb,
+		Metadata: &discoverfern.ServiceMetadata{Smb: &commonprotocolfern.SmbServerInfo{
+			SmbVersion:           &version,
+			SupportedSmbVersions: []commonprotocolfern.SmbVersion{version},
+		}},
+	}
 }

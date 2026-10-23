@@ -202,11 +202,24 @@ func mongoHTTPWarningExchange(ctx context.Context, ip net.IP, port int, host str
 		return nil, err
 	}
 	buf := make([]byte, 512)
-	n, err := conn.Read(buf)
-	if n > 0 {
-		return buf[:n], nil
+	var resp []byte
+	for len(resp) < 2048 {
+		n, err := conn.Read(buf)
+		if n > 0 {
+			resp = append(resp, buf[:n]...)
+			if bytes.Contains(resp, []byte("It looks like you are trying to access MongoDB over HTTP on the native driver port.\r\n")) ||
+				bytes.Contains(resp, []byte("You are trying to access MongoDB on the native driver port. For http diagnostic access, add 1000 to the port number")) {
+				return resp, nil
+			}
+		}
+		if err != nil {
+			if len(resp) > 0 {
+				return resp, nil
+			}
+			return nil, err
+		}
 	}
-	return nil, err
+	return resp, nil
 }
 
 func boundedMongoProbeTimeout(timeout int) time.Duration {

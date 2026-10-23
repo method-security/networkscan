@@ -2,7 +2,9 @@ package plugins
 
 import (
 	"context"
+	"encoding/json"
 	"net"
+	"net/http"
 
 	"github.com/Method-Security/networkscan/generated/go/common"
 	discover "github.com/Method-Security/networkscan/generated/go/discover"
@@ -31,14 +33,31 @@ func (ElasticsearchFingerprinter) Detect(ctx context.Context, ip net.IP, port in
 		version := productString(v, "number")
 		branded := r.Header.Get("X-Elastic-Product") == "Elasticsearch"
 		legacy := productString(o, "tagline") == "You Know, for Search" && productString(o, "cluster_name") != "" && version != "" && productString(v, "lucene_version") != ""
-		if !branded && !(r.StatusCode == 200 && legacy) {
+		authRequired := isElasticsearchSecurityException(r.StatusCode, o)
+		if !branded && !(r.StatusCode == 200 && legacy) && !authRequired {
 			continue
 		}
 		m := productFields(o, "name", "cluster_name", "cluster_uuid", "tagline")
 		for k, value := range productFields(v, "build_flavor", "build_type", "build_hash", "build_date", "lucene_version") {
 			m[k] = value
 		}
+		if authRequired {
+			m["authRequired"] = "true"
+			m["errorType"] = "security_exception"
+		}
 		return productHTTPResult(host, ip, port, secure, common.ProtocolTypeElasticsearch, "elasticsearch", version, r, m), nil
 	}
 	return nil, nil
+}
+
+func isElasticsearchSecurityException(statusCode int, object map[string]json.RawMessage) bool {
+	if statusCode != http.StatusUnauthorized && statusCode != http.StatusForbidden {
+		return false
+	}
+	errorObject := productJSON(object["error"])
+	if productString(errorObject, "type") != "security_exception" {
+		return false
+	}
+	var bodyStatus int
+	return json.Unmarshal(object["status"], &bodyStatus) == nil && bodyStatus == statusCode
 }
