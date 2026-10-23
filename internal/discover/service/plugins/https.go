@@ -96,6 +96,8 @@ func isHTTPFrontingError(statusCode int, body []byte) bool {
 		"http request to an https server",
 		"plain http request was sent to https port",
 		"speaking plain http to an ssl-enabled server port",
+		"bad request - invalid hostname",
+		"the request hostname is invalid",
 	} {
 		if strings.Contains(lowerBody, marker) {
 			return true

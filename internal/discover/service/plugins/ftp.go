@@ -75,34 +75,45 @@ func (FTPFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host st
 	if code == 120 {
 		code, banner, err = readFTPReply(r)
 	}
+	if err == nil && isFTPMisconfigurationBanner(code, banner) {
+		return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeFtp, "FTP", banner, map[string]string{"banner": banner, "misconfigured": "true"}), nil
+	}
 	if err != nil || code != 220 {
 		return nil, fmt.Errorf("not FTP: greeting code %d: %v", code, err)
 	}
 	if _, err = io.WriteString(conn, "SYST\r\n"); err != nil {
 		return nil, err
 	}
-	code, system, err := readFTPReply(r)
+	systemCode, system, err := readFTPReply(r)
 	if err != nil {
 		return nil, err
 	}
 	meta := map[string]string{"banner": banner}
-	confirmed := code == 215
+	confirmed := systemCode == 215
 	if confirmed {
 		meta["system"] = strings.TrimPrefix(system, "215 ")
 	}
 	if _, err = io.WriteString(conn, "FEAT\r\n"); err != nil {
 		return nil, err
 	}
-	code, features, err := readFTPReply(r)
+	featureCode, features, err := readFTPReply(r)
 	if err != nil {
 		return nil, err
 	}
-	if code == 211 {
+	if featureCode == 211 {
 		meta["features"] = features
+		confirmed = true
+	}
+	if !confirmed && systemCode == 530 && featureCode == 530 && !strings.Contains(strings.ToUpper(banner), "SMTP") {
+		meta["authRequired"] = "true"
 		confirmed = true
 	}
 	if !confirmed && !strings.Contains(strings.ToUpper(banner), "FTP") {
 		return nil, fmt.Errorf("greeting lacks FTP evidence")
 	}
 	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeFtp, "FTP", banner, meta), nil
+}
+
+func isFTPMisconfigurationBanner(code int, banner string) bool {
+	return code == 500 && strings.HasPrefix(strings.ToUpper(banner), "500 OOPS:")
 }

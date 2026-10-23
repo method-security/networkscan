@@ -140,7 +140,7 @@ func buildMongoDBResult(host string, ip net.IP, port int, tlsEnabled bool, versi
 }
 
 func detectMongoDBNativeHTTPWarning(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	for _, tlsEnabled := range []bool{true, false} {
+	for _, tlsEnabled := range []bool{false, true} {
 		resp, err := mongoHTTPWarningExchange(ctx, ip, port, timeout, tlsEnabled)
 		if err != nil {
 			continue
@@ -173,11 +173,24 @@ func mongoHTTPWarningExchange(ctx context.Context, ip net.IP, port int, timeout 
 		return nil, err
 	}
 	buf := make([]byte, 512)
-	n, err := conn.Read(buf)
-	if n > 0 {
-		return buf[:n], nil
+	var resp []byte
+	for len(resp) < 2048 {
+		n, err := conn.Read(buf)
+		if n > 0 {
+			resp = append(resp, buf[:n]...)
+			if bytes.Contains(resp, []byte("It looks like you are trying to access MongoDB over HTTP on the native driver port.\r\n")) ||
+				bytes.Contains(resp, []byte("You are trying to access MongoDB on the native driver port. For http diagnostic access, add 1000 to the port number")) {
+				return resp, nil
+			}
+		}
+		if err != nil {
+			if len(resp) > 0 {
+				return resp, nil
+			}
+			return nil, err
+		}
 	}
-	return nil, err
+	return resp, nil
 }
 
 func boundedMongoProbeTimeout(timeout int) time.Duration {
@@ -188,6 +201,16 @@ func boundedMongoProbeTimeout(timeout int) time.Duration {
 	configured := helpers.Timeout(timeout)
 	if configured <= 0 {
 		return fallback
+	}
+	// Keep enough of the caller's budget for the native HTTP warning fallback.
+	// Without this reserve, a failed driver Ping can consume the full attempt
+	// timeout and generic HTTP wins before MongoDB gets a second signal.
+	reserve := boundedMongoWarningTimeout(timeout)
+	if configured > reserve {
+		return configured - reserve
+	}
+	if configured > time.Second {
+		return configured / 2
 	}
 	return configured
 }

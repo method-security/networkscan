@@ -23,9 +23,21 @@ func (FingerFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host
 		return nil, err
 	}
 	text := string(resp)
-	lower := strings.ToLower(text)
-	if strings.Contains(lower, "http/") || (!strings.Contains(lower, "finger") && !strings.Contains(lower, "login") && !strings.Contains(lower, "no information")) {
+	if !isFingerResponse(text, port) {
 		return nil, fmt.Errorf("not Finger")
 	}
 	return helpers.GenericResult(host, ip, port, common.TransportTypeTcp, common.ProtocolTypeFinger, "Finger", "RFC1288", map[string]string{"response": helpers.FirstLine(text)}), nil
+}
+
+func isFingerResponse(text string, port int) bool {
+	lower := strings.ToLower(text)
+	if strings.Contains(lower, "http/") {
+		return false
+	}
+	if strings.Contains(lower, "finger") || strings.Contains(lower, "no information") {
+		return true
+	}
+	// A bare login prompt is common across FTP and Telnet. Only accept that
+	// weak signal on Finger's well-known port.
+	return port == 79 && strings.Contains(lower, "login")
 }
