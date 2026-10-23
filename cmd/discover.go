@@ -6,7 +6,9 @@ import (
 	"strings"
 
 	// Generated
+	"github.com/Method-Security/networkscan/generated/go/common"
 	discoverfern "github.com/Method-Security/networkscan/generated/go/discover"
+
 	// Internal
 	discover "github.com/Method-Security/networkscan/internal/discover"
 	discoverhost "github.com/Method-Security/networkscan/internal/discover/host"
@@ -381,8 +383,9 @@ func (a *NetworkScan) InitDiscoverCommand() {
 			a.runDiscoverServiceCommand(cmd, false)
 		},
 	}
-	addDiscoverServiceCommonFlags(discoverServiceTCPCmd, "Target addresses (IP:port or hostname:port)")
+	addDiscoverServiceCommonFlags(discoverServiceTCPCmd, "Target addresses (IP:port, hostname:port, or quoted IP:port|hostname)")
 	discoverServiceTCPCmd.Flags().String("service-type", "", "Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)")
+	discoverServiceTCPCmd.Flags().String("user-agent", "RANDOM", "HTTP User-Agent preset: RANDOM, CHROME, FIREFOX, SAFARI, EDGE, CURL")
 	_ = discoverServiceTCPCmd.MarkFlagRequired("targets")
 
 	discoverServiceUDPCmd := &cobra.Command{
@@ -603,11 +606,12 @@ func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
 	serviceType := ""
 	if !udp {
 		for _, target := range targets {
-			if !strings.Contains(target, ":") {
+			address, _, _ := strings.Cut(target, "|")
+			if !strings.Contains(address, ":") {
 				a.OutputSignal.AddError(fmt.Errorf("target must include port for TCP service discovery (e.g., %s:80)", target))
 				return
 			}
-			_, port := utils.ParseHostPort(target, 0)
+			_, port := utils.ParseHostPort(address, 0)
 			if port == 0 {
 				a.OutputSignal.AddError(fmt.Errorf("target must include a valid port for TCP service discovery (e.g., %s:80)", target))
 				return
@@ -625,6 +629,19 @@ func (a *NetworkScan) runDiscoverServiceCommand(cmd *cobra.Command, udp bool) {
 	if err != nil {
 		a.OutputSignal.AddError(err)
 		return
+	}
+	if !udp {
+		value, err := cmd.Flags().GetString("user-agent")
+		if err != nil {
+			a.OutputSignal.AddError(err)
+			return
+		}
+		preset, err := common.NewUserAgentPresetFromString(strings.ToUpper(value))
+		if err != nil {
+			a.OutputSignal.AddError(fmt.Errorf("invalid --user-agent preset: %w", err))
+			return
+		}
+		config.UserAgent = &preset
 	}
 
 	var report *discoverfern.DiscoverServiceReport

@@ -3,13 +3,10 @@ package plugins
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -29,27 +26,22 @@ func (EtcdFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	if timeoutDuration <= 0 {
 		timeoutDuration = 5 * time.Second
 	}
-	// Use net.JoinHostPort so IPv6 addresses are properly bracketed (e.g. [::1]:2379).
-	addr := net.JoinHostPort(ip.String(), strconv.Itoa(port))
-
 	// Try plain HTTP first, then HTTPS with InsecureSkipVerify
 	for _, scheme := range []string{"http", "https"} {
-		var client *http.Client
-		if scheme == "https" {
-			client = &http.Client{
-				Timeout: timeoutDuration,
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
-				},
-			}
-		} else {
-			client = &http.Client{Timeout: timeoutDuration}
+		p := newProductHTTP(ip, port, host, timeout, scheme == "https")
+		defer p.transport.CloseIdleConnections()
+		client := &http.Client{
+			Timeout:       timeoutDuration,
+			Transport:     p.transport,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 		}
-
-		versionURL := fmt.Sprintf("%s://%s/version", scheme, addr)
+		versionURL := p.base.String() + "/version"
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, versionURL, nil)
 		if err != nil {
 			continue
+		}
+		if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
+			req.Header.Set("User-Agent", userAgent)
 		}
 
 		resp, err := client.Do(req)
@@ -81,7 +73,7 @@ func (EtcdFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 		}
 
 		// Try to detect Kubernetes etcd via /metrics
-		kubernetesDetected := detectKubernetesEtcd(ctx, client, scheme, addr)
+		kubernetesDetected := detectKubernetesEtcd(ctx, client, p.base.String())
 		serverInfo.KubernetesDetected = &kubernetesDetected
 
 		return buildEtcdServiceResult(host, ip, port, scheme == "https", serverInfo), nil
@@ -89,11 +81,14 @@ func (EtcdFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host s
 	return nil, nil
 }
 
-func detectKubernetesEtcd(ctx context.Context, client *http.Client, scheme, addr string) bool {
-	metricsURL := fmt.Sprintf("%s://%s/metrics", scheme, addr)
+func detectKubernetesEtcd(ctx context.Context, client *http.Client, baseURL string) bool {
+	metricsURL := baseURL + "/metrics"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metricsURL, nil)
 	if err != nil {
 		return false
+	}
+	if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

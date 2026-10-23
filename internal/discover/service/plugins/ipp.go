@@ -4,7 +4,6 @@ package plugins
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -42,7 +41,9 @@ func detectIPPWithScheme(ctx context.Context, ip net.IP, port int, host string, 
 		transport = common.TransportTypeTcptls
 	}
 
-	url := fmt.Sprintf("%s://%s/", scheme, net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port)))
+	p := newProductHTTP(ip, port, host, timeout, useTLS)
+	defer p.transport.CloseIdleConnections()
+	url := p.base.String() + "/"
 
 	// IPP Get-Printer-Attributes request
 	ippGetAttributesRequest := []byte{
@@ -70,10 +71,9 @@ func detectIPPWithScheme(ctx context.Context, ip net.IP, port int, host string, 
 
 	// Create HTTP client
 	client := &http.Client{
-		Timeout: helpers.Timeout(timeout),
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		},
+		Timeout:       helpers.Timeout(timeout),
+		Transport:     p.transport,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(ippGetAttributesRequest))
@@ -82,7 +82,9 @@ func detectIPPWithScheme(ctx context.Context, ip net.IP, port int, host string, 
 	}
 
 	req.Header.Set("Content-Type", "application/ipp")
-	req.Header.Set("User-Agent", "networkscan-ipp")
+	if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
+		req.Header.Set("User-Agent", userAgent)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

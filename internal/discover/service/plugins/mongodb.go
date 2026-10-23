@@ -29,14 +29,25 @@ func (MongoDBFingerprinter) Name() string { return "mongodb" }
 func (MongoDBFingerprinter) DefaultPorts() []int { return []int{27017} }
 
 func (MongoDBFingerprinter) Detect(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
+	ctx, cancel := helpers.Context(ctx, timeout)
+	defer cancel()
+
 	// Create MongoDB connection string
 	addr := utils.FormatHostPort(ip.String(), port)
 	uri := fmt.Sprintf("mongodb://%s", addr)
 
 	// Create context with timeout
 	timeoutDuration := boundedMongoProbeTimeout(timeout)
-	timeoutCtx, cancel := helpers.ContextDuration(ctx, timeoutDuration)
-	defer cancel()
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, ctx.Err()
+		}
+		// Leave half the attempt budget for the native HTTP warning fallback.
+		timeoutDuration = min(timeoutDuration, remaining/2)
+	}
+	timeoutCtx, cancelDriver := helpers.ContextDuration(ctx, timeoutDuration)
+	defer cancelDriver()
 
 	// Set client options with short timeout
 	clientOptions := options.Client().
@@ -140,8 +151,19 @@ func buildMongoDBResult(host string, ip net.IP, port int, tlsEnabled bool, versi
 }
 
 func detectMongoDBNativeHTTPWarning(ctx context.Context, ip net.IP, port int, host string, timeout int) (*discoverfern.ServiceDetails, error) {
-	for _, tlsEnabled := range []bool{false, true} {
-		resp, err := mongoHTTPWarningExchange(ctx, ip, port, timeout, tlsEnabled)
+	for index, tlsEnabled := range []bool{true, false} {
+		attemptTimeout := boundedMongoWarningTimeout(timeout)
+		if deadline, ok := ctx.Deadline(); ok {
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return nil, ctx.Err()
+			}
+			// A stalled TLS probe must leave time for the plaintext attempt.
+			attemptTimeout = min(attemptTimeout, remaining/time.Duration(2-index))
+		}
+		attemptCtx, cancel := helpers.ContextDuration(ctx, attemptTimeout)
+		resp, err := mongoHTTPWarningExchange(attemptCtx, ip, port, host, timeout, tlsEnabled)
+		cancel()
 		if err != nil {
 			continue
 		}
@@ -152,7 +174,7 @@ func detectMongoDBNativeHTTPWarning(ctx context.Context, ip net.IP, port int, ho
 	return nil, fmt.Errorf("no MongoDB native HTTP warning")
 }
 
-func mongoHTTPWarningExchange(ctx context.Context, ip net.IP, port int, timeout int, tlsEnabled bool) ([]byte, error) {
+func mongoHTTPWarningExchange(ctx context.Context, ip net.IP, port int, host string, timeout int, tlsEnabled bool) ([]byte, error) {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprintf("%d", port))
 	exchangeTimeout := boundedMongoWarningTimeout(timeout)
 	conn, err := helpers.DialDuration(ctx, "tcp", addr, exchangeTimeout)
@@ -162,14 +184,21 @@ func mongoHTTPWarningExchange(ctx context.Context, ip net.IP, port int, timeout 
 	defer func() { _ = conn.Close() }()
 
 	if tlsEnabled {
-		tlsConn := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
+		tlsConn := tls.Client(conn, helpers.DiscoveryTLSConfig(host))
 		if err := tlsConn.Handshake(); err != nil {
 			return nil, err
 		}
 		conn = tlsConn
 	}
 
-	if _, err := conn.Write([]byte("GET / HTTP/1.0\r\n\r\n")); err != nil {
+	request := "GET / HTTP/1.0\r\n"
+	if host != "" && net.ParseIP(host) == nil {
+		request += "Host: " + net.JoinHostPort(host, fmt.Sprintf("%d", port)) + "\r\n"
+	}
+	if userAgent := helpers.HTTPUserAgent(ctx); userAgent != "" {
+		request += "User-Agent: " + userAgent + "\r\n"
+	}
+	if _, err := conn.Write([]byte(request + "\r\n")); err != nil {
 		return nil, err
 	}
 	buf := make([]byte, 512)
@@ -201,16 +230,6 @@ func boundedMongoProbeTimeout(timeout int) time.Duration {
 	configured := helpers.Timeout(timeout)
 	if configured <= 0 {
 		return fallback
-	}
-	// Keep enough of the caller's budget for the native HTTP warning fallback.
-	// Without this reserve, a failed driver Ping can consume the full attempt
-	// timeout and generic HTTP wins before MongoDB gets a second signal.
-	reserve := boundedMongoWarningTimeout(timeout)
-	if configured > reserve {
-		return configured - reserve
-	}
-	if configured > time.Second {
-		return configured / 2
 	}
 	return configured
 }

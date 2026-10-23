@@ -131,6 +131,25 @@ networkscan discover service udp --targets 192.168.1.1,10.0.0.0/28
 
 TCP accepts comma-separated sockets, including hostnames, CIDRs, and IP ranges with a port. Use brackets around IPv6 addresses when specifying a port. UDP accepts comma-separated hosts, CIDRs, and IP ranges without a port and probes the registered plugins' default UDP ports. CIDRs include every address, including IPv4 network and broadcast addresses. Hostname targets retain their name for probes that use SNI or a Host header.
 
+#### Hostname and HTTP Identity
+
+Keep the destination IP fixed while supplying a logical hostname for HTTP Host, TLS SNI, and hostname-aware service probes:
+
+```bash
+networkscan discover service tcp --targets '192.0.2.10:443|app.example.com,192.0.2.11:8443|app.example.com'
+networkscan discover service tcp --targets '192.0.2.10:443|one.example.com,192.0.2.11:443|two.example.com' \
+  --targets '192.0.2.10:443|another.example.com' --user-agent CHROME
+networkscan discover service tcp --targets '[2001:db8::1]:443|app.example.com' --service-type HTTP --user-agent CURL
+```
+
+Append `|hostname` directly to an explicit IP:port target to supply its logical hostname. The target parser preserves the hostname as supplied, without normalization or DNS-name validation. Repeat a socket with different names to probe multiple virtual hosts. Plain targets retain their existing behavior and can be mixed with hostname-bearing targets. The supplied name is not resolved and never changes the connection IP. Results retain the logical name in `host` and the destination address in `ip`.
+
+Quote CLI values because an unquoted `|` is a shell pipe. The report config preserves the same flat list, for example `"targets": ["192.0.2.10:443|app.example.com", "[2001:db8::1]:443|app.example.com"]`. There are no separate hostname flags or config fields.
+
+`--user-agent` accepts the same named presets as WebProbe: `RANDOM`, `CHROME`, `FIREFOX`, `SAFARI`, `EDGE`, and `CURL` (case-insensitive). Omitting the flag defaults to `RANDOM`, including when the config field is omitted by SDK callers. One value is selected per invocation and reused across HTTP probes and follow-up requests, including MongoDB's diagnostic HTTP request. It does not modify non-HTTP protocol headers or guarantee that a server will accept the request.
+
+Hostname-bearing targets and `--user-agent` apply only to TCP service discovery, including HTTP stealth mode. HTTP-based probes use the supplied Host and SNI while connecting to the original socket; redirects are not followed. A TLS handshake alone still does not identify an HTTPS service: an HTTP response is required. These options add service evidence, not WebApplication objects directly.
+
 #### Concurrency and Timeouts
 
 Both commands share these flags:
@@ -187,12 +206,13 @@ Usage:
   networkscan discover service tcp [flags]
 
 Flags:
-  -h, --help                  help for tcp
-      --plugin-threads int    Maximum custom service plugins to run concurrently per target (default 10)
-      --service-type string   Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
-      --targets strings       Target addresses (IP:port or hostname:port)
-      --threads int           Maximum concurrent target IPs (default 10)
-      --timeout int           Timeout in seconds for each service fingerprinting attempt (default 30)
+  -h, --help                       help for tcp
+      --plugin-threads int         Maximum custom service plugins to run concurrently per target (default 10)
+      --service-type string        Service type to fingerprint for stealth mode: SSH, HTTP, GRPC, KERBEROS, LDAP, SMB (stealth mode enabled when specified)
+      --targets strings            Target addresses (IP:port, hostname:port, or quoted IP:port|hostname)
+      --threads int                Maximum concurrent target IPs (default 10)
+      --timeout int                Timeout in seconds for each service fingerprinting attempt (default 30)
+      --user-agent string          HTTP User-Agent preset: RANDOM, CHROME, FIREFOX, SAFARI, EDGE, CURL (default "RANDOM")
 
 Global Flags:
   -o, --output string        Output format (signal, json, yaml). Default value is signal (default "signal")

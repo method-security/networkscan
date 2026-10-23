@@ -1,4 +1,13 @@
 types:
+  UserAgentPreset:
+    enum:
+      - CHROME
+      - CURL
+      - EDGE
+      - FIREFOX
+      - RANDOM
+      - SAFARI
+
   ProtocolType:
     enum:
       - ADB
