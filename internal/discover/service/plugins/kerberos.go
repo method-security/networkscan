@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -129,7 +130,7 @@ func detectKerberos(conn net.Conn, realm string, timeout time.Duration, tlsMode 
 
 	// Read the 4-byte length header first
 	lengthBuf := make([]byte, 4)
-	_, err = conn.Read(lengthBuf)
+	_, err = io.ReadFull(conn, lengthBuf)
 	if err != nil {
 		return false, tlsMode, err
 	}
@@ -141,7 +142,7 @@ func detectKerberos(conn net.Conn, realm string, timeout time.Duration, tlsMode 
 	}
 
 	response := make([]byte, length)
-	_, err = conn.Read(response)
+	_, err = io.ReadFull(conn, response)
 	if err != nil {
 		return false, tlsMode, err
 	}
