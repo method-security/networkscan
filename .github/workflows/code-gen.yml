@@ -6,6 +6,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FERN_USE_SDK_GEN_API: "false"
+
 jobs:
   generate_fern_go:
     name: Generate Fern Code (Go)
