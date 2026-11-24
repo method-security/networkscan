@@ -1,7 +1,6 @@
 package smb
 
 import (
-	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/rc4"
@@ -49,44 +48,14 @@ func SaveAndDownloadHive(ctx context.Context, session *gosmb.Connection, rpccon 
 		return nil, fmt.Errorf("RegSaveKey failed for %s: %v", hiveName, err)
 	}
 
-	// Download via SMB admin share and clean up
-	var hiveData []byte
-	var downloadErr error
-
-	// Try C$ first, then ADMIN$
-	shares := []struct {
-		name string
-		path string
-	}{
-		{"C$", fmt.Sprintf(`Windows\Temp\%s`, tempName)},
-		{"ADMIN$", fmt.Sprintf(`Temp\%s`, tempName)},
+	// Try C$ first, then ADMIN$.
+	shares := []hiveSharePath{
+		{name: "C$", path: fmt.Sprintf(`Windows\Temp\%s`, tempName), authoritative: true},
+		{name: "ADMIN$", path: fmt.Sprintf(`Temp\%s`, tempName)},
 	}
-
-	for _, share := range shares {
-		var buf bytes.Buffer
-		downloadErr = session.RetrieveFile(share.name, share.path, 0, func(data []byte) (int, error) {
-			return buf.Write(data)
-		})
-		if downloadErr == nil {
-			hiveData = buf.Bytes()
-			// Delete temp file through same share
-			_ = session.DeleteFile(share.name, share.path)
-			break
-		}
-		log.Info("Failed to download hive via share, trying next",
-			svc1log.SafeParam("share", share.name),
-			svc1log.SafeParam("error", downloadErr.Error()))
-	}
-
-	if downloadErr != nil {
-		// Best-effort cleanup: try to delete the temp file through each share
-		for _, share := range shares {
-			if delErr := session.DeleteFile(share.name, share.path); delErr == nil {
-				log.Info("Cleaned up temp hive file after download failure", svc1log.SafeParam("share", share.name))
-				break
-			}
-		}
-		return nil, fmt.Errorf("failed to download %s hive from all shares: %v", hiveName, downloadErr)
+	hiveData, err := downloadHiveAndCleanup(session, shares, hiveName, tempPath)
+	if err != nil {
+		return hiveData, err
 	}
 
 	log.Info("Downloaded registry hive",
