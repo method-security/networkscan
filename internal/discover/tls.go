@@ -4,6 +4,7 @@ package discover
 import (
 	// Standard
 	"context"
+	"crypto/ecdh"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
@@ -11,6 +12,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -822,14 +824,14 @@ func tlsVersionCode(version uint16) string {
 // computeJA4S connects to target, sends a TLS 1.3-capable ClientHello, reads the
 // ServerHello, and returns the JA4S fingerprint string. Returns "" on failure.
 //
-// JA4S format: t{TLSVersion}{CipherCount}{ALPN}_{SelectedCipher}_{ExtensionHash}
+// JA4S format: t{TLSVersion}{ExtensionCount}{ALPN}_{SelectedCipher}_{ExtensionHash}
 //
 //   - TLSVersion: 2-char code ("13" = TLS 1.3, "12" = TLS 1.2, etc.)
-//   - CipherCount: number of cipher suites in the ServerHello (always "01")
+//   - ExtensionCount: number of extensions in the ServerHello
 //   - ALPN: first 2 chars of selected ALPN protocol, or "00" if absent
 //   - SelectedCipher: selected cipher suite as 4-hex lowercase
-//   - ExtensionHash: lowercase SHA-256 of comma-joined sorted extension type
-//     decimal strings, truncated to 12 chars
+//   - ExtensionHash: lowercase SHA-256 of comma-joined extension type hex
+//     strings in wire order, truncated to 12 chars
 func computeJA4S(ctx context.Context, target, serverName string, timeout time.Duration) string {
 	if err := ctx.Err(); err != nil {
 		return ""
@@ -866,20 +868,35 @@ func computeJA4S(ctx context.Context, target, serverName string, timeout time.Du
 		0x00, 0x18, // secp384r1
 	}
 
-	// key_share extension (0x0033): required for TLS 1.3 – without it a pure
-	// TLS 1.3 server responds with HelloRetryRequest (handshake type 0x02,
-	// identical to ServerHello) instead of a full ServerHello.
+	// key_share extension (0x0033): use a real X25519 public key. An all-zero
+	// placeholder is a low-order point and conforming TLS stacks reject the
+	// ClientHello before sending a ServerHello.
+	privateKey, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		return ""
+	}
+	publicKey := privateKey.PublicKey().Bytes()
 	keyShareExt := []byte{
 		0x00, 0x33, // type: key_share
 		0x00, 0x26, // ext data length = 38
 		0x00, 0x24, // key_share_list length = 36
 		0x00, 0x1d, // group: x25519
 		0x00, 0x20, // key_exchange length = 32
-		// 32-byte placeholder x25519 public key (zeroes are fine for fingerprinting)
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+	keyShareExt = append(keyShareExt, publicKey...)
+
+	// signature_algorithms (0x000d) is mandatory for TLS 1.3 and needed by
+	// modern TLS 1.2 servers whose certificates cannot use the legacy defaults.
+	signatureAlgorithmsExt := []byte{
+		0x00, 0x0d, // type: signature_algorithms
+		0x00, 0x0e, // ext data length = 14
+		0x00, 0x0c, // algorithms list length = 12
+		0x04, 0x03, // ecdsa_secp256r1_sha256
+		0x08, 0x04, // rsa_pss_rsae_sha256
+		0x08, 0x05, // rsa_pss_rsae_sha384
+		0x08, 0x06, // rsa_pss_rsae_sha512
+		0x04, 0x01, // rsa_pkcs1_sha256
+		0x05, 0x01, // rsa_pkcs1_sha384
 	}
 
 	// ALPN extension (0x0010): offer h2 and http/1.1 so servers that support
@@ -901,26 +918,34 @@ func computeJA4S(ctx context.Context, target, serverName string, timeout time.Du
 	extensions = append(extensions, alpnExt...)
 	extensions = append(extensions, suppVersExt...)
 	extensions = append(extensions, suppGroupsExt...)
+	extensions = append(extensions, signatureAlgorithmsExt...)
 	extensions = append(extensions, keyShareExt...)
 
-	hello := buildClientHello(0x03, 0x03, baseCipherSuites, extensions, []byte{0x00})
+	ja4sCipherSuites := append([]byte{
+		0x13, 0x01, // TLS_AES_128_GCM_SHA256
+		0x13, 0x02, // TLS_AES_256_GCM_SHA384
+		0x13, 0x03, // TLS_CHACHA20_POLY1305_SHA256
+	}, baseCipherSuites...)
+	hello := buildClientHello(0x03, 0x03, ja4sCipherSuites, extensions, []byte{0x00})
 	record := buildTLSRecord(0x16, 0x03, 0x01, hello)
 
 	if _, err := conn.Write(record); err != nil {
 		return ""
 	}
 
-	buf := make([]byte, 4096)
-	n, _ := conn.Read(buf)
+	buf, err := readTLSRecord(conn)
+	if err != nil {
+		return ""
+	}
 	// Must be a TLS Handshake (0x16) containing a ServerHello (0x02)
-	if n < 44 || buf[0] != 0x16 || buf[5] != 0x02 {
+	if len(buf) < 44 || buf[0] != 0x16 || buf[5] != 0x02 {
 		return ""
 	}
 	// Detect HelloRetryRequest: same handshake type (0x02) as ServerHello but
 	// carries a special 32-byte magic Random (SHA-256 of "HelloRetryRequest").
 	// This happens when the server rejects all offered key_share groups.
 	const shBase = 9 // TLS record (5) + handshake header (4)
-	if n >= shBase+34 {
+	if len(buf) >= shBase+34 {
 		hrrMagic := [32]byte{
 			0xCF, 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11,
 			0xBE, 0x1D, 0x8C, 0x02, 0x1E, 0x65, 0xB8, 0x91,
@@ -934,7 +959,26 @@ func computeJA4S(ctx context.Context, target, serverName string, timeout time.Du
 		}
 	}
 
-	return parseJA4SFromServerHello(buf[:n])
+	return parseJA4SFromServerHello(buf)
+}
+
+// readTLSRecord reads one complete TLS record. TCP does not preserve message
+// boundaries, so a single Read may return only part of the ServerHello.
+func readTLSRecord(conn net.Conn) ([]byte, error) {
+	header := make([]byte, 5)
+	if _, err := io.ReadFull(conn, header); err != nil {
+		return nil, err
+	}
+	recordLen := int(header[3])<<8 | int(header[4])
+	if recordLen == 0 {
+		return nil, fmt.Errorf("empty TLS record")
+	}
+	record := make([]byte, 5+recordLen)
+	copy(record, header)
+	if _, err := io.ReadFull(conn, record[5:]); err != nil {
+		return nil, err
+	}
+	return record, nil
 }
 
 // parseJA4SFromServerHello extracts the JA4S fingerprint from raw ServerHello bytes.
@@ -968,9 +1012,9 @@ func parseJA4SFromServerHello(data []byte) string {
 
 	extListOffset := cipherOffset + 3
 	if len(data) < extListOffset+2 {
-		// No extensions present: count=00, alpn=00, hash=SHA256("").
-		noExtH := sha256.Sum256([]byte(""))
-		return fmt.Sprintf("t%s0000_%s_%s", verCode, selectedCipher, hex.EncodeToString(noExtH[:])[:12])
+		// The JA4S reference uses all zeroes instead of SHA-256("") when the
+		// ServerHello contains no extensions.
+		return fmt.Sprintf("t%s0000_%s_000000000000", verCode, selectedCipher)
 	}
 
 	extListLen := int(data[extListOffset])<<8 | int(data[extListOffset+1])
@@ -982,21 +1026,9 @@ func parseJA4SFromServerHello(data []byte) string {
 		return ""
 	}
 
-	// isGREASE returns true for TLS GREASE values (RFC 8701).
-	// GREASE extension types are 0x0a0a, 0x1a1a, …, 0xfafa — both bytes equal,
-	// lower nibble == 0xa.
-	isGREASE := func(v int) bool {
-		lo := v & 0xff
-		hi := (v >> 8) & 0xff
-		return lo == hi && (lo&0x0f) == 0x0a
-	}
-
-	// extTypes holds all non-GREASE extension type values (used for the count).
-	// hashExtTypes further excludes SNI (0x0000) and ALPN (0x0010) per the JA4S
-	// spec: JA4S_c is the hash of the extension list with GREASE, SNI, and ALPN
-	// removed.
+	// Unlike JA4 client fingerprints, the JA4S reference includes every server
+	// extension in both the count and hash, including GREASE, SNI, and ALPN.
 	var extTypes []int
-	var hashExtTypes []int
 	alpn := "00"
 	for extOffset+4 <= extEnd {
 		extType := int(uint16(data[extOffset])<<8 | uint16(data[extOffset+1]))
@@ -1004,18 +1036,12 @@ func parseJA4SFromServerHello(data []byte) string {
 
 		// Validate that the extension body fits within the declared extension list.
 		// A malformed or hostile ServerHello may advertise an extLen that runs past
-		// extEnd; break rather than counting a truncated extension or wrapping.
+		// extEnd. Reject it rather than hashing a partial extension list.
 		if extOffset+4+extLen > extEnd {
-			break
+			return ""
 		}
 
-		if !isGREASE(extType) {
-			extTypes = append(extTypes, extType)
-			// Exclude SNI (0x0000) and ALPN (0x0010) from the hash list.
-			if extType != 0x0000 && extType != 0x0010 {
-				hashExtTypes = append(hashExtTypes, extType)
-			}
-		}
+		extTypes = append(extTypes, extType)
 
 		// ALPN extension type 0x0010
 		if extType == 0x0010 && extOffset+4+extLen <= extEnd {
@@ -1052,24 +1078,30 @@ func parseJA4SFromServerHello(data []byte) string {
 		extOffset += 4 + extLen
 	}
 
-	// JA4S_b: actual count of non-GREASE extensions, formatted as 2-digit decimal.
-	extCount := fmt.Sprintf("%02d", len(extTypes))
+	// JA4S_b: extension count formatted as two decimal digits and capped at 99.
+	extCount := len(extTypes)
+	if extCount > 99 {
+		extCount = 99
+	}
 
 	// JA4S_c: SHA-256 of comma-separated extension types in ServerHello wire order,
-	// with GREASE, SNI (0x0000), and ALPN (0x0010) excluded.
-	// Note: unlike JA4 (ClientHello), JA4S does NOT sort the extension list — the
+	// including GREASE, SNI (0x0000), and ALPN (0x0010).
+	// Unlike JA4 (ClientHello), JA4S does not sort the extension list. The
 	// hash preserves the order in which the server sent the extensions.
 	// Per the FoxIO JA4S spec, extension type IDs are joined as 4-character
 	// lowercase hex codes (e.g. "002b" for 0x002b), NOT decimal. Using decimal
 	// here would produce a SHA-256 suffix that doesn't match reference tooling.
-	hashStrs := make([]string, len(hashExtTypes))
-	for i, t := range hashExtTypes {
+	hashStrs := make([]string, len(extTypes))
+	for i, t := range extTypes {
 		hashStrs[i] = fmt.Sprintf("%04x", t)
 	}
-	h := sha256.Sum256([]byte(strings.Join(hashStrs, ",")))
-	extHash := hex.EncodeToString(h[:])[:12]
+	extHash := "000000000000"
+	if len(hashStrs) > 0 {
+		h := sha256.Sum256([]byte(strings.Join(hashStrs, ",")))
+		extHash = hex.EncodeToString(h[:])[:12]
+	}
 
-	return fmt.Sprintf("t%s%s%s_%s_%s", verCode, extCount, alpn, selectedCipher, extHash)
+	return fmt.Sprintf("t%s%02d%s_%s_%s", verCode, extCount, alpn, selectedCipher, extHash)
 }
 
 // computeJA4XForCert computes the JA4X fingerprint for a single X.509 certificate.
